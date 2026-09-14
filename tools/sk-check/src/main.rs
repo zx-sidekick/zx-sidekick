@@ -23,7 +23,9 @@
 //!   back round to the menu, in every control method; and that the
 //!   teleporter table holds fifteen codes in fifteen rooms and, with a ROM,
 //!   that walking into each booth prints its code; and that in play the
-//!   room stays a room and every room walked into is marked visited.
+//!   room stays a room and every room walked into is marked visited; and
+//!   that every room marked as holding a missing core piece gets a wanted
+//!   piece placed in it when the game enters it.
 //! - `map [walks]`: has the game draw every room and reads the map from
 //!   them, then walks Blob at random through play from many rooms and checks
 //!   that he never leaves a room through an edge the map shows closed, and
@@ -622,6 +624,63 @@ fn ends_the_game(m: &Machine) -> Option<(u64, u64)> {
     None
 }
 
+/// Starts a game and, for every room marked as holding a missing core piece,
+/// has the game enter that room and checks it placed a pickup whose item is
+/// one the core still wants.
+fn pieces_check(dir: &Path) -> bool {
+    use sidekick::starquake::{CORE_ROOM, at, items_and_core, missing_piece_rooms, routine};
+    let mut base = machine(dir);
+    base.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut base, frame.min(399));
+        if base.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    let (items, core) = items_and_core(&base.zx.mem[..]);
+    let marked = missing_piece_rooms(&core, &items);
+    let rooms: Vec<u16> = (0..512).filter(|&r| marked.contains(r)).collect();
+    let open_holes = core.iter().filter(|&&slot| slot & 0x80 != 0).count();
+    let mut placed = 0;
+    for &room in &rooms {
+        let mut m = base.clone();
+        m.zx.write16(at::ROOM, room);
+        m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+        if room == CORE_ROOM || !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+            continue;
+        }
+        let z = &m.zx;
+        let end = z.read16(at::MARKERS_END).max(at::MARKERS);
+        // A pickup's marker kind is 0x14 plus its item's number.
+        let wanted = (at::MARKERS..end).step_by(3).any(|a| {
+            let kind = z.mem[usize::from(a) + 2];
+            let Some(k) = kind.checked_sub(0x14).map(usize::from) else {
+                return false;
+            };
+            let item = items_and_core(&z.mem[..]).0.get(k).copied();
+            item.is_some_and(|i| {
+                i.room() == room
+                    && core
+                        .iter()
+                        .any(|&slot| slot & 0x80 != 0 && slot & 0x7F == i.graphic())
+            })
+        });
+        if wanted {
+            placed += 1;
+        } else {
+            println!("  room {room} is marked, but no wanted piece was placed in it");
+        }
+    }
+    let good = !rooms.is_empty() && placed == rooms.len();
+    println!(
+        "  the missing pieces: {} rooms marked for {open_holes} open holes, a wanted piece placed in {placed} of them {}",
+        rooms.len(),
+        if good { "ok" } else { "FAILED" }
+    );
+    good
+}
+
 /// Plays 6,000 frames under random joystick input and checks the two
 /// addresses the map follows (#5): the room stays a room, and every room
 /// walked into is marked visited in the game's own set within 50 frames,
@@ -832,6 +891,7 @@ fn facts_check(dir: &Path) -> bool {
     }
     ok &= teleporters_check(dir);
     ok &= visited_check(dir);
+    ok &= pieces_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }

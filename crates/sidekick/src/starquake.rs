@@ -129,6 +129,14 @@ pub mod at {
     /// The rooms not yet visited this game: 512 bits, most significant
     /// first.
     pub const UNVISITED_ROOMS: u16 = 0xA390;
+    /// The core's nine holes: bit 7 set while a hole is open, the low bits
+    /// then the graphic of the piece that fills it; a filled hole holds its
+    /// own number.
+    pub const CORE_SLOTS: u16 = 0xD2DE;
+    /// The 45 items, four bytes each: column and colour, row with the room's
+    /// top bit, the room's low byte, graphic.
+    pub const ITEMS: u16 = 0x94E8;
+    pub const ITEM_COUNT: usize = 45;
     /// The restore list the room builder writes, and the pointer into it.
     pub const RESTORE_LIST: u16 = 0x5B20;
     pub const RESTORE_PTR: u16 = 0xEA60;
@@ -267,9 +275,128 @@ pub fn is_supported_tape(bytes: &[u8]) -> bool {
     zx_core::sha1::sha1_hex(bytes) == TAPE_SHA1
 }
 
+/// One of the game's items, as its four bytes in the item table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Item(pub [u8; 4]);
+
+impl Item {
+    #[must_use]
+    pub fn room(&self) -> u16 {
+        u16::from(self.0[2]) | u16::from(self.0[1] >> 7) << 8
+    }
+    /// The screen row it sits at in its room; 0 before its room has been
+    /// entered, 1 while being picked up, 2 to 5 while carried.
+    #[must_use]
+    pub fn row(&self) -> u8 {
+        self.0[1] & 0x7F
+    }
+    #[must_use]
+    pub fn graphic(&self) -> u8 {
+        self.0[3]
+    }
+}
+
+/// The items and the core's holes, from the machine's memory.
+#[must_use]
+pub fn items_and_core(mem: &[u8]) -> (Vec<Item>, [u8; 9]) {
+    let items = (0..at::ITEM_COUNT)
+        .map(|i| {
+            let a = usize::from(at::ITEMS) + i * 4;
+            Item([mem[a], mem[a + 1], mem[a + 2], mem[a + 3]])
+        })
+        .collect();
+    let core = std::array::from_fn(|i| mem[usize::from(at::CORE_SLOTS) + i]);
+    (items, core)
+}
+
+/// The rooms of the items that would fill a hole still open in the core.
+///
+/// A hole is open while its slot has bit 7 set, and the rest of the byte is
+/// the graphic of the piece that fills it: the core takes any carried item
+/// with that graphic, so every item with it counts, wherever it is. An item
+/// being picked up or carried is not somewhere to go, and nor is one already
+/// delivered, which the game parks in the core room at row 10. An item not
+/// yet placed in its room has row 0 and still counts; its room is known.
+///
+/// A hole whose piece is being carried marks nothing: most pieces come in
+/// twos, and the other one is not needed while you have one.
+#[must_use]
+pub fn missing_piece_rooms(core_slots: &[u8; 9], items: &[Item]) -> crate::map::RoomSet {
+    let carried = |item: &Item| (1..=5).contains(&item.row());
+    let wanted = |graphic: u8| {
+        core_slots
+            .iter()
+            .any(|&slot| slot & 0x80 != 0 && slot & 0x7F == graphic)
+            && !items.iter().any(|i| carried(i) && i.graphic() == graphic)
+    };
+    let mut rooms = crate::map::RoomSet::default();
+    for item in items {
+        let delivered = item.room() == CORE_ROOM && item.row() == 0x0A;
+        if wanted(item.graphic()) && !carried(item) && !delivered {
+            rooms.set(item.room(), true);
+        }
+    }
+    rooms
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::RoomSet;
+
+    /// An item in `room` at `row`, with `graphic`.
+    fn item(room: u16, row: u8, graphic: u8) -> Item {
+        Item([
+            0,
+            ((room >> 8) as u8).rotate_right(1) | row,
+            room as u8,
+            graphic,
+        ])
+    }
+
+    #[test]
+    fn a_piece_for_an_open_hole_marks_its_room() {
+        // Hole 0 wants graphic 0x09 and hole 1 is filled (it holds its own
+        // number); the rest want graphics nothing here has.
+        let mut slots = [0x80 | 0x30; 9];
+        slots[0] = 0x80 | 0x09;
+        slots[1] = 1;
+        let items = [
+            item(300, 0, 0x09), // not placed yet: counts
+            item(40, 12, 0x09), // a second one with the same graphic
+            item(41, 12, 0x01), // wanted by no open hole
+            item(42, 12, 0x0F), // not a core piece at all
+        ];
+        let rooms = missing_piece_rooms(&slots, &items);
+        assert!(rooms.contains(300) && rooms.contains(40));
+        assert!(!rooms.contains(41) && !rooms.contains(42));
+    }
+
+    #[test]
+    fn carried_and_delivered_pieces_are_not_marked() {
+        let mut slots = [0x80 | 0x30; 9];
+        slots[0] = 0x80 | 0x09;
+        slots[1] = 0x80 | 0x0A;
+        slots[2] = 0x80 | 0x0B;
+        let items = [
+            item(CORE_ROOM, 0x0A, 0x09), // delivered
+            item(51, 2, 0x0A),           // in the inventory
+            item(52, 5, 0x0B),           // last inventory slot
+        ];
+        assert_eq!(missing_piece_rooms(&slots, &items), RoomSet::default());
+    }
+
+    #[test]
+    fn carrying_a_piece_unmarks_its_twin() {
+        let mut slots = [0x80 | 0x30; 9];
+        slots[0] = 0x80 | 0x09;
+        let twin = item(60, 12, 0x09);
+        assert!(missing_piece_rooms(&slots, &[twin]).contains(60));
+        for row in [1, 2, 5] {
+            let rooms = missing_piece_rooms(&slots, &[item(61, row, 0x09), twin]);
+            assert!(!rooms.contains(60), "carried at row {row}");
+        }
+    }
 
     #[test]
     fn every_key_of_the_matrix_has_a_code_and_nothing_else_does() {
