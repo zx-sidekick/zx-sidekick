@@ -7,6 +7,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+zx-core.workspace = true
+zx-spectrum.workspace = true
 
 [lints]
 workspace = true

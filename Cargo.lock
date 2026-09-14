@@ -10,10 +10,19 @@ source = "git+https://github.com/zx-sidekick/rustzx?rev=a73772d78dec4dde9e7f308a
 [[package]]
 name = "sidekick"
 version = "0.1.0"
+dependencies = [
+ "zx-core",
+ "zx-spectrum",
+]
 
 [[package]]
 name = "sk-check"
 version = "0.1.0"
+dependencies = [
+ "sidekick",
+ "zx-core",
+ "zx-spectrum",
+]
 
 [[package]]
 name = "zx-core"

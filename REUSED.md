@@ -14,3 +14,9 @@ It is generic Spectrum, ROM-behaviour or frontend code. **None of starquake-reco
 | `crates/zx-spectrum/src/lib.rs` | the earlier build | none |
 | `crates/zx-spectrum/src/keys.rs` | the earlier build (from starquake-recompiled's `crates/zx-runtime/src/keys.rs`) | none |
 | `crates/zx-spectrum/tests/fuse.rs` | the earlier build (from starquake-recompiled's `crates/zx-runtime/tests/fuse.rs`) | none here; the earlier build made it run the corpus against `rustzx-z80` in our bus |
+| `crates/sidekick/src/machine.rs` | the earlier build | without what only the guidance used: the key hold, the watched addresses and running a routine on a copy |
+| `crates/sidekick/src/rom.rs` | the earlier build | none |
+| `crates/sidekick/src/print.rs` | the earlier build (from starquake-recompiled's `games/starquake/src/printer.rs`) | none here; the Spectrum ROM's print behaviour, not Starquake's, which the earlier build rewrote to work on the emulated machine's memory |
+| `crates/sidekick/src/starquake.rs` | the earlier build | only the tape's checksum and the start state |
+| `tools/sk-check/src/main.rs` | the earlier build | only the `rom`, `entry` and `shot` commands |
+| `docs/rom.md` | the earlier build | says where the first measurement was made |

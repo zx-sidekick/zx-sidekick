@@ -10,12 +10,13 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 
 - **What is in this repository:** an emulated Spectrum (the screen, sound and keyboard around a Z80 processor), the window, and *facts* about Starquake: the tape's checksum, where the game starts, and memory addresses.
 - **What is not:** any part of the game (no tapes, snapshots, graphics, maps or text extracted into files), any translation of its program into another language, and the Spectrum ROM. Continuous integration fails if a game or ROM file is ever committed.
+- **The ROM:** not needed. Starquake calls only three ROM routines, and ZX Sidekick answers those calls itself (`docs/rom.md`).
 - **The processor:** `rustzx-z80` (MIT, [RustZX](https://github.com/rustzx/rustzx)), from our fork [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx).
 - **Reused code:** our own generic code from starquake-recompiled and the earlier ZX Sidekick build, listed in `REUSED.md`.
 
 ## What works
 
-- [ ] The game runs from your tape with no ROM
+- [x] The game runs from your tape with no ROM
 - [ ] Window with the Spectrum picture
 - [ ] Sound
 - [ ] Keyboard and gamepad

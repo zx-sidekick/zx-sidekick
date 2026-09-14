@@ -33,6 +33,21 @@ else
   echo "!!! the Fuse corpus is not in assets/; conformance was NOT checked."
 fi
 
+# The local checks against the player's copy of the game, which CI cannot
+# run: they need the tape and a Spectrum ROM, and those are never committed.
+# Give their location with SK_ASSETS (a folder holding starquake.tap and
+# 48.rom).
+if [ -n "${SK_ASSETS:-}" ] && [ -f "$SK_ASSETS/starquake.tap" ]; then
+  if [ -f "$SK_ASSETS/48.rom" ]; then
+    run "entry (real ROM loader)"  cargo run -q --release -p sk-check --locked -- entry "$SK_ASSETS"
+    run "rom (answers vs real ROM)" cargo run -q --release -p sk-check --locked -- rom "$SK_ASSETS" 6000
+  else
+    echo "!!! no 48.rom in SK_ASSETS; the ROM checks did NOT run."
+  fi
+else
+  echo "!!! SK_ASSETS not set (or no starquake.tap in it); the checks against the game did NOT run."
+fi
+
 if [ ${#failed[@]} -ne 0 ]; then
   printf 'FAILED: %s\n' "${failed[@]}"
   exit 1
