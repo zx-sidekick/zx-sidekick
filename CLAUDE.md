@@ -20,8 +20,9 @@ locally.
   the Fuse corpus, and, with `SK_ASSETS` pointing at a folder holding
   `starquake.tap` and `48.rom`, the checks against the game. **Gate on the
   exit code, never on grepped output.**
-- `cargo run --release -p sk-check -- entry "$SK_ASSETS"` and
-  `… -- rom "$SK_ASSETS" 6000` run the checks against the game on their own.
+- `cargo run --release -p sk-check -- entry "$SK_ASSETS"`,
+  `… -- rom "$SK_ASSETS" 6000` and `… -- keys "$SK_ASSETS"` run the checks
+  against the game on their own (`keys` needs only the tape).
 - `cargo test -p zx-spectrum --test fuse -- --nocapture` checks the processor
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
   `assets/tests.expected`).
@@ -46,9 +47,10 @@ locally.
   The game runs as its own program; none of it is reimplemented. Reused code
   is our own generic work, recorded in `REUSED.md`.
 - **The checks against the game are the contract.** `sk-check entry` must find
-  the loader returning where the game is started, and `sk-check rom` must find
+  the loader returning where the game is started, `sk-check rom` must find
   every compared ROM call answered as the real ROM does (20,326 of 20,326 when
-  the fork was pinned). A change that moves either is a deliberate,
+  the fork was pinned), and `sk-check keys` must find the joystick and Start
+  reaching the game in all five control methods. A change that moves either is a deliberate,
   called-out decision, never a check adjusted to make it pass.
 - **The processor is not self-certified.** It is checked in our bus against
   the Fuse corpus: 1,329 of 1,335 cases exact, the 6 undocumented-flag cases

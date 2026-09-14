@@ -53,21 +53,23 @@ CONTROLS
 --------
 
 The keyboard is the Spectrum's: the letters, digits, Enter, Space,
-Shift (Caps Shift) and Ctrl (Symbol Shift) are the keys of the same
-name, and the game reads them as it would on the real machine. At the
-title screen the digits choose how to play, as the screen lists.
+Shift (Caps Shift) and right Ctrl (Symbol Shift) are the keys of the
+same name, and the game reads them as it would on the real machine. At
+the title screen the digits choose how to play, as the screen lists,
+and every choice works.
 
-  Arrow keys           The Spectrum's cursor keys, 5 6 7 8, and the
-                       Kempston joystick at the same time, so they
-                       work with either control method.
-  Alt, full stop or    Fire, with the Kempston joystick.
-  comma
-  Gamepad              The Kempston joystick: choose it on the title
-                       screen. D-pad or left stick to move, any face
-                       or shoulder button to fire, Start presses
-                       Space. Over USB or Bluetooth. Some controllers
-                       need the right mode: an 8BitDo in Switch mode
-                       is detected but sends no input.
+On top of that there is a joystick that works whichever choice you
+made: in play, the program presses the keys the game is listening for.
+
+  Arrow keys           Move. They press no key of their own, so they
+                       do nothing on the title screen.
+  Left Ctrl, Alt,      Fire.
+  full stop or comma
+  Gamepad              D-pad or left stick to move, any face or
+                       shoulder button to fire, Start pauses (the
+                       game's own pause key). Over USB or Bluetooth.
+                       Some controllers need the right mode: an 8BitDo
+                       in Switch mode is detected but sends no input.
 
 
 LEGAL
