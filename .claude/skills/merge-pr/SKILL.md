@@ -40,12 +40,8 @@ Never merge red or pending CI.
 
 ## Step 2b: every conversation resolved
 
-Nothing is merged while a review conversation is unresolved (starquake-recompiled#74).
-On starquake-recompiled a ruleset enforces that; here the organisation's free
-plan allows no ruleset on a private repository (`.github/rulesets/main.json`
-holds the one to apply if that changes), so this step is the only thing that
-checks it, as Step 2 is for green CI. The repository's settings still allow
-squash merges only.
+The ruleset refuses to merge while a review conversation is unresolved
+(starquake-recompiled#74); it is kept in `.github/rulesets/main.json`.
 A thread still open is a finding or a comment not yet acted on: act on it
 first (`build-slice`, *Review the whole diff*), or ask the maintainer.
 
@@ -98,7 +94,7 @@ checked. The repo deletes merged branches automatically. Then:
   that it did (`board.sh get <issue>`); if it didn't, move it and report that
   the workflow is off.
 - **Wait for `main`'s own CI and read it.** A green PR does not mean a green
-  `main`: nothing requires a branch to be up to date before
+  `main`: the ruleset does not require a branch to be up to date before
   merging, so the checks passed against an older base. If `main` is red, fixing
   it comes before anything else and does not need asking about.
 

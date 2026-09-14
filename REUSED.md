@@ -28,7 +28,7 @@ It is generic Spectrum, ROM-behaviour or frontend code, and the way of working a
 | `Cargo.toml`, each crate's `Cargo.toml` | the earlier build | the processor from our fork pinned to a commit, and descriptions without the guidance |
 | `CLAUDE.md`, `.claude/skills/*`, `.claude/scripts/board.sh`, `.github/ISSUE_TEMPLATE/spec.md` | recompiled | adapted: this project's board (an org Project), its checks and hard rules in place of the differential suites, the gate at `scripts/check.sh`, and qualified references to recompiled's issues |
 | the `dependencies` and `intel-mac` jobs and the documentation step in `.github/workflows/ci.yml` | recompiled | the binary's name; the frontend-free check reads the dependency tree (`scripts/no-frontend.sh`), since this project has no frontend feature |
-| `.github/rulesets/main.json` | recompiled's `main: require CI` ruleset, read from its API | not applied: the organisation's free plan allows no ruleset on a private repository |
+| `.github/rulesets/main.json` | recompiled's `main: require CI` ruleset, read from its API | the checks named for this repository; applied to it as `main: require CI` |
 | `.github/workflows/release.yml` | recompiled | the binary's name, the font's path, and the release notes |
 | `about.toml`, `about.hbs` | recompiled | the program's name and how it uses the game; Windows added to the attributed targets |
 | `docs/player/README.txt` | recompiled | rewritten for a program that runs the original game |

@@ -57,10 +57,10 @@ issue attachments.
 ![mockup](https://github.com/zx-sidekick/zx-sidekick-starquake/raw/<branch>/docs/mockups/<file>.png)
 ```
 
-This repo is private, and the `github.com/…/raw/…` form is the one that
-renders for a signed-in viewer of a private repo; it keeps working if the repo
-is ever made public. `github.com/…/blob/…` is a click-through link rather than
-an embed.
+This repo is public, so `raw.githubusercontent.com` would also render. Use the
+`github.com/…/raw/…` form anyway: it is the one that keeps working if the repo
+is ever made private again, and `github.com/…/blob/…` is a click-through link
+rather than an embed.
 
 Put it in the ticket's *Mockup* section. If you post it in a comment instead,
 the comment opens with the 🤖 attribution line.
