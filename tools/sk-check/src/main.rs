@@ -445,28 +445,42 @@ fn pauses_and_resumes(m: &Machine) -> bool {
     shots[0] == shots[1] && shots[1] != shots[2] && shots[2] != shots[3]
 }
 
-/// From the title screen with nothing chosen, Start held for a few frames
-/// starts a game, fire held for a few more goes past the intro text, and
-/// the joystick then moves Blob: a controller alone gets into play.
+/// From the title screen, Start held for a few frames starts a game, fire
+/// held for a few more goes past the intro text, and the joystick then
+/// moves Blob: a controller alone gets into play. Once with nothing chosen,
+/// and once after choosing a method with the keyboard, since the title
+/// screen reads keys differently before and after its first key.
 fn starts_from_the_controller(dir: &Path) -> bool {
-    let mut m = machine(dir);
-    for frame in 0..420u64 {
-        m.zx.release_all_keys();
-        m.start = (60..=67).contains(&frame);
-        m.joystick = if (330..=337).contains(&frame) {
-            JOY_FIRE
-        } else {
-            0
-        };
-        m.run_frame();
+    let mut ok = true;
+    for chosen in [None, Some("1")] {
+        let mut m = machine(dir);
+        for frame in 0..420u64 {
+            m.zx.release_all_keys();
+            if let Some(digit) = chosen
+                && (20..=24).contains(&frame)
+            {
+                m.zx.set_key(Key::by_name(digit).expect("a key name"), true);
+            }
+            m.start = (60..=67).contains(&frame);
+            m.joystick = if (330..=337).contains(&frame) {
+                JOY_FIRE
+            } else {
+                0
+            };
+            m.run_frame();
+        }
+        let none = after(&m, 0, false);
+        let with = after(&m, JOY_RIGHT, false);
+        let reached = (0..3).any(|i| with[i] != none[i]);
+        println!(
+            "  from the title screen {}: Start and fire alone reach play {}",
+            chosen.map_or("with nothing chosen".to_string(), |d| format!(
+                "after choosing {d}"
+            )),
+            if reached { "ok" } else { "FAILED" }
+        );
+        ok &= reached;
     }
-    let none = after(&m, 0, false);
-    let with = after(&m, JOY_RIGHT, false);
-    let ok = (0..3).any(|i| with[i] != none[i]);
-    println!(
-        "  from the title screen: Start and fire alone reach play {}",
-        if ok { "ok" } else { "FAILED" }
-    );
     ok
 }
 
