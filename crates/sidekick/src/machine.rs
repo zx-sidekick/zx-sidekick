@@ -173,12 +173,15 @@ impl Machine {
 
     /// Runs one 50 Hz frame, answering the ROM routines the game calls, and
     /// pressing the joystick's keys as the game's play-time key reader
-    /// starts ([`starquake::PLAY_INPUT`]): the one moment they reach the
-    /// game in play, and no menu.
+    /// starts ([`starquake::PLAY_INPUT`]) and where it reads the controls
+    /// ([`starquake::CONTROLS_INPUT`]), which is also where a paused game
+    /// waits: the moments they reach the game in play, and no menu.
     pub fn run_frame(&mut self) {
         let (joystick, start) = (self.joystick, self.start);
         self.zx.run_frame(|z| {
-            if (joystick != 0 || start) && z.pc() == starquake::PLAY_INPUT {
+            if (joystick != 0 || start)
+                && [starquake::PLAY_INPUT, starquake::CONTROLS_INPUT].contains(&z.pc())
+            {
                 press(z, joystick, start);
             }
             answer(z)
@@ -323,12 +326,15 @@ mod tests {
     }
 
     /// A machine with the tables in place whose program starts at `pc`: a
-    /// `NOP` at the play-time reader's address, then a jump to itself.
+    /// `NOP` at the play-time reader's address and at its controls read,
+    /// each followed by a jump to itself.
     fn at_the_reader(pc: u16) -> Machine {
         let mut m = with_tables(4);
-        let at = usize::from(starquake::PLAY_INPUT);
-        m.zx.mem[at] = 0x00;
-        m.zx.mem[at + 1..at + 3].copy_from_slice(&JUMP_TO_ITSELF);
+        for at in [starquake::PLAY_INPUT, starquake::CONTROLS_INPUT] {
+            let at = usize::from(at);
+            m.zx.mem[at] = 0x00;
+            m.zx.mem[at + 1..at + 3].copy_from_slice(&JUMP_TO_ITSELF);
+        }
         m.zx.set_pc(pc);
         m
     }
@@ -342,6 +348,16 @@ mod tests {
         // O, M and Space, from the keyboard method's table.
         assert_eq!(m.zx.keys, keys_named(&["o", "m", "space"]));
         assert_eq!(m.zx.kempston, 0);
+    }
+
+    #[test]
+    fn a_paused_game_gets_the_joystick_where_it_waits_for_it() {
+        // A paused game skips the reader's start and loops from the
+        // controls read.
+        let mut m = at_the_reader(starquake::CONTROLS_INPUT);
+        m.joystick = JOY_RIGHT;
+        m.run_frame();
+        assert_eq!(m.zx.keys, keys_named(&["p"]));
     }
 
     #[test]

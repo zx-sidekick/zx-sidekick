@@ -38,10 +38,18 @@ pub const PAUSE_KEY: u16 = 0x5E70;
 /// The game's play-time key reader: the one routine that consults
 /// [`CONTROL_METHOD`] and the tables, run once a frame during play and not
 /// at all on the title screen (which reads the keyboard at `0xDA2B`) or the
-/// define-keys screen (`0xD5D4`). A key pressed as the program counter
-/// arrives here reaches the game in play and nowhere else. Found on
-/// 2026-09-14 by tracing every `IN` the game runs on each screen.
+/// define-keys screen (`0xD5D4`). It starts by reading the pause key. A key
+/// pressed as the program counter arrives here reaches the game in play and
+/// nowhere else. Found on 2026-09-14 by tracing every `IN` the game runs on
+/// each screen.
 pub const PLAY_INPUT: u16 = 0xC55D;
+
+/// Where the same routine goes on to read the directions and fire, after
+/// the pause key; and where a paused game waits, looping back here without
+/// the pause read until a direction or fire resumes it. A key pressed only
+/// at [`PLAY_INPUT`] never reaches a paused game. Found on 2026-09-14 by
+/// tracing a paused game on the player's tape, in every control method.
+pub const CONTROLS_INPUT: u16 = 0xC566;
 
 /// The key a byte of the game's tables names. Letters and digits are their
 /// ASCII; the four keys with no character of their own are the codes the

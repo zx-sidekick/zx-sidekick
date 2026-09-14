@@ -12,8 +12,9 @@
 //!   block, and checks that the game starts where `sidekick::starquake` says.
 //! - `keys`: chooses each control method on the title screen in turn, starts
 //!   a game, and checks that the joystick and Start reach it through the
-//!   machine: every direction and fire move the picture where Blob is, and
-//!   Start freezes it; and that the control facts read as recorded.
+//!   machine: every direction and fire move the picture where Blob is, Start
+//!   freezes it and a direction then resumes it; and that the control facts
+//!   read as recorded.
 //! - `shot <frames> [out-dir]`: runs the ROM-free machine and writes a PNG of
 //!   the screen every so often, to look at.
 
@@ -420,6 +421,29 @@ fn after(m: &Machine, held: u8, start: bool) -> Vec<Vec<u8>> {
     shots
 }
 
+/// Pauses `m` with Start for three frames, lets it sit, then pushes the
+/// joystick right for three frames: the picture must be still while paused
+/// and move again after. The game resumes on any direction or fire, not on
+/// its pause key.
+fn pauses_and_resumes(m: &Machine) -> bool {
+    let mut m = m.clone();
+    let mut shots = vec![];
+    for frame in 0..60u64 {
+        m.zx.release_all_keys();
+        m.start = frame < 3;
+        m.joystick = if (30..33).contains(&frame) {
+            JOY_RIGHT
+        } else {
+            0
+        };
+        m.run_frame();
+        if matches!(frame, 10 | 25 | 31 | 40) {
+            shots.push(play_area(&m));
+        }
+    }
+    shots[0] == shots[1] && shots[1] != shots[2] && shots[2] != shots[3]
+}
+
 /// For every control method: the control facts read as recorded, each
 /// joystick direction and fire change the picture where Blob is within a
 /// few frames of being pressed, and Start freezes it.
@@ -447,6 +471,7 @@ fn keys_check(dir: &Path) -> bool {
                 let held = after(&m, 0, true);
                 held[3] == held[4] && none[3] != none[4]
             }),
+            ("resume", pauses_and_resumes(&m)),
         ];
         let line: Vec<String> = results
             .iter()
