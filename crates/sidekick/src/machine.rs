@@ -4,6 +4,7 @@ use zx_core::snapshot::Snapshot;
 use zx_spectrum::Zx;
 
 use crate::rom;
+use crate::starquake::{self, CONTROL_METHOD, KEY_TABLES, PAUSE_KEY};
 
 /// What the player is pressing: the Spectrum's eight keyboard half-rows (a
 /// 0 bit is a key down) and the Kempston joystick bits.
@@ -23,10 +24,52 @@ impl Default for Input {
     }
 }
 
+/// The joystick's five bits, in the Kempston port's order, which is the
+/// order a gamepad and the keyboard joystick report in.
+pub const JOY_RIGHT: u8 = 0x01;
+pub const JOY_LEFT: u8 = 0x02;
+pub const JOY_DOWN: u8 = 0x04;
+pub const JOY_UP: u8 = 0x08;
+pub const JOY_FIRE: u8 = 0x10;
+
 /// The emulated machine.
 #[derive(Clone)]
 pub struct Machine {
     pub zx: Zx,
+    /// What the joystick is asking for this frame, as the bits above; the
+    /// game gets it however its chosen control method listens, see
+    /// [`press`].
+    pub joystick: u8,
+    /// Whether the joystick's Start is held: the game's pause key.
+    pub start: bool,
+}
+
+/// Presses `joystick` and `start` the way the game's chosen control method
+/// listens for them: as the Kempston port's bits in method 1, and in
+/// methods 2 to 5 as the five keys the method's table names, so a joystick
+/// moves Blob whichever option was chosen on the title screen. Start
+/// presses the key the game keeps as its pause key. Nothing is released:
+/// the caller sets the keys afresh each frame.
+pub fn press(z: &mut Zx, joystick: u8, start: bool) {
+    let method = z.mem[usize::from(CONTROL_METHOD)];
+    match method {
+        1 => z.kempston |= joystick,
+        2..=5 => {
+            let table = usize::from(KEY_TABLES) + 5 * usize::from(method - 2);
+            let order = [JOY_LEFT, JOY_RIGHT, JOY_DOWN, JOY_UP, JOY_FIRE];
+            for (i, bit) in order.into_iter().enumerate() {
+                if joystick & bit != 0
+                    && let Some(key) = starquake::key(z.mem[table + i])
+                {
+                    z.set_key(key, true);
+                }
+            }
+        }
+        _ => {}
+    }
+    if start && let Some(key) = starquake::key(z.mem[usize::from(PAUSE_KEY)]) {
+        z.set_key(key, true);
+    }
 }
 
 /// `JR $`: an instruction that jumps to itself. With no ROM, one sits at each
@@ -97,7 +140,11 @@ impl Machine {
             zx.mem[usize::from(at)..usize::from(at) + 2].copy_from_slice(&JUMP_TO_ITSELF);
         }
         zx.traps = vec![rom::MASK_INT];
-        Machine { zx }
+        Machine {
+            zx,
+            joystick: 0,
+            start: false,
+        }
     }
 
     /// The machine as the game starts: RAM from the tape's code blocks (the
@@ -159,6 +206,117 @@ mod tests {
         let input = Input::default();
         assert_eq!(input.keys, [0xFF; 8]);
         assert_eq!(input.kempston, 0);
+    }
+
+    /// A blank machine with the game's control variables as the tape ships
+    /// them: method `method`, the four tables, Space as the pause key.
+    fn with_tables(method: u8) -> Machine {
+        let mut m = Machine::blank(0x8000, 0xC000);
+        m.zx.mem[usize::from(CONTROL_METHOD)] = method;
+        let tables = b"58670"
+            .iter()
+            .chain(b"12345")
+            .chain(b"OPAQM")
+            .chain(b"QWERT");
+        for (i, &b) in tables.enumerate() {
+            m.zx.mem[usize::from(KEY_TABLES) + i] = b;
+        }
+        m.zx.mem[usize::from(PAUSE_KEY)] = b'*';
+        m
+    }
+
+    /// The keys `names` pressed on an otherwise idle keyboard.
+    fn keys_named(names: &[&str]) -> [u8; 8] {
+        let mut z = Machine::blank(0, 0).zx;
+        for name in names {
+            z.set_key(zx_spectrum::Key::by_name(name).unwrap(), true);
+        }
+        z.keys
+    }
+
+    #[test]
+    fn in_the_kempston_method_the_joystick_is_the_kempston_port() {
+        for bits in 0..32u8 {
+            let mut m = with_tables(1);
+            press(&mut m.zx, bits, false);
+            assert_eq!(m.zx.kempston, bits);
+            assert_eq!(m.zx.keys, [0xFF; 8], "bits {bits:#04x}");
+        }
+    }
+
+    #[test]
+    fn in_a_keyboard_method_the_joystick_presses_the_keys_the_table_names() {
+        let tables = [
+            ["5", "8", "6", "7", "0"],
+            ["1", "2", "3", "4", "5"],
+            ["o", "p", "a", "q", "m"],
+            ["q", "w", "e", "r", "t"],
+        ];
+        for (method, table) in (2..=5).zip(tables) {
+            for bits in 0..32u8 {
+                let mut m = with_tables(method);
+                press(&mut m.zx, bits, false);
+                let order = [JOY_LEFT, JOY_RIGHT, JOY_DOWN, JOY_UP, JOY_FIRE];
+                let expected: Vec<&str> = order
+                    .iter()
+                    .zip(table)
+                    .filter(|(bit, _)| bits & **bit != 0)
+                    .map(|(_, name)| name)
+                    .collect();
+                assert_eq!(
+                    m.zx.keys,
+                    keys_named(&expected),
+                    "method {method} bits {bits:#04x}"
+                );
+                assert_eq!(m.zx.kempston, 0, "method {method} bits {bits:#04x}");
+            }
+        }
+    }
+
+    #[test]
+    fn start_presses_the_pause_key_the_game_keeps() {
+        for method in 1..=5 {
+            let mut m = with_tables(method);
+            press(&mut m.zx, 0, true);
+            assert_eq!(m.zx.keys, keys_named(&["space"]), "method {method}");
+            assert_eq!(m.zx.kempston, 0);
+            // The define-keys screen wrote N as the pause key.
+            let mut m = with_tables(method);
+            m.zx.mem[usize::from(PAUSE_KEY)] = b'N';
+            press(&mut m.zx, JOY_FIRE, true);
+            assert!(
+                m.zx.keys[7] & 0x08 == 0,
+                "method {method}: N is bit 3 of half-row 7"
+            );
+            assert!(
+                m.zx.keys[7] & 0x01 != 0,
+                "method {method}: Space is not pressed"
+            );
+        }
+    }
+
+    #[test]
+    fn a_method_the_game_has_not_got_and_a_byte_naming_no_key_press_nothing() {
+        for method in [0, 6, 0xFF] {
+            let mut m = with_tables(method);
+            press(&mut m.zx, 0x1F, true);
+            assert_eq!(
+                (m.zx.keys, m.zx.kempston),
+                (keys_named(&["space"]), 0),
+                "method {method}"
+            );
+        }
+        let mut m = with_tables(4);
+        m.zx.mem[usize::from(KEY_TABLES) + 10] = 0;
+        m.zx.mem[usize::from(PAUSE_KEY)] = 0xFF;
+        press(&mut m.zx, JOY_LEFT | JOY_FIRE, true);
+        assert_eq!((m.zx.keys, m.zx.kempston), (keys_named(&["m"]), 0));
+    }
+
+    #[test]
+    fn a_new_machine_has_the_joystick_at_rest() {
+        let m = Machine::blank(0, 0);
+        assert_eq!((m.joystick, m.start), (0, false));
     }
 
     #[test]
