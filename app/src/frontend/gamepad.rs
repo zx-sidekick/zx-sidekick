@@ -1,10 +1,9 @@
-//! A gamepad, read as the Kempston joystick.
+//! A gamepad, read as a joystick.
 //!
-//! A Kempston interface is a joystick port: the game reads five bits and
-//! cannot tell what moved them, so a gamepad drives them exactly as the
-//! hardware would. Pause is the odd one out — on a Spectrum it is a key, not
-//! a joystick button — so Start presses Space, Starquake's pause key as the
-//! tape ships it.
+//! The pad reports the five joystick bits in the Kempston port's order, and
+//! the machine presses them however the game's chosen control method
+//! listens, so the pad works whichever option was picked on the title
+//! screen. Start is the game's pause key, pressed the same way.
 //!
 //! How the pad is attached is not this code's business, or `gilrs`'s. A
 //! Bluetooth controller the operating system has paired is an ordinary
@@ -19,7 +18,7 @@ const DEADZONE: f32 = 0.5;
 /// What the pads are asking for this frame.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Pad {
-    /// The Kempston bits.
+    /// The joystick bits, in the Kempston port's order.
     pub bits: u8,
     /// Start is held: pause.
     pub start: bool,

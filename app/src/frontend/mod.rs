@@ -106,13 +106,12 @@ impl Runner {
         while !self.shared.quit.load(Ordering::Relaxed) {
             let pad = self.pad.poll();
             let input = *self.shared.input.lock().unwrap();
-            let z = &mut machine.zx;
-            z.keys = input.keys;
-            z.kempston = input.kempston | pad.bits;
-            if pad.start {
-                // Starquake's pause key, Space, as the tape ships it.
-                z.keys[7] &= !0x01;
-            }
+            machine.zx.keys = input.keys;
+            machine.zx.kempston = 0;
+            // The keyboard's joystick and the pad together; the machine
+            // presses them as the game's chosen control method listens.
+            machine.joystick = input.joystick | pad.bits;
+            machine.start = pad.start;
             machine.run_frame();
             let edges = std::mem::take(&mut machine.zx.speaker);
             let border = machine.zx.border;

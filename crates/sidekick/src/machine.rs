@@ -4,13 +4,14 @@ use zx_core::snapshot::Snapshot;
 use zx_spectrum::Zx;
 
 use crate::rom;
+use crate::starquake::{self, CONTROL_METHOD, KEY_TABLES, PAUSE_KEY};
 
 /// What the player is pressing: the Spectrum's eight keyboard half-rows (a
-/// 0 bit is a key down) and the Kempston joystick bits.
+/// 0 bit is a key down) and the joystick, as the bits below.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Input {
     pub keys: [u8; 8],
-    pub kempston: u8,
+    pub joystick: u8,
 }
 
 impl Default for Input {
@@ -18,16 +19,77 @@ impl Default for Input {
     fn default() -> Self {
         Input {
             keys: [0xFF; 8],
-            kempston: 0,
+            joystick: 0,
         }
     }
 }
+
+/// The joystick's five bits, in the Kempston port's order, which is the
+/// order a gamepad and the keyboard joystick report in.
+pub const JOY_RIGHT: u8 = 0x01;
+pub const JOY_LEFT: u8 = 0x02;
+pub const JOY_DOWN: u8 = 0x04;
+pub const JOY_UP: u8 = 0x08;
+pub const JOY_FIRE: u8 = 0x10;
+
+/// The key that starts a game on the title screen, `0`, which the intro
+/// text takes as the any-key it waits for.
+const START_GAME: zx_spectrum::Key = zx_spectrum::Key::Matrix(4, 0);
 
 /// The emulated machine.
 #[derive(Clone)]
 pub struct Machine {
     pub zx: Zx,
+    /// What the joystick is asking for this frame, as the bits above; the
+    /// game gets it however its chosen control method listens, see
+    /// [`press`].
+    pub joystick: u8,
+    /// Whether the joystick's Start is held: the game's pause key in play.
+    /// On the title screen Start or fire is `0`, which starts a game, and
+    /// on the intro text the key it waits for, held for as long as the
+    /// button is, as a key would be.
+    pub start: bool,
 }
+
+/// Presses `joystick` and `start` the way the game's chosen control method
+/// listens for them: as the Kempston port's bits in method 1, and in
+/// methods 2 to 5 as the five keys the method's table names, so a joystick
+/// moves Blob whichever option was chosen on the title screen. Start
+/// presses the key the game pauses with in that method: the one it keeps
+/// at [`PAUSE_KEY`], except that the Kempston method pauses with Space
+/// whatever was defined. Nothing is released: the caller sets the keys
+/// afresh each frame.
+pub fn press(z: &mut Zx, joystick: u8, start: bool) {
+    let method = z.mem[usize::from(CONTROL_METHOD)];
+    match method {
+        1 => z.kempston |= joystick,
+        2..=5 => {
+            let table = usize::from(KEY_TABLES) + 5 * usize::from(method - 2);
+            let order = [JOY_LEFT, JOY_RIGHT, JOY_DOWN, JOY_UP, JOY_FIRE];
+            for (i, bit) in order.into_iter().enumerate() {
+                if joystick & bit != 0
+                    && let Some(key) = starquake::key(z.mem[table + i])
+                {
+                    z.set_key(key, true);
+                }
+            }
+        }
+        _ => {}
+    }
+    if start {
+        let pause = if method == 1 {
+            SPACE
+        } else {
+            z.mem[usize::from(PAUSE_KEY)]
+        };
+        if let Some(key) = starquake::key(pause) {
+            z.set_key(key, true);
+        }
+    }
+}
+
+/// Space, as the game's tables name it: the Kempston method's pause key.
+const SPACE: u8 = b'*';
 
 /// `JR $`: an instruction that jumps to itself. With no ROM, one sits at each
 /// ROM routine ZX Sidekick answers, so the processor stops there instead of
@@ -97,7 +159,11 @@ impl Machine {
             zx.mem[usize::from(at)..usize::from(at) + 2].copy_from_slice(&JUMP_TO_ITSELF);
         }
         zx.traps = vec![rom::MASK_INT];
-        Machine { zx }
+        Machine {
+            zx,
+            joystick: 0,
+            start: false,
+        }
     }
 
     /// The machine as the game starts: RAM from the tape's code blocks (the
@@ -124,9 +190,34 @@ impl Machine {
         m
     }
 
-    /// Runs one 50 Hz frame, answering the ROM routines the game calls.
+    /// Runs one 50 Hz frame, answering the ROM routines the game calls, and
+    /// pressing the joystick's keys as the game's play-time key reader
+    /// starts ([`starquake::PLAY_INPUT`]) and where it reads the controls
+    /// ([`starquake::CONTROLS_INPUT`]), which is also where a paused game
+    /// waits: the moments they reach the game in play, and no menu. Start
+    /// or fire held is `0` where the title screen and the intro text wait
+    /// for a key ([`starquake::MENU_INPUT`]) and as the title screen enters
+    /// its key reader ([`starquake::MENU_KEY`], told from the define-keys
+    /// screen's use of it by the return address); nowhere else.
     pub fn run_frame(&mut self) {
-        self.zx.run_frame(answer);
+        let (joystick, start) = (self.joystick, self.start);
+        let start_game = start || joystick & JOY_FIRE != 0;
+        self.zx.run_frame(|z| {
+            let pc = z.pc();
+            if (joystick != 0 || start)
+                && [starquake::PLAY_INPUT, starquake::CONTROLS_INPUT].contains(&pc)
+            {
+                press(z, joystick, start);
+            }
+            if start_game
+                && (pc == starquake::MENU_INPUT
+                    || pc == starquake::MENU_KEY
+                        && z.read16(z.sp()) == starquake::MENU_KEY_FROM_TITLE)
+            {
+                z.set_key(START_GAME, true);
+            }
+            answer(z)
+        });
     }
 }
 
@@ -158,7 +249,214 @@ mod tests {
     fn nothing_is_pressed_to_begin_with() {
         let input = Input::default();
         assert_eq!(input.keys, [0xFF; 8]);
-        assert_eq!(input.kempston, 0);
+        assert_eq!(input.joystick, 0);
+    }
+
+    /// A blank machine with the game's control variables as the tape ships
+    /// them: method `method`, the four tables, Space as the pause key.
+    fn with_tables(method: u8) -> Machine {
+        let mut m = Machine::blank(0x8000, 0xC000);
+        m.zx.mem[usize::from(CONTROL_METHOD)] = method;
+        let tables = b"58670"
+            .iter()
+            .chain(b"12345")
+            .chain(b"OPAQM")
+            .chain(b"QWERT");
+        for (i, &b) in tables.enumerate() {
+            m.zx.mem[usize::from(KEY_TABLES) + i] = b;
+        }
+        m.zx.mem[usize::from(PAUSE_KEY)] = b'*';
+        m
+    }
+
+    /// The keys `names` pressed on an otherwise idle keyboard.
+    fn keys_named(names: &[&str]) -> [u8; 8] {
+        let mut z = Machine::blank(0, 0).zx;
+        for name in names {
+            z.set_key(zx_spectrum::Key::by_name(name).unwrap(), true);
+        }
+        z.keys
+    }
+
+    #[test]
+    fn in_the_kempston_method_the_joystick_is_the_kempston_port() {
+        for bits in 0..32u8 {
+            let mut m = with_tables(1);
+            press(&mut m.zx, bits, false);
+            assert_eq!(m.zx.kempston, bits);
+            assert_eq!(m.zx.keys, [0xFF; 8], "bits {bits:#04x}");
+        }
+    }
+
+    #[test]
+    fn in_a_keyboard_method_the_joystick_presses_the_keys_the_table_names() {
+        let tables = [
+            ["5", "8", "6", "7", "0"],
+            ["1", "2", "3", "4", "5"],
+            ["o", "p", "a", "q", "m"],
+            ["q", "w", "e", "r", "t"],
+        ];
+        for (method, table) in (2..=5).zip(tables) {
+            for bits in 0..32u8 {
+                let mut m = with_tables(method);
+                press(&mut m.zx, bits, false);
+                let order = [JOY_LEFT, JOY_RIGHT, JOY_DOWN, JOY_UP, JOY_FIRE];
+                let expected: Vec<&str> = order
+                    .iter()
+                    .zip(table)
+                    .filter(|(bit, _)| bits & **bit != 0)
+                    .map(|(_, name)| name)
+                    .collect();
+                assert_eq!(
+                    m.zx.keys,
+                    keys_named(&expected),
+                    "method {method} bits {bits:#04x}"
+                );
+                assert_eq!(m.zx.kempston, 0, "method {method} bits {bits:#04x}");
+            }
+        }
+    }
+
+    #[test]
+    fn start_presses_the_pause_key_the_game_uses_in_that_method() {
+        for method in 1..=5 {
+            let mut m = with_tables(method);
+            press(&mut m.zx, 0, true);
+            assert_eq!(m.zx.keys, keys_named(&["space"]), "method {method}");
+            assert_eq!(m.zx.kempston, 0);
+            // The define-keys screen wrote N as the pause key: methods 2 to
+            // 5 pause with it, the Kempston method with Space regardless.
+            let mut m = with_tables(method);
+            m.zx.mem[usize::from(PAUSE_KEY)] = b'N';
+            press(&mut m.zx, 0, true);
+            let expected = if method == 1 { "space" } else { "n" };
+            assert_eq!(m.zx.keys, keys_named(&[expected]), "method {method}");
+        }
+    }
+
+    #[test]
+    fn a_method_the_game_has_not_got_and_a_byte_naming_no_key_press_nothing() {
+        for method in [0, 6, 0xFF] {
+            let mut m = with_tables(method);
+            press(&mut m.zx, 0x1F, true);
+            assert_eq!(
+                (m.zx.keys, m.zx.kempston),
+                (keys_named(&["space"]), 0),
+                "method {method}"
+            );
+        }
+        let mut m = with_tables(4);
+        m.zx.mem[usize::from(KEY_TABLES) + 10] = 0;
+        m.zx.mem[usize::from(PAUSE_KEY)] = 0xFF;
+        press(&mut m.zx, JOY_LEFT | JOY_FIRE, true);
+        assert_eq!((m.zx.keys, m.zx.kempston), (keys_named(&["m"]), 0));
+        assert_eq!(starquake::key(SPACE), zx_spectrum::Key::by_name("space"));
+    }
+
+    /// A machine with the tables in place whose program starts at `pc`: a
+    /// `NOP` at the play-time reader's address and at its controls read,
+    /// each followed by a jump to itself.
+    fn at_the_reader(pc: u16) -> Machine {
+        let mut m = with_tables(4);
+        for at in [
+            starquake::PLAY_INPUT,
+            starquake::CONTROLS_INPUT,
+            starquake::MENU_INPUT,
+            starquake::MENU_KEY,
+        ] {
+            let at = usize::from(at);
+            m.zx.mem[at] = 0x00;
+            m.zx.mem[at + 1..at + 3].copy_from_slice(&JUMP_TO_ITSELF);
+        }
+        m.zx.set_pc(pc);
+        m
+    }
+
+    #[test]
+    fn the_joystick_is_pressed_as_the_play_time_reader_starts() {
+        let mut m = at_the_reader(starquake::PLAY_INPUT);
+        m.joystick = JOY_LEFT | JOY_FIRE;
+        m.start = true;
+        m.run_frame();
+        // O, M and Space, from the keyboard method's table.
+        assert_eq!(m.zx.keys, keys_named(&["o", "m", "space"]));
+        assert_eq!(m.zx.kempston, 0);
+    }
+
+    #[test]
+    fn a_paused_game_gets_the_joystick_where_it_waits_for_it() {
+        // A paused game skips the reader's start and loops from the
+        // controls read.
+        let mut m = at_the_reader(starquake::CONTROLS_INPUT);
+        m.joystick = JOY_RIGHT;
+        m.run_frame();
+        assert_eq!(m.zx.keys, keys_named(&["p"]));
+    }
+
+    #[test]
+    fn a_frame_that_never_reaches_the_reader_presses_nothing() {
+        let mut m = at_the_reader(starquake::PLAY_INPUT + 1);
+        m.joystick = 0x1F;
+        m.start = true;
+        m.run_frame();
+        assert_eq!((m.zx.keys, m.zx.kempston), ([0xFF; 8], 0));
+    }
+
+    #[test]
+    fn a_joystick_at_rest_leaves_the_keys_alone() {
+        let mut m = at_the_reader(starquake::PLAY_INPUT);
+        m.zx.set_key(zx_spectrum::Key::by_name("q").unwrap(), true);
+        m.run_frame();
+        assert_eq!(m.zx.keys, keys_named(&["q"]));
+    }
+
+    #[test]
+    fn start_or_fire_is_zero_as_the_title_screen_reads_the_keys() {
+        assert_eq!(Some(START_GAME), zx_spectrum::Key::by_name("0"));
+        for (joystick, start) in [(0, true), (JOY_FIRE, false), (0x1F, true)] {
+            let mut m = at_the_reader(starquake::MENU_INPUT);
+            m.joystick = joystick;
+            m.start = start;
+            m.run_frame();
+            // The directions mean nothing to the title screen.
+            assert_eq!((m.zx.keys, m.zx.kempston), (keys_named(&["0"]), 0));
+        }
+        let mut m = at_the_reader(starquake::MENU_INPUT);
+        m.joystick = JOY_LEFT | JOY_UP;
+        m.run_frame();
+        assert_eq!((m.zx.keys, m.zx.kempston), ([0xFF; 8], 0));
+    }
+
+    #[test]
+    fn the_key_reader_gets_the_zero_only_when_the_title_screen_calls_it() {
+        // Entered with the title screen's return address on the stack.
+        let mut m = at_the_reader(starquake::MENU_KEY);
+        m.zx.push(starquake::MENU_KEY_FROM_TITLE);
+        m.start = true;
+        m.run_frame();
+        assert_eq!(m.zx.keys, keys_named(&["0"]));
+        // Entered from anywhere else, the define-keys screen included.
+        let mut m = at_the_reader(starquake::MENU_KEY);
+        m.zx.push(0x625A);
+        m.start = true;
+        m.joystick = JOY_FIRE;
+        m.run_frame();
+        assert_eq!(m.zx.keys, [0xFF; 8]);
+    }
+
+    #[test]
+    fn in_play_start_is_the_pause_key_and_fire_is_fire_not_zero() {
+        let mut m = at_the_reader(starquake::PLAY_INPUT);
+        m.start = true;
+        m.joystick = JOY_FIRE;
+        m.run_frame();
+        assert_eq!(m.zx.keys, keys_named(&["space", "m"]));
+    }
+
+    #[test]
+    fn a_new_machine_has_the_joystick_at_rest() {
+        let m = Machine::blank(0, 0);
+        assert_eq!((m.joystick, m.start), (0, false));
     }
 
     #[test]

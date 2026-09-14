@@ -10,13 +10,21 @@
 //!   same state.
 //! - `entry`: boots a real ROM, types `LOAD ""`, feeds it the tape block by
 //!   block, and checks that the game starts where `sidekick::starquake` says.
+//! - `keys`: chooses each control method on the title screen in turn, starts
+//!   a game, and checks that the joystick and Start reach it through the
+//!   machine: every direction and fire move the picture where Blob is, Start
+//!   freezes it and a direction then resumes it; that Start or fire alone
+//!   starts a game from the title screen and goes past the intro text; that
+//!   Start still pauses in every method after the pause key was redefined;
+//!   and that the control facts read as recorded.
 //! - `shot <frames> [out-dir]`: runs the ROM-free machine and writes a PNG of
 //!   the screen every so often, to look at.
 
 use std::path::{Path, PathBuf};
 
 use sidekick::Machine;
-use sidekick::starquake::{ENTRY_PC, ENTRY_SP};
+use sidekick::machine::{JOY_DOWN, JOY_FIRE, JOY_LEFT, JOY_RIGHT, JOY_UP};
+use sidekick::starquake::{CONTROL_METHOD, ENTRY_PC, ENTRY_SP, KEY_TABLES, PAUSE_KEY};
 use zx_spectrum::Key;
 
 fn read(dir: &Path, name: &str) -> Vec<u8> {
@@ -359,6 +367,212 @@ fn entry_check(dir: &Path) -> bool {
     false
 }
 
+/// Chooses control method `method` on the title screen, starts a game, and
+/// plays past the intro text; then walks Blob left, off the ship and into
+/// the next room, with the joystick alone once play begins, and lets the
+/// room settle. If the joystick did not reach the game, Blob is still on
+/// the ship, where a shot goes nowhere, and the checks say so.
+fn into_play(dir: &Path, method: u8) -> Machine {
+    let mut m = machine(dir);
+    let key = |n: &str| Key::by_name(n).expect("a key name");
+    for frame in 0..540u64 {
+        m.zx.release_all_keys();
+        m.joystick = 0;
+        match frame {
+            50..=54 => m.zx.set_key(key(&method.to_string()), true),
+            100..=104 => m.zx.set_key(key("0"), true),
+            // Any key takes the game past its intro text.
+            330..=334 => m.zx.set_key(key("enter"), true),
+            450..=490 => m.joystick = JOY_LEFT,
+            _ => {}
+        }
+        m.run_frame();
+    }
+    m
+}
+
+/// The screen bytes below the panel: the play area's bitmap and attributes.
+fn play_area(m: &Machine) -> Vec<u8> {
+    let z = &m.zx;
+    let mut out = Vec::with_capacity(0x1B00);
+    for addr in 0..0x1800usize {
+        let y = ((addr >> 8) & 7) | ((addr >> 2) & 0x38) | ((addr >> 5) & 0xC0);
+        if y >= 48 {
+            out.push(z.mem[0x4000 + addr]);
+        }
+    }
+    out.extend_from_slice(&z.mem[0x5800 + 6 * 32..0x5B00]);
+    out
+}
+
+/// Runs `m` on for 30 frames with the joystick `held` for the first three
+/// and Start held throughout if `start`; returns the play area after frames
+/// 1, 2, 10, 15 and 29.
+fn after(m: &Machine, held: u8, start: bool) -> Vec<Vec<u8>> {
+    let mut m = m.clone();
+    let mut shots = vec![];
+    for frame in 0..30u64 {
+        m.zx.release_all_keys();
+        m.joystick = if frame < 3 { held } else { 0 };
+        m.start = start;
+        m.run_frame();
+        if matches!(frame, 1 | 2 | 10 | 15 | 29) {
+            shots.push(play_area(&m));
+        }
+    }
+    shots
+}
+
+/// Pauses `m` with Start for three frames, lets it sit, then pushes the
+/// joystick right for three frames: the picture must be still while paused
+/// and move again after. The game resumes on any direction or fire, not on
+/// its pause key.
+fn pauses_and_resumes(m: &Machine) -> bool {
+    let mut m = m.clone();
+    let mut shots = vec![];
+    for frame in 0..60u64 {
+        m.zx.release_all_keys();
+        m.start = frame < 3;
+        m.joystick = if (30..33).contains(&frame) {
+            JOY_RIGHT
+        } else {
+            0
+        };
+        m.run_frame();
+        if matches!(frame, 10 | 25 | 31 | 40) {
+            shots.push(play_area(&m));
+        }
+    }
+    shots[0] == shots[1] && shots[1] != shots[2] && shots[2] != shots[3]
+}
+
+/// From the title screen, Start held for a few frames starts a game, fire
+/// held for a few more goes past the intro text, and the joystick then
+/// moves Blob: a controller alone gets into play. Once with nothing chosen,
+/// and once after choosing a method with the keyboard, since the title
+/// screen reads keys differently before and after its first key.
+fn starts_from_the_controller(dir: &Path) -> bool {
+    let mut ok = true;
+    for chosen in [None, Some("1")] {
+        let mut m = machine(dir);
+        for frame in 0..420u64 {
+            m.zx.release_all_keys();
+            if let Some(digit) = chosen
+                && (20..=24).contains(&frame)
+            {
+                m.zx.set_key(Key::by_name(digit).expect("a key name"), true);
+            }
+            m.start = (60..=67).contains(&frame);
+            m.joystick = if (330..=337).contains(&frame) {
+                JOY_FIRE
+            } else {
+                0
+            };
+            m.run_frame();
+        }
+        let none = after(&m, 0, false);
+        let with = after(&m, JOY_RIGHT, false);
+        let reached = (0..3).any(|i| with[i] != none[i]);
+        println!(
+            "  from the title screen {}: Start and fire alone reach play {}",
+            chosen.map_or("with nothing chosen".to_string(), |d| format!(
+                "after choosing {d}"
+            )),
+            if reached { "ok" } else { "FAILED" }
+        );
+        ok &= reached;
+    }
+    ok
+}
+
+/// With the pause key redefined as N on the define-keys screen, then each
+/// method chosen and a game started: Start through the machine must still
+/// freeze the picture. The game pauses with Space in the Kempston method
+/// whatever was defined, and with the defined key in the others; Start
+/// presses whichever that is.
+fn pauses_after_redefining(dir: &Path) -> bool {
+    let mut ok = true;
+    for method in 1..=5u8 {
+        let mut m = machine(dir);
+        let key = |n: &str| Key::by_name(n).expect("a key name");
+        for frame in 0..1100u64 {
+            m.zx.release_all_keys();
+            let defined = ["z", "x", "c", "v", "b", "n"];
+            match frame {
+                50..=54 => m.zx.set_key(key("6"), true),
+                100..=304 if (frame - 100) % 40 < 5 => {
+                    m.zx.set_key(key(defined[((frame - 100) / 40) as usize]), true);
+                }
+                500..=506 => m.zx.set_key(key(&method.to_string()), true),
+                600..=606 => m.zx.set_key(key("0"), true),
+                850..=856 => m.zx.set_key(key("enter"), true),
+                _ => {}
+            }
+            m.run_frame();
+        }
+        let none = after(&m, 0, false);
+        let held = after(&m, 0, true);
+        let good = m.zx.mem[usize::from(PAUSE_KEY)] == b'N'
+            && m.zx.mem[usize::from(CONTROL_METHOD)] == method
+            && held[3] == held[4]
+            && none[3] != none[4];
+        println!(
+            "  pause redefined as N, method {method}: Start pauses {}",
+            if good { "ok" } else { "FAILED" }
+        );
+        ok &= good;
+    }
+    ok
+}
+
+/// For every control method: the control facts read as recorded, each
+/// joystick direction and fire change the picture where Blob is within a
+/// few frames of being pressed, Start freezes it and a direction resumes
+/// it; and Start or fire alone gets from the title screen into play.
+fn keys_check(dir: &Path) -> bool {
+    let mut ok = starts_from_the_controller(dir) & pauses_after_redefining(dir);
+    for method in 1..=5u8 {
+        let m = into_play(dir, method);
+        let facts = m.zx.mem[usize::from(CONTROL_METHOD)] == method
+            && &m.zx.mem[usize::from(KEY_TABLES)..usize::from(KEY_TABLES) + 20]
+                == b"5867012345OPAQMQWERT"
+            && m.zx.mem[usize::from(PAUSE_KEY)] == b'*';
+        let none = after(&m, 0, false);
+        let moves = |bit: u8| {
+            let with = after(&m, bit, false);
+            (0..3).any(|i| with[i] != none[i])
+        };
+        let results = [
+            ("facts", facts),
+            ("left", moves(JOY_LEFT)),
+            ("right", moves(JOY_RIGHT)),
+            ("down", moves(JOY_DOWN)),
+            ("up", moves(JOY_UP)),
+            ("fire", moves(JOY_FIRE)),
+            ("start", {
+                let held = after(&m, 0, true);
+                held[3] == held[4] && none[3] != none[4]
+            }),
+            ("resume", pauses_and_resumes(&m)),
+        ];
+        let line: Vec<String> = results
+            .iter()
+            .map(|(name, good)| format!("{name} {}", if *good { "ok" } else { "FAILED" }))
+            .collect();
+        println!("  method {method}: {}", line.join(", "));
+        ok &= results.iter().all(|(_, good)| *good);
+    }
+    println!(
+        "keys: the joystick and Start reach the game in {}",
+        if ok {
+            "every control method"
+        } else {
+            "NOT every control method"
+        }
+    );
+    ok
+}
+
 fn shots(dir: &Path, frames: u64, out: &Path) {
     let mut m = machine(dir);
     let mut script = Script(0xBEEF);
@@ -395,6 +609,7 @@ fn main() {
             std::process::exit(i32::from(!rom_check(&dir, frames)));
         }
         Some("entry") => std::process::exit(i32::from(!entry_check(&dir))),
+        Some("keys") => std::process::exit(i32::from(!keys_check(&dir))),
         Some("shot") => {
             let frames = args.get(2).and_then(|f| f.parse().ok()).unwrap_or(600);
             shots(
@@ -404,7 +619,7 @@ fn main() {
             );
         }
         _ => {
-            eprintln!("usage: sk-check rom|entry|shot <assets-dir> [frames] [out-dir]");
+            eprintln!("usage: sk-check rom|entry|keys|shot <assets-dir> [frames] [out-dir]");
             std::process::exit(2);
         }
     }

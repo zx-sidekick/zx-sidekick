@@ -1,21 +1,17 @@
 //! Keyboard mapping: the host keyboard to the Spectrum's key matrix, and
-//! the arrow keys to a Kempston joystick.
+//! the arrow keys with a fire key to the joystick, which the machine presses
+//! however the game's chosen control method listens.
 
 use std::collections::HashSet;
 
 use sidekick::Input;
+use sidekick::machine::{JOY_DOWN, JOY_FIRE, JOY_LEFT, JOY_RIGHT, JOY_UP};
 use winit::keyboard::KeyCode;
 
 /// Spectrum matrix position (half-row, bit) for a host key.
 ///
 /// Laid out in matrix order, one arm per key, because that is the order the
-/// hardware reads them in. Arms that repeat a position do so because two
-/// host keys reach the same Spectrum key; merging them would break the
-/// layout and separate the arrow keys from the note explaining them.
-#[allow(
-    clippy::match_same_arms,
-    reason = "the arms are the keyboard's own layout"
-)]
+/// hardware reads them in.
 fn matrix(key: KeyCode) -> &'static [(usize, u8)] {
     use KeyCode::*;
     match key {
@@ -55,42 +51,34 @@ fn matrix(key: KeyCode) -> &'static [(usize, u8)] {
         KeyJ => &[(6, 3)],
         KeyH => &[(6, 4)],
         Space => &[(7, 0)],
-        ControlLeft | ControlRight => &[(7, 1)],
+        // Left Control is the joystick's fire, below.
+        ControlRight => &[(7, 1)],
         KeyM => &[(7, 2)],
         KeyN => &[(7, 3)],
         KeyB => &[(7, 4)],
         // Delete is Caps Shift + 0 on a Spectrum.
         Backspace => &[(0, 0), (4, 0)],
-        // The Spectrum's cursor keys are 5, 6, 7 and 8 — the arrows are
-        // printed on those very keys — so the host arrows press them as well
-        // as moving the joystick below. That makes them work in the cursor
-        // control method, and means they type those digits just as the real
-        // keys do: an arrow at the title screen picks that menu option.
-        ArrowLeft => &[(3, 4)],
-        ArrowDown => &[(4, 4)],
-        ArrowUp => &[(4, 3)],
-        ArrowRight => &[(4, 2)],
         _ => &[],
     }
 }
 
-/// Kempston joystick bit for a host key.
+/// Joystick bit for a host key, in the Kempston port's order.
 ///
-/// A Kempston interface is a joystick port: the game reads five bits and
-/// cannot tell what moved them, so pointing host keys at them is invisible
-/// to it. Only keys the Spectrum itself has no use for are used here —
-/// Space in particular is a Spectrum key (it is the pause key the game
-/// ships with), so it stays out of this and does exactly what it does on
-/// the real machine.
-fn kempston(key: KeyCode) -> u8 {
+/// The arrows and the fire keys are joystick only: they press no key of
+/// the Spectrum's, so they cannot type a digit or a letter on the title
+/// screen, and in play the machine presses whatever the chosen control
+/// method listens for. Space stays a key (it is the pause key the game
+/// ships with) and does exactly what it does on the real machine.
+fn joystick(key: KeyCode) -> u8 {
     use KeyCode::*;
     match key {
-        ArrowRight => 0x01,
-        ArrowLeft => 0x02,
-        ArrowDown => 0x04,
-        ArrowUp => 0x08,
-        // Alt is awkward on macOS, so a couple of spare keys fire too.
-        AltLeft | AltRight | SuperRight | Period | Comma => 0x10,
+        ArrowRight => JOY_RIGHT,
+        ArrowLeft => JOY_LEFT,
+        ArrowDown => JOY_DOWN,
+        ArrowUp => JOY_UP,
+        // Left Control fires; Alt is awkward on macOS, so a couple of spare
+        // keys fire too.
+        ControlLeft | AltLeft | AltRight | SuperRight | Period | Comma => JOY_FIRE,
         _ => 0,
     }
 }
@@ -98,8 +86,8 @@ fn kempston(key: KeyCode) -> u8 {
 /// Builds the machine's input from the host keys currently held.
 ///
 /// Rebuilding from the whole set rather than flipping one bit per event
-/// matters where two host keys share a matrix position: Backspace is Caps
-/// Shift + 0 and the arrows are 5, 6, 7 and 8, so releasing one used to
+/// matters where two host keys share a position: Backspace is Caps Shift
+/// with 0, and every fire key is the same bit, so releasing one used to
 /// report the other released as well.
 pub fn build(held: &HashSet<KeyCode>) -> Input {
     let mut input = Input::default();
@@ -107,7 +95,7 @@ pub fn build(held: &HashSet<KeyCode>) -> Input {
         for &(row, bit) in matrix(key) {
             input.keys[row] &= !(1 << bit);
         }
-        input.kempston |= kempston(key);
+        input.joystick |= joystick(key);
     }
     input
 }
@@ -131,7 +119,7 @@ mod tests {
         let input = held(&[KeyCode::KeyQ, KeyCode::KeyM]);
         assert_eq!(input.keys[2], 0xFE);
         assert_eq!(input.keys[7], 0xFB);
-        assert_eq!(input.kempston, 0);
+        assert_eq!(input.joystick, 0);
     }
 
     #[test]
@@ -174,7 +162,7 @@ mod tests {
             KeyJ,
             KeyH,
             Space,
-            ControlLeft,
+            ControlRight,
             KeyM,
             KeyN,
             KeyB,
@@ -189,24 +177,22 @@ mod tests {
         }
         assert_eq!(seen.len(), 40);
         assert_eq!(matrix(ShiftRight), matrix(ShiftLeft));
-        assert_eq!(matrix(ControlRight), matrix(ControlLeft));
         assert!(matrix(Escape).is_empty());
     }
 
     #[test]
-    fn the_arrows_press_the_cursor_keys_and_move_the_joystick() {
+    fn the_arrows_move_the_joystick_and_press_no_key() {
         let input = held(&[KeyCode::ArrowLeft, KeyCode::ArrowUp]);
-        // 5 is bit 4 of half-row 3; 7 is bit 3 of half-row 4.
-        assert_eq!(input.keys[3], 0xEF);
-        assert_eq!(input.keys[4], 0xF7);
-        assert_eq!(input.kempston, 0x02 | 0x08);
-        assert_eq!(held(&[KeyCode::ArrowRight]).kempston, 0x01);
-        assert_eq!(held(&[KeyCode::ArrowDown]).kempston, 0x04);
+        assert_eq!(input.joystick, JOY_LEFT | JOY_UP);
+        assert_eq!(input.keys, [0xFF; 8]);
+        assert_eq!(held(&[KeyCode::ArrowRight]).joystick, JOY_RIGHT);
+        assert_eq!(held(&[KeyCode::ArrowDown]).joystick, JOY_DOWN);
     }
 
     #[test]
     fn fire_keys_press_only_the_joystick() {
         for key in [
+            KeyCode::ControlLeft,
             KeyCode::AltLeft,
             KeyCode::AltRight,
             KeyCode::SuperRight,
@@ -214,15 +200,21 @@ mod tests {
             KeyCode::Comma,
         ] {
             let input = held(&[key]);
-            assert_eq!(input.kempston, 0x10, "{key:?}");
+            assert_eq!(input.joystick, JOY_FIRE, "{key:?}");
             assert_eq!(input.keys, [0xFF; 8], "{key:?}");
         }
     }
 
     #[test]
+    fn right_control_is_symbol_shift_and_left_control_is_not() {
+        assert_eq!(held(&[KeyCode::ControlRight]).keys[7], 0xFD);
+        assert_eq!(held(&[KeyCode::ControlLeft]).keys[7], 0xFF);
+    }
+
+    #[test]
     fn space_is_a_key_not_fire() {
         let input = held(&[KeyCode::Space]);
-        assert_eq!((input.keys[7], input.kempston), (0xFE, 0));
+        assert_eq!((input.keys[7], input.joystick), (0xFE, 0));
     }
 
     #[test]
@@ -238,7 +230,7 @@ mod tests {
         let input = held(&[KeyCode::ShiftLeft]);
         assert_eq!(input.keys[0], 0xFE);
         assert_eq!(input.keys[4], 0xFF);
-        // And 5 is still down with the left arrow let go.
-        assert_eq!(held(&[KeyCode::Digit5]).keys[3], 0xEF);
+        // And fire is still held with one of two fire keys let go.
+        assert_eq!(held(&[KeyCode::Comma]).joystick, JOY_FIRE);
     }
 }

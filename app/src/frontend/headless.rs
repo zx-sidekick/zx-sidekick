@@ -12,13 +12,12 @@ use super::video::{FULL_H, FULL_W, draw};
 /// Keys that carry an unattended run past the menu: `1` for the Kempston
 /// joystick, `0` to start, and then the joystick wandering.
 fn script(machine: &mut Machine, frame: u64) {
-    let z = &mut machine.zx;
-    z.keys = [0xFF; 8];
-    z.kempston = 0;
+    machine.zx.release_all_keys();
+    machine.joystick = 0;
     match frame {
-        50..=54 => z.keys[3] &= !0x01,
-        100..=104 => z.keys[4] &= !0x01,
-        200.. => z.kempston = [0x01, 0x02, 0x09, 0x0A, 0x11][(frame as usize / 25) % 5],
+        50..=54 => machine.zx.keys[3] &= !0x01,
+        100..=104 => machine.zx.keys[4] &= !0x01,
+        200.. => machine.joystick = [0x01, 0x02, 0x09, 0x0A, 0x11][(frame as usize / 25) % 5],
         _ => {}
     }
 }

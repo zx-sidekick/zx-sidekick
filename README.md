@@ -19,7 +19,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 - [x] The game runs from your tape with no ROM
 - [x] Window with the Spectrum picture and its border
 - [ ] Sound (built; awaiting a check by ear)
-- [ ] Keyboard, and a gamepad as the Kempston joystick with Start to pause (built; awaiting a check by hand)
+- [ ] Keyboard, and a joystick in every control method: the arrows with Left Control, or a gamepad, with Start to pause (built; awaiting a check by hand)
 - [ ] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory (built; awaiting a check by hand)
 
 ## Playing
@@ -28,7 +28,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 cargo run --release -p zx-sidekick-starquake
 ```
 
-The first time, the window asks for your copy of Starquake (`starquake.tap`, or the `.zip` it came in) and keeps it in your user data directory. A tape named on the command line is used as it is. The keys are the Spectrum's; a gamepad is the Kempston joystick (choose `1` on the title screen), and Start pauses.
+The first time, the window asks for your copy of Starquake (`starquake.tap`, or the `.zip` it came in) and keeps it in your user data directory. A tape named on the command line is used as it is. The keys are the Spectrum's, so the title screen's own choices all work. On top of that the arrow keys with Left Control (or Alt, comma or full stop) to fire, and a gamepad, are a joystick that works whichever control method you choose there: the machine presses the keys the game is listening for, and Start presses the game's pause key; a direction or fire resumes, as the game has it. Start or fire also starts a game from the title screen and goes past the intro text, so a controller alone gets you playing. Right Control is Symbol Shift.
 
 `--headless FRAMES [DIR]` runs without a window and writes PNGs of the picture, the tape's loading picture first.
 
@@ -39,6 +39,7 @@ CI builds and tests everything that needs no game data, on Linux, macOS and Wind
 - **The processor**, against the Fuse project's Z80 test corpus rather than our own work: 1,329 of 1,335 cases match exactly, and the other 6 (`37_1`, `3f`, `cb4e`, `cb5e`, `cb6e`, `cb76`) differ only in the undocumented bits 3 and 5 of F after `SCF`, `CCF` and `BIT n,(HL)`, where `rustzx-z80` follows later research into real chips; bus activity matches in all 1,335.
 - **entry**: boots a real ROM, types `LOAD ""`, and feeds its loader the tape; the loader returns to `0x5E24` with the stack at `0x5E20`, exactly where ZX Sidekick starts the game.
 - **rom**: through the menu, a new game and 6,000 frames of play under random joystick input, every call the game makes to the three ROM routines ZX Sidekick answers is repeated from the same state by the answer, and memory, stack and registers agree: 20,326 of 20,326 calls (226 more not compared because an interrupt landed inside them). The time each takes agrees too, on average: 895 T-states for the interrupt, 1,610 for printing a character, 541 for a control code, and 960 against the ROM's 969 for the multiply.
+- **keys**: chooses each of the five control methods on the title screen in turn, starts a game, and drives it with the joystick alone: in every method each direction and fire move the picture where Blob is, Start freezes it and a direction then resumes it, Start or fire alone gets from the title screen into play, and the control method, its key tables and the pause key read as recorded.
 - **By eye**: headless screenshots of the loading picture, the title screen and play.
 
 ## Development
