@@ -3,6 +3,11 @@
 version = 4
 
 [[package]]
+name = "rustzx-z80"
+version = "0.16.0"
+source = "git+https://github.com/zx-sidekick/rustzx?rev=a73772d78dec4dde9e7f308a64d9c6021e167f74#a73772d78dec4dde9e7f308a64d9c6021e167f74"
+
+[[package]]
 name = "sidekick"
 version = "0.1.0"
 
@@ -21,3 +26,7 @@ version = "0.1.0"
 [[package]]
 name = "zx-spectrum"
 version = "0.1.0"
+dependencies = [
+ "rustzx-z80",
+ "zx-core",
+]

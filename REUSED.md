@@ -10,3 +10,7 @@ It is generic Spectrum, ROM-behaviour or frontend code. **None of starquake-reco
 | Here | From | Changes |
 |---|---|---|
 | `LICENSE-MIT`, `LICENSE-APACHE`, `rust-toolchain.toml`, `deny.toml`, `.gitignore`, `assets/README.md` | the earlier build (the first five from starquake-recompiled) | `deny.toml` allows our rustzx fork as a git source |
+| `crates/zx-core` | the earlier build (from starquake-recompiled's `crates/zx-core`) | none here; the earlier build removed the Z80 decoder and machine-cycle model |
+| `crates/zx-spectrum/src/lib.rs` | the earlier build | none |
+| `crates/zx-spectrum/src/keys.rs` | the earlier build (from starquake-recompiled's `crates/zx-runtime/src/keys.rs`) | none |
+| `crates/zx-spectrum/tests/fuse.rs` | the earlier build (from starquake-recompiled's `crates/zx-runtime/tests/fuse.rs`) | none here; the earlier build made it run the corpus against `rustzx-z80` in our bus |

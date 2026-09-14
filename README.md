@@ -23,7 +23,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 
 ## Development
 
-`scripts/check.sh` is the gate.
+`scripts/check.sh` is the gate. The processor conformance test needs the Fuse corpus in `assets/` (see `assets/README.md`).
 
 ## Licence
 
