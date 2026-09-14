@@ -57,9 +57,9 @@ pub struct Guidance {
     training: bool,
     record: Record,
     picker: bool,
-    /// The level and training mode when the picker opened, which Undo goes
-    /// back to.
-    opened: (u8, bool),
+    /// The level and training mode the picker's steppers show, which take
+    /// effect only when kept with Enter or A.
+    picked: (u8, bool),
     /// "This will show on your score", asked when leaving the picker would
     /// add to the record, and which answer is highlighted.
     asking: Option<Choice>,
@@ -106,10 +106,9 @@ impl Guidance {
         self.armed
     }
 
-    /// The level and training mode as they were when the picker opened,
-    /// which Undo goes back to.
-    pub fn opened(&self) -> (u8, bool) {
-        self.opened
+    /// The level and training mode chosen in the picker, not yet in effect.
+    pub fn picked(&self) -> (u8, bool) {
+        self.picked
     }
 
     /// The question, if it is up, and the highlighted answer.
@@ -117,11 +116,12 @@ impl Guidance {
         self.asking
     }
 
-    /// Whether keeping the settings as they are would add to this game's
-    /// record: a level above the highest used, or training mode for the
-    /// first time. Lowering either never does.
+    /// Whether keeping what is chosen in the picker would add to this
+    /// game's record: a level above the highest used, or training mode for
+    /// the first time. Lowering either never does.
     pub fn raises_record(&self) -> bool {
-        self.level > self.record.highest || (self.training && !self.record.training)
+        let (level, training) = self.picked;
+        level > self.record.highest || (training && !self.record.training)
     }
 
     /// The rows the picker shows: ending a game only while one is played.
@@ -149,7 +149,7 @@ impl Guidance {
     /// Opens the picker on its top row.
     pub fn open(&mut self) {
         self.picker = true;
-        self.opened = (self.level, self.training);
+        self.picked = (self.level, self.training);
         self.asking = None;
         self.focus = Setting::Level;
         self.armed = None;
@@ -157,14 +157,12 @@ impl Guidance {
     }
 
     /// Esc, B or Select. With the question up, back to the picker.
-    /// Otherwise close it and put back the level and training mode it
-    /// opened with, which are already on the record, so nothing is added.
+    /// Otherwise close it, leaving what is in effect as it was.
     pub fn back(&mut self) {
         if self.asking.is_some() {
             self.asking = None;
             self.version += 1;
         } else {
-            (self.level, self.training) = self.opened;
             self.close();
         }
     }
@@ -177,13 +175,19 @@ impl Guidance {
             self.armed = None;
             self.version += 1;
         } else {
-            self.close();
+            self.keep();
         }
     }
 
-    /// Closes the picker, keeping what was set in it. The record takes the
-    /// settings as they are now, so passing through a level on the way to
-    /// another does not count as having used it.
+    /// Puts what is chosen in the picker into effect, and closes it.
+    fn keep(&mut self) {
+        (self.level, self.training) = self.picked;
+        self.close();
+    }
+
+    /// Closes the picker, dropping anything chosen in it and not kept. The
+    /// record takes the settings in effect, so passing through a level on
+    /// the way to another does not count as having used it.
     pub fn close(&mut self) {
         self.picker = false;
         self.asking = None;
@@ -200,10 +204,11 @@ impl Guidance {
     /// and closes the picker.
     pub fn enter(&mut self) {
         if let Some(choice) = self.asking {
-            if choice == Choice::Undo {
-                (self.level, self.training) = self.opened;
+            if choice == Choice::Use {
+                self.keep();
+            } else {
+                self.close();
             }
-            self.close();
             return;
         }
         let action = match self.focus {
@@ -216,12 +221,9 @@ impl Guidance {
         };
         if self.armed == Some(self.focus) {
             self.requested = Some(action);
-            // An action is not a decision about the settings: anything that
-            // would add to the record without being confirmed is undone, so
-            // an ended game's score note cannot pick it up by accident.
-            if self.raises_record() {
-                (self.level, self.training) = self.opened;
-            }
+            // An action is not a decision about the settings: what was
+            // chosen and not kept is dropped, so an ended game's score note
+            // cannot pick it up by accident.
             self.close();
         } else {
             self.armed = Some(self.focus);
@@ -262,7 +264,7 @@ impl Guidance {
     }
 
     /// Left and right in the picker: the highlighted setting down or up a
-    /// step, in effect at once. It is recorded when the picker closes.
+    /// step, in the picker only until it is kept.
     pub fn change(&mut self, up: bool) {
         if let Some(choice) = &mut self.asking {
             *choice = if up { Choice::Undo } else { Choice::Use };
@@ -271,9 +273,9 @@ impl Guidance {
         }
         let max = LEVELS.len() as u8 - 1;
         match (self.focus, up) {
-            (Setting::Level, true) => self.level = (self.level + 1).min(max),
-            (Setting::Level, false) => self.level = self.level.saturating_sub(1),
-            (Setting::Training, on) => self.training = on,
+            (Setting::Level, true) => self.picked.0 = (self.picked.0 + 1).min(max),
+            (Setting::Level, false) => self.picked.0 = self.picked.0.saturating_sub(1),
+            (Setting::Training, on) => self.picked.1 = on,
             (Setting::EndGame | Setting::Exit, _) => return,
         }
         self.version += 1;
@@ -332,21 +334,25 @@ mod tests {
     }
 
     #[test]
-    fn changes_are_in_effect_at_once_and_kept_on_closing() {
+    fn changes_take_effect_only_when_kept() {
         let mut g = Guidance::default();
+        g.set_level(3);
         g.open();
-        g.change(true);
-        g.change(true);
-        assert_eq!(g.level(), 2, "in effect at once");
+        g.change(false);
+        g.change(false);
         g.focus_down();
         g.change(true);
-        assert!(g.training());
-        g.close();
-        assert_eq!((g.level(), g.training()), (2, true), "kept");
+        assert_eq!(g.picked(), (1, true), "chosen in the picker");
+        assert_eq!((g.level(), g.training()), (3, false), "not in effect yet");
+        g.enter();
+        assert_eq!(g.asking(), Some(Choice::Undo), "training mode would show");
+        g.change(false);
+        g.enter();
+        assert_eq!((g.level(), g.training()), (1, true), "kept");
     }
 
     #[test]
-    fn only_what_is_in_effect_on_closing_is_recorded() {
+    fn only_what_is_kept_is_recorded() {
         let mut g = Guidance::default();
         g.open();
         for _ in 0..5 {
@@ -359,7 +365,9 @@ mod tests {
         g.focus_down();
         g.change(true);
         g.change(false);
-        g.close();
+        g.enter();
+        g.change(false);
+        g.enter();
         assert_eq!(
             g.record(),
             Record {
@@ -430,11 +438,12 @@ mod tests {
         g.back();
         assert!(g.picker_open());
         assert_eq!(g.asking(), None);
-        assert_eq!(g.level(), 1, "still changed");
+        assert_eq!(g.picked().0, 1, "still chosen");
+        assert_eq!(g.level(), 0, "and not in effect");
     }
 
     #[test]
-    fn closing_puts_back_what_the_picker_opened_with() {
+    fn closing_leaves_what_is_in_effect_as_it_was() {
         let mut g = Guidance::default();
         g.set_level(2);
         g.open();
@@ -477,11 +486,11 @@ mod tests {
         let mut g = Guidance::default();
         g.open();
         g.change(false);
-        assert_eq!(g.level(), 0);
+        assert_eq!(g.picked().0, 0);
         for _ in 0..10 {
             g.change(true);
         }
-        assert_eq!(g.level(), 5);
+        assert_eq!(g.picked().0, 5);
     }
 
     #[test]

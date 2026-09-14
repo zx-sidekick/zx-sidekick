@@ -235,8 +235,7 @@ impl Panel {
         );
 
         let focus = guidance.focus();
-        let level = guidance.level();
-        let training = guidance.training();
+        let (level, training) = guidance.picked();
 
         // The guidance level: a number and a name, the notches, and what it adds.
         let (rx, rw) = (x + 12.0, w - 24.0);
@@ -403,8 +402,8 @@ impl Panel {
     /// note: exactly what changed since it opened, what the score will say,
     /// and buttons named for what they do.
     fn score_question(&mut self, canvas: &mut Canvas, guidance: &Guidance, choice: Choice) {
-        let (was_level, was_training) = guidance.opened();
-        let (level, training) = (guidance.level(), guidance.training());
+        let (was_level, was_training) = (guidance.level(), guidance.training());
+        let (level, training) = guidance.picked();
         let record = guidance.record();
         let on_off = |on: bool| if on { "on" } else { "off" };
 
