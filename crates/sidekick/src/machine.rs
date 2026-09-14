@@ -7,11 +7,11 @@ use crate::rom;
 use crate::starquake::{self, CONTROL_METHOD, KEY_TABLES, PAUSE_KEY};
 
 /// What the player is pressing: the Spectrum's eight keyboard half-rows (a
-/// 0 bit is a key down) and the Kempston joystick bits.
+/// 0 bit is a key down) and the joystick, as the bits below.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Input {
     pub keys: [u8; 8],
-    pub kempston: u8,
+    pub joystick: u8,
 }
 
 impl Default for Input {
@@ -19,7 +19,7 @@ impl Default for Input {
     fn default() -> Self {
         Input {
             keys: [0xFF; 8],
-            kempston: 0,
+            joystick: 0,
         }
     }
 }
@@ -214,7 +214,7 @@ mod tests {
     fn nothing_is_pressed_to_begin_with() {
         let input = Input::default();
         assert_eq!(input.keys, [0xFF; 8]);
-        assert_eq!(input.kempston, 0);
+        assert_eq!(input.joystick, 0);
     }
 
     /// A blank machine with the game's control variables as the tape ships
