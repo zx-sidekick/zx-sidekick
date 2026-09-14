@@ -6,7 +6,7 @@ Steps, in order, ticked as they land. Each ends with the gate green, a commit, a
 2. [x] **The machine.** `zx-core` (tape, screen, PNG, SHA-1, snapshot, timing with ULA contention) and `zx-spectrum` (a 48K bus around `rustzx-z80` from our fork). The Fuse corpus: 1,329 of 1,335 exact, the 6 undocumented-flag cases listed, bus activity 1,335 of 1,335; in the gate and in CI.
 3. [x] **Starquake with no ROM.** `JR $` traps at the three ROM entries, the answers to MASK-INT, PRINT-A-2 and HL-HL×DE, the start state from the tape, `docs/rom.md`. `sk-check entry` (the real loader returns where the game is started) and `sk-check rom` (every ROM call answered as the real ROM does).
 4. [x] **Window, sound and controls.** The picture, the beeper, 50 Hz pacing, keyboard, gamepad as a Kempston joystick, the tape prompt and data directory, and headless screenshots.
-5. [ ] **Documents.** `README.md` with what works and how it is checked, `REUSED.md` complete, screenshots checked by eye.
+5. [x] **Documents.** `README.md` with what works and how it is checked, `REUSED.md` complete, screenshots checked by eye.
 
 ## Later
 

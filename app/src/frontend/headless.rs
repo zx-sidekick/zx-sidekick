@@ -1,6 +1,6 @@
 //! Running the machine without a window, for screenshots: scripted keys
 //! carry it past the menu into a game, and every so often the picture, with
-//! its border, is saved as a PNG.
+//! its border, is saved as a PNG; the tape's loading picture first.
 
 use std::path::Path;
 
@@ -32,8 +32,16 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let tape = super::tape::read(path)?;
     let mut machine = Machine::from_tape(&tape, ENTRY_PC, ENTRY_SP)?;
-    let every = (frames / 40).max(1);
     let mut picture = vec![0u8; FULL_W * FULL_H * 4];
+    // The tape's loading picture, which the window shows before the game.
+    if let Some(loading) = zx_core::tape::load_tap(&tape)?.loading_screen {
+        let mut memory = vec![0u8; 0x1B00];
+        let n = loading.len().min(memory.len());
+        memory[..n].copy_from_slice(&loading[..n]);
+        draw(&memory, 0, 0, &mut picture);
+        save(&picture, &dir.join("loading.png"))?;
+    }
+    let every = (frames / 40).max(1);
     for frame in 0..frames {
         script(&mut machine, frame);
         machine.run_frame();
@@ -45,16 +53,20 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
                 frame,
                 &mut picture,
             );
-            let pixels: Vec<u32> = picture
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|&[r, g, b, _]| u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b))
-                .collect();
-            let file = dir.join(format!("frame{frame:06}.png"));
-            std::fs::write(&file, zx_core::png::encode(&pixels, FULL_W, FULL_H))
-                .map_err(|e| format!("{}: {e}", file.display()))?;
+            save(&picture, &dir.join(format!("frame{frame:06}.png")))?;
         }
     }
     Ok(())
+}
+
+/// Writes an RGBA picture the size of the window's Spectrum screen as a PNG.
+fn save(picture: &[u8], file: &Path) -> Result<(), String> {
+    let pixels: Vec<u32> = picture
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|&[r, g, b, _]| u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b))
+        .collect();
+    std::fs::write(file, zx_core::png::encode(&pixels, FULL_W, FULL_H))
+        .map_err(|e| format!("{}: {e}", file.display()))
 }

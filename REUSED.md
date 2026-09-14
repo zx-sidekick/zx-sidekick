@@ -24,3 +24,5 @@ It is generic Spectrum, ROM-behaviour or frontend code. **None of starquake-reco
 | `app/src/frontend/text.rs` | the earlier build (from starquake-recompiled's `games/starquake/src/frontend/`) | without the drawing only the guidance panel used |
 | `app/src/frontend/{mod,video,headless,gamepad}.rs`, `app/src/main.rs` | the earlier build (the frontend ones from starquake-recompiled's `games/starquake/src/frontend/`) | without the guidance panel, its picker and the game tracking behind it: the window is the picture alone, and the gamepad drives the joystick and pause |
 | `app/fonts/` | the earlier build (from starquake-recompiled's `games/starquake/fonts/`) | none (Inter, under the SIL Open Font License) |
+| `.github/workflows/ci.yml`, `scripts/check.sh` | the earlier build | without the guidance's local checks (`facts`, `map`) |
+| `Cargo.toml`, each crate's `Cargo.toml` | the earlier build | the processor from our fork pinned to a commit, and descriptions without the guidance |
