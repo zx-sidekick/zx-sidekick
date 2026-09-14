@@ -22,7 +22,8 @@
 //!   loop, as End this game does, reaches the game-over screens and comes
 //!   back round to the menu, in every control method; and that the
 //!   teleporter table holds fifteen codes in fifteen rooms and, with a ROM,
-//!   that walking into each booth prints its code.
+//!   that walking into each booth prints its code; and that in play the
+//!   room stays a room and every room walked into is marked visited.
 //! - `map [walks]`: has the game draw every room and reads the map from
 //!   them, then walks Blob at random through play from many rooms and checks
 //!   that he never leaves a room through an edge the map shows closed, and
@@ -621,6 +622,65 @@ fn ends_the_game(m: &Machine) -> Option<(u64, u64)> {
     None
 }
 
+/// Plays 6,000 frames under random joystick input and checks the two
+/// addresses the map follows (#5): the room stays a room, and every room
+/// walked into is marked visited in the game's own set within 50 frames,
+/// which is the time entering a room takes to draw.
+fn visited_check(dir: &Path) -> bool {
+    use sidekick::starquake::{at, routine};
+    let mut m = machine(dir);
+    m.watch = vec![routine::MENU, routine::MAIN_LOOP, routine::GAME_OVER];
+    let mut script = Script(0xBEEF);
+    let (mut playing, mut last_room, mut visits, mut late, mut slowest, mut bad) =
+        (false, None, 0, 0, 0, 0);
+    let mut waiting: Option<(u16, u64)> = None;
+    for frame in 0..6000u64 {
+        script.apply(&mut m, frame);
+        for hit in m.run_frame() {
+            playing = hit == routine::MAIN_LOOP;
+            if !playing {
+                last_room = None;
+                waiting = None;
+            }
+        }
+        if !playing {
+            continue;
+        }
+        let z = &m.zx;
+        let room = z.read16(at::ROOM);
+        if room >= 512 {
+            bad += 1;
+            continue;
+        }
+        let unvisited = |room: u16| {
+            let byte = z.mem[usize::from(at::UNVISITED_ROOMS + (room >> 3))];
+            byte & (0x80 >> (room & 7)) != 0
+        };
+        if let Some((r, since)) = waiting {
+            if !unvisited(r) {
+                slowest = slowest.max(frame - since);
+                waiting = None;
+            } else if frame > since + 50 {
+                late += 1;
+                waiting = None;
+            }
+        }
+        if last_room != Some(room) {
+            if last_room.is_some() {
+                visits += 1;
+                waiting = Some((room, frame));
+            }
+            last_room = Some(room);
+        }
+    }
+    let good = visits > 0 && late == 0 && bad == 0;
+    println!(
+        "  the rooms visited: {visits} rooms walked into, each marked within {slowest} frames, {late} late, {bad} frames outside a room {}",
+        if good { "ok" } else { "FAILED" }
+    );
+    good
+}
+
 /// The teleporter table holds fifteen codes of five capital letters in
 /// fifteen different rooms, and, with a ROM for the stepping, walking into
 /// each booth has the game print the code the table gives for its room:
@@ -771,6 +831,7 @@ fn facts_check(dir: &Path) -> bool {
         println!("  method {method}: End this game {line}");
     }
     ok &= teleporters_check(dir);
+    ok &= visited_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }
