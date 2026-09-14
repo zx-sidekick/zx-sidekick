@@ -43,8 +43,8 @@ ticket nobody moved: that one goes back to `Plan`.
    right reason. A test that can never run (skipped, unreachable) is worse than
    none: check it actually ran.
 2. Implement. Keep the invariants (CLAUDE.md): no game or ROM data is ever
-   committed, no game logic is translated (`GOAL.md`), and `sk-check entry`
-   and `rom` and the Fuse corpus still come out as they did. A result that
+   committed, no game logic is translated (`GOAL.md`), and `sk-check entry`,
+   `rom`, `keys` and `facts` and the Fuse corpus still come out as they did. A result that
    moves is a deliberate, called-out decision, never a check adjusted to pass.
 3. **Gate on the exit code, never on grepped output:**
 
@@ -111,8 +111,8 @@ The gates prove it compiles, lints and passes its tests. They cannot see:
   the thing built; what crosses between threads; what a key or button still
   held does when a screen changes under it.
 - **Tests** that assert the decisions, not the current implementation.
-- **Fidelity**: whether anything could move `sk-check entry` or `rom`, or
-  the Fuse corpus; and whether anything strays from `GOAL.md`'s hard rules
+- **Fidelity**: whether anything could move `sk-check entry`, `rom`, `keys`
+  or `facts`, or the Fuse corpus; and whether anything strays from `GOAL.md`'s hard rules
   (game data, translated game logic, the ROM).
 
 **Sort each finding into one of two kinds** (starquake-recompiled#74):

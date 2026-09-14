@@ -50,10 +50,10 @@ locally.
 - **The checks against the game are the contract.** `sk-check entry` must find
   the loader returning where the game is started, `sk-check rom` must find
   every compared ROM call answered as the real ROM does (20,326 of 20,326 when
-  the fork was pinned), `sk-check keys` must find the joystick reaching
-  the game and the pause key taken from it in all five control methods, and `sk-check facts` must
-  find the entry points the guidance panel follows and End this game ending
-  a game. A change that moves any of them is a deliberate, called-out
+  the fork was pinned), `sk-check keys` must find the joystick reaching the
+  game and the pause key taken from it in all five control methods, and
+  `sk-check facts` must find the entry points the guidance panel follows and
+  End this game ending a game. A change that moves any of them is a deliberate, called-out
   decision, never a check adjusted to make it pass.
 - **The processor is not self-certified.** It is checked in our bus against
   the Fuse corpus: 1,329 of 1,335 cases exact, the 6 undocumented-flag cases
@@ -113,13 +113,16 @@ answer given in chat is written back into the issue body before acting on it.
   at the moment of merging. Claude never adds it and never merges without it.
 - **A position in the flow is a Status; a property of a ticket is a label**:
   `ready to merge`, `hold` (skip entirely), `needs: spec` / `needs: build`
-  (the route, set when filing, with the reason in the body). `needs: spec` has
-  a design question to settle; `needs: build` has none left and goes to `Plan`,
-  or straight to `Build` if it is a bug or tweak needing no plan. The label
-  comes off once the ticket is built and in `Your review`.
+  (what the ticket needs next, with the routing reason in the body, relabelled
+  in the same step as the move that changes it). `needs: spec` has a design
+  question to settle (`Spec`, `Your input`). `needs: build` has none left: it
+  goes to `Plan`, to `Your sign-off` once its plan is written, or straight to
+  `Build` if it is a bug or tweak needing no plan. A built ticket in
+  `Your review`, and a parent, carry neither.
 - **A ticket ported from a sibling repository goes in the lane its content puts
-  it in**: open questions to `Your input`, a settled spec needing a plan here to
-  `Plan`, a parent to `Backlog` with no label.
+  it in**: open questions to `Your input` (`needs: spec`), a settled spec with
+  a plan to `Your sign-off` and one without to `Plan` (`needs: build`), a
+  parent to `Backlog` with no label.
 - **The body is the living spec; the comments are append-only history.** When
   a question is answered it moves into _Decisions_ and is deleted from _Open
   questions_. Every state change gets a NEW `> 🤖 **Next steps**` comment;

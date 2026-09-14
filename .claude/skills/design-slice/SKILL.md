@@ -64,8 +64,8 @@ maintainer's.
 - **Goal**: what ships, plus the one-line reason.
 - **Decisions**: numbered, each with its why. Anything unsettled is a question
   TO the maintainer. Never decide design direction yourself.
-- **Fidelity**: say whether the change can move `sk-check entry` or `rom`,
-  or the Fuse corpus result. If it can, the ticket says why that is right
+- **Fidelity**: say whether the change can move `sk-check entry`, `rom`,
+  `keys` or `facts`, or the Fuse corpus result. If it can, the ticket says why that is right
   before the work starts — a check is never adjusted to make a change pass.
   Say whether it keeps to `GOAL.md`'s hard rules (no game or ROM data, no
   translated game logic), and whether it needs the tape or ROM, which CI has
@@ -76,7 +76,7 @@ maintainer's.
   ~~~
   ```
   # keep your pick, delete the rest
-  Q1 Start on the gamepad presses: the game's pause key (rec) / Space
+  Q1 the notice dims: the picture only (rec) / the whole window
   Q2 the setting lives in: the tape prompt (rec) / a command-line flag
   notes =
   ```
@@ -99,13 +99,17 @@ maintainer's.
 - **Mockup**: if the change's value is how it looks, make the mockup now
   (`mockup` skill) and embed it in the *Mockup* section. Approving the
   screenshot is part of the spec OK.
-- **Hand off**: posting the block moves the ticket to `Your input` in the same
-  step. Nothing open? Skip straight to the plan.
+- **Hand off**: posting the block moves the ticket to `Your input`, labelled
+  `needs: spec`, in the same step. Nothing open? Relabel it `needs: build` and
+  skip straight to the plan.
 
 ## Step 3: settle, then plan
 
-Fill the plan only once the decisions are settled, and set `Plan` while you
-write it. Tasks go in landing order, each one green commit
+Fill the plan only once the decisions are settled: the ticket is
+`needs: build` from here (#27). Set `Plan` while you write it. A plan already
+in the body, ported from another project or drafted earlier, is checked
+against this repository rather than rewritten: fix what names code that isn't
+here, or say in the Next-steps comment what the build will map. Tasks go in landing order, each one green commit
 (`scripts/check.sh`); failing tests first where practical; the last
 task updates `README.md` / `CLAUDE.md` if anything they say changed.
 

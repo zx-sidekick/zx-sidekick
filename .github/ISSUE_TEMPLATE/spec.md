@@ -66,7 +66,7 @@ labels: 'needs: spec'
 
 ### Fidelity
 
-<!-- Can this move `sk-check entry` or `rom`, or the Fuse corpus result? If
+<!-- Can this move `sk-check entry`, `rom`, `keys` or `facts`, or the Fuse corpus result? If
      so, say why that is right BEFORE the work starts: a check is never
      adjusted to make a change pass. Does it keep to GOAL.md's hard rules (no
      game or ROM data, no translated game logic)? Does the work need the tape
