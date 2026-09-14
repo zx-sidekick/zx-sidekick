@@ -50,8 +50,8 @@ locally.
 - **The checks against the game are the contract.** `sk-check entry` must find
   the loader returning where the game is started, `sk-check rom` must find
   every compared ROM call answered as the real ROM does (20,326 of 20,326 when
-  the fork was pinned), `sk-check keys` must find the joystick and Start
-  reaching the game in all five control methods, and `sk-check facts` must
+  the fork was pinned), `sk-check keys` must find the joystick reaching
+  the game and the pause key taken from it in all five control methods, and `sk-check facts` must
   find the entry points the guidance panel follows and End this game ending
   a game. A change that moves any of them is a deliberate, called-out
   decision, never a check adjusted to make it pass.

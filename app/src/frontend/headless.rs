@@ -65,13 +65,7 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
                 frame,
                 &mut picture,
             );
-            let shot = window(
-                &picture,
-                &mut panel,
-                &guidance,
-                tracker.scene,
-                machine.paused,
-            );
+            let shot = window(&picture, &mut panel, &guidance, tracker.scene, false);
             save(&shot, &dir.join(format!("frame{frame:06}.png")))?;
         }
     }

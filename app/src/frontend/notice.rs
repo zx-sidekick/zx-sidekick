@@ -1,7 +1,6 @@
-//! The notice the window draws over the picture while the game is paused:
-//! that it is paused, and how to go on. The game resumes on any direction
-//! or fire, never on its pause key, and a player who pressed Start expecting
-//! Start to resume would otherwise be stuck.
+//! The notice the window draws over the picture while the game is paused,
+//! which is the emulation frozen (`freeze.rs`): that it is paused, and how
+//! to go on.
 //!
 //! Drawn to the approved mockup on #20, in the language of the guidance
 //! designs: the picture dimmed behind, a rounded card, a title, one

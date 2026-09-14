@@ -67,15 +67,16 @@ made: in play, the program presses the keys the game is listening for.
   full stop or comma
   Gamepad              D-pad or left stick to move. A (the bottom
                        button) is down, which lays a platform under
-                       you; X (the left button) fires. Start pauses,
-                       and the window says so and how to go on: move
-                       or fire, which is how the game itself resumes;
-                       its pause key does not. On the
-                       title screen Start or X starts a game, and goes
-                       past the text that follows. Over USB or
-                       Bluetooth.
+                       you; X (the left button) fires. Start pauses.
+                       On the title screen Start or X starts a game,
+                       and goes past the text that follows. Over USB
+                       or Bluetooth.
                        Some controllers need the right mode: an 8BitDo
                        in Switch mode is detected but sends no input.
+
+Pausing, with Start or with the game's own pause key (Space, or the key
+you defined), stops the game where it is and the window says so. Any
+key, a direction, fire or Start goes on.
 
 
 GUIDANCE

@@ -4,10 +4,10 @@
 //! the machine presses them however the game's chosen control method
 //! listens, so the pad works whichever option was picked on the title
 //! screen. The d-pad and the left stick move; the bottom face button is
-//! down and the left one fires, as platformers lay them out; Start is the
-//! game's pause key, pressed the same way. Select opens the guidance
-//! picker (#25), where the d-pad and stick work it, A does the highlighted
-//! thing, and B or Select goes back.
+//! down and the left one fires, as platformers lay them out. Start pauses,
+//! which freezes the emulation, and Start again continues (`freeze.rs`).
+//! Select opens the guidance picker (#25), where the d-pad and stick work
+//! it, A does the highlighted thing, and B or Select goes back.
 //!
 //! How the pad is attached is not this code's business, or `gilrs`'s. A
 //! Bluetooth controller the operating system has paired is an ordinary

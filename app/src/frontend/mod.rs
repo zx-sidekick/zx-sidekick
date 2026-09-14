@@ -1,6 +1,7 @@
 //! Window, input and sound around the emulated machine.
 
 mod audio;
+mod freeze;
 mod gamepad;
 mod guidance;
 pub mod headless;
@@ -34,7 +35,7 @@ const LOADING_FRAMES: u32 = 150;
 /// State shared between the machine's thread and the window.
 pub struct Shared {
     /// The most recent frame: display memory, border colour, frame number,
-    /// and whether the game is paused in it.
+    /// and whether the game is paused: the emulation frozen.
     pub screen: Mutex<(Vec<u8>, u8, u64, bool)>,
     pub input: Mutex<Input>,
     /// Set when either side wants to stop: the window was closed, or the
@@ -102,7 +103,7 @@ impl Runner {
 
     /// Shows `memory` for a frame, plays `edges` over it, and waits until it
     /// is time for the next.
-    fn present(&mut self, memory: &[u8], border: u8, edges: &[(u32, bool)], paused: bool) {
+    fn present(&mut self, memory: &[u8], border: u8, edges: &[(u32, bool)]) {
         self.beeper.play(edges, zx_spectrum::FRAME_T);
         {
             let mut screen = self.shared.screen.lock().unwrap();
@@ -110,7 +111,7 @@ impl Runner {
             screen.0.copy_from_slice(&memory[..n]);
             screen.1 = border;
             screen.2 = self.frame;
-            screen.3 = paused;
+            screen.3 = false;
         }
         self.frame += 1;
         // Pace by the clock, at the Spectrum's own frame rate, leaning a
@@ -156,11 +157,14 @@ impl Runner {
                 if self.shared.guidance.lock().unwrap().picker_open() {
                     self.hold_for_picker();
                 }
-                self.present(&memory, 0, &[], false);
+                self.present(&memory, 0, &[]);
             }
         }
         machine.watch = track::WATCH.to_vec();
         let mut tracker = track::Tracker::default();
+        let mut freeze = freeze::Freeze::default();
+        // Whether the game's pause key was pressed in the last frame.
+        let mut pause = false;
         while !self.shared.quit.load(Ordering::Relaxed) {
             let mut pad = self.pad.poll();
             if pad.select {
@@ -184,8 +188,23 @@ impl Runner {
                 && tracker.scene == track::Scene::Play
             {
                 machine.hold = Some(end_game_hold());
+                freeze.thaw();
             }
             let input = *self.shared.input.lock().unwrap();
+            // Paused: no frame runs until a key, a direction, fire or Start,
+            // and the window shows the notice meanwhile.
+            let held = freeze::Held {
+                start: pad.start,
+                keys: input.keys,
+                joystick: input.joystick | pad.bits,
+            };
+            if freeze.poll(held, pause, tracker.scene == track::Scene::Play) {
+                pause = false;
+                self.shared.screen.lock().unwrap().3 = true;
+                std::thread::sleep(Duration::from_millis(20));
+                self.next_frame = Instant::now();
+                continue;
+            }
             machine.zx.keys = input.keys;
             machine.zx.kempston = 0;
             // The keyboard's joystick and the pad together; the machine
@@ -193,6 +212,7 @@ impl Runner {
             machine.joystick = input.joystick | pad.bits;
             machine.start = pad.start;
             let hits = machine.run_frame();
+            pause = machine.pause_pressed;
             {
                 let mut guidance = self.shared.guidance.lock().unwrap();
                 for hit in hits {
@@ -206,8 +226,7 @@ impl Runner {
             }
             let edges = std::mem::take(&mut machine.zx.speaker);
             let border = machine.zx.border;
-            let paused = machine.paused;
-            self.present(&machine.zx.mem[0x4000..0x5B00], border, &edges, paused);
+            self.present(&machine.zx.mem[0x4000..0x5B00], border, &edges);
         }
         Ok(())
     }

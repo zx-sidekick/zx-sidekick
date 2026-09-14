@@ -51,6 +51,8 @@ pub const PLAY_INPUT: u16 = 0xC55D;
 /// the pause read until a direction or fire resumes it. A key pressed only
 /// at [`PLAY_INPUT`] never reaches a paused game. Found on 2026-09-14 by
 /// tracing a paused game on the player's tape, in every control method.
+/// The machine keeps the pause key from the game between the two, so the
+/// game never pauses itself, and gives it back here.
 pub const CONTROLS_INPUT: u16 = 0xC566;
 
 /// The key read the title screen waits on until its first key, and the

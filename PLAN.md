@@ -9,7 +9,7 @@ Steps, in order, ticked as they land. Each ends with the gate green, a commit, a
 5. [x] **Documents.** `README.md` with what works and how it is checked, `REUSED.md` complete, screenshots checked by eye.
 6. [x] **The way of working and CI from starquake-recompiled** (#1). `CLAUDE.md`, the skills and the board; CI's dependency policy, `THIRD-PARTY.md`, frontend-free libraries and Intel Mac build; `release.yml` with the player's guide.
 7. [x] **The joystick in every control method** (#11). The arrows with Left Control, and a gamepad, pressed for the game as whatever its chosen control method listens for, from its own key tables, at the moment its play-time key reader runs; Start presses its pause key, and Start or fire starts a game from the title screen (#19). `sk-check keys` proves it in all five methods.
-8. [x] **The guidance framework** (#25, part of #3). The panel beside the picture, drawn at the window's resolution in a second pass; the picker for the level and training mode, End this game and Exit; the note of how much help a game had beside the game-over screens. `sk-check facts` checks the entry points it follows and End this game.
+8. [x] **The guidance framework** (#25, part of #3). The panel beside the picture, drawn at the window's resolution in a second pass; the picker for the level and training mode, End this game and Exit; the note of how much help a game had beside the game-over screens. `sk-check facts` checks the entry points it follows and End this game. Pausing, with Start or the game's pause key, freezes the emulation, and the machine keeps the pause key from the game.
 
 ## Later
 
