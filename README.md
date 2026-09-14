@@ -21,8 +21,8 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 - [ ] Sound (built; awaiting a check by ear)
 - [ ] Keyboard, and a joystick in every control method: the arrows with Left Control, or a gamepad with A for down and X for fire, and Start or the game's pause key to pause (built; awaiting a check by hand)
 - [ ] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory (built; awaiting a check by hand)
-- [ ] A notice while the game is paused, saying how to go on (built; awaiting a check by hand)
-- [ ] The guidance panel beside the game, the picker for the guidance level and training mode (Esc, or Select on a gamepad), End this game and Exit, and the note of how much help a game had beside the game-over screens (built; awaiting a check by hand). The levels and training mode themselves are still to come.
+- [x] A notice while the game is paused, saying how to go on
+- [x] The guidance panel beside the game, the picker for the guidance level and training mode (Esc, or Select on a gamepad), End this game and Exit, the note of how much help a game had beside the game-over screens, and pausing with Start or the pause key. The levels and training mode themselves are still to come.
 
 ## Playing
 
