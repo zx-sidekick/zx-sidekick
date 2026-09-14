@@ -49,6 +49,13 @@ pub struct Machine {
     /// on the intro text the key it waits for, held for as long as the
     /// button is, as a key would be.
     pub start: bool,
+    /// Whether the game was paused during the last frame: it ran its key
+    /// reader from the controls read ([`starquake::CONTROLS_INPUT`]) without
+    /// first reading the pause key ([`starquake::PLAY_INPUT`]), which is the
+    /// loop a paused game sits in, in every control method. Read from what
+    /// the game does, so it is true however the game came to be paused, and
+    /// false again the frame it resumes.
+    pub paused: bool,
 }
 
 /// Presses `joystick` and `start` the way the game's chosen control method
@@ -163,6 +170,7 @@ impl Machine {
             zx,
             joystick: 0,
             start: false,
+            paused: false,
         }
     }
 
@@ -202,8 +210,11 @@ impl Machine {
     pub fn run_frame(&mut self) {
         let (joystick, start) = (self.joystick, self.start);
         let start_game = start || joystick & JOY_FIRE != 0;
+        let (mut read_pause, mut read_controls) = (false, false);
         self.zx.run_frame(|z| {
             let pc = z.pc();
+            read_pause |= pc == starquake::PLAY_INPUT;
+            read_controls |= pc == starquake::CONTROLS_INPUT;
             if (joystick != 0 || start)
                 && [starquake::PLAY_INPUT, starquake::CONTROLS_INPUT].contains(&pc)
             {
@@ -218,6 +229,7 @@ impl Machine {
             }
             answer(z)
         });
+        self.paused = read_controls && !read_pause;
     }
 }
 
@@ -454,9 +466,36 @@ mod tests {
     }
 
     #[test]
+    fn paused_is_a_frame_at_the_controls_read_without_the_pause_read() {
+        // A paused game loops from the controls read.
+        let mut m = at_the_reader(starquake::CONTROLS_INPUT);
+        m.run_frame();
+        assert!(m.paused);
+        // In play the reader starts with the pause read. The test's program
+        // there is a NOP and a jump to itself, so the controls read is not
+        // reached; in the game it follows, and the pause read still counts.
+        let mut m = at_the_reader(starquake::PLAY_INPUT);
+        m.run_frame();
+        assert!(!m.paused);
+        let mut m = at_the_reader(starquake::PLAY_INPUT);
+        m.zx.mem[usize::from(starquake::PLAY_INPUT) + 1..usize::from(starquake::PLAY_INPUT) + 3]
+            .copy_from_slice(&[
+                0x18,
+                (starquake::CONTROLS_INPUT - starquake::PLAY_INPUT - 3) as u8,
+            ]);
+        m.run_frame();
+        assert!(!m.paused, "the pause read, then the controls read: play");
+        // A menu reaches neither, and a resumed game is not paused any more.
+        let mut m = at_the_reader(starquake::MENU_INPUT);
+        m.paused = true;
+        m.run_frame();
+        assert!(!m.paused);
+    }
+
+    #[test]
     fn a_new_machine_has_the_joystick_at_rest() {
         let m = Machine::blank(0, 0);
-        assert_eq!((m.joystick, m.start), (0, false));
+        assert_eq!((m.joystick, m.start, m.paused), (0, false, false));
     }
 
     #[test]

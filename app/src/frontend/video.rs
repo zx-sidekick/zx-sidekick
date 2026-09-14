@@ -13,6 +13,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use super::Shared;
+use super::notice::Notice;
 use super::prompt::{self, Outcome, Prompt};
 use super::text::Canvas;
 use sidekick::Input;
@@ -84,6 +85,12 @@ struct App {
     held: HashSet<KeyCode>,
     /// The game frame last painted, so the same one is not painted twice.
     shown: u64,
+    /// The notice drawn over a paused game, loaded the first time it pauses.
+    notice: Option<Notice>,
+    /// Whether the frame buffer is the window's own size, which it is while
+    /// the game is paused so the notice's text is sharp; in play it is the
+    /// Spectrum's screen, scaled up by the GPU.
+    full_size: bool,
 }
 
 impl ApplicationHandler for App {
@@ -163,20 +170,15 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => {
                 if let Some(p) = &mut self.pixels {
                     let _ = p.resize_surface(size.width, size.height);
-                }
-            }
-            WindowEvent::RedrawRequested => {
-                if let Some(p) = &mut self.pixels {
-                    {
-                        let screen = self.shared.screen.lock().unwrap();
-                        draw(&screen.0, screen.1, screen.2, p.frame_mut());
-                    }
-                    if let Err(e) = p.render() {
-                        self.error = Some(e.to_string());
-                        event_loop.exit();
+                    if self.full_size {
+                        let _ = p.resize_buffer(size.width.max(1), size.height.max(1));
                     }
                 }
             }
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.scale = scale_factor;
+            }
+            WindowEvent::RedrawRequested => self.redraw_game(event_loop),
             _ => {}
         }
     }
@@ -223,6 +225,55 @@ impl App {
             )
         } else {
             (FULL_W as u32, FULL_H as u32)
+        }
+    }
+
+    /// Paints the game's latest frame: the picture as it is, or, while the
+    /// game is paused, the picture dimmed under the notice, drawn into a
+    /// buffer the window's own size so the notice's text is sharp.
+    fn redraw_game(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(p) = &mut self.pixels else {
+            return;
+        };
+        let (memory, border, frame, paused) = {
+            let screen = self.shared.screen.lock().unwrap();
+            (screen.0.clone(), screen.1, screen.2, screen.3)
+        };
+        if paused != self.full_size {
+            self.full_size = paused;
+            let (w, h) = if paused {
+                self.window.as_ref().map_or((1, 1), |w| {
+                    let s = w.inner_size();
+                    (s.width.max(1), s.height.max(1))
+                })
+            } else {
+                (FULL_W as u32, FULL_H as u32)
+            };
+            if let Err(e) = p.resize_buffer(w, h) {
+                self.error = Some(e.to_string());
+                event_loop.exit();
+                return;
+            }
+        }
+        if paused {
+            let mut picture = vec![0u8; FULL_W * FULL_H * 4];
+            draw(&memory, border, frame, &mut picture);
+            let (w, h) = (p.texture().width() as usize, p.texture().height() as usize);
+            let mut canvas = Canvas {
+                pixels: p.frame_mut(),
+                width: w,
+                height: h,
+                scale: self.scale as f32,
+            };
+            self.notice
+                .get_or_insert_with(Notice::new)
+                .draw(&mut canvas, &picture);
+        } else {
+            draw(&memory, border, frame, p.frame_mut());
+        }
+        if let Err(e) = p.render() {
+            self.error = Some(e.to_string());
+            event_loop.exit();
         }
     }
 
@@ -337,6 +388,8 @@ pub fn run(shared: Arc<Shared>, prompt: Option<Prompt>, launch: Launcher) -> Res
         error: None,
         shown: u64::MAX,
         held: HashSet::new(),
+        notice: None,
+        full_size: false,
     };
     event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
     if let Some(e) = app.error {

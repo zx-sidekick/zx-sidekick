@@ -4,6 +4,7 @@ mod audio;
 mod gamepad;
 pub mod headless;
 mod input;
+mod notice;
 mod prompt;
 pub mod tape;
 mod text;
@@ -28,8 +29,9 @@ const LOADING_FRAMES: u32 = 150;
 
 /// State shared between the machine's thread and the window.
 pub struct Shared {
-    /// The most recent frame: display memory, border colour, frame number.
-    pub screen: Mutex<(Vec<u8>, u8, u64)>,
+    /// The most recent frame: display memory, border colour, frame number,
+    /// and whether the game is paused in it.
+    pub screen: Mutex<(Vec<u8>, u8, u64, bool)>,
     pub input: Mutex<Input>,
     /// Set when either side wants to stop: the window was closed, or the
     /// machine's thread finished.
@@ -53,7 +55,7 @@ struct Runner {
 impl Runner {
     /// Shows `memory` for a frame, plays `edges` over it, and waits until it
     /// is time for the next.
-    fn present(&mut self, memory: &[u8], border: u8, edges: &[(u32, bool)]) {
+    fn present(&mut self, memory: &[u8], border: u8, edges: &[(u32, bool)], paused: bool) {
         self.beeper.play(edges, zx_spectrum::FRAME_T);
         {
             let mut screen = self.shared.screen.lock().unwrap();
@@ -61,6 +63,7 @@ impl Runner {
             screen.0.copy_from_slice(&memory[..n]);
             screen.1 = border;
             screen.2 = self.frame;
+            screen.3 = paused;
         }
         self.frame += 1;
         // Pace by the clock, at the Spectrum's own frame rate, leaning a
@@ -100,7 +103,7 @@ impl Runner {
                 if self.shared.quit.load(Ordering::Relaxed) {
                     return Ok(());
                 }
-                self.present(&memory, 0, &[]);
+                self.present(&memory, 0, &[], false);
             }
         }
         while !self.shared.quit.load(Ordering::Relaxed) {
@@ -115,7 +118,8 @@ impl Runner {
             machine.run_frame();
             let edges = std::mem::take(&mut machine.zx.speaker);
             let border = machine.zx.border;
-            self.present(&machine.zx.mem[0x4000..0x5B00], border, &edges);
+            let paused = machine.paused;
+            self.present(&machine.zx.mem[0x4000..0x5B00], border, &edges, paused);
         }
         Ok(())
     }
@@ -150,7 +154,7 @@ fn machine_thread(tape: Vec<u8>, shared: Arc<Shared>, audio: Option<audio::Outpu
 /// The state shared between the machine and whatever is showing it.
 fn new_shared() -> Arc<Shared> {
     Arc::new(Shared {
-        screen: Mutex::new((vec![0; zx_core::screen::BITMAP_LEN + 768], 0, 0)),
+        screen: Mutex::new((vec![0; zx_core::screen::BITMAP_LEN + 768], 0, 0, false)),
         input: Mutex::new(Input::default()),
         quit: AtomicBool::new(false),
         dead: AtomicBool::new(false),

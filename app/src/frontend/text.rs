@@ -12,6 +12,21 @@ use fontdue::{Font, FontSettings};
 /// An opaque colour.
 pub type Rgb = [u8; 3];
 
+/// The colours every screen the window draws shares: a card over a dark
+/// ground, its text, and the badges of a legend. From the guidance mockups
+/// on starquake-recompiled#1, so the pause notice, the panel and the picker
+/// come out as one.
+pub mod palette {
+    use super::Rgb;
+    pub const CARD: Rgb = [0x15, 0x17, 0x1e];
+    pub const LINE: Rgb = [0x2a, 0x2d, 0x36];
+    pub const TITLE: Rgb = [0xe6, 0xe8, 0xee];
+    pub const MUTED: Rgb = [0x8b, 0x90, 0xa0];
+    pub const BADGE: Rgb = [0x1c, 0x1f, 0x27];
+    pub const BADGE_LINE: Rgb = [0x3a, 0x3e, 0x4a];
+    pub const BADGE_TEXT: Rgb = [0xd0, 0xd4, 0xdc];
+}
+
 #[derive(Clone, Copy)]
 pub enum Weight {
     Regular = 0,
@@ -134,6 +149,82 @@ impl Fonts {
     pub fn measure(&mut self, spans: &[Span]) -> f32 {
         self.text(None, 0.0, 0.0, None, 1.0, spans).0
     }
+
+    /// `label` centred in the box `(x, y, w, h)`, in logical pixels.
+    fn centred(
+        &mut self,
+        canvas: &mut Canvas,
+        (x, y, w, h): (f32, f32, f32, f32),
+        label: &str,
+        size: f32,
+    ) {
+        let span = Span {
+            text: label,
+            size,
+            weight: Weight::SemiBold,
+            colour: palette::BADGE_TEXT,
+        };
+        let tw = self.measure(std::slice::from_ref(&span));
+        // A line box is 1.21 times the size for Inter; the glyphs sit a
+        // little above its middle.
+        let ty = y + (h - size * 1.21) / 2.0 + size * 0.02;
+        self.text(Some(canvas), x + (w - tw) / 2.0, ty, None, 1.0, &[span]);
+    }
+
+    /// A keyboard key in a legend: its name in a squarish badge `h` logical
+    /// pixels high, as the guidance mockups draw `Enter` and `Esc`. Returns
+    /// the badge's width.
+    pub fn key_badge(&mut self, canvas: &mut Canvas, x: f32, y: f32, h: f32, label: &str) -> f32 {
+        let size = h * 0.58;
+        let tw = self.measure(&[Span {
+            text: label,
+            size,
+            weight: Weight::SemiBold,
+            colour: palette::BADGE_TEXT,
+        }]);
+        let w = (tw + h * 0.62).max(h);
+        canvas.round_rect(x, y, w, h, h * 0.19, palette::BADGE);
+        canvas.outline(x, y, w, h, h * 0.19, 1.5, None, palette::BADGE_LINE);
+        self.centred(canvas, (x, y, w, h), label, size);
+        w
+    }
+
+    /// A gamepad button in a legend: its letter in a round badge `h` logical
+    /// pixels across, as on the pad. Returns the badge's width, which is `h`.
+    pub fn button_badge(
+        &mut self,
+        canvas: &mut Canvas,
+        x: f32,
+        y: f32,
+        h: f32,
+        label: &str,
+    ) -> f32 {
+        canvas.round_rect(x, y, h, h, h / 2.0, palette::BADGE);
+        canvas.outline(x, y, h, h, h / 2.0, 1.5, None, palette::BADGE_LINE);
+        self.centred(canvas, (x, y, h, h), label, h * 0.54);
+        h
+    }
+
+    /// A direction in a legend: bare arrows with no outline, since the
+    /// direction may come from the d-pad, the stick, the arrow keys or the
+    /// keys the player defined. Returns the width they take.
+    pub fn arrows(&mut self, canvas: &mut Canvas, x: f32, y: f32, h: f32) -> f32 {
+        let size = h * 0.7;
+        let mut at = x;
+        for arrow in ["←", "→", "↑", "↓"] {
+            let span = Span {
+                text: arrow,
+                size,
+                weight: Weight::SemiBold,
+                colour: palette::BADGE_TEXT,
+            };
+            let w = self.measure(std::slice::from_ref(&span));
+            let ty = y + (h - size * 1.21) / 2.0;
+            self.text(Some(canvas), at, ty, None, 1.0, &[span]);
+            at += w + h * 0.3;
+        }
+        at - x - h * 0.3
+    }
 }
 
 impl Canvas<'_> {
@@ -158,6 +249,48 @@ impl Canvas<'_> {
             .as_chunks_mut::<4>()
             .0
             .fill([colour[0], colour[1], colour[2], 0xFF]);
+    }
+
+    /// Darkens the whole frame: black laid over it at `alpha` out of 255.
+    pub fn dim(&mut self, alpha: u8) {
+        let keep = u16::from(255 - alpha);
+        for p in self.pixels.as_chunks_mut::<4>().0 {
+            for c in &mut p[..3] {
+                *c = ((u16::from(*c) * keep) / 255) as u8;
+            }
+        }
+    }
+
+    /// Copies an RGBA picture `sw` by `sh` into the frame at (`x`, `y`) in
+    /// device pixels, each of its pixels `k` device pixels square, sharp.
+    pub fn blit_scaled(
+        &mut self,
+        picture: &[u8],
+        sw: usize,
+        sh: usize,
+        x: usize,
+        y: usize,
+        k: usize,
+    ) {
+        let src = picture.as_chunks::<4>().0;
+        let dst = self.pixels.as_chunks_mut::<4>().0;
+        for sy in 0..sh {
+            for dy in 0..k {
+                let row = y + sy * k + dy;
+                if row >= self.height {
+                    break;
+                }
+                for sx in 0..sw {
+                    let p = src[sy * sw + sx];
+                    for dx in 0..k {
+                        let col = x + sx * k + dx;
+                        if col < self.width {
+                            dst[row * self.width + col] = p;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// A filled rectangle with rounded corners, in logical pixels.
@@ -284,6 +417,54 @@ mod tests {
             "nothing was drawn"
         );
         assert!(fonts.measure(&[span("WWW")]) > fonts.measure(&[span("iii")]));
+    }
+
+    #[test]
+    fn badges_are_sized_by_their_label_and_a_button_is_round() {
+        let mut fonts = Fonts::load();
+        let (w, h) = (200, 40);
+        let mut pixels = vec![0u8; w * h * 4];
+        let mut canvas = Canvas {
+            pixels: &mut pixels,
+            width: w,
+            height: h,
+            scale: 1.0,
+        };
+        let ctrl = fonts.key_badge(&mut canvas, 2.0, 2.0, 26.0, "Ctrl");
+        let a = fonts.key_badge(&mut canvas, 60.0, 2.0, 26.0, "A");
+        let x = fonts.button_badge(&mut canvas, 100.0, 2.0, 26.0, "X");
+        let arrows = fonts.arrows(&mut canvas, 130.0, 2.0, 26.0);
+        assert!(ctrl > a, "a longer name makes a wider key");
+        assert!(a >= 26.0, "a key is at least as wide as it is high");
+        assert_eq!(x, 26.0, "a button is a circle");
+        assert!(arrows > 40.0, "four arrows drawn in a row");
+        let at = |px: usize, py: usize| pixels[(py * w + px) * 4];
+        assert_eq!(at(100, 2), 0, "the circle's corner is outside it");
+        assert!(at(113, 15) > 0, "the circle's middle is drawn on");
+    }
+
+    #[test]
+    fn dimming_darkens_and_a_scaled_blit_is_sharp() {
+        let (w, h) = (8, 8);
+        let mut pixels = vec![0u8; w * h * 4];
+        let mut canvas = Canvas {
+            pixels: &mut pixels,
+            width: w,
+            height: h,
+            scale: 1.0,
+        };
+        canvas.clear([200, 100, 0]);
+        canvas.dim(127);
+        assert_eq!(&canvas.pixels[..4], &[100, 50, 0, 0xFF]);
+        let picture = [[255, 0, 0, 255], [0, 255, 0, 255]].concat();
+        canvas.blit_scaled(&picture, 2, 1, 1, 1, 3);
+        let at = |px: usize, py: usize| &pixels[(py * w + px) * 4..(py * w + px) * 4 + 3];
+        assert_eq!(at(1, 1), &[255, 0, 0]);
+        assert_eq!(at(3, 3), &[255, 0, 0]);
+        assert_eq!(at(4, 1), &[0, 255, 0]);
+        assert_eq!(at(6, 3), &[0, 255, 0]);
+        assert_eq!(at(0, 0), &[100, 50, 0], "outside the blit is untouched");
+        assert_eq!(at(7, 4), &[100, 50, 0]);
     }
 
     #[test]
