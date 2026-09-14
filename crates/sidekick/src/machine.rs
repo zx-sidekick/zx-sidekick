@@ -171,9 +171,18 @@ impl Machine {
         m
     }
 
-    /// Runs one 50 Hz frame, answering the ROM routines the game calls.
+    /// Runs one 50 Hz frame, answering the ROM routines the game calls, and
+    /// pressing the joystick's keys as the game's play-time key reader
+    /// starts ([`starquake::PLAY_INPUT`]): the one moment they reach the
+    /// game in play, and no menu.
     pub fn run_frame(&mut self) {
-        self.zx.run_frame(answer);
+        let (joystick, start) = (self.joystick, self.start);
+        self.zx.run_frame(|z| {
+            if (joystick != 0 || start) && z.pc() == starquake::PLAY_INPUT {
+                press(z, joystick, start);
+            }
+            answer(z)
+        });
     }
 }
 
@@ -311,6 +320,45 @@ mod tests {
         m.zx.mem[usize::from(PAUSE_KEY)] = 0xFF;
         press(&mut m.zx, JOY_LEFT | JOY_FIRE, true);
         assert_eq!((m.zx.keys, m.zx.kempston), (keys_named(&["m"]), 0));
+    }
+
+    /// A machine with the tables in place whose program starts at `pc`: a
+    /// `NOP` at the play-time reader's address, then a jump to itself.
+    fn at_the_reader(pc: u16) -> Machine {
+        let mut m = with_tables(4);
+        let at = usize::from(starquake::PLAY_INPUT);
+        m.zx.mem[at] = 0x00;
+        m.zx.mem[at + 1..at + 3].copy_from_slice(&JUMP_TO_ITSELF);
+        m.zx.set_pc(pc);
+        m
+    }
+
+    #[test]
+    fn the_joystick_is_pressed_as_the_play_time_reader_starts() {
+        let mut m = at_the_reader(starquake::PLAY_INPUT);
+        m.joystick = JOY_LEFT | JOY_FIRE;
+        m.start = true;
+        m.run_frame();
+        // O, M and Space, from the keyboard method's table.
+        assert_eq!(m.zx.keys, keys_named(&["o", "m", "space"]));
+        assert_eq!(m.zx.kempston, 0);
+    }
+
+    #[test]
+    fn a_frame_that_never_reaches_the_reader_presses_nothing() {
+        let mut m = at_the_reader(starquake::PLAY_INPUT + 1);
+        m.joystick = 0x1F;
+        m.start = true;
+        m.run_frame();
+        assert_eq!((m.zx.keys, m.zx.kempston), ([0xFF; 8], 0));
+    }
+
+    #[test]
+    fn a_joystick_at_rest_leaves_the_keys_alone() {
+        let mut m = at_the_reader(starquake::PLAY_INPUT);
+        m.zx.set_key(zx_spectrum::Key::by_name("q").unwrap(), true);
+        m.run_frame();
+        assert_eq!(m.zx.keys, keys_named(&["q"]));
     }
 
     #[test]
