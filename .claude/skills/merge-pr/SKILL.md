@@ -44,7 +44,8 @@ Nothing is merged while a review conversation is unresolved (starquake-recompile
 On starquake-recompiled a ruleset enforces that; here the organisation's free
 plan allows no ruleset on a private repository (`.github/rulesets/main.json`
 holds the one to apply if that changes), so this step is the only thing that
-checks it, and the same goes for green CI and squash-only merging.
+checks it, as Step 2 is for green CI. The repository's settings still allow
+squash merges only.
 A thread still open is a finding or a comment not yet acted on: act on it
 first (`build-slice`, *Review the whole diff*), or ask the maintainer.
 
