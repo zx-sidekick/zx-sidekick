@@ -17,6 +17,11 @@
 //!   starts a game from the title screen and goes past the intro text; that
 //!   Start still pauses in every method after the pause key was redefined;
 //!   and that the control facts read as recorded.
+//! - `facts`: checks the entry points the guidance panel follows: the menu
+//!   runs first, then play, and holding A S D F G from the top of the play
+//!   loop, as End this game does, reaches the game-over screens and comes
+//!   back round to the menu, in every control method and from a paused
+//!   game.
 //! - `shot <frames> [out-dir]`: runs the ROM-free machine and writes a PNG of
 //!   the screen every so often, to look at.
 
@@ -573,6 +578,113 @@ fn keys_check(dir: &Path) -> bool {
     ok
 }
 
+/// The game's routines the panel follows, by name, for the report.
+fn routine_name(addr: u16) -> &'static str {
+    use sidekick::starquake::routine;
+    match addr {
+        routine::MENU => "menu",
+        routine::MAIN_LOOP => "play",
+        routine::GAME_OVER => "game over",
+        _ => "?",
+    }
+}
+
+/// From `m` in play, holds End this game's keys as the app does and follows
+/// the program, pressing `0` now and then for the screens that wait, until
+/// it is back at the menu. Returns the frames at which the game-over screens
+/// and the menu arrived.
+fn ends_the_game(m: &Machine) -> Option<(u64, u64)> {
+    use sidekick::starquake::{end_game_hold, routine};
+    let mut m = m.clone();
+    m.watch = vec![routine::MENU, routine::GAME_OVER];
+    m.hold = Some(end_game_hold());
+    let mut over = None;
+    for frame in 0..4000u64 {
+        m.zx.release_all_keys();
+        m.joystick = 0;
+        m.start = false;
+        if over.is_some() && frame % 50 < 5 {
+            m.zx.set_key(Key::by_name("0").expect("a key"), true);
+        }
+        for hit in m.run_frame() {
+            match hit {
+                routine::GAME_OVER if over.is_none() => {
+                    over = Some(frame);
+                    m.hold = None;
+                }
+                routine::MENU if over.is_some() => return over.map(|o| (o, frame)),
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+/// The entry points the panel follows: the menu first and then play, and
+/// End this game's keys ending a game in every control method, in play and
+/// while paused.
+fn facts_check(dir: &Path) -> bool {
+    use sidekick::starquake::routine;
+    let mut ok = true;
+    let mut m = machine(dir);
+    m.watch = vec![routine::MENU, routine::MAIN_LOOP, routine::GAME_OVER];
+    let mut order: Vec<u16> = vec![];
+    let key = |n: &str| Key::by_name(n).expect("a key name");
+    for frame in 0..540u64 {
+        m.zx.release_all_keys();
+        match frame {
+            50..=54 => m.zx.set_key(key("1"), true),
+            100..=104 => m.zx.set_key(key("0"), true),
+            330..=334 => m.zx.set_key(key("enter"), true),
+            _ => {}
+        }
+        for hit in m.run_frame() {
+            if order.last() != Some(&hit) {
+                order.push(hit);
+            }
+        }
+    }
+    let names: Vec<&str> = order.iter().map(|&a| routine_name(a)).collect();
+    let good = order == [routine::MENU, routine::MAIN_LOOP];
+    println!(
+        "  from the start: {} {}",
+        names.join(", "),
+        if good {
+            "ok"
+        } else {
+            "FAILED, expected menu, play"
+        }
+    );
+    ok &= good;
+    for method in 1..=5u8 {
+        let m = into_play(dir, method);
+        let mut paused = m.clone();
+        for frame in 0..20u64 {
+            paused.zx.release_all_keys();
+            paused.start = frame < 3;
+            paused.run_frame();
+        }
+        let mut line = vec![];
+        for (what, from, meant) in [("in play", &m, false), ("paused", &paused, true)] {
+            let ended = ends_the_game(from);
+            let good = from.paused == meant && ended.is_some();
+            line.push(match ended {
+                Some((over, menu)) if good => {
+                    format!("{what}: game over after {over} frames, menu after {menu} ok")
+                }
+                _ => format!("{what}: FAILED (paused {}, ended {ended:?})", from.paused),
+            });
+            ok &= good;
+        }
+        println!("  method {method}: End this game {}", line.join("; "));
+    }
+    println!(
+        "facts: the panel's entry points {}",
+        if ok { "hold" } else { "do NOT hold" }
+    );
+    ok
+}
+
 fn shots(dir: &Path, frames: u64, out: &Path) {
     let mut m = machine(dir);
     let mut script = Script(0xBEEF);
@@ -610,6 +722,7 @@ fn main() {
         }
         Some("entry") => std::process::exit(i32::from(!entry_check(&dir))),
         Some("keys") => std::process::exit(i32::from(!keys_check(&dir))),
+        Some("facts") => std::process::exit(i32::from(!facts_check(&dir))),
         Some("shot") => {
             let frames = args.get(2).and_then(|f| f.parse().ok()).unwrap_or(600);
             shots(
@@ -619,7 +732,7 @@ fn main() {
             );
         }
         _ => {
-            eprintln!("usage: sk-check rom|entry|keys|shot <assets-dir> [frames] [out-dir]");
+            eprintln!("usage: sk-check rom|entry|keys|facts|shot <assets-dir> [frames] [out-dir]");
             std::process::exit(2);
         }
     }

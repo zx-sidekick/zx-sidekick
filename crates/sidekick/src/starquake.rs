@@ -75,6 +75,45 @@ pub const MENU_KEY: u16 = 0xD5C8;
 /// define-keys screen's call returns to `0x625A`.
 pub const MENU_KEY_FROM_TITLE: u16 = 0x6024;
 
+/// Entry points of the game's routines that say what the program is doing,
+/// for the panel beside it: which part of the program is running, and when
+/// End this game may hold its keys. Found by studying the program in the
+/// earlier ZX Sidekick build, and checked on the player's tape by
+/// `sk-check facts`.
+pub mod routine {
+    /// The title screen's menu.
+    pub const MENU: u16 = 0x5E81;
+    /// The top of the play loop, once a frame while Blob is being played.
+    pub const MAIN_LOOP: u16 = 0xA523;
+    /// Where the play loop hands over to a security door, a teleporter booth
+    /// or the pyramid, each of which then runs as a screen of its own.
+    pub const MODAL: u16 = 0xA412;
+    /// Blob losing a life.
+    pub const DEATH: u16 = 0xC350;
+    /// The end of a game: the scores, entering initials, the high-score
+    /// table.
+    pub const GAME_OVER: u16 = 0x6730;
+}
+
+/// The keys that abandon a game in play when held together, the game's own
+/// way: A, S, D, F and G, the whole of the keyboard's half-row 1, as its
+/// half-row and bits. Found in the earlier ZX Sidekick build and checked on
+/// the player's tape by `sk-check facts`.
+pub const END_GAME_KEYS: (usize, u8) = (1, 0x1F);
+
+/// What End this game holds: [`END_GAME_KEYS`], from the top of the play
+/// loop until play hands over to a death or to a door, booth or pyramid
+/// screen, which would read them as letters.
+#[must_use]
+pub fn end_game_hold() -> crate::machine::Hold {
+    crate::machine::Hold {
+        from: routine::MAIN_LOOP,
+        until: vec![routine::MODAL, routine::DEATH],
+        row: END_GAME_KEYS.0,
+        bits: END_GAME_KEYS.1,
+    }
+}
+
 /// The key a byte of the game's tables names. Letters and digits are their
 /// ASCII; the four keys with no character of their own are the codes the
 /// define-keys screen writes for them, seen on the player's tape: `*` for

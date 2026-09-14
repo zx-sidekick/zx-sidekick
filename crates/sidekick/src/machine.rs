@@ -36,10 +36,28 @@ pub const JOY_FIRE: u8 = 0x10;
 /// text takes as the any-key it waits for.
 const START_GAME: zx_spectrum::Key = zx_spectrum::Key::Matrix(4, 0);
 
+/// Keys the machine presses itself while the program is between two points:
+/// from arriving at `from` until arriving at any of `until`. For holding a
+/// game's own keys only while a particular loop of it is reading them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hold {
+    pub from: u16,
+    pub until: Vec<u16>,
+    /// Keyboard half-row, and the bits of it to press.
+    pub row: usize,
+    pub bits: u8,
+}
+
 /// The emulated machine.
 #[derive(Clone)]
 pub struct Machine {
     pub zx: Zx,
+    /// Addresses whose arrival [`Machine::run_frame`] reports.
+    pub watch: Vec<u16>,
+    /// A hold in force, if any; see [`Hold`].
+    pub hold: Option<Hold>,
+    /// Whether the hold's keys are down now.
+    holding: bool,
     /// What the joystick is asking for this frame, as the bits above; the
     /// game gets it however its chosen control method listens, see
     /// [`press`].
@@ -168,6 +186,9 @@ impl Machine {
         zx.traps = vec![rom::MASK_INT];
         Machine {
             zx,
+            watch: Vec::new(),
+            hold: None,
+            holding: false,
             joystick: 0,
             start: false,
             paused: false,
@@ -207,12 +228,45 @@ impl Machine {
     /// for a key ([`starquake::MENU_INPUT`]) and as the title screen enters
     /// its key reader ([`starquake::MENU_KEY`], told from the define-keys
     /// screen's use of it by the return address); nowhere else.
-    pub fn run_frame(&mut self) {
-        let (joystick, start) = (self.joystick, self.start);
+    ///
+    /// Presses and lets go the keys of a [`Hold`] as the program reaches
+    /// its ends, and returns the [watched](Machine::watch) addresses the
+    /// program arrived at, in order.
+    pub fn run_frame(&mut self) -> Vec<u16> {
+        let (mut joystick, start) = (self.joystick, self.start);
+        // A paused game never reaches the top of the play loop, where End
+        // this game's hold starts, so it is resumed first, with a direction
+        // for as long as it stays paused. The game is being abandoned, so
+        // the step Blob takes does not matter.
+        if self.paused && self.hold.as_ref() == Some(&starquake::end_game_hold()) {
+            joystick |= JOY_LEFT;
+        }
         let start_game = start || joystick & JOY_FIRE != 0;
         let (mut read_pause, mut read_controls) = (false, false);
-        self.zx.run_frame(|z| {
+        let Machine {
+            zx,
+            watch,
+            hold,
+            holding,
+            ..
+        } = self;
+        let mut hits = Vec::new();
+        zx.run_frame(|z| {
             let pc = z.pc();
+            if watch.contains(&pc) {
+                hits.push(pc);
+            }
+            if let Some(hold) = hold.as_ref() {
+                if pc == hold.from {
+                    *holding = true;
+                } else if hold.until.contains(&pc) {
+                    *holding = false;
+                    z.keys[hold.row] |= hold.bits;
+                }
+                if *holding {
+                    z.keys[hold.row] &= !hold.bits;
+                }
+            }
             read_pause |= pc == starquake::PLAY_INPUT;
             read_controls |= pc == starquake::CONTROLS_INPUT;
             if (joystick != 0 || start)
@@ -229,7 +283,11 @@ impl Machine {
             }
             answer(z)
         });
+        if hold.is_none() {
+            *holding = false;
+        }
         self.paused = read_controls && !read_pause;
+        hits
     }
 }
 
@@ -382,6 +440,104 @@ mod tests {
         }
         m.zx.set_pc(pc);
         m
+    }
+
+    /// A machine running a NOP at 0x8000 and then a `JR $` at 0x8001, for
+    /// ever.
+    fn nop_then_loop() -> Machine {
+        let mut m = Machine::blank(0x8000, 0xC000);
+        m.zx.mem[0x8000] = 0x00;
+        m.zx.mem[0x8001..0x8003].copy_from_slice(&JUMP_TO_ITSELF);
+        m
+    }
+
+    #[test]
+    fn watched_addresses_are_reported_as_the_program_arrives() {
+        let mut m = nop_then_loop();
+        m.watch = vec![0x8000, 0x8001, 0x9000];
+        let hits = m.run_frame();
+        assert_eq!(hits[..2], [0x8000, 0x8001]);
+        assert!(hits[2..].iter().all(|&h| h == 0x8001), "the loop, again");
+        assert!(!hits.contains(&0x9000));
+        m.watch.clear();
+        assert!(m.run_frame().is_empty());
+    }
+
+    #[test]
+    fn a_hold_presses_its_keys_from_one_address_until_another() {
+        let (row, bits) = starquake::END_GAME_KEYS;
+        let hold = |from, until| Hold {
+            from,
+            until: vec![until],
+            row,
+            bits,
+        };
+        // Held from the NOP and never let go.
+        let mut m = nop_then_loop();
+        m.hold = Some(hold(0x8000, 0x9000));
+        m.run_frame();
+        assert_eq!(m.zx.keys, keys_named(&["a", "s", "d", "f", "g"]));
+        // Let go on arriving at the loop.
+        let mut m = nop_then_loop();
+        m.hold = Some(hold(0x8000, 0x8001));
+        m.run_frame();
+        assert_eq!(m.zx.keys, [0xFF; 8]);
+        // Not held before the program gets to where it starts.
+        let mut m = nop_then_loop();
+        m.hold = Some(hold(0x9000, 0x9001));
+        m.run_frame();
+        assert_eq!(m.zx.keys, [0xFF; 8]);
+    }
+
+    #[test]
+    fn a_hold_taken_away_is_forgotten() {
+        let (row, bits) = starquake::END_GAME_KEYS;
+        let mut m = nop_then_loop();
+        m.hold = Some(Hold {
+            from: 0x8000,
+            until: vec![],
+            row,
+            bits,
+        });
+        m.run_frame();
+        m.hold = None;
+        m.zx.release_all_keys();
+        m.run_frame();
+        // A new hold starts from its own address, not already held.
+        m.hold = Some(Hold {
+            from: 0x9000,
+            until: vec![],
+            row,
+            bits,
+        });
+        m.run_frame();
+        assert_eq!(m.zx.keys, [0xFF; 8]);
+    }
+
+    #[test]
+    fn ending_a_paused_game_resumes_it_with_a_direction() {
+        let mut m = at_the_reader(starquake::CONTROLS_INPUT);
+        m.paused = true;
+        m.hold = Some(starquake::end_game_hold());
+        m.run_frame();
+        // O is left in the keyboard method's table.
+        assert_eq!(m.zx.keys, keys_named(&["o"]));
+
+        // Not for any other hold, and not in a game that is not paused.
+        let mut m = at_the_reader(starquake::CONTROLS_INPUT);
+        m.paused = true;
+        m.hold = Some(Hold {
+            from: 0x9000,
+            until: vec![],
+            row: 1,
+            bits: 0x1F,
+        });
+        m.run_frame();
+        assert_eq!(m.zx.keys, [0xFF; 8]);
+        let mut m = at_the_reader(starquake::CONTROLS_INPUT);
+        m.hold = Some(starquake::end_game_hold());
+        m.run_frame();
+        assert_eq!(m.zx.keys, [0xFF; 8]);
     }
 
     #[test]
