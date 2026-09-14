@@ -17,10 +17,10 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 ## What works
 
 - [x] The game runs from your tape with no ROM
-- [ ] Window with the Spectrum picture
-- [ ] Sound
-- [ ] Keyboard and gamepad
-- [ ] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory
+- [x] Window with the Spectrum picture and its border
+- [ ] Sound (built; awaiting a check by ear)
+- [ ] Keyboard, and a gamepad as the Kempston joystick with Start to pause (built; awaiting a check by hand)
+- [ ] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory (built; awaiting a check by hand)
 
 ## Development
 

@@ -20,3 +20,7 @@ It is generic Spectrum, ROM-behaviour or frontend code. **None of starquake-reco
 | `crates/sidekick/src/starquake.rs` | the earlier build | only the tape's checksum and the start state |
 | `tools/sk-check/src/main.rs` | the earlier build | only the `rom`, `entry` and `shot` commands |
 | `docs/rom.md` | the earlier build | says where the first measurement was made |
+| `app/src/frontend/{audio,input,prompt,tape}.rs` | the earlier build (from starquake-recompiled's `games/starquake/src/frontend/`) | none |
+| `app/src/frontend/text.rs` | the earlier build (from starquake-recompiled's `games/starquake/src/frontend/`) | without the drawing only the guidance panel used |
+| `app/src/frontend/{mod,video,headless,gamepad}.rs`, `app/src/main.rs` | the earlier build (the frontend ones from starquake-recompiled's `games/starquake/src/frontend/`) | without the guidance panel, its picker and the game tracking behind it: the window is the picture alone, and the gamepad drives the joystick and pause |
+| `app/fonts/` | the earlier build (from starquake-recompiled's `games/starquake/fonts/`) | none (Inter, under the SIL Open Font License) |
