@@ -184,6 +184,9 @@ impl ApplicationHandler for App {
                 if let PhysicalKey::Code(code) = event.physical_key
                     && !event.repeat
                 {
+                    if event.state == ElementState::Pressed && self.picker_key(code) {
+                        return;
+                    }
                     if event.state == ElementState::Pressed {
                         self.held.insert(code);
                     } else {
@@ -298,6 +301,43 @@ impl App {
             self.error = Some(e.to_string());
             event_loop.exit();
         }
+    }
+
+    /// The keys the guidance picker takes. Esc opens it and goes back; while
+    /// it is open the arrows and Enter work it, and it has the keyboard to
+    /// itself, so nothing typed into it reaches the game. Returns whether the
+    /// key was the picker's.
+    fn picker_key(&mut self, code: KeyCode) -> bool {
+        let mut guidance = self.shared.guidance.lock().unwrap();
+        let open = guidance.picker_open();
+        match code {
+            KeyCode::Escape if open => guidance.back(),
+            KeyCode::Escape => guidance.open(),
+            _ if !open => return false,
+            KeyCode::ArrowUp => guidance.focus_up(),
+            KeyCode::ArrowDown => guidance.focus_down(),
+            KeyCode::ArrowLeft => guidance.change(false),
+            KeyCode::ArrowRight => guidance.change(true),
+            KeyCode::Enter | KeyCode::NumpadEnter => {
+                guidance.enter();
+                if guidance.take(super::guidance::Action::Exit) {
+                    // The window closes on the next turn of the event loop.
+                    self.shared.quit.store(true, Ordering::Relaxed);
+                }
+            }
+            _ => {}
+        }
+        if guidance.picker_open() && !open {
+            // Opening it: whatever was held is let go, as the game will not
+            // see the key-ups.
+            self.held.clear();
+            *self.shared.input.lock().unwrap() = Input::default();
+        }
+        drop(guidance);
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
+        true
     }
 
     fn prompt_event(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) {

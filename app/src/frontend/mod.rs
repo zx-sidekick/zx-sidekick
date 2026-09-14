@@ -2,10 +2,6 @@
 
 mod audio;
 mod gamepad;
-#[expect(
-    dead_code,
-    reason = "the picker and the panel, in the tasks after this one"
-)]
 mod guidance;
 pub mod headless;
 mod input;
@@ -65,6 +61,45 @@ struct Runner {
 }
 
 impl Runner {
+    /// Holds the machine between frames while the guidance picker is open,
+    /// taking the gamepad's side of it: up and down choose a row, left and
+    /// right change a setting, A does the highlighted thing, and B or Select
+    /// goes back. No time passes for the game, so its pacing starts again
+    /// from now. Returns no input for the frame it resumes on, so the button
+    /// that closed the picker is not also a shot in the game.
+    fn hold_for_picker(&mut self) -> gamepad::Pad {
+        while self.shared.guidance.lock().unwrap().picker_open()
+            && !self.shared.quit.load(Ordering::Relaxed)
+        {
+            std::thread::sleep(Duration::from_millis(20));
+            let pad = self.pad.poll();
+            let mut guidance = self.shared.guidance.lock().unwrap();
+            if pad.select || pad.east {
+                guidance.back();
+            }
+            if pad.up {
+                guidance.focus_up();
+            }
+            if pad.down {
+                guidance.focus_down();
+            }
+            if pad.left {
+                guidance.change(false);
+            }
+            if pad.right {
+                guidance.change(true);
+            }
+            if pad.south {
+                guidance.enter();
+                if guidance.take(guidance::Action::Exit) {
+                    self.shared.quit.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+        self.next_frame = Instant::now();
+        gamepad::Pad::default()
+    }
+
     /// Shows `memory` for a frame, plays `edges` over it, and waits until it
     /// is time for the next.
     fn present(&mut self, memory: &[u8], border: u8, edges: &[(u32, bool)], paused: bool) {
@@ -121,7 +156,16 @@ impl Runner {
         machine.watch = track::WATCH.to_vec();
         let mut tracker = track::Tracker::default();
         while !self.shared.quit.load(Ordering::Relaxed) {
-            let pad = self.pad.poll();
+            let mut pad = self.pad.poll();
+            if pad.select {
+                let mut guidance = self.shared.guidance.lock().unwrap();
+                if !guidance.picker_open() {
+                    guidance.open();
+                }
+            }
+            if self.shared.guidance.lock().unwrap().picker_open() {
+                pad = self.hold_for_picker();
+            }
             // End this game holds the game's own keys for abandoning a game,
             // from the top of the play loop; the request lasts until the game
             // has left play.

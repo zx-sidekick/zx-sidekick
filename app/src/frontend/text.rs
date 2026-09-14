@@ -280,10 +280,6 @@ impl Canvas<'_> {
     }
 
     /// A filled triangle through three points, in logical pixels.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the picker's arrows, in a later task")
-    )]
     pub fn triangle(&mut self, points: [(f32, f32); 3], colour: Rgb) {
         let s = self.scale;
         let p = points.map(|(x, y)| (x * s, y * s));

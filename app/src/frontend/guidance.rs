@@ -276,8 +276,9 @@ impl Guidance {
         self.version += 1;
     }
 
-    /// Puts a level into effect and records it, outside the picker: for
-    /// tests, and for screenshots taken without a window.
+    /// Puts a level into effect and records it, outside the picker. For
+    /// tests, which start from a setting without going through the picker.
+    #[cfg(test)]
     pub fn set_level(&mut self, level: u8) {
         self.level = level.min(LEVELS.len() as u8 - 1);
         self.record.highest = self.record.highest.max(self.level);

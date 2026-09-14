@@ -5,7 +5,9 @@
 //! listens, so the pad works whichever option was picked on the title
 //! screen. The d-pad and the left stick move; the bottom face button is
 //! down and the left one fires, as platformers lay them out; Start is the
-//! game's pause key, pressed the same way.
+//! game's pause key, pressed the same way. Select opens the guidance
+//! picker (#25), where the d-pad and stick work it, A does the highlighted
+//! thing, and B or Select goes back.
 //!
 //! How the pad is attached is not this code's business, or `gilrs`'s. A
 //! Bluetooth controller the operating system has paired is an ordinary
@@ -24,19 +26,55 @@ pub struct Pad {
     pub bits: u8,
     /// Start is held: pause.
     pub start: bool,
+    /// Pressed since the last poll, for the picker: each is one press, not
+    /// a button held down.
+    pub select: bool,
+    pub up: bool,
+    pub down: bool,
+    pub left: bool,
+    pub right: bool,
+    /// The bottom face button (A on an Xbox pad): the picker's OK.
+    pub south: bool,
+    /// The right face button (B on an Xbox pad): the picker's back.
+    pub east: bool,
+}
+
+/// What the picker's buttons were at the last poll and are now, in the
+/// order Select, up, down, left, right, A, B.
+type Held = [bool; 7];
+
+/// Sets the picker's presses in `pad`: the buttons down `now` that were not
+/// at the last poll, `was`.
+fn presses(pad: &mut Pad, now: Held, was: Held) {
+    let pressed = |i: usize| now[i] && !was[i];
+    pad.select = pressed(0);
+    pad.up = pressed(1);
+    pad.down = pressed(2);
+    pad.left = pressed(3);
+    pad.right = pressed(4);
+    pad.south = pressed(5);
+    pad.east = pressed(6);
 }
 
 pub struct Gamepad {
     gilrs: Option<gilrs::Gilrs>,
+    /// The picker's buttons at the last poll, to tell a press from a hold.
+    was: Held,
 }
 
 impl Gamepad {
     pub fn new() -> Gamepad {
         match gilrs::Gilrs::new() {
-            Ok(gilrs) => Gamepad { gilrs: Some(gilrs) },
+            Ok(gilrs) => Gamepad {
+                gilrs: Some(gilrs),
+                was: [false; 7],
+            },
             Err(e) => {
                 eprintln!("no gamepad support: {e}");
-                Gamepad { gilrs: None }
+                Gamepad {
+                    gilrs: None,
+                    was: [false; 7],
+                }
             }
         }
     }
@@ -51,6 +89,7 @@ impl Gamepad {
         while gilrs.next_event().is_some() {}
 
         let mut pad = Pad::default();
+        let mut now = [false; 7];
         for (_id, gamepad) in gilrs.gamepads() {
             use gilrs::{Axis, Button};
             let pressed = |b| gamepad.is_pressed(b);
@@ -81,7 +120,34 @@ impl Gamepad {
                 pad.bits |= 0x10;
             }
             pad.start |= pressed(Button::Start);
+            now[0] |= pressed(Button::Select);
+            now[1] |= pressed(Button::DPadUp) || y > DEADZONE;
+            now[2] |= pressed(Button::DPadDown) || y < -DEADZONE;
+            now[3] |= pressed(Button::DPadLeft) || x < -DEADZONE;
+            now[4] |= pressed(Button::DPadRight) || x > DEADZONE;
+            now[5] |= pressed(Button::South);
+            now[6] |= pressed(Button::East);
         }
+        presses(&mut pad, now, self.was);
+        self.was = now;
         pad
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_button_held_down_is_one_press() {
+        let mut pad = Pad::default();
+        let select_and_up = [true, true, false, false, false, false, false];
+        presses(&mut pad, select_and_up, [false; 7]);
+        assert!(pad.select && pad.up && !pad.down && !pad.south);
+        presses(&mut pad, select_and_up, select_and_up);
+        assert!(!pad.select && !pad.up, "still down is not pressed again");
+        let b = [false, false, false, false, false, false, true];
+        presses(&mut pad, b, select_and_up);
+        assert!(pad.east && !pad.select);
     }
 }
