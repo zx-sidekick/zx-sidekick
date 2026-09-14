@@ -40,6 +40,7 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
     machine.watch = track::WATCH.to_vec();
     let mut tracker = Tracker::default();
     let mut guidance = Guidance::default();
+    guidance.set_openings(sidekick::starquake::all_openings(&machine));
     let mut panel = Panel::new();
     let mut picture = vec![0u8; FULL_W * FULL_H * 4];
     // The tape's loading picture, which the window shows before the game.
@@ -57,6 +58,7 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
         for hit in machine.run_frame() {
             tracker.follow(&machine.zx.mem[..], hit, &mut guidance);
         }
+        tracker.publish(&machine.zx.mem[..], &mut guidance);
         machine.zx.speaker.clear();
         if frame % every == 0 || frame + 1 == frames {
             draw(

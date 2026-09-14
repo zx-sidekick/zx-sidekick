@@ -3,6 +3,7 @@
 //! panel so it knows when a game starts and ends; and the teleporter booths
 //! entered, for level 1 (#4).
 
+use sidekick::map::RoomSet;
 use sidekick::starquake::{SeenTeleporter, at, routine, teleporter_code};
 
 use super::guidance::Guidance;
@@ -79,6 +80,23 @@ impl Tracker {
         self.scene = next;
         Some(next)
     }
+
+    /// Passes on the map as the game has it now, in `mem`, after a frame:
+    /// the room Blob is in and the rooms visited while a game is played,
+    /// no room at the game's end, and nothing on the title screen (#5).
+    pub fn publish(&self, mem: &[u8], guidance: &mut Guidance) {
+        match self.scene {
+            Scene::Play => {
+                let room = usize::from(at::ROOM);
+                guidance.set_room(Some(u16::from_le_bytes([mem[room], mem[room + 1]])));
+                let start = usize::from(at::UNVISITED_ROOMS);
+                let unvisited = RoomSet(mem[start..start + 64].try_into().expect("64 bytes"));
+                guidance.set_unvisited(&unvisited);
+            }
+            Scene::GameOver => guidance.set_room(None),
+            Scene::Loading | Scene::Menu => guidance.forget_map(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -145,6 +163,30 @@ mod tests {
         t.follow(&mem, routine::TELEPORT_BOOTH, &mut g);
         t.follow(&mem, routine::MENU, &mut g);
         assert!(g.teleporters().is_empty(), "the title screen shows none");
+    }
+
+    #[test]
+    fn the_map_is_published_in_play_and_forgotten_on_the_title_screen() {
+        let mut t = Tracker::default();
+        let mut g = Guidance::default();
+        let mut mem = memory(300, b"ABCDE", 40);
+        let unvisited = usize::from(at::UNVISITED_ROOMS);
+        mem[unvisited..unvisited + 64].fill(0xFF);
+        mem[unvisited + 5] = 0x7F; // room 40 visited
+        t.follow(&mem, routine::MAIN_LOOP, &mut g);
+        t.publish(&mem, &mut g);
+        assert_eq!((g.room(), g.explored()), (Some(40), 1));
+        assert!(g.visited(40));
+        t.follow(&mem, routine::GAME_OVER, &mut g);
+        t.publish(&mem, &mut g);
+        assert_eq!(
+            (g.room(), g.explored()),
+            (None, 1),
+            "kept for the game over"
+        );
+        t.follow(&mem, routine::MENU, &mut g);
+        t.publish(&mem, &mut g);
+        assert_eq!(g.explored(), 0);
     }
 
     #[test]
