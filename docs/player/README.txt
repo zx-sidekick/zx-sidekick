@@ -65,11 +65,12 @@ made: in play, the program presses the keys the game is listening for.
                        do nothing on the title screen.
   Left Ctrl, Alt,      Fire. On the title screen, start a game.
   full stop or comma
-  Gamepad              D-pad or left stick to move, any face or
-                       shoulder button to fire, Start pauses. To go
-                       on, move or fire: that is how the game itself
-                       resumes, its pause key does not. On the title
-                       screen Start or fire starts a game, and goes
+  Gamepad              D-pad or left stick to move. A (the bottom
+                       button) is down, which lays a platform under
+                       you; X (the left button) fires. Start pauses.
+                       To go on, move or fire: that is how the game
+                       itself resumes, its pause key does not. On the
+                       title screen Start or X starts a game, and goes
                        past the text that follows. Over USB or
                        Bluetooth.
                        Some controllers need the right mode: an 8BitDo

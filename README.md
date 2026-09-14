@@ -19,7 +19,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 - [x] The game runs from your tape with no ROM
 - [x] Window with the Spectrum picture and its border
 - [ ] Sound (built; awaiting a check by ear)
-- [ ] Keyboard, and a joystick in every control method: the arrows with Left Control, or a gamepad, with Start to pause (built; awaiting a check by hand)
+- [ ] Keyboard, and a joystick in every control method: the arrows with Left Control, or a gamepad with A for down and X for fire, and Start to pause (built; awaiting a check by hand)
 - [ ] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory (built; awaiting a check by hand)
 
 ## Playing
@@ -28,7 +28,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 cargo run --release -p zx-sidekick-starquake
 ```
 
-The first time, the window asks for your copy of Starquake (`starquake.tap`, or the `.zip` it came in) and keeps it in your user data directory. A tape named on the command line is used as it is. The keys are the Spectrum's, so the title screen's own choices all work. On top of that the arrow keys with Left Control (or Alt, comma or full stop) to fire, and a gamepad, are a joystick that works whichever control method you choose there: the machine presses the keys the game is listening for, and Start presses the game's pause key; a direction or fire resumes, as the game has it. Start or fire also starts a game from the title screen and goes past the intro text, so a controller alone gets you playing. Right Control is Symbol Shift.
+The first time, the window asks for your copy of Starquake (`starquake.tap`, or the `.zip` it came in) and keeps it in your user data directory. A tape named on the command line is used as it is. The keys are the Spectrum's, so the title screen's own choices all work. On top of that the arrow keys with Left Control (or Alt, comma or full stop) to fire, and a gamepad (the d-pad or left stick to move, A for down and X to fire, as on an Xbox pad), are a joystick that works whichever control method you choose there: the machine presses the keys the game is listening for, and Start presses the game's pause key; a direction or fire resumes, as the game has it. Start or fire also starts a game from the title screen and goes past the intro text, so a controller alone gets you playing. Right Control is Symbol Shift.
 
 `--headless FRAMES [DIR]` runs without a window and writes PNGs of the picture, the tape's loading picture first.
 
