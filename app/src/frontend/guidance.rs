@@ -5,7 +5,10 @@
 //! Nothing here reaches the game. The window and the game thread share it:
 //! the window changes it from the keyboard and draws it, and the game thread
 //! changes it from a gamepad and holds the game while the picker is open.
-//! What each level shows is its own ticket's (#3).
+//! What each level shows is its own ticket's (#3); level 1's teleporter
+//! codes are carried here from the game thread to the panel (#4).
+
+use sidekick::starquake::SeenTeleporter;
 
 /// The levels, each including the ones before it (#3).
 pub const LEVELS: [&str; 6] = [
@@ -71,6 +74,9 @@ pub struct Guidance {
     playing: bool,
     /// An action confirmed and not yet carried out.
     requested: Option<Action>,
+    /// The teleporters whose booths were entered this game, in the order
+    /// they were entered.
+    teleporters: Vec<SeenTeleporter>,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -122,6 +128,19 @@ impl Guidance {
     pub fn raises_record(&self) -> bool {
         let (level, training) = self.picked;
         level > self.record.highest || (training && !self.record.training)
+    }
+
+    /// The teleporters seen this game.
+    pub fn teleporters(&self) -> &[SeenTeleporter] {
+        &self.teleporters
+    }
+
+    /// Takes the game's list of teleporters seen, if it has changed.
+    pub fn set_teleporters(&mut self, seen: &[SeenTeleporter]) {
+        if self.teleporters != seen {
+            self.teleporters = seen.to_vec();
+            self.version += 1;
+        }
     }
 
     /// The rows the picker shows: ending a game only while one is played.
@@ -551,6 +570,21 @@ mod tests {
                 Setting::Exit
             ]
         );
+    }
+
+    #[test]
+    fn teleporters_are_taken_only_when_they_change() {
+        let mut g = Guidance::default();
+        let before = g.version();
+        g.set_teleporters(&[]);
+        assert_eq!(g.version(), before, "nothing new, nothing to redraw");
+        let seen = SeenTeleporter {
+            room: 40,
+            code: *b"ABCDE",
+        };
+        g.set_teleporters(&[seen]);
+        assert_eq!(g.teleporters(), [seen]);
+        assert!(g.version() > before);
     }
 
     #[test]

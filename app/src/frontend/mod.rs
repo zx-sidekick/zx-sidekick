@@ -216,7 +216,7 @@ impl Runner {
             {
                 let mut guidance = self.shared.guidance.lock().unwrap();
                 for hit in hits {
-                    if let Some(scene) = tracker.follow(hit, &mut guidance) {
+                    if let Some(scene) = tracker.follow(&machine.zx.mem[..], hit, &mut guidance) {
                         *self.shared.scene.lock().unwrap() = scene;
                     }
                 }
