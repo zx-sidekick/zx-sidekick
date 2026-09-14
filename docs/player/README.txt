@@ -83,8 +83,11 @@ GUIDANCE
 --------
 
 The panel beside the picture is for guidance: optional help, in levels
-from 0 (none) to 5. The levels, and training mode, are still to be
-built; for now the panel shows what you have chosen.
+from 0 (none) to 5, each adding to the ones below.
+
+  Level 1              The codes of the teleporters you have seen, once
+                       you have entered their booths.
+  Levels 2 to 5        Still to be built, and training mode too.
 
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.

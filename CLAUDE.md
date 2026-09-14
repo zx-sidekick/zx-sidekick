@@ -23,7 +23,8 @@ locally.
 - `cargo run --release -p sk-check -- entry "$SK_ASSETS"`,
   `… -- rom "$SK_ASSETS" 6000`, `… -- keys "$SK_ASSETS"` and
   `… -- facts "$SK_ASSETS"` run the checks against the game on their own
-  (`keys` and `facts` need only the tape).
+  (`keys` needs only the tape; `facts` walks into the teleporter booths only
+  with the ROM).
 - `cargo test -p zx-spectrum --test fuse -- --nocapture` checks the processor
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
   `assets/tests.expected`).
