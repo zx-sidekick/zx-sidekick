@@ -57,10 +57,10 @@ found and let the maintainer confirm the shape first.
   label from the API at the moment you merge, never from a notification: a
   label can be added and withdrawn within a minute. The same goes for CI: green
   before a push is not green after it.
-- **Build only what's authorised**: a plan the maintainer approved (`Build`, or
-  a `go` / `approved` comment on a `Your sign-off` ticket), or a **bug** or
-  **tweak** routed `needs: build`. Never build a `Your input` or `Your sign-off`
-  ticket.
+- **Build only what's authorised**: a card the maintainer moved to `Build`, a
+  `go` / `approved` comment on a `Your sign-off` ticket, or a **bug** or
+  **tweak** small enough to need no plan. Never build a `Your input` or
+  `Your sign-off` ticket.
 - **Skip anything labelled `hold`** entirely: no comment, no build, no merge.
 - **Every issue and comment you post opens with the 🤖 attribution line**
   (CLAUDE.md), posted with `--body-file`. The monitor tells your comments from
@@ -150,13 +150,13 @@ direct maintainer request, and they are named as exceptions.
 | State | Action | Owner |
 |---|---|---|
 | unanswered comment (issue/PR) | reply: factual auto-post, substantive draft for OK | `issue-comment-replies` |
-| new issue, no `needs:` label | triage: feature → spec + questions → `Your input`; bug/tweak → `needs: build` | `design-slice` |
+| new issue, no `needs:` label | triage: a design question → `needs: spec`, spec + questions → `Your input`; none left → `needs: build` → `Plan`; a bug or tweak needing no plan → `needs: build` → `Build` | `design-slice` |
 | **bug** routed `needs: build` | reproduce → root-cause → **green PR** | debug → PR |
-| `Spec` | **choose the route first** (see Routing): a bug or tweak → comment the route → `Build`; otherwise draft the spec + its open questions → `Your input` (or `Plan` if nothing is open) | `design-slice` |
+| `Spec` | **choose the route first** (see Routing): a bug or tweak needing no plan → comment the route → `Build`; no design question left → `needs: build` → `Plan`; otherwise draft the spec + its open questions → `Your input` (or `Plan` if nothing is open) | `design-slice` |
 | `Your input` | **stop**, UNLESS a new maintainer comment answers the block → write the answers into the body → `Plan` | `design-slice` |
 | `Plan` | write the plan (and mockup) → `Your sign-off` | `design-slice`, `mockup` |
 | `Your sign-off` | **stop**, UNLESS the maintainer signalled go (a `go`/`approved` comment, OR moved it to `Build`) → build | `build-slice` |
-| `Build` | build the approved slice → green PR → `Your review` | `build-slice` |
+| `Build` | build the slice → green PR → `Your review`, dropping the `needs:` label. No plan that fits this repository? Write it into the body first and build it: the move was the go. | `build-slice` |
 | `Your review` | **stop**: only `ready to merge` moves it. Do keep the PR mergeable: CI green, rebased if behind, and no thread left open that Claude has acted on (the ruleset refuses to merge with one). | `merge-pr` |
 | reply to one of Claude's review comments | `fix`: fix, push, reply with the commit, **resolve the thread**; `skip`: acknowledge, resolve; `ticket`: file a Backlog issue, reply with the link, resolve; anything else: answer in the thread (starquake-recompiled#77) | `build-slice` |
 | PR with new maintainer comments | address them, re-push | rework |
@@ -175,6 +175,13 @@ direct maintainer request, and they are named as exceptions.
    action**: a Status naming whose turn it is, a `needs:` label with the
    routing reason in the body, and a Next-steps comment. A filed ticket with no
    next step is close to not having been filed.
+7. **A ticket PORTED from a sibling repository is filed in the lane its content
+   puts it in**, not all in `Backlog` (#27): open questions → `Your input`,
+   with the answer block posted; a settled spec whose plan is missing or names
+   the other project's code → `Plan`; a parent with sub-issues → `Backlog`,
+   with no `needs:` label, since its sub-issues carry the routes. Leave out
+   tickets about the other project's own history or internals, and list them
+   in the report instead.
 
 ## Routing a ticket
 
@@ -185,10 +192,15 @@ Routing: straight to Build — a tweak, no unexamined assumption.
 Routing: Spec first — the scoring change affects every platform's contract.
 ```
 
-- **`needs: build`**: a bug, or a tweak (a number, a default, copy, a build
-  script). Straight to a PR.
 - **`needs: spec`**: a feature or change with a design decision whose
-  assumptions want questioning first.
+  assumptions want questioning first. It goes through `Spec`.
+- **`needs: build`**: no design question left (#27). It goes to `Plan` for its
+  plan, then `Your sign-off`. Only a bug or a tweak small enough to need no
+  plan (a number, a default, copy, a build script) goes straight to `Build`
+  and a PR.
+
+**The label is the route, so a built ticket keeps none**: it comes off when
+the PR moves the ticket to `Your review` (#27).
 
 The maintainer disagrees by dragging the card elsewhere, and that is the
 override. **Never add a Status option to carry a property**: reordering a
@@ -197,7 +209,8 @@ single-select replaces every option and clears every card's value.
 **A card the maintainer drags to `Spec` means "your call, go"** (starquake-recompiled#26). The
 first step there is choosing the route, not writing a spec: comment the route
 with its reason, and move a bug or tweak straight on to `Build` (and build it,
-within the one-build cap). Only a real design question gets a spec.
+within the one-build cap), or a ticket with no design question left on to
+`Plan`. Only a real design question gets a spec.
 
 ## Which backlog ticket is next
 
@@ -215,8 +228,9 @@ gh api graphql -f query='{ organization(login:"zx-sidekick"){ projectV2(number:1
   --jq '[.data.organization.projectV2.items.nodes[] | select(.fieldValueByName.name=="Backlog")][0].content'
 ```
 
-Picking it up follows its route label: `needs: build` goes to `Build`,
-anything else to `Spec` (where the route is decided as above). Post a
+Picking it up follows its route label: `needs: build` goes to `Plan`, or
+to `Build` if it is a bug or tweak needing no plan; anything else to `Spec`
+(where the route is decided as above). Post a
 Next-steps comment saying it was picked up and by whose request.
 
 ## The Next-steps comment: a new one whenever the state moves

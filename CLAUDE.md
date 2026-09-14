@@ -102,14 +102,24 @@ answer given in chat is written back into the issue body before acting on it.
 - **Approval** of a spec or plan is the maintainer dragging the card on, or a
   `go` / `approved` comment. Never proceed from plan to build without it.
 - **A card dragged to `Spec` means "your call"**: first decide whether it needs
-  a spec at all, and say so on the ticket. A bug or tweak goes on to `Build`.
+  a spec at all, and say so on the ticket. With no design question left it goes
+  on to `Plan`; a bug or tweak needing no plan goes on to `Build`.
+- **A card dragged to `Build` is the go**, even when its plan is missing or
+  names another project's code: the plan is written into the body before the
+  first commit, and built, with no sign-off round (#27).
 - **The `Backlog` column's order is the priority.** Nothing leaves `Backlog`
   without the maintainer; "pick up the next one" means its top card.
 - **Merging needs the `ready to merge` label** on the PR, re-read from the API
   at the moment of merging. Claude never adds it and never merges without it.
 - **A position in the flow is a Status; a property of a ticket is a label**:
   `ready to merge`, `hold` (skip entirely), `needs: spec` / `needs: build`
-  (the route, set when filing, with the reason in the body).
+  (the route, set when filing, with the reason in the body). `needs: spec` has
+  a design question to settle; `needs: build` has none left and goes to `Plan`,
+  or straight to `Build` if it is a bug or tweak needing no plan. The label
+  comes off once the ticket is built and in `Your review`.
+- **A ticket ported from a sibling repository goes in the lane its content puts
+  it in**: open questions to `Your input`, a settled spec needing a plan here to
+  `Plan`, a parent to `Backlog` with no label.
 - **The body is the living spec; the comments are append-only history.** When
   a question is answered it moves into _Decisions_ and is deleted from _Open
   questions_. Every state change gets a NEW `> 🤖 **Next steps**` comment;

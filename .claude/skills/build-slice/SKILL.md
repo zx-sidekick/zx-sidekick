@@ -4,7 +4,7 @@ description: >
   Use whenever an approved ticket gets built: "build #NN", "go ahead and
   implement it", "execute the plan", "resume #NN", a ticket moved to `Build`
   on the board, or a `go` / `approved` comment on a `Your sign-off` ticket.
-  Also for bugs and tweaks routed `needs: build`. Executes the plan task by
+  Also for bugs and tweaks small enough to need no plan. Executes the plan task by
   task on ONE PR: branch, failing tests first, the check gate green per commit,
   CI watched after every push, then the ticket moves to `Your review`. Merging
   stays gated on the `ready to merge` label. Trigger even if the user doesn't
@@ -12,9 +12,17 @@ description: >
 ---
 
 You execute an approved plan from a ticket, task by task, on one PR.
-Precondition: the issue's *Plan* exists and the maintainer has approved it (or
-it's a bug/tweak routed `needs: build`). If not, stop and route to
-`design-slice`: never invent a plan mid-build.
+Precondition: the maintainer has authorised the build: approved the *Plan*
+(a `go` / `approved` comment), or moved the card to `Build`; or it is a bug or
+tweak small enough to need no plan. Without that, stop and route to
+`design-slice`.
+
+**A card the maintainer moved to `Build` is the go even when the plan does not
+fit**: missing, or naming code this repository doesn't have (a ticket ported
+from a sibling project). Write the plan into the body before the first commit,
+say so in a comment, and build it; don't send it back for sign-off (#27, as
+#25 was built). What you would still never do is invent a plan mid-build on a
+ticket nobody moved: that one goes back to `Plan`.
 
 ## Setup
 
@@ -175,6 +183,7 @@ the maintainer's replies are part of the review.
   open (starquake-recompiled#84). A PR for
   a sub-issue says `Closes` only for that sub-issue, never for its parent.
 - Move the card to **`Your review`** (NOT `Your sign-off`, which is the
-  pre-build gate) and post a Next-steps comment: *Next: review the PR and add
+  pre-build gate), **remove its `needs:` label**, since a built ticket has no
+  route left (#27), and post a Next-steps comment: *Next: review the PR and add
   `ready to merge`.* List any task still open after the merge in that comment,
   with whose it is.

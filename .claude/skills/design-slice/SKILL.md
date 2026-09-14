@@ -25,8 +25,11 @@ maintainer's.
 - **First, choose the route.** A card in `Spec` means "your call, go", not
   "write a spec": decide how much process it needs, and say so on the ticket
   with the reason (starquake-recompiled#26).
-  - **A bug or tweak**, with no design question: comment *"Routing: straight to
-    Build — …"*, move it to `Build`, and hand it to `build-slice`. No spec.
+  - **A bug or tweak** small enough to need no plan: comment *"Routing: straight
+    to Build — …"*, label it `needs: build`, move it to `Build`, and hand it
+    to `build-slice`. No spec.
+  - **No design question left, but work that wants a plan**: label it
+    `needs: build`, move it to `Plan`, and write the plan (#27). No spec.
   - **A small decision**: a short spec with its answer block; the plan is a few
     lines in the same body once it's answered.
   - **A feature**: the full route below.
