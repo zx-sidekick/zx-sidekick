@@ -23,7 +23,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 - [ ] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory (built; awaiting a check by hand)
 - [x] A notice while the game is paused, saying how to go on
 - [x] The guidance panel beside the game, the picker for the guidance level and training mode (Esc, or Select on a gamepad), End this game and Exit, the note of how much help a game had beside the game-over screens, and pausing with Start or the pause key.
-- [ ] Guidance level 1: the codes of the teleporters whose booths you have entered, listed in the panel (built; awaiting a check by hand). Levels 2 to 5 and training mode are still to come.
+- [x] Guidance level 1: the codes of the teleporters whose booths you have entered, listed in the panel. Levels 2 to 5 and training mode are still to come.
 
 ## Playing
 
