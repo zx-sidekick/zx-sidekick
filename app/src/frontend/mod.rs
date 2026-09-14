@@ -2,7 +2,10 @@
 
 mod audio;
 mod gamepad;
-#[expect(dead_code, reason = "followed and drawn by the tasks after this one")]
+#[expect(
+    dead_code,
+    reason = "the picker and the panel, in the tasks after this one"
+)]
 mod guidance;
 pub mod headless;
 mod input;
@@ -10,6 +13,7 @@ mod notice;
 mod prompt;
 pub mod tape;
 mod text;
+mod track;
 mod video;
 
 use std::path::Path;
@@ -17,7 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use sidekick::starquake::{ENTRY_PC, ENTRY_SP};
+use sidekick::starquake::{ENTRY_PC, ENTRY_SP, end_game_hold};
 use sidekick::{Input, Machine};
 
 /// How long a Spectrum frame lasts, from the clock it is derived from
@@ -41,6 +45,10 @@ pub struct Shared {
     /// Set when the machine's thread stopped without being asked to, so the
     /// window can report it rather than sitting on a frozen picture.
     pub dead: AtomicBool,
+    /// The guidance level, training mode and the picker.
+    pub guidance: Mutex<guidance::Guidance>,
+    /// Which part of the program the game is in, for the panel.
+    pub scene: Mutex<track::Scene>,
 }
 
 /// The machine's thread: runs a frame, plays its sound, shows its screen,
@@ -108,8 +116,23 @@ impl Runner {
                 self.present(&memory, 0, &[], false);
             }
         }
+        machine.watch = track::WATCH.to_vec();
+        let mut tracker = track::Tracker::default();
         while !self.shared.quit.load(Ordering::Relaxed) {
             let pad = self.pad.poll();
+            // End this game holds the game's own keys for abandoning a game,
+            // from the top of the play loop; the request lasts until the game
+            // has left play.
+            if self
+                .shared
+                .guidance
+                .lock()
+                .unwrap()
+                .take(guidance::Action::EndGame)
+                && tracker.scene == track::Scene::Play
+            {
+                machine.hold = Some(end_game_hold());
+            }
             let input = *self.shared.input.lock().unwrap();
             machine.zx.keys = input.keys;
             machine.zx.kempston = 0;
@@ -117,7 +140,18 @@ impl Runner {
             // presses them as the game's chosen control method listens.
             machine.joystick = input.joystick | pad.bits;
             machine.start = pad.start;
-            machine.run_frame();
+            let hits = machine.run_frame();
+            {
+                let mut guidance = self.shared.guidance.lock().unwrap();
+                for hit in hits {
+                    if let Some(scene) = tracker.follow(hit, &mut guidance) {
+                        *self.shared.scene.lock().unwrap() = scene;
+                    }
+                }
+            }
+            if tracker.scene != track::Scene::Play {
+                machine.hold = None;
+            }
             let edges = std::mem::take(&mut machine.zx.speaker);
             let border = machine.zx.border;
             let paused = machine.paused;
@@ -160,6 +194,8 @@ fn new_shared() -> Arc<Shared> {
         input: Mutex::new(Input::default()),
         quit: AtomicBool::new(false),
         dead: AtomicBool::new(false),
+        guidance: Mutex::new(guidance::Guidance::default()),
+        scene: Mutex::new(track::Scene::Loading),
     })
 }
 
