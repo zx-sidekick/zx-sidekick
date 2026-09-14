@@ -21,8 +21,9 @@ locally.
   `starquake.tap` and `48.rom`, the checks against the game. **Gate on the
   exit code, never on grepped output.**
 - `cargo run --release -p sk-check -- entry "$SK_ASSETS"`,
-  `… -- rom "$SK_ASSETS" 6000` and `… -- keys "$SK_ASSETS"` run the checks
-  against the game on their own (`keys` needs only the tape).
+  `… -- rom "$SK_ASSETS" 6000`, `… -- keys "$SK_ASSETS"` and
+  `… -- facts "$SK_ASSETS"` run the checks against the game on their own
+  (`keys` and `facts` need only the tape).
 - `cargo test -p zx-spectrum --test fuse -- --nocapture` checks the processor
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
   `assets/tests.expected`).
@@ -49,9 +50,11 @@ locally.
 - **The checks against the game are the contract.** `sk-check entry` must find
   the loader returning where the game is started, `sk-check rom` must find
   every compared ROM call answered as the real ROM does (20,326 of 20,326 when
-  the fork was pinned), and `sk-check keys` must find the joystick and Start
-  reaching the game in all five control methods. A change that moves either is a deliberate,
-  called-out decision, never a check adjusted to make it pass.
+  the fork was pinned), `sk-check keys` must find the joystick reaching
+  the game and the pause key taken from it in all five control methods, and `sk-check facts` must
+  find the entry points the guidance panel follows and End this game ending
+  a game. A change that moves any of them is a deliberate, called-out
+  decision, never a check adjusted to make it pass.
 - **The processor is not self-certified.** It is checked in our bus against
   the Fuse corpus: 1,329 of 1,335 cases exact, the 6 undocumented-flag cases
   listed by name, and bus activity 1,335 of 1,335. The gate and CI require

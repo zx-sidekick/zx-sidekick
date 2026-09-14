@@ -27,6 +27,9 @@ pub mod palette {
     pub const BADGE_TEXT: Rgb = [0xd0, 0xd4, 0xdc];
 }
 
+/// The four arrows, in the order a legend lists them.
+pub const ARROWS: [&str; 4] = ["←", "→", "↑", "↓"];
+
 #[derive(Clone, Copy)]
 pub enum Weight {
     Regular = 0,
@@ -176,17 +179,22 @@ impl Fonts {
     /// the badge's width.
     pub fn key_badge(&mut self, canvas: &mut Canvas, x: f32, y: f32, h: f32, label: &str) -> f32 {
         let size = h * 0.58;
-        let tw = self.measure(&[Span {
-            text: label,
-            size,
-            weight: Weight::SemiBold,
-            colour: palette::BADGE_TEXT,
-        }]);
-        let w = (tw + h * 0.62).max(h);
+        let w = self.key_width(h, label);
         canvas.round_rect(x, y, w, h, h * 0.19, palette::BADGE);
         canvas.outline(x, y, w, h, h * 0.19, 1.5, None, palette::BADGE_LINE);
         self.centred(canvas, (x, y, w, h), label, size);
         w
+    }
+
+    /// The width of [`Fonts::key_badge`]'s badge for `label`, `h` high.
+    pub fn key_width(&mut self, h: f32, label: &str) -> f32 {
+        let tw = self.measure(&[Span {
+            text: label,
+            size: h * 0.58,
+            weight: Weight::SemiBold,
+            colour: palette::BADGE_TEXT,
+        }]);
+        (tw + h * 0.62).max(h)
     }
 
     /// A gamepad button in a legend: its letter in a round badge `h` logical
@@ -205,13 +213,14 @@ impl Fonts {
         h
     }
 
-    /// A direction in a legend: bare arrows with no outline, since the
+    /// Directions in a legend: bare arrows with no outline, since the
     /// direction may come from the d-pad, the stick, the arrow keys or the
-    /// keys the player defined. Returns the width they take.
-    pub fn arrows(&mut self, canvas: &mut Canvas, x: f32, y: f32, h: f32) -> f32 {
+    /// keys the player defined; `arrows` is which, from [`ARROWS`]. Returns
+    /// the width they take.
+    pub fn arrows(&mut self, canvas: &mut Canvas, x: f32, y: f32, h: f32, arrows: &[&str]) -> f32 {
         let size = h * 0.7;
         let mut at = x;
-        for arrow in ["←", "→", "↑", "↓"] {
+        for arrow in arrows {
             let span = Span {
                 text: arrow,
                 size,
@@ -224,6 +233,20 @@ impl Fonts {
             at += w + h * 0.3;
         }
         at - x - h * 0.3
+    }
+
+    /// A word of a legend, muted, centred on the height `h` of the badges
+    /// beside it; returns its width.
+    pub fn word(&mut self, canvas: &mut Canvas, x: f32, y: f32, h: f32, text: &str) -> f32 {
+        let size = h * 16.0 / 26.0;
+        let span = Span {
+            text,
+            size,
+            weight: Weight::Regular,
+            colour: palette::MUTED,
+        };
+        let ty = y + (h - size * 1.21) / 2.0;
+        self.text(Some(canvas), x, ty, None, 1.0, &[span]).0
     }
 }
 
@@ -244,6 +267,11 @@ impl Canvas<'_> {
         self.pixels[i + 3] = (a + under * (255 - a) / 255) as u8;
     }
 
+    /// Clears to nothing at all, for a frame laid over another.
+    pub fn clear_transparent(&mut self) {
+        self.pixels.fill(0);
+    }
+
     pub fn clear(&mut self, colour: Rgb) {
         self.pixels
             .as_chunks_mut::<4>()
@@ -251,51 +279,56 @@ impl Canvas<'_> {
             .fill([colour[0], colour[1], colour[2], 0xFF]);
     }
 
-    /// Darkens the whole frame: black laid over it at `alpha` out of 255.
-    pub fn dim(&mut self, alpha: u8) {
-        let keep = u16::from(255 - alpha);
-        for p in self.pixels.as_chunks_mut::<4>().0 {
-            for c in &mut p[..3] {
-                *c = ((u16::from(*c) * keep) / 255) as u8;
-            }
-        }
-    }
-
-    /// Copies an RGBA picture `sw` by `sh` into the frame at (`x`, `y`) in
-    /// device pixels, each of its pixels `k` device pixels square, sharp.
-    pub fn blit_scaled(
-        &mut self,
-        picture: &[u8],
-        sw: usize,
-        sh: usize,
-        x: usize,
-        y: usize,
-        k: usize,
-    ) {
-        let src = picture.as_chunks::<4>().0;
-        let dst = self.pixels.as_chunks_mut::<4>().0;
-        for sy in 0..sh {
-            for dy in 0..k {
-                let row = y + sy * k + dy;
-                if row >= self.height {
-                    break;
-                }
-                for sx in 0..sw {
-                    let p = src[sy * sw + sx];
-                    for dx in 0..k {
-                        let col = x + sx * k + dx;
-                        if col < self.width {
-                            dst[row * self.width + col] = p;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     /// A filled rectangle with rounded corners, in logical pixels.
     pub fn round_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, colour: Rgb) {
         self.shape(x, y, w, h, radius, colour, 255, |_, _| true);
+    }
+
+    /// A filled triangle through three points, in logical pixels.
+    pub fn triangle(&mut self, points: [(f32, f32); 3], colour: Rgb) {
+        let s = self.scale;
+        let p = points.map(|(x, y)| (x * s, y * s));
+        let (x0, x1) = (
+            p.iter().map(|q| q.0).fold(f32::MAX, f32::min),
+            p.iter().map(|q| q.0).fold(f32::MIN, f32::max),
+        );
+        let (y0, y1) = (
+            p.iter().map(|q| q.1).fold(f32::MAX, f32::min),
+            p.iter().map(|q| q.1).fold(f32::MIN, f32::max),
+        );
+        let edge = |a: (f32, f32), b: (f32, f32), q: (f32, f32)| {
+            (b.0 - a.0) * (q.1 - a.1) - (b.1 - a.1) * (q.0 - a.0)
+        };
+        let area = edge(p[0], p[1], p[2]);
+        for py in (y0.floor().max(0.0) as usize)..(y1.ceil() as usize).min(self.height) {
+            for px in (x0.floor().max(0.0) as usize)..(x1.ceil() as usize).min(self.width) {
+                let mut hits = 0usize;
+                for (dx, dy) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)] {
+                    let q = (px as f32 + dx, py as f32 + dy);
+                    let w = [
+                        edge(p[1], p[2], q),
+                        edge(p[2], p[0], q),
+                        edge(p[0], p[1], q),
+                    ];
+                    if w.iter().all(|&e| e * area >= 0.0) {
+                        hits += 1;
+                    }
+                }
+                if hits > 0 {
+                    self.blend(
+                        px as isize,
+                        py as isize,
+                        colour,
+                        [0, 64, 128, 191, 255][hits],
+                    );
+                }
+            }
+        }
+    }
+
+    /// A see-through rectangle: `alpha` of `colour` over what is there.
+    pub fn shade(&mut self, x: f32, y: f32, w: f32, h: f32, colour: Rgb, alpha: u8) {
+        self.shape(x, y, w, h, 0.0, colour, alpha, |_, _| true);
     }
 
     /// The outline of a rounded rectangle, `thickness` logical pixels wide,
@@ -433,7 +466,7 @@ mod tests {
         let ctrl = fonts.key_badge(&mut canvas, 2.0, 2.0, 26.0, "Ctrl");
         let a = fonts.key_badge(&mut canvas, 60.0, 2.0, 26.0, "A");
         let x = fonts.button_badge(&mut canvas, 100.0, 2.0, 26.0, "X");
-        let arrows = fonts.arrows(&mut canvas, 130.0, 2.0, 26.0);
+        let arrows = fonts.arrows(&mut canvas, 130.0, 2.0, 26.0, &ARROWS);
         assert!(ctrl > a, "a longer name makes a wider key");
         assert!(a >= 26.0, "a key is at least as wide as it is high");
         assert_eq!(x, 26.0, "a button is a circle");
@@ -444,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn dimming_darkens_and_a_scaled_blit_is_sharp() {
+    fn a_shade_lets_what_is_under_it_through_and_a_triangle_is_filled() {
         let (w, h) = (8, 8);
         let mut pixels = vec![0u8; w * h * 4];
         let mut canvas = Canvas {
@@ -454,17 +487,18 @@ mod tests {
             scale: 1.0,
         };
         canvas.clear([200, 100, 0]);
-        canvas.dim(127);
-        assert_eq!(&canvas.pixels[..4], &[100, 50, 0, 0xFF]);
-        let picture = [[255, 0, 0, 255], [0, 255, 0, 255]].concat();
-        canvas.blit_scaled(&picture, 2, 1, 1, 1, 3);
-        let at = |px: usize, py: usize| &pixels[(py * w + px) * 4..(py * w + px) * 4 + 3];
-        assert_eq!(at(1, 1), &[255, 0, 0]);
-        assert_eq!(at(3, 3), &[255, 0, 0]);
-        assert_eq!(at(4, 1), &[0, 255, 0]);
-        assert_eq!(at(6, 3), &[0, 255, 0]);
-        assert_eq!(at(0, 0), &[100, 50, 0], "outside the blit is untouched");
-        assert_eq!(at(7, 4), &[100, 50, 0]);
+        canvas.shade(0.0, 0.0, 4.0, 8.0, [0, 0, 0], 127);
+        assert_eq!(&canvas.pixels[..4], &[100, 50, 0, 0xFF], "half dark");
+        assert_eq!(
+            &canvas.pixels[5 * 4..6 * 4],
+            &[200, 100, 0, 0xFF],
+            "outside"
+        );
+        canvas.clear_transparent();
+        canvas.triangle([(0.0, 0.0), (8.0, 0.0), (0.0, 8.0)], [255, 255, 255]);
+        let at = |x: usize, y: usize| pixels[(y * w + x) * 4 + 3];
+        assert_eq!(at(1, 1), 255, "inside the triangle");
+        assert_eq!(at(7, 7), 0, "beyond its long edge, still clear");
     }
 
     #[test]

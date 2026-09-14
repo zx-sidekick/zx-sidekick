@@ -63,6 +63,7 @@ fi
 # 48.rom).
 if [ -n "${SK_ASSETS:-}" ] && [ -f "$SK_ASSETS/starquake.tap" ]; then
   run "keys (joystick in every control method)" cargo run -q --release -p sk-check --locked -- keys "$SK_ASSETS"
+  run "facts (the panel's entry points vs the game)" cargo run -q --release -p sk-check --locked -- facts "$SK_ASSETS"
   if [ -f "$SK_ASSETS/48.rom" ]; then
     run "entry (real ROM loader)"  cargo run -q --release -p sk-check --locked -- entry "$SK_ASSETS"
     run "rom (answers vs real ROM)" cargo run -q --release -p sk-check --locked -- rom "$SK_ASSETS" 6000

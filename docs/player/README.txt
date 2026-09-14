@@ -67,15 +67,37 @@ made: in play, the program presses the keys the game is listening for.
   full stop or comma
   Gamepad              D-pad or left stick to move. A (the bottom
                        button) is down, which lays a platform under
-                       you; X (the left button) fires. Start pauses,
-                       and the window says so and how to go on: move
-                       or fire, which is how the game itself resumes;
-                       its pause key does not. On the
-                       title screen Start or X starts a game, and goes
-                       past the text that follows. Over USB or
-                       Bluetooth.
+                       you; X (the left button) fires. Start pauses.
+                       On the title screen Start or X starts a game,
+                       and goes past the text that follows. Over USB
+                       or Bluetooth.
                        Some controllers need the right mode: an 8BitDo
                        in Switch mode is detected but sends no input.
+
+Pausing, with Start or with the game's own pause key (Space, or the key
+you defined), stops the game where it is and the window says so. Any
+key, a direction, fire or Start goes on.
+
+
+GUIDANCE
+--------
+
+The panel beside the picture is for guidance: optional help, in levels
+from 0 (none) to 5. The levels, and training mode, are still to be
+built; for now the panel shows what you have chosen.
+
+  Esc, or Select       Open the guidance picker. The game waits while
+  on a gamepad         it is open.
+  Up and down          Choose a row.
+  Left and right       Change the guidance level or training mode.
+  Enter, or A          OK: keep what you changed. End this game and
+                       Exit Starquake need a second press.
+  Esc, B or Select     Cancel: leave the picker as it was when it
+                       opened.
+
+Raising the level, or turning training mode on, shows on that game's
+score, so the picker asks first. When a game is over the panel says how
+much help it had. Nothing is saved: every start is at level 0.
 
 
 LEGAL

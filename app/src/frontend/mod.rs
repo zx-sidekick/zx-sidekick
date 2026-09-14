@@ -1,13 +1,18 @@
 //! Window, input and sound around the emulated machine.
 
 mod audio;
+mod freeze;
 mod gamepad;
+mod guidance;
 pub mod headless;
 mod input;
 mod notice;
+mod overlay;
+mod panel;
 mod prompt;
 pub mod tape;
 mod text;
+mod track;
 mod video;
 
 use std::path::Path;
@@ -15,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use sidekick::starquake::{ENTRY_PC, ENTRY_SP};
+use sidekick::starquake::{ENTRY_PC, ENTRY_SP, end_game_hold};
 use sidekick::{Input, Machine};
 
 /// How long a Spectrum frame lasts, from the clock it is derived from
@@ -30,7 +35,7 @@ const LOADING_FRAMES: u32 = 150;
 /// State shared between the machine's thread and the window.
 pub struct Shared {
     /// The most recent frame: display memory, border colour, frame number,
-    /// and whether the game is paused in it.
+    /// and whether the game is paused: the emulation frozen.
     pub screen: Mutex<(Vec<u8>, u8, u64, bool)>,
     pub input: Mutex<Input>,
     /// Set when either side wants to stop: the window was closed, or the
@@ -39,6 +44,10 @@ pub struct Shared {
     /// Set when the machine's thread stopped without being asked to, so the
     /// window can report it rather than sitting on a frozen picture.
     pub dead: AtomicBool,
+    /// The guidance level, training mode and the picker.
+    pub guidance: Mutex<guidance::Guidance>,
+    /// Which part of the program the game is in, for the panel.
+    pub scene: Mutex<track::Scene>,
 }
 
 /// The machine's thread: runs a frame, plays its sound, shows its screen,
@@ -53,9 +62,48 @@ struct Runner {
 }
 
 impl Runner {
+    /// Holds the machine between frames while the guidance picker is open,
+    /// taking the gamepad's side of it: up and down choose a row, left and
+    /// right change a setting, A does the highlighted thing, and B or Select
+    /// goes back. No time passes for the game, so its pacing starts again
+    /// from now. Returns no input for the frame it resumes on, so the button
+    /// that closed the picker is not also a shot in the game.
+    fn hold_for_picker(&mut self) -> gamepad::Pad {
+        while self.shared.guidance.lock().unwrap().picker_open()
+            && !self.shared.quit.load(Ordering::Relaxed)
+        {
+            std::thread::sleep(Duration::from_millis(20));
+            let pad = self.pad.poll();
+            let mut guidance = self.shared.guidance.lock().unwrap();
+            if pad.select || pad.east {
+                guidance.back();
+            }
+            if pad.up {
+                guidance.focus_up();
+            }
+            if pad.down {
+                guidance.focus_down();
+            }
+            if pad.left {
+                guidance.change(false);
+            }
+            if pad.right {
+                guidance.change(true);
+            }
+            if pad.south {
+                guidance.enter();
+                if guidance.take(guidance::Action::Exit) {
+                    self.shared.quit.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+        self.next_frame = Instant::now();
+        gamepad::Pad::default()
+    }
+
     /// Shows `memory` for a frame, plays `edges` over it, and waits until it
     /// is time for the next.
-    fn present(&mut self, memory: &[u8], border: u8, edges: &[(u32, bool)], paused: bool) {
+    fn present(&mut self, memory: &[u8], border: u8, edges: &[(u32, bool)]) {
         self.beeper.play(edges, zx_spectrum::FRAME_T);
         {
             let mut screen = self.shared.screen.lock().unwrap();
@@ -63,7 +111,7 @@ impl Runner {
             screen.0.copy_from_slice(&memory[..n]);
             screen.1 = border;
             screen.2 = self.frame;
-            screen.3 = paused;
+            screen.3 = false;
         }
         self.frame += 1;
         // Pace by the clock, at the Spectrum's own frame rate, leaning a
@@ -103,23 +151,82 @@ impl Runner {
                 if self.shared.quit.load(Ordering::Relaxed) {
                     return Ok(());
                 }
-                self.present(&memory, 0, &[], false);
+                if self.pad.poll().select {
+                    self.shared.guidance.lock().unwrap().open();
+                }
+                if self.shared.guidance.lock().unwrap().picker_open() {
+                    self.hold_for_picker();
+                }
+                self.present(&memory, 0, &[]);
             }
         }
+        machine.watch = track::WATCH.to_vec();
+        let mut tracker = track::Tracker::default();
+        let mut freeze = freeze::Freeze::default();
+        // Whether the game's pause key was pressed in the last frame.
+        let mut pause = false;
         while !self.shared.quit.load(Ordering::Relaxed) {
-            let pad = self.pad.poll();
+            let mut pad = self.pad.poll();
+            if pad.select {
+                let mut guidance = self.shared.guidance.lock().unwrap();
+                if !guidance.picker_open() {
+                    guidance.open();
+                }
+            }
+            if self.shared.guidance.lock().unwrap().picker_open() {
+                pad = self.hold_for_picker();
+            }
+            // End this game holds the game's own keys for abandoning a game,
+            // from the top of the play loop; the request lasts until the game
+            // has left play.
+            if self
+                .shared
+                .guidance
+                .lock()
+                .unwrap()
+                .take(guidance::Action::EndGame)
+                && tracker.scene == track::Scene::Play
+            {
+                machine.hold = Some(end_game_hold());
+                freeze.thaw();
+            }
             let input = *self.shared.input.lock().unwrap();
+            // Paused: no frame runs until a key, a direction, fire or Start,
+            // and the window shows the notice meanwhile.
+            let held = freeze::Held {
+                start: pad.start,
+                keys: input.keys,
+                joystick: input.joystick | pad.bits,
+            };
+            if freeze.poll(held, pause, tracker.scene == track::Scene::Play) {
+                pause = false;
+                self.shared.screen.lock().unwrap().3 = true;
+                std::thread::sleep(Duration::from_millis(20));
+                self.next_frame = Instant::now();
+                continue;
+            }
             machine.zx.keys = input.keys;
             machine.zx.kempston = 0;
             // The keyboard's joystick and the pad together; the machine
             // presses them as the game's chosen control method listens.
             machine.joystick = input.joystick | pad.bits;
             machine.start = pad.start;
-            machine.run_frame();
+            let hits = machine.run_frame();
+            pause = machine.pause_pressed;
+            {
+                let mut guidance = self.shared.guidance.lock().unwrap();
+                for hit in hits {
+                    if let Some(scene) = tracker.follow(hit, &mut guidance) {
+                        *self.shared.scene.lock().unwrap() = scene;
+                    }
+                }
+            }
+            if tracker.scene != track::Scene::Play {
+                machine.hold = None;
+            }
             let edges = std::mem::take(&mut machine.zx.speaker);
             let border = machine.zx.border;
-            let paused = machine.paused;
-            self.present(&machine.zx.mem[0x4000..0x5B00], border, &edges, paused);
+            self.present(&machine.zx.mem[0x4000..0x5B00], border, &edges);
         }
         Ok(())
     }
@@ -158,6 +265,8 @@ fn new_shared() -> Arc<Shared> {
         input: Mutex::new(Input::default()),
         quit: AtomicBool::new(false),
         dead: AtomicBool::new(false),
+        guidance: Mutex::new(guidance::Guidance::default()),
+        scene: Mutex::new(track::Scene::Loading),
     })
 }
 
