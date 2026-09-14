@@ -10,6 +10,8 @@ mod guidance;
 pub mod headless;
 mod input;
 mod notice;
+mod overlay;
+mod panel;
 mod prompt;
 pub mod tape;
 mod text;

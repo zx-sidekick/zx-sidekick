@@ -1,4 +1,6 @@
-//! The window: draws the latest frame, with its border, scaled by the GPU.
+//! The window: draws the latest frame, with its border, scaled by the GPU,
+//! and beside it the guidance panel, laid over at the window's own
+//! resolution with the picker and the pause notice.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -13,9 +15,11 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use super::Shared;
-use super::notice::Notice;
+use super::overlay::{self, Overlay};
+use super::panel::Panel;
 use super::prompt::{self, Outcome, Prompt};
 use super::text::Canvas;
+use super::track::Scene;
 use sidekick::Input;
 use zx_core::screen::{BITMAP_LEN, HEIGHT, WIDTH};
 
@@ -23,6 +27,11 @@ const BORDER: usize = 32;
 pub const FULL_W: usize = WIDTH + 2 * BORDER;
 pub const FULL_H: usize = HEIGHT + 2 * BORDER;
 const SCALE: f64 = 3.0;
+/// The guidance panel's width at the Spectrum's scale. The window is the
+/// picture and the panel side by side, a whole multiple of both, so the
+/// picture is scaled exactly as it was before the panel existed.
+pub const PANEL_W: usize = 136;
+const WINDOW_W: usize = FULL_W + PANEL_W;
 
 /// A palette colour as the opaque RGBA pixel `pixels` wants.
 fn rgba(c: u32) -> [u8; 4] {
@@ -40,6 +49,26 @@ pub fn draw(mem: &[u8], border: u8, frame: u64, out: &mut [u8]) {
         out,
         FULL_W,
         BORDER * FULL_W + BORDER,
+        rgba,
+    );
+}
+
+/// Draws the picture into the window's buffer, which has the panel's width
+/// beside it. The overlay covers the panel's part; it is filled here only so
+/// nothing stale shows before the overlay's first frame.
+fn draw_window(mem: &[u8], border: u8, frame: u64, out: &mut [u8]) {
+    let edge = rgba(zx_core::screen::PALETTE[(border & 7) as usize]);
+    for row in out.as_chunks_mut::<4>().0.as_chunks_mut::<WINDOW_W>().0 {
+        row[..FULL_W].fill(edge);
+        row[FULL_W..].fill([0, 0, 0, 0xFF]);
+    }
+    zx_core::screen::render(
+        mem,
+        &mem[BITMAP_LEN..],
+        (frame / 16) % 2 == 1,
+        out.as_chunks_mut::<4>().0,
+        WINDOW_W,
+        BORDER * WINDOW_W + BORDER,
         rgba,
     );
 }
@@ -85,12 +114,14 @@ struct App {
     held: HashSet<KeyCode>,
     /// The game frame last painted, so the same one is not painted twice.
     shown: u64,
-    /// The notice drawn over a paused game, loaded the first time it pauses.
-    notice: Option<Notice>,
-    /// Whether the frame buffer is the window's own size, which it is while
-    /// the game is paused so the notice's text is sharp; in play it is the
-    /// Spectrum's screen, scaled up by the GPU.
-    full_size: bool,
+    /// The panel, the picker and the pause notice, laid over the game at
+    /// the window's resolution.
+    overlay: Option<Overlay>,
+    panel: Panel,
+    /// What the overlay was last drawn from: the guidance's version, the
+    /// scene, whether the game was paused, and the size it was drawn at.
+    /// It is redrawn only when this changes.
+    drawn: Option<(u64, Scene, bool, (u32, u32))>,
 }
 
 impl ApplicationHandler for App {
@@ -101,10 +132,10 @@ impl ApplicationHandler for App {
         let attrs = Window::default_attributes()
             .with_title("ZX Sidekick · Starquake")
             .with_inner_size(LogicalSize::new(
-                FULL_W as f64 * SCALE,
+                WINDOW_W as f64 * SCALE,
                 FULL_H as f64 * SCALE,
             ))
-            .with_min_inner_size(LogicalSize::new(FULL_W as f64, FULL_H as f64));
+            .with_min_inner_size(LogicalSize::new(WINDOW_W as f64, FULL_H as f64));
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),
             Err(e) => {
@@ -122,6 +153,7 @@ impl ApplicationHandler for App {
         let (bw, bh) = self.buffer_size();
         match Pixels::new(bw, bh, surface) {
             Ok(mut p) => {
+                self.overlay = Some(Overlay::new(&p.context().device, p.render_texture_format()));
                 if self.prompt.is_some() {
                     // The prompt is narrower than the window; its margins
                     // should be its own colour, not black.
@@ -170,13 +202,7 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => {
                 if let Some(p) = &mut self.pixels {
                     let _ = p.resize_surface(size.width, size.height);
-                    if self.full_size {
-                        let _ = p.resize_buffer(size.width.max(1), size.height.max(1));
-                    }
                 }
-            }
-            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                self.scale = scale_factor;
             }
             WindowEvent::RedrawRequested => self.redraw_game(event_loop),
             _ => {}
@@ -200,8 +226,16 @@ impl ApplicationHandler for App {
         // the rate to how long `render` blocks, and the moment the window is
         // occluded it stops blocking at all: that spun this thread at over
         // 20,000 repaints a second, burning a core the game needs.
-        let latest = self.shared.screen.lock().unwrap().2;
-        if latest != self.shown {
+        let (latest, paused) = {
+            let screen = self.shared.screen.lock().unwrap();
+            (screen.2, screen.3)
+        };
+        let version = self.shared.guidance.lock().unwrap().version();
+        let scene = *self.shared.scene.lock().unwrap();
+        let overlay_stale = self
+            .drawn
+            .is_none_or(|(v, s, p, _)| v != version || s != scene || p != paused);
+        if latest != self.shown || overlay_stale {
             self.shown = latest;
             if let Some(w) = &self.window {
                 w.request_redraw();
@@ -224,54 +258,43 @@ impl App {
                 (f64::from(prompt::HEIGHT) * self.scale).round() as u32,
             )
         } else {
-            (FULL_W as u32, FULL_H as u32)
+            (WINDOW_W as u32, FULL_H as u32)
         }
     }
 
-    /// Paints the game's latest frame: the picture as it is, or, while the
-    /// game is paused, the picture dimmed under the notice, drawn into a
-    /// buffer the window's own size so the notice's text is sharp.
+    /// Paints the game's latest frame, then lays the overlay over it,
+    /// redrawing the overlay first if what it shows has changed.
     fn redraw_game(&mut self, event_loop: &ActiveEventLoop) {
         let Some(p) = &mut self.pixels else {
             return;
         };
-        let (memory, border, frame, paused) = {
+        let paused = {
             let screen = self.shared.screen.lock().unwrap();
-            (screen.0.clone(), screen.1, screen.2, screen.3)
+            draw_window(&screen.0, screen.1, screen.2, p.frame_mut());
+            screen.3
         };
-        if paused != self.full_size {
-            self.full_size = paused;
-            let (w, h) = if paused {
-                self.window.as_ref().map_or((1, 1), |w| {
-                    let s = w.inner_size();
-                    (s.width.max(1), s.height.max(1))
-                })
-            } else {
-                (FULL_W as u32, FULL_H as u32)
-            };
-            if let Err(e) = p.resize_buffer(w, h) {
-                self.error = Some(e.to_string());
-                event_loop.exit();
-                return;
+        let clip = p.context().scaling_renderer.clip_rect();
+        let guidance = self.shared.guidance.lock().unwrap().clone();
+        let scene = *self.shared.scene.lock().unwrap();
+        let key = (guidance.version(), scene, paused, (clip.2, clip.3));
+        if self.drawn != Some(key)
+            && let Some(overlay) = &mut self.overlay
+        {
+            let scale = clip.2 as f32 / overlay::WIDTH;
+            let mut canvas = overlay.canvas(clip.2, clip.3, scale);
+            self.panel.draw(&mut canvas, &guidance, scene, paused);
+            self.drawn = Some(key);
+        }
+        let overlay = &mut self.overlay;
+        let rendered = p.render_with(|encoder, target, context| {
+            context.scaling_renderer.render(encoder, target);
+            if let Some(overlay) = overlay {
+                let clip = context.scaling_renderer.clip_rect();
+                overlay.render(&context.device, &context.queue, encoder, target, clip);
             }
-        }
-        if paused {
-            let mut picture = vec![0u8; FULL_W * FULL_H * 4];
-            draw(&memory, border, frame, &mut picture);
-            let (w, h) = (p.texture().width() as usize, p.texture().height() as usize);
-            let mut canvas = Canvas {
-                pixels: p.frame_mut(),
-                width: w,
-                height: h,
-                scale: self.scale as f32,
-            };
-            self.notice
-                .get_or_insert_with(Notice::new)
-                .draw(&mut canvas, &picture);
-        } else {
-            draw(&memory, border, frame, p.frame_mut());
-        }
-        if let Err(e) = p.render() {
+            Ok(())
+        });
+        if let Err(e) = rendered {
             self.error = Some(e.to_string());
             event_loop.exit();
         }
@@ -388,8 +411,9 @@ pub fn run(shared: Arc<Shared>, prompt: Option<Prompt>, launch: Launcher) -> Res
         error: None,
         shown: u64::MAX,
         held: HashSet::new(),
-        notice: None,
-        full_size: false,
+        overlay: None,
+        panel: Panel::new(),
+        drawn: None,
     };
     event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
     if let Some(e) = app.error {
@@ -427,6 +451,22 @@ mod tests {
         assert_eq!(pixel(&out, BORDER + 255, BORDER + 191), [0, 0, 0xD8, 0xFF]);
         assert_eq!(pixel(&out, BORDER + 256, BORDER + 191), [0, 0xD8, 0, 0xFF]);
         assert_eq!(pixel(&out, FULL_W - 1, FULL_H - 1), [0, 0xD8, 0, 0xFF]);
+    }
+
+    #[test]
+    fn the_window_is_the_picture_with_the_panel_beside_it() {
+        let mut out = vec![0u8; WINDOW_W * FULL_H * 4];
+        draw_window(&screen(0xFF, 0o21), 4, 0, &mut out);
+        let at = |x: usize, y: usize| {
+            let i = (y * WINDOW_W + x) * 4;
+            <[u8; 4]>::try_from(&out[i..i + 4]).unwrap()
+        };
+        assert_eq!(at(0, 0), [0, 0xD8, 0, 0xFF], "the border");
+        assert_eq!(at(BORDER, BORDER), [0, 0, 0xD8, 0xFF], "the picture");
+        assert_eq!(at(FULL_W - 1, FULL_H - 1), [0, 0xD8, 0, 0xFF]);
+        assert_eq!(at(FULL_W, 0), [0, 0, 0, 0xFF], "the panel's place");
+        assert_eq!(at(WINDOW_W - 1, FULL_H - 1), [0, 0, 0, 0xFF]);
+        assert_eq!((WINDOW_W * 3, FULL_H * 3), (1368, 768));
     }
 
     #[test]
