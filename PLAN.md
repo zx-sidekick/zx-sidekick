@@ -7,11 +7,11 @@ Steps, in order, ticked as they land. Each ends with the gate green, a commit, a
 3. [x] **Starquake with no ROM.** `JR $` traps at the three ROM entries, the answers to MASK-INT, PRINT-A-2 and HL-HL×DE, the start state from the tape, `docs/rom.md`. `sk-check entry` (the real loader returns where the game is started) and `sk-check rom` (every ROM call answered as the real ROM does).
 4. [x] **Window, sound and controls.** The picture, the beeper, 50 Hz pacing, keyboard, gamepad as a Kempston joystick, the tape prompt and data directory, and headless screenshots.
 5. [x] **Documents.** `README.md` with what works and how it is checked, `REUSED.md` complete, screenshots checked by eye.
+6. [x] **The way of working and CI from starquake-recompiled** (#1). `CLAUDE.md`, the skills and the board; CI's dependency policy, `THIRD-PARTY.md`, frontend-free libraries and Intel Mac build; `release.yml` with the player's guide.
 
 ## Later
 
 - Adopt the fork's features: a derived `Clone` for `Zx`, and `Z80::step` for the interrupt, removing the trap at `0x0038` and its time given back, `fetched_from`, and the ROM check's copy before every step. The `JR $` at `0x15F2` and `0x30A9` stay as safety stops, and every check must come out the same.
 - Gamepad: press the chosen control method's keys (method at `0x5E58`), and have Start press its pause key (`UDK_PAUSE` at `0x5E70`).
-- Packaging: `THIRD-PARTY.md` via cargo-about, a cargo-deny policy check, a player README.
-- Release builds for Linux, Windows and macOS, only when asked.
+- Release builds for Linux, Windows and macOS: `release.yml` is ready (#1); tagging a version happens only when asked.
 - Hand checks by the maintainer: the tape prompt and sound.
