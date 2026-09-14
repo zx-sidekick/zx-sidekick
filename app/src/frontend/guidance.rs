@@ -88,6 +88,9 @@ pub struct Guidance {
     visited: Vec<bool>,
     /// The room Blob is in, while a game is being played.
     room: Option<u16>,
+    /// The rooms holding a core piece still needed, for level 3 (#6), in
+    /// the game being played or just ended.
+    pieces: RoomSet,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -203,12 +206,28 @@ impl Guidance {
         }
     }
 
-    /// Forgets the map of the game that has ended, once its game-over
-    /// screens are done: the title screen shows none.
+    /// Whether `room` holds a core piece still needed.
+    pub fn piece(&self, room: u16) -> bool {
+        self.pieces.contains(room)
+    }
+
+    /// Takes the rooms holding a core piece still needed, if they have
+    /// changed.
+    pub fn set_pieces(&mut self, rooms: &RoomSet) {
+        if self.pieces != *rooms {
+            self.pieces = rooms.clone();
+            self.version += 1;
+        }
+    }
+
+    /// Forgets the map and pieces of the game that has ended, once its
+    /// game-over screens are done: the title screen shows none.
     pub fn forget_map(&mut self) {
-        if !self.visited.is_empty() || self.room.is_some() {
+        let empty = RoomSet::default();
+        if !self.visited.is_empty() || self.room.is_some() || self.pieces != empty {
             self.visited.clear();
             self.room = None;
+            self.pieces = empty;
             self.version += 1;
         }
     }
@@ -370,9 +389,8 @@ impl Guidance {
         self.version += 1;
     }
 
-    /// Puts a level into effect and records it, outside the picker. For
-    /// tests, which start from a setting without going through the picker.
-    #[cfg(test)]
+    /// Puts a level into effect and records it, outside the picker: for
+    /// tests, and for screenshots taken without a window.
     pub fn set_level(&mut self, level: u8) {
         self.level = level.min(LEVELS.len() as u8 - 1);
         self.record.highest = self.record.highest.max(self.level);
@@ -675,6 +693,14 @@ mod tests {
         g.set_room(Some(98));
         assert_eq!(g.version(), before, "nothing new, nothing to redraw");
 
+        let mut pieces = RoomSet::default();
+        pieces.set(300, true);
+        g.set_pieces(&pieces);
+        assert!(g.piece(300) && !g.piece(98));
+        let after = g.version();
+        g.set_pieces(&pieces);
+        assert_eq!(g.version(), after, "the same pieces, nothing to redraw");
+
         g.set_room(Some(512));
         assert_eq!(
             g.room(),
@@ -683,6 +709,7 @@ mod tests {
         );
         g.forget_map();
         assert_eq!(g.explored(), 0, "the title screen shows no map");
+        assert!(!g.piece(300), "nor any pieces");
         let forgotten = g.version();
         g.forget_map();
         assert_eq!(g.version(), forgotten, "nothing left to forget");

@@ -16,30 +16,39 @@ use super::track::{self, Scene, Tracker};
 use super::video::{FULL_H, FULL_W, draw};
 
 /// Keys that carry an unattended run past the menu: `1` for the Kempston
-/// joystick, `0` to start, and then the joystick wandering.
-fn script(machine: &mut Machine, frame: u64) {
+/// joystick, `0` to start, Enter past the intro text, and then the joystick
+/// wandering at random, a new direction every ten frames, so a run gets
+/// about the planet. `seed` is the wander's state.
+fn script(machine: &mut Machine, frame: u64, seed: &mut u64) {
     machine.zx.release_all_keys();
-    machine.joystick = 0;
     match frame {
         50..=54 => machine.zx.keys[3] &= !0x01,
         100..=104 => machine.zx.keys[4] &= !0x01,
-        200.. => machine.joystick = [0x01, 0x02, 0x09, 0x0A, 0x11][(frame as usize / 25) % 5],
-        _ => {}
+        330..=334 => machine.zx.keys[6] &= !0x01,
+        400.. if frame.is_multiple_of(10) => {
+            *seed ^= *seed << 13;
+            *seed ^= *seed >> 7;
+            *seed ^= *seed << 17;
+            machine.joystick = [0x01, 0x02, 0x08, 0x04, 0x10][(*seed % 5) as usize];
+        }
+        400.. => {}
+        _ => machine.joystick = 0,
     }
 }
 
-/// Runs `frames` frames and writes screenshots to `dir`.
+/// Runs `frames` frames at guidance `level` and writes screenshots to `dir`.
 ///
 /// # Errors
 ///
 /// If the tape cannot be read or the folder cannot be written.
-pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
+pub fn run(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let tape = super::tape::read(path)?;
     let mut machine = Machine::from_tape(&tape, ENTRY_PC, ENTRY_SP)?;
     machine.watch = track::WATCH.to_vec();
     let mut tracker = Tracker::default();
     let mut guidance = Guidance::default();
+    guidance.set_level(level);
     guidance.set_openings(sidekick::starquake::all_openings(&machine));
     let mut panel = Panel::new();
     let mut picture = vec![0u8; FULL_W * FULL_H * 4];
@@ -53,8 +62,9 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
         save(&shot, &dir.join("loading.png"))?;
     }
     let every = (frames / 40).max(1);
+    let mut seed = 0xBEEF;
     for frame in 0..frames {
-        script(&mut machine, frame);
+        script(&mut machine, frame, &mut seed);
         for hit in machine.run_frame() {
             tracker.follow(&machine.zx.mem[..], hit, &mut guidance);
         }
