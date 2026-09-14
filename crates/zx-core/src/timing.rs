@@ -64,6 +64,42 @@ pub const fn contention(t: u32) -> u32 {
 mod tests {
     use super::*;
 
+    /// The first contended T-state, and a line's length.
+    const FIRST: u32 = 14335;
+    const LINE: u32 = 224;
+
+    #[test]
+    fn the_top_border_is_not_contended() {
+        assert_eq!(contention(0), 0);
+        assert_eq!(contention(FIRST - 1), 0);
+    }
+
+    #[test]
+    fn a_drawn_line_counts_down_six_to_zero_in_eights() {
+        let pattern: Vec<u32> = (0..16).map(|i| contention(FIRST + i)).collect();
+        assert_eq!(pattern, [6, 5, 4, 3, 2, 1, 0, 0, 6, 5, 4, 3, 2, 1, 0, 0]);
+        // The same on the last drawn line.
+        assert_eq!(contention(FIRST + 191 * LINE), 6);
+        assert_eq!(contention(FIRST + 191 * LINE + 125), 1);
+    }
+
+    #[test]
+    fn the_side_borders_and_the_bottom_are_not_contended() {
+        assert_eq!(contention(FIRST + 128), 0);
+        assert_eq!(contention(FIRST + LINE - 1), 0);
+        assert_eq!(contention(FIRST + LINE), 6);
+        assert_eq!(contention(FIRST + 192 * LINE), 0);
+        assert_eq!(contention(FRAME_T - 1), 0);
+    }
+
+    #[test]
+    fn the_pattern_repeats_every_frame() {
+        for t in [FIRST, FIRST + 3, FIRST + 1000, FIRST + 130] {
+            assert_eq!(contention(t + FRAME_T), contention(t));
+            assert_eq!(contention(t + 7 * FRAME_T), contention(t));
+        }
+    }
+
     #[test]
     fn a_frame_is_just_under_20ms() {
         assert_eq!(FRAME_NANOS, 19_968_000);

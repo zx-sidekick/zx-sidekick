@@ -112,3 +112,118 @@ pub fn load_tap(bytes: &[u8]) -> Result<Tape, String> {
         loading_screen,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tape block: its length, then the flag, the payload and the checksum.
+    fn block(flag: u8, payload: &[u8]) -> Vec<u8> {
+        let len = (payload.len() + 2) as u16;
+        let sum = payload.iter().fold(flag, |a, b| a ^ b);
+        let mut out = len.to_le_bytes().to_vec();
+        out.push(flag);
+        out.extend_from_slice(payload);
+        out.push(sum);
+        out
+    }
+
+    /// A header saying the next block is `kind`, `length` bytes for `start`.
+    fn header(kind: u8, length: u16, start: u16) -> Vec<u8> {
+        let mut payload = vec![kind];
+        payload.extend_from_slice(b"test      ");
+        payload.extend_from_slice(&length.to_le_bytes());
+        payload.extend_from_slice(&start.to_le_bytes());
+        payload.extend_from_slice(&0x8000u16.to_le_bytes());
+        block(HEADER, &payload)
+    }
+
+    fn code(start: u16, data: &[u8]) -> Vec<u8> {
+        let mut out = header(CODE, data.len() as u16, start);
+        out.extend(block(DATA, data));
+        out
+    }
+
+    #[test]
+    fn a_code_block_loads_at_its_address() {
+        let tape = load_tap(&code(0x8000, &[1, 2, 3])).unwrap();
+        assert_eq!(&tape.ram[0x4000..0x4003], &[1, 2, 3]);
+        assert!(tape.loading_screen.is_none());
+        let mem = tape.memory();
+        assert_eq!(mem.len(), 0x10000);
+        assert_eq!(&mem[0x8000..0x8003], &[1, 2, 3]);
+        assert!(mem[..0x4000].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn a_screen_block_is_the_loading_picture_and_later_code_lands_on_top() {
+        let picture = vec![0xAA; SCREEN_LEN];
+        let mut bytes = code(0x4000, &picture);
+        bytes.extend(code(0x4000, &[0x55; 4]));
+        let tape = load_tap(&bytes).unwrap();
+        assert_eq!(tape.loading_screen.as_deref(), Some(&picture[..]));
+        assert_eq!(&tape.ram[..5], &[0x55, 0x55, 0x55, 0x55, 0xAA]);
+    }
+
+    #[test]
+    fn a_block_longer_than_its_header_says_loads_only_what_the_header_says() {
+        let mut bytes = header(CODE, 2, 0x9000);
+        bytes.extend(block(DATA, &[7, 8, 9]));
+        let tape = load_tap(&bytes).unwrap();
+        assert_eq!(&tape.ram[0x5000..0x5003], &[7, 8, 0]);
+    }
+
+    #[test]
+    fn a_bad_checksum_is_an_error() {
+        let mut bytes = code(0x8000, &[1, 2, 3]);
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0xFF;
+        let err = load_tap(&bytes).err().unwrap();
+        assert!(err.contains("corrupt"), "{err}");
+    }
+
+    #[test]
+    fn a_block_running_off_the_end_is_an_error() {
+        let mut bytes = code(0x8000, &[1, 2, 3]);
+        bytes.truncate(bytes.len() - 2);
+        let err = load_tap(&bytes).err().unwrap();
+        assert!(err.contains("truncated"), "{err}");
+    }
+
+    #[test]
+    fn data_without_a_code_header_is_skipped() {
+        // A program header, then its data, then a stray data block: none of
+        // them is code, so the tape has nothing to load.
+        let mut bytes = header(0, 3, 0);
+        bytes.extend(block(DATA, &[1, 2, 3]));
+        bytes.extend(block(DATA, &[4, 5, 6]));
+        let err = load_tap(&bytes).err().unwrap();
+        assert_eq!(err, "no code blocks on the tape");
+    }
+
+    #[test]
+    fn a_block_for_the_rom_is_skipped_but_counted() {
+        let err = load_tap(&code(0x0000, &[1, 2, 3])).err().unwrap();
+        assert!(err.contains("placed nothing in RAM"), "{err}");
+
+        // The rest of the tape still loads.
+        let mut bytes = code(0x0000, &[1, 2, 3]);
+        bytes.extend(code(0xFFFE, &[4, 5]));
+        let tape = load_tap(&bytes).unwrap();
+        assert_eq!(&tape.ram[0xBFFE..], &[4, 5]);
+    }
+
+    #[test]
+    fn a_block_past_the_end_of_memory_is_skipped() {
+        let mut bytes = code(0xFFFE, &[1, 2, 3]);
+        bytes.extend(code(0x8000, &[9]));
+        let tape = load_tap(&bytes).unwrap();
+        assert_eq!(tape.ram[0xBFFE], 0);
+        assert_eq!(tape.ram[0x4000], 9);
+    }
+
+    #[test]
+    fn an_empty_tape_has_no_code() {
+        assert_eq!(load_tap(&[]).err().unwrap(), "no code blocks on the tape");
+    }
+}

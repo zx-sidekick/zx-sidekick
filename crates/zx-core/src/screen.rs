@@ -93,6 +93,64 @@ mod tests {
         assert_eq!(line_offset(191), 6112);
     }
 
+    /// Renders `bitmap` and `attrs` into a picture with a one-pixel margin,
+    /// as a caller drawing a border would, with the palette index as the
+    /// pixel.
+    fn draw(bitmap: &[u8], attrs: &[u8], flash: bool) -> Vec<u32> {
+        let stride = WIDTH + 2;
+        let mut out = vec![u32::MAX; stride * (HEIGHT + 2)];
+        render(bitmap, attrs, flash, &mut out, stride, stride + 1, |c| {
+            PALETTE.iter().position(|&p| p == c).unwrap() as u32
+        });
+        out
+    }
+
+    #[test]
+    fn ink_paper_bright_and_flash_come_from_the_attribute() {
+        let mut bitmap = vec![0u8; BITMAP_LEN];
+        let mut attrs = vec![0u8; ATTR_LEN];
+        // Cell (0, 0): the left pixel set, blue ink on red paper.
+        bitmap[0] = 0x80;
+        attrs[0] = 0o21;
+        // Cell (1, 0), one character row down: all set, bright yellow ink.
+        for y in 8..16 {
+            bitmap[line_offset(y)] = 0xFF;
+        }
+        attrs[32] = 0x40 | 6;
+        // Cell (0, 1): flashing, white ink on black paper, no pixels set.
+        attrs[1] = 0x80 | 7;
+
+        let stride = WIDTH + 2;
+        let at = |pic: &[u32], x: usize, y: usize| pic[(y + 1) * stride + x + 1];
+        let pic = draw(&bitmap, &attrs, false);
+        assert_eq!(at(&pic, 0, 0), 1, "ink");
+        assert_eq!(at(&pic, 1, 0), 2, "paper");
+        assert_eq!(at(&pic, 3, 12), 14, "bright yellow ink");
+        assert_eq!(at(&pic, 8, 0), 0, "flash off shows paper");
+        let pic = draw(&bitmap, &attrs, true);
+        assert_eq!(at(&pic, 8, 0), 7, "flash on shows ink");
+        assert_eq!(at(&pic, 0, 0), 1, "a cell without flash is unchanged");
+    }
+
+    #[test]
+    fn rendering_leaves_the_margin_alone() {
+        let pic = draw(&vec![0xFF; BITMAP_LEN], &vec![7; ATTR_LEN], false);
+        let stride = WIDTH + 2;
+        assert_eq!(pic[0], u32::MAX);
+        assert_eq!(pic[stride], u32::MAX);
+        assert_eq!(pic[stride + 1], 7);
+        assert_eq!(pic[stride + WIDTH + 1], u32::MAX);
+        assert_eq!(pic[(HEIGHT + 1) * stride + 1], u32::MAX);
+    }
+
+    #[test]
+    fn a_cell_covers_eight_lines() {
+        assert_eq!(attr_offset(0), 0);
+        assert_eq!(attr_offset(7), 0);
+        assert_eq!(attr_offset(8), 32);
+        assert_eq!(attr_offset(191), 23 * 32);
+    }
+
     #[test]
     fn every_line_is_used_exactly_once() {
         let mut seen = [false; HEIGHT];
