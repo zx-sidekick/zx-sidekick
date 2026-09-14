@@ -3,7 +3,9 @@
 //! The pad reports the five joystick bits in the Kempston port's order, and
 //! the machine presses them however the game's chosen control method
 //! listens, so the pad works whichever option was picked on the title
-//! screen. Start is the game's pause key, pressed the same way.
+//! screen. The d-pad and the left stick move; the bottom face button is
+//! down and the left one fires, as platformers lay them out; Start is the
+//! game's pause key, pressed the same way.
 //!
 //! How the pad is attached is not this code's business, or `gilrs`'s. A
 //! Bluetooth controller the operating system has paired is an ordinary
@@ -68,18 +70,14 @@ impl Gamepad {
             if pressed(Button::DPadUp) || y > DEADZONE {
                 pad.bits |= 0x08;
             }
-            // Any of the buttons under a thumb or finger fires.
-            let fire = [
-                Button::South,
-                Button::East,
-                Button::North,
-                Button::West,
-                Button::RightTrigger,
-                Button::LeftTrigger,
-                Button::RightTrigger2,
-                Button::LeftTrigger2,
-            ];
-            if fire.into_iter().any(pressed) {
+            // The face buttons as a platformer lays them out: the bottom
+            // one (A on an Xbox pad) is down, which in Starquake lays a
+            // platform under Blob, the move a player makes most; the left
+            // one (X) fires. The others do nothing.
+            if pressed(Button::South) {
+                pad.bits |= 0x04;
+            }
+            if pressed(Button::West) {
                 pad.bits |= 0x10;
             }
             pad.start |= pressed(Button::Start);
