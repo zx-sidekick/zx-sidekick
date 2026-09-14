@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check.sh — the gate. Exits non-zero if anything fails.
+# check.sh — the pre-PR gate. Exits non-zero if anything fails.
 #
 # The processor conformance test needs the Fuse corpus in assets/; without
 # it that check is reported as skipped, loudly.
@@ -21,6 +21,30 @@ run "build"   cargo build --workspace --all-targets --locked
 run "test"    cargo test --workspace --locked
 run "clippy"  cargo clippy --workspace --all-targets --locked -- -D warnings
 RUSTDOCFLAGS="-D warnings" run "doc" cargo doc --workspace --no-deps --locked
+# The machine and the checks are meant to have no platform dependencies at
+# all: windows, sound, input and file dialogs belong to the app alone.
+run "no-frontend" scripts/no-frontend.sh
+# What the dependency tree is allowed to contain. Skipped rather than failed
+# when the tool is absent, since it is an install away:
+# `cargo install cargo-deny --locked`.
+if command -v cargo-deny > /dev/null; then
+  run "cargo-deny" cargo deny check
+else
+  echo "!!! cargo-deny not installed; the dependency policy was NOT checked."
+fi
+# The attributions shipped with a binary. Same story:
+# `cargo install cargo-about --locked --features cli`.
+if command -v cargo-about > /dev/null; then
+  echo "=== third-party attributions"
+  cargo about generate --all-features about.hbs -o "${TMPDIR:-/tmp}/THIRD-PARTY.md" 2> /dev/null
+  if diff -q THIRD-PARTY.md "${TMPDIR:-/tmp}/THIRD-PARTY.md" > /dev/null; then
+    echo "THIRD-PARTY.md is current"
+  else
+    failed+=("THIRD-PARTY.md is stale: cargo about generate --all-features about.hbs -o THIRD-PARTY.md")
+  fi
+else
+  echo "!!! cargo-about not installed; THIRD-PARTY.md was NOT checked."
+fi
 
 echo "=== Z80 conformance"
 if [ -f assets/tests.in ] && [ -f assets/tests.expected ]; then

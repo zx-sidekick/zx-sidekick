@@ -1,0 +1,24 @@
+# Third-party licences
+
+The `zx-sidekick-starquake` program links the crates below into its binary,
+and their licences ask that their notices travel with it. This file is what
+carries them.
+
+It says nothing about the game itself. Starquake is Stephen Crow's, this
+project contains no part of it, and the program runs the player's own copy,
+unchanged. The README says where to get one.
+
+{{#each overview}}
+- {{{name}}}: {{count}} {{#if (eq count 1)}}crate{{else}}crates{{/if}}
+{{/each}}
+
+{{#each licenses}}
+## {{{name}}}
+
+Used by {{#each used_by}}`{{{crate.name}}} {{{crate.version}}}`{{#unless @last}}, {{/unless}}{{/each}}.
+
+```
+{{{text}}}
+```
+
+{{/each}}
