@@ -142,6 +142,11 @@ impl Runner {
 
     fn run(&mut self, tape: &[u8]) -> Result<(), String> {
         let mut machine = Machine::from_tape(tape, ENTRY_PC, ENTRY_SP)?;
+        // Every room's openings, for the map: the same every game, so read
+        // once, by having the game draw each room on a copy of the machine.
+        // It takes about a third of a second, before the loading picture.
+        let openings = sidekick::starquake::all_openings(&machine);
+        self.shared.guidance.lock().unwrap().set_openings(openings);
         let loading = zx_core::tape::load_tap(tape)?.loading_screen;
         if let Some(picture) = loading {
             let mut memory = vec![0u8; 0x1B00];
@@ -220,6 +225,7 @@ impl Runner {
                         *self.shared.scene.lock().unwrap() = scene;
                     }
                 }
+                tracker.publish(&machine.zx.mem[..], &mut guidance);
             }
             if tracker.scene != track::Scene::Play {
                 machine.hold = None;

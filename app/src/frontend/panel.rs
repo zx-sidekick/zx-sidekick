@@ -12,6 +12,7 @@ use super::notice;
 use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
 use super::track::Scene;
+use sidekick::map::{AROUND, COLS, ROWS};
 use sidekick::starquake::SeenTeleporter;
 
 const PANEL: Rgb = [0x0f, 0x11, 0x17];
@@ -42,6 +43,10 @@ const DANGER_TEXT: Rgb = [0xe0, 0xa3, 0xa8];
 const TRAINING: Rgb = [0xf5, 0xb8, 0x4b];
 const PAUSED: Rgb = [0x5d, 0x63, 0x72];
 const CODE: Rgb = [0x7f, 0xd1, 0xc7];
+const FLOOR: Rgb = [0x22, 0x2c, 0x45];
+const MAP_DOT: Rgb = [0x17, 0x1a, 0x22];
+const WALL: Rgb = [0x9a, 0xaa, 0xd0];
+const HERE: Rgb = [0xe8, 0xec, 0xf4];
 const CODE_FILL: Rgb = [0x14, 0x25, 0x2a];
 
 /// What each level adds, for the picker. The levels are built in their own
@@ -49,7 +54,7 @@ const CODE_FILL: Rgb = [0x14, 0x25, 0x2a];
 const ADDS: [&str; 6] = [
     "The original game, no help.",
     "The codes of the teleporters you have seen.",
-    "Not built yet: a map of the rooms you have visited.",
+    "A map of the rooms you have visited.",
     "Not built yet: the missing core pieces, marked on the map.",
     "Not built yet: an arrow along routes you know.",
     "Not built yet: the arrow routed through the whole map.",
@@ -106,20 +111,29 @@ impl Panel {
             let esc_w = self.fonts.key_width(HINT_H, "Esc");
             self.fonts
                 .key_badge(canvas, WINDOW_W - 24.0 - esc_w, 24.0, HINT_H, "Esc");
-            if level >= 1 {
-                self.teleporters(canvas, left, width - 48.0, guidance.teleporters());
-            }
-            let lines = if level == 0 {
-                ["No guidance.", "Press Esc or Select to choose a level."]
-            } else if level == 1 {
-                ["The map appears at level 2.", ""]
+            let below = if level >= 1 {
+                self.teleporters(canvas, left, width - 48.0, guidance.teleporters())
             } else {
-                [
-                    "This level is not built yet.",
-                    "It will show here when it is.",
-                ]
+                WINDOW_H
             };
-            for (i, line) in lines.into_iter().enumerate() {
+            if level >= 2 {
+                let explored = format!("explored {} of {} rooms", guidance.explored(), COLS * ROWS);
+                self.fonts.text(
+                    Some(canvas),
+                    left,
+                    72.0,
+                    None,
+                    1.0,
+                    &[span(&explored, 12.0, Weight::Regular, LABEL)],
+                );
+                self.map(canvas, guidance, 96.0, below - 16.0);
+            }
+            let lines = match level {
+                0 => ["No guidance.", "Press Esc or Select to choose a level."],
+                1 => ["The map appears at level 2.", ""],
+                _ => ["", ""],
+            };
+            for (i, line) in lines.into_iter().enumerate().filter(|(_, l)| !l.is_empty()) {
                 let spans = [span(line, 14.0, Weight::Regular, QUIET)];
                 let w = self.fonts.measure(&spans);
                 self.fonts.text(
@@ -138,6 +152,89 @@ impl Panel {
         }
         if guidance.picker_open() {
             self.picker(canvas, guidance);
+        }
+    }
+
+    /// Level 2 (#5): the planet between `top` and `bottom`, a room to a
+    /// square. Every room is a faint dot; visited rooms join into floor, with
+    /// a line along each edge that has no opening, so an opening is a gap in
+    /// the wall, and walls inside a divided room, dashed where a door divides
+    /// it. The teleporters seen are diamonds and the room Blob is in is
+    /// marked.
+    fn map(&mut self, canvas: &mut Canvas, guidance: &Guidance, top: f32, bottom: f32) {
+        let (cols, rows) = (f32::from(COLS), f32::from(ROWS));
+        // 18 pixels a room as in the mockup, smaller when the teleporter codes
+        // take more than one row.
+        let pitch = ((bottom - top) / rows).floor().min(18.0);
+        let unit = pitch / 18.0;
+        let x0 = (PICTURE_W + (WINDOW_W - PICTURE_W - pitch * cols) / 2.0).floor();
+        let rooms = COLS * ROWS;
+        let at = |room: u16| {
+            (
+                x0 + f32::from(room % COLS) * pitch,
+                top + f32::from(room / COLS) * pitch,
+            )
+        };
+
+        for room in 0..rooms {
+            let (x, y) = at(room);
+            if guidance.visited(room) {
+                canvas.round_rect(x, y, pitch, pitch, 0.0, FLOOR);
+            } else {
+                let dot = 8.0 * unit;
+                let inset = (pitch - dot) / 2.0;
+                canvas.round_rect(x + inset, y + inset, dot, dot, 2.0 * unit, MAP_DOT);
+            }
+        }
+        // Walls after all the floor, so no floor covers them.
+        let (line, overhang) = (2.0, 1.0);
+        for room in (0..rooms).filter(|&r| guidance.visited(r)) {
+            let (x, y) = at(room);
+            let open = guidance
+                .openings()
+                .get(room as usize)
+                .copied()
+                .unwrap_or_default();
+            let long = pitch + 2.0 * overhang;
+            if !open.up {
+                canvas.round_rect(x - overhang, y - overhang, long, line, 0.0, WALL);
+            }
+            if !open.down {
+                canvas.round_rect(x - overhang, y + pitch - overhang, long, line, 0.0, WALL);
+            }
+            if !open.left {
+                canvas.round_rect(x - overhang, y - overhang, line, long, 0.0, WALL);
+            }
+            if !open.right {
+                canvas.round_rect(x + pitch - overhang, y - overhang, line, long, 0.0, WALL);
+            }
+            // Walls inside, from the centre out; a door's is dashed.
+            let centre = (x + pitch / 2.0, y + pitch / 2.0);
+            for wall in open.walls.into_iter().flatten() {
+                let to = edge_point(x, y, pitch, wall.to);
+                let dash = wall.door.then_some(2.5 * unit);
+                stroke(canvas, centre, to, line, dash, WALL);
+            }
+        }
+        for seen in guidance.teleporters() {
+            let (x, y) = at(seen.room % rooms);
+            let (cx, cy, r) = (x + pitch / 2.0, y + pitch / 2.0, 5.0 * unit);
+            canvas.triangle([(cx - r, cy), (cx, cy - r), (cx + r, cy)], CODE);
+            canvas.triangle([(cx - r, cy), (cx, cy + r), (cx + r, cy)], CODE);
+        }
+        if let Some(room) = guidance.room() {
+            let (x, y) = at(room);
+            let (outer, inner) = (3.0 * unit, 6.0 * unit);
+            let size = |inset: f32| pitch - 2.0 * inset;
+            canvas.round_rect(
+                x + outer,
+                y + outer,
+                size(outer),
+                size(outer),
+                2.0 * unit,
+                HERE,
+            );
+            canvas.round_rect(x + inner, y + inner, size(inner), size(inner), unit, FLOOR);
         }
     }
 
@@ -730,6 +827,60 @@ impl Panel {
     }
 }
 
+/// The point on the edge of the room square at (`x`, `y`) that a place on a
+/// room's edge (`map::Wall::to`) stands for. The room is 32 cells by 18 and
+/// its square is not, so each edge is stretched to fit.
+fn edge_point(x: f32, y: f32, pitch: f32, to: u8) -> (f32, f32) {
+    let (top, side) = (32.0, 18.0);
+    let t = f32::from(to % AROUND);
+    if t < top {
+        (x + t / top * pitch, y)
+    } else if t < top + side {
+        (x + pitch, y + (t - top) / side * pitch)
+    } else if t < 2.0 * top + side {
+        (x + pitch - (t - top - side) / top * pitch, y + pitch)
+    } else {
+        (x, y + pitch - (t - 2.0 * top - side) / side * pitch)
+    }
+}
+
+/// A straight line `width` wide from `a` to `b`, with square ends, dashed
+/// when `dash` gives the length of a dash and of a gap.
+fn stroke(
+    canvas: &mut Canvas,
+    a: (f32, f32),
+    b: (f32, f32),
+    width: f32,
+    dash: Option<f32>,
+    colour: Rgb,
+) {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let length = dx.hypot(dy);
+    if length == 0.0 {
+        return;
+    }
+    let (ux, uy) = (dx / length, dy / length);
+    let (nx, ny) = (-uy * width / 2.0, ux * width / 2.0);
+    // Half a width past each end, as the edge lines overhang their corners.
+    let (from, to) = (-width / 2.0, length + width / 2.0);
+    let (on, step) = dash.map_or((to - from, to - from), |d| (d, 2.0 * d));
+    let mut s = from;
+    while s < to {
+        let e = (s + on).min(to);
+        let p = |t: f32| (a.0 + ux * t, a.1 + uy * t);
+        let (p0, p1) = (p(s), p(e));
+        let corners = [
+            (p0.0 + nx, p0.1 + ny),
+            (p1.0 + nx, p1.1 + ny),
+            (p1.0 - nx, p1.1 - ny),
+            (p0.0 - nx, p0.1 - ny),
+        ];
+        canvas.triangle([corners[0], corners[1], corners[2]], colour);
+        canvas.triangle([corners[0], corners[2], corners[3]], colour);
+        s += step;
+    }
+}
+
 fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
     Span {
         text,
@@ -742,6 +893,7 @@ fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sidekick::map::{Openings, RoomSet, Wall};
 
     /// Draws the overlay in `guidance`'s state over a stand-in picture, at
     /// twice the layout's size, as 0xRRGGBB pixels.
@@ -788,6 +940,67 @@ mod tests {
         assert!(at(&picker, 1300.0, 700.0) < 0x0f_11_17, "the panel dimmed");
     }
 
+    /// A made-up exploration, like the mockup's: a random walk over the
+    /// map, whose steps are its only openings, with `codes` teleporters seen
+    /// on the way. The codes are placeholders; the real ones are the
+    /// original's text.
+    fn explore(g: &mut Guidance, codes: usize) {
+        let mut openings = vec![Openings::default(); usize::from(COLS * ROWS)];
+        let mut unvisited = RoomSet([0xFF; 64]);
+        let mut seen = Vec::new();
+        let (mut col, mut row) = (7u16, 20u16);
+        let mut rng = 7u32;
+        for step in 0..420 {
+            let room = row * COLS + col;
+            unvisited.set(room, false);
+            if step % 60 == 59 && seen.len() < codes {
+                let letter = |k: usize| b'A' + ((seen.len() * 5 + k) % 26) as u8;
+                seen.push(SeenTeleporter {
+                    room,
+                    code: [0, 1, 2, 3, 4].map(letter),
+                });
+            }
+            rng ^= rng << 13;
+            rng ^= rng >> 17;
+            rng ^= rng << 5;
+            let (dc, dr) = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 0), (-1, 0)][rng as usize % 6];
+            let (c, r) = (col as i32 + dc, row as i32 + dr);
+            if !(0..i32::from(COLS)).contains(&c) || !(0..i32::from(ROWS)).contains(&r) {
+                continue;
+            }
+            let next = r as u16 * COLS + c as u16;
+            let (a, b) = (room.min(next) as usize, room.max(next) as usize);
+            if dc != 0 {
+                openings[a].right = true;
+                openings[b].left = true;
+            } else {
+                openings[a].down = true;
+                openings[b].up = true;
+            }
+            (col, row) = (c as u16, r as u16);
+        }
+        // Walls inside a few rooms along the walk: a straight one, a
+        // diagonal one, a three-way one and a door.
+        let visited: Vec<usize> = (0..openings.len())
+            .filter(|&r| !unvisited.contains(r as u16))
+            .collect();
+        let wall = |to, door| Some(Wall { to, door });
+        let shapes = [
+            [wall(16, false), wall(66, false)],
+            [wall(32, false), wall(82, false)],
+            [wall(41, true), wall(91, true)],
+        ];
+        for (k, room) in visited.iter().step_by(9).enumerate() {
+            let [a, b] = shapes[k % shapes.len()];
+            openings[*room].walls[0] = a;
+            openings[*room].walls[1] = b;
+        }
+        g.set_openings(openings);
+        g.set_unvisited(&unvisited);
+        g.set_room(Some(row * COLS + col));
+        g.set_teleporters(&seen);
+    }
+
     /// Draws the overlay in its states to PNGs in the folder `SQ_PANEL_PNG`
     /// names, for comparing with the mockups without a window. Does nothing
     /// when it is not set.
@@ -816,6 +1029,28 @@ mod tests {
                 false,
             ),
             ("paused", Guidance::default(), Scene::Play, true),
+            (
+                "level2",
+                {
+                    let mut g = Guidance::default();
+                    g.set_level(2);
+                    explore(&mut g, 3);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
+            (
+                "level2-many-codes",
+                {
+                    let mut g = Guidance::default();
+                    g.set_level(2);
+                    explore(&mut g, 7);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
             (
                 "level1-none",
                 {

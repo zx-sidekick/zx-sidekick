@@ -87,7 +87,11 @@ from 0 (none) to 5, each adding to the ones below.
 
   Level 1              The codes of the teleporters you have seen, once
                        you have entered their booths.
-  Levels 2 to 5        Still to be built, and training mode too.
+  Level 2              A map of the rooms you have visited: every edge
+                       open or closed, walls inside a room (dashed where
+                       a security door divides it), your room, and the
+                       teleporters you have seen.
+  Levels 3 to 5        Still to be built, and training mode too.
 
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.

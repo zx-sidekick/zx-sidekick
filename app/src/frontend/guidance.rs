@@ -8,7 +8,11 @@
 //! What each level shows is its own ticket's (#3); level 1's teleporter
 //! codes are carried here from the game thread to the panel (#4).
 
+use sidekick::map::{Openings, RoomSet};
 use sidekick::starquake::SeenTeleporter;
+
+/// The number of rooms on the planet.
+const ROOMS: usize = (sidekick::map::COLS * sidekick::map::ROWS) as usize;
 
 /// The levels, each including the ones before it (#3).
 pub const LEVELS: [&str; 6] = [
@@ -77,6 +81,13 @@ pub struct Guidance {
     /// The teleporters whose booths were entered this game, in the order
     /// they were entered.
     teleporters: Vec<SeenTeleporter>,
+    /// Every room's openings, for the map (#5). Empty until they are read.
+    openings: Vec<Openings>,
+    /// The rooms visited in the game being played, or just ended; empty on
+    /// the title screen.
+    visited: Vec<bool>,
+    /// The room Blob is in, while a game is being played.
+    room: Option<u16>,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -139,6 +150,65 @@ impl Guidance {
     pub fn set_teleporters(&mut self, seen: &[SeenTeleporter]) {
         if self.teleporters != seen {
             self.teleporters = seen.to_vec();
+            self.version += 1;
+        }
+    }
+
+    /// Every room's openings, by room number; empty until they are read.
+    pub fn openings(&self) -> &[Openings] {
+        &self.openings
+    }
+
+    /// Takes every room's openings, read once.
+    pub fn set_openings(&mut self, openings: Vec<Openings>) {
+        self.openings = openings;
+        self.version += 1;
+    }
+
+    /// Whether `room` has been visited.
+    pub fn visited(&self, room: u16) -> bool {
+        self.visited
+            .get(usize::from(room))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// How many rooms have been visited.
+    pub fn explored(&self) -> usize {
+        self.visited.iter().filter(|&&v| v).count()
+    }
+
+    /// The room Blob is in, while a game is being played.
+    pub fn room(&self) -> Option<u16> {
+        self.room
+    }
+
+    /// Takes the room Blob is in, or `None` outside a game, if it has
+    /// changed. The number the game keeps after its end (512) is no room.
+    pub fn set_room(&mut self, room: Option<u16>) {
+        let room = room.filter(|&r| usize::from(r) < ROOMS);
+        if self.room != room {
+            self.room = room;
+            self.version += 1;
+        }
+    }
+
+    /// Takes the game's set of rooms not yet visited, if it has changed.
+    pub fn set_unvisited(&mut self, unvisited: &RoomSet) {
+        let same = self.visited.len() == ROOMS
+            && (0..ROOMS).all(|r| self.visited[r] != unvisited.contains(r as u16));
+        if !same {
+            self.visited = (0..ROOMS).map(|r| !unvisited.contains(r as u16)).collect();
+            self.version += 1;
+        }
+    }
+
+    /// Forgets the map of the game that has ended, once its game-over
+    /// screens are done: the title screen shows none.
+    pub fn forget_map(&mut self) {
+        if !self.visited.is_empty() || self.room.is_some() {
+            self.visited.clear();
+            self.room = None;
             self.version += 1;
         }
     }
@@ -585,6 +655,37 @@ mod tests {
         g.set_teleporters(&[seen]);
         assert_eq!(g.teleporters(), [seen]);
         assert!(g.version() > before);
+    }
+
+    #[test]
+    fn the_map_is_taken_only_when_it_changes() {
+        let mut g = Guidance::default();
+        assert_eq!(g.explored(), 0, "nothing explored before a game");
+        let mut unvisited = RoomSet([0xFF; 64]);
+        unvisited.set(97, false);
+        unvisited.set(98, false);
+        g.set_unvisited(&unvisited);
+        g.set_room(Some(98));
+        assert_eq!(g.explored(), 2);
+        assert!(g.visited(97) && !g.visited(96));
+        assert_eq!(g.room(), Some(98));
+
+        let before = g.version();
+        g.set_unvisited(&unvisited);
+        g.set_room(Some(98));
+        assert_eq!(g.version(), before, "nothing new, nothing to redraw");
+
+        g.set_room(Some(512));
+        assert_eq!(
+            g.room(),
+            None,
+            "512 is where the game leaves it, not a room"
+        );
+        g.forget_map();
+        assert_eq!(g.explored(), 0, "the title screen shows no map");
+        let forgotten = g.version();
+        g.forget_map();
+        assert_eq!(g.version(), forgotten, "nothing left to forget");
     }
 
     #[test]
