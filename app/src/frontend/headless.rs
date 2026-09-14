@@ -55,7 +55,7 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
     for frame in 0..frames {
         script(&mut machine, frame);
         for hit in machine.run_frame() {
-            tracker.follow(hit, &mut guidance);
+            tracker.follow(&machine.zx.mem[..], hit, &mut guidance);
         }
         machine.zx.speaker.clear();
         if frame % every == 0 || frame + 1 == frames {

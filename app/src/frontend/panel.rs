@@ -12,6 +12,7 @@ use super::notice;
 use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
 use super::track::Scene;
+use sidekick::starquake::SeenTeleporter;
 
 const PANEL: Rgb = [0x0f, 0x11, 0x17];
 const RULE: Rgb = [0x22, 0x26, 0x2f];
@@ -40,12 +41,14 @@ const DANGER_TITLE: Rgb = [0xf3, 0xc6, 0xca];
 const DANGER_TEXT: Rgb = [0xe0, 0xa3, 0xa8];
 const TRAINING: Rgb = [0xf5, 0xb8, 0x4b];
 const PAUSED: Rgb = [0x5d, 0x63, 0x72];
+const CODE: Rgb = [0x7f, 0xd1, 0xc7];
+const CODE_FILL: Rgb = [0x14, 0x25, 0x2a];
 
 /// What each level adds, for the picker. The levels are built in their own
 /// tickets (#3); until then they say so.
 const ADDS: [&str; 6] = [
     "The original game, no help.",
-    "Not built yet: the codes of the teleporters you have seen.",
+    "The codes of the teleporters you have seen.",
     "Not built yet: a map of the rooms you have visited.",
     "Not built yet: the missing core pieces, marked on the map.",
     "Not built yet: an arrow along routes you know.",
@@ -103,8 +106,13 @@ impl Panel {
             let esc_w = self.fonts.key_width(HINT_H, "Esc");
             self.fonts
                 .key_badge(canvas, WINDOW_W - 24.0 - esc_w, 24.0, HINT_H, "Esc");
+            if level >= 1 {
+                self.teleporters(canvas, left, width - 48.0, guidance.teleporters());
+            }
             let lines = if level == 0 {
                 ["No guidance.", "Press Esc or Select to choose a level."]
+            } else if level == 1 {
+                ["The map appears at level 2.", ""]
             } else {
                 [
                     "This level is not built yet.",
@@ -131,6 +139,78 @@ impl Panel {
         if guidance.picker_open() {
             self.picker(canvas, guidance);
         }
+    }
+
+    /// Level 1 (#4): the codes of the teleporters seen this game, as chips
+    /// along the panel's bottom edge, in the order their booths were
+    /// entered, or a line saying none are seen yet. Returns where the block
+    /// starts, which anything above it must stop short of.
+    fn teleporters(
+        &mut self,
+        canvas: &mut Canvas,
+        left: f32,
+        width: f32,
+        seen: &[SeenTeleporter],
+    ) -> f32 {
+        let (chip_h, gap) = (26.0, 8.0);
+        // Lay the chips out in rows first, so the block can sit on the
+        // panel's bottom edge however many rows there are.
+        let mut rows: Vec<Vec<(String, f32)>> = vec![Vec::new()];
+        let mut used = 0.0;
+        for teleporter in seen {
+            let text = String::from_utf8_lossy(&teleporter.code).into_owned();
+            let w = self
+                .fonts
+                .measure(&[span(&text, 14.0, Weight::SemiBold, CODE)])
+                + 16.0;
+            if used + w > width && !rows[rows.len() - 1].is_empty() {
+                rows.push(Vec::new());
+                used = 0.0;
+            }
+            used += w + gap;
+            rows.last_mut().unwrap().push((text, w));
+        }
+        let lines = if seen.is_empty() {
+            1.0
+        } else {
+            rows.len() as f32
+        };
+        let top = WINDOW_H - 24.0 - lines * (chip_h + gap) + gap - 22.0;
+        self.spaced(canvas, left, top, "TELEPORTERS SEEN");
+        if seen.is_empty() {
+            self.fonts.text(
+                Some(canvas),
+                left,
+                top + 24.0,
+                Some(width),
+                1.0,
+                &[span(
+                    "None yet: a code shows once you enter its booth.",
+                    13.0,
+                    Weight::Regular,
+                    QUIET,
+                )],
+            );
+            return top;
+        }
+        let mut y = top + 22.0;
+        for row in rows {
+            let mut x = left;
+            for (text, w) in row {
+                canvas.round_rect(x, y, w, chip_h, 4.0, CODE_FILL);
+                self.fonts.text(
+                    Some(canvas),
+                    x + 8.0,
+                    y + 5.0,
+                    None,
+                    1.0,
+                    &[span(&text, 14.0, Weight::SemiBold, CODE)],
+                );
+                x += w + gap;
+            }
+            y += chip_h + gap;
+        }
+        top
     }
 
     fn score_note(&mut self, canvas: &mut Canvas, left: f32, guidance: &Guidance) {
@@ -736,6 +816,37 @@ mod tests {
                 false,
             ),
             ("paused", Guidance::default(), Scene::Play, true),
+            (
+                "level1-none",
+                {
+                    let mut g = Guidance::default();
+                    g.set_level(1);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
+            (
+                "level1-codes",
+                {
+                    let mut g = Guidance::default();
+                    g.set_level(1);
+                    // Placeholders, not the game's codes.
+                    let codes = [*b"ABCDE", *b"FGHIJ", *b"KLMNO", *b"PQRST", *b"UVWXY"];
+                    let seen: Vec<SeenTeleporter> = codes
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &code)| SeenTeleporter {
+                            room: i as u16 * 40,
+                            code,
+                        })
+                        .collect();
+                    g.set_teleporters(&seen);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
             ("picker", picker.clone(), Scene::Play, true),
             (
                 "picker-training",

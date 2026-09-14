@@ -20,7 +20,9 @@
 //! - `facts`: checks the entry points the guidance panel follows: the menu
 //!   runs first, then play, and holding A S D F G from the top of the play
 //!   loop, as End this game does, reaches the game-over screens and comes
-//!   back round to the menu, in every control method.
+//!   back round to the menu, in every control method; and that the
+//!   teleporter table holds fifteen codes in fifteen rooms and, with a ROM,
+//!   that walking into each booth prints its code.
 //! - `shot <frames> [out-dir]`: runs the ROM-free machine and writes a PNG of
 //!   the screen every so often, to look at.
 
@@ -614,6 +616,110 @@ fn ends_the_game(m: &Machine) -> Option<(u64, u64)> {
     None
 }
 
+/// The teleporter table holds fifteen codes of five capital letters in
+/// fifteen different rooms, and, with a ROM for the stepping, walking into
+/// each booth has the game print the code the table gives for its room:
+/// the moment a code counts as seen (#4).
+fn teleporters_check(dir: &Path) -> bool {
+    use sidekick::rom::PRINT_A_2;
+    use sidekick::starquake::{BOOTH_MARKER, at, routine, teleporter_code};
+    let m = machine(dir);
+    let entries: Vec<(u16, [u8; 5])> = (0..at::TELEPORTER_COUNT)
+        .map(|i| {
+            let entry = usize::from(at::TELEPORTER_NAMES) + i * 7;
+            let code: [u8; 5] = m.zx.mem[entry..entry + 5].try_into().expect("five bytes");
+            (m.zx.read16(entry as u16 + 5), code)
+        })
+        .collect();
+    let rooms: std::collections::HashSet<u16> = entries.iter().map(|e| e.0).collect();
+    let mut ok = rooms.len() == at::TELEPORTER_COUNT
+        && entries
+            .iter()
+            .all(|(room, code)| *room < 512 && code.iter().all(u8::is_ascii_uppercase));
+    println!(
+        "  the teleporter table: {} codes in {} rooms {}",
+        entries.len(),
+        rooms.len(),
+        if ok { "ok" } else { "FAILED" }
+    );
+    let rom = dir.join("48.rom");
+    if !rom.exists() {
+        println!("  no 48.rom: the booths were NOT walked into");
+        return ok;
+    }
+    // Into play first, as a player would, on a machine with the real ROM,
+    // which handles the interrupts while the booth is stepped through.
+    let mut base = m.with_rom(&read(dir, "48.rom"));
+    base.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut base, frame.min(399));
+        if base.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    base.zx.release_all_keys();
+    let mut printed_ok = 0;
+    for &(room, code) in &entries {
+        let mut m = base.clone();
+        m.zx.write16(at::ROOM, room);
+        m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+        if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+            println!("  room {room} did not finish entering: FAILED");
+            ok = false;
+            continue;
+        }
+        let z = &mut m.zx;
+        let end = z.read16(at::MARKERS_END).max(at::MARKERS);
+        let booth = (at::MARKERS..end)
+            .step_by(3)
+            .find(|&a| z.mem[usize::from(a) + 2] == BOOTH_MARKER);
+        let Some(marker) = booth else {
+            println!("  room {room} has no booth: FAILED");
+            ok = false;
+            continue;
+        };
+        // Stand Blob on the booth, carry on as the play loop does, on a
+        // fresh frame with interrupts on, and read what is printed from the
+        // moment the booth starts.
+        z.mem[usize::from(at::ENTITIES) + 5] = z.mem[usize::from(marker)];
+        z.mem[usize::from(at::ENTITIES) + 6] = z.mem[usize::from(marker) + 1];
+        z.t = 0;
+        z.set_interrupts(true);
+        z.kempston = 0x01;
+        let (mut in_booth, mut printed) = (false, Vec::new());
+        for _ in 0..400 {
+            if !z.run_until_any(&[routine::TELEPORT_BOOTH, PRINT_A_2], 1) {
+                continue;
+            }
+            if z.pc() == routine::TELEPORT_BOOTH {
+                in_booth = true;
+                z.kempston = 0;
+            } else if in_booth {
+                printed.push(z.a());
+                if printed.len() > 80 {
+                    break;
+                }
+            }
+        }
+        let good = in_booth
+            && printed.windows(5).any(|w| w == code)
+            && teleporter_code(&z.mem[..], room) == Some(code);
+        printed_ok += usize::from(good);
+        ok &= good;
+    }
+    println!(
+        "  walking into each booth prints its code: {printed_ok} of {} {}",
+        entries.len(),
+        if printed_ok == entries.len() {
+            "ok"
+        } else {
+            "FAILED"
+        }
+    );
+    ok
+}
+
 /// The entry points the panel follows: the menu first and then play, and
 /// End this game's keys ending a game in every control method.
 fn facts_check(dir: &Path) -> bool {
@@ -659,6 +765,7 @@ fn facts_check(dir: &Path) -> bool {
         ok &= ended.is_some();
         println!("  method {method}: End this game {line}");
     }
+    ok &= teleporters_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }

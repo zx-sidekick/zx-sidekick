@@ -226,6 +226,28 @@ impl Machine {
         m
     }
 
+    /// Calls the routine at `addr` and runs it until the program reaches
+    /// `stop` or returns from the call, with the three ROM routines answered
+    /// and no interrupts. Returns whether it got there within `max`
+    /// instructions. For having the game do something on a copy of the
+    /// machine, such as entering a room.
+    pub fn call(&mut self, addr: u16, stop: u16, max: u64) -> bool {
+        let z = &mut self.zx;
+        let sp = z.sp();
+        z.push(0);
+        z.set_pc(addr);
+        z.set_interrupts(false);
+        for _ in 0..max {
+            if z.pc() == stop || (z.pc() == 0 && z.sp() == sp) {
+                return true;
+            }
+            if !answer(z) {
+                z.step();
+            }
+        }
+        false
+    }
+
     /// Runs one 50 Hz frame, answering the ROM routines the game calls, and
     /// pressing the joystick's keys as the game's play-time key reader
     /// starts ([`starquake::PLAY_INPUT`]): the moment they reach the game in
@@ -450,6 +472,19 @@ mod tests {
         m.zx.mem[0x8000] = 0x00;
         m.zx.mem[0x8001..0x8003].copy_from_slice(&JUMP_TO_ITSELF);
         m
+    }
+
+    #[test]
+    fn a_call_runs_a_routine_to_its_return_or_its_stop() {
+        let mut m = Machine::blank(0x1234, 0xC000);
+        m.zx.mem[0x8000] = 0x00; // NOP
+        m.zx.mem[0x8001] = 0xC9; // RET
+        assert!(m.call(0x8000, 0x9000, 10), "returned");
+        assert_eq!(m.zx.sp(), 0xC000, "the stack as it was");
+        let mut m = nop_then_loop();
+        assert!(m.call(0x8000, 0x8001, 10), "reached the stop");
+        let mut m = nop_then_loop();
+        assert!(!m.call(0x8000, 0x9000, 10), "neither, within ten");
     }
 
     #[test]

@@ -95,6 +95,56 @@ pub mod routine {
     /// The end of a game: the scores, entering initials, the high-score
     /// table.
     pub const GAME_OVER: u16 = 0x6730;
+    /// Setting up a new game.
+    pub const NEW_GAME: u16 = 0x629D;
+    /// Entering a room, up to the play loop.
+    pub const ENTER_ROOM: u16 = 0xA426;
+    /// A teleporter booth, one of the screens play hands over to. It prints
+    /// the code of the teleporter Blob is standing in.
+    pub const TELEPORT_BOOTH: u16 = 0xCED4;
+}
+
+/// Where the game keeps what the guidance panel shows. Addresses in the
+/// original program, found in the earlier ZX Sidekick build and checked on
+/// the player's tape by `sk-check facts`.
+pub mod at {
+    /// The room Blob is in, a word from 0 to 511.
+    pub const ROOM: u16 = 0xD2C8;
+    /// The teleporters: fifteen entries of five letters, the code, then the
+    /// room the teleporter is in as a word.
+    pub const TELEPORTER_NAMES: u16 = 0xD036;
+    pub const TELEPORTER_COUNT: usize = 15;
+    /// The six entity slots, 32 bytes each; slot 0 is Blob, whose position
+    /// is at offsets 5 (pixels from the left) and 6 (from the bottom).
+    pub const ENTITIES: u16 = 0xDD18;
+    /// The markers the current room's tiles left: from here to the address
+    /// held at [`MARKERS_END`], three bytes each (x, y, kind).
+    pub const MARKERS: u16 = 0x96FC;
+    pub const MARKERS_END: u16 = 0x96FA;
+    /// Why the room was entered (0 walking in).
+    pub const ENTRY_REASON: u16 = 0xD2C4;
+}
+
+/// The marker a teleporter booth's tile leaves in its room.
+pub const BOOTH_MARKER: u8 = 0x0D;
+
+/// A teleporter whose booth has been entered: the room it is in and its
+/// code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SeenTeleporter {
+    pub room: u16,
+    pub code: [u8; 5],
+}
+
+/// The code of the teleporter in `room`, from the game's table in `mem`
+/// (the machine's whole 64K), if there is one there.
+#[must_use]
+pub fn teleporter_code(mem: &[u8], room: u16) -> Option<[u8; 5]> {
+    (0..at::TELEPORTER_COUNT).find_map(|i| {
+        let entry = mem.get(usize::from(at::TELEPORTER_NAMES) + i * 7..)?;
+        let (code, here) = (entry.get(..5)?, entry.get(5..7)?);
+        (u16::from_le_bytes([here[0], here[1]]) == room).then(|| code.try_into().ok())?
+    })
 }
 
 /// The keys that abandon a game in play when held together, the game's own
@@ -168,6 +218,17 @@ mod tests {
         for code in [0, b' ', b'\r', b'!', 0x7F, 0xFF] {
             assert_eq!(key(code), None, "{code:#04x}");
         }
+    }
+
+    #[test]
+    fn a_teleporter_code_comes_from_its_room_s_entry() {
+        let mut mem = vec![0u8; 0x10000];
+        let entry = usize::from(at::TELEPORTER_NAMES) + 7 * 3;
+        mem[entry..entry + 5].copy_from_slice(b"ABCDE");
+        mem[entry + 5..entry + 7].copy_from_slice(&300u16.to_le_bytes());
+        assert_eq!(teleporter_code(&mem, 300), Some(*b"ABCDE"));
+        assert_eq!(teleporter_code(&mem, 301), None);
+        assert_eq!(teleporter_code(&mem[..0xD040], 300), None, "cut short");
     }
 
     #[test]
