@@ -5,6 +5,8 @@
 //! (`zx_core::timing::contention`).
 
 mod keys;
+#[cfg(test)]
+mod tests;
 
 use std::ops::{Deref, DerefMut};
 
