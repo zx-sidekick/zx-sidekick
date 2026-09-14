@@ -21,3 +21,15 @@ pub const ENTRY_I: u8 = 0x3F;
 pub fn is_supported_tape(bytes: &[u8]) -> bool {
     zx_core::sha1::sha1_hex(bytes) == TAPE_SHA1
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_known_tape_is_supported() {
+        assert!(!is_supported_tape(&[]));
+        assert!(!is_supported_tape(b"not a tape"));
+        assert_eq!(TAPE_SHA1.len(), 40);
+    }
+}

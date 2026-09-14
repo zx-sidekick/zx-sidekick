@@ -171,6 +171,61 @@ mod tests {
     }
 
     #[test]
+    fn the_multiply_is_exact_until_it_overflows_and_says_when_it_does() {
+        let values = [
+            0u16, 1, 2, 3, 7, 255, 256, 257, 1000, 0x7FFF, 0x8000, 0xFFFF,
+        ];
+        for &hl in &values {
+            for &de in &values {
+                let mut m = calling(HL_HL_X_DE);
+                m.zx.set_hl(hl);
+                m.zx.set_de(de);
+                assert!(answer(&mut m.zx));
+                let product = u32::from(hl) * u32::from(de);
+                let overflow = product > 0xFFFF;
+                assert_eq!(m.zx.f() & CF != 0, overflow, "{hl} x {de}");
+                if !overflow {
+                    assert_eq!(u32::from(m.zx.hl()), product, "{hl} x {de}");
+                }
+                assert_eq!(m.zx.de(), de);
+                assert_eq!(m.zx.pc(), 0x8000);
+            }
+        }
+    }
+
+    #[test]
+    fn the_multiply_takes_longer_for_each_bit_set_in_hl() {
+        // Each set bit of HL adds DE in, which takes time; none overflow.
+        let time = |hl: u16| {
+            let mut m = calling(HL_HL_X_DE);
+            m.zx.set_hl(hl);
+            m.zx.set_de(1);
+            assert!(answer(&mut m.zx));
+            m.zx.t
+        };
+        assert!(time(0x00FF) > time(0x000F));
+        assert!(time(0x000F) > time(0x0001));
+        assert_eq!(time(0x0010), time(0x0001), "the same number of set bits");
+    }
+
+    #[test]
+    fn printing_is_answered_and_returns_to_the_caller() {
+        let mut m = calling(PRINT_A_2);
+        m.zx.write16(0x5C51, 0x6000);
+        m.zx.write16(0x6000, 0x09F4);
+        m.zx.mem[0x5C88] = 33;
+        m.zx.mem[0x5C89] = 24;
+        m.zx.set_a(0x16);
+        let r = m.zx.r();
+        assert!(answer(&mut m.zx));
+        let z = &m.zx;
+        assert_eq!((z.pc(), z.sp()), (0x8000, 0x7000));
+        assert_eq!(z.t, 541, "a control code's time");
+        assert_eq!(z.r(), r + 1);
+        assert_eq!(z.read16(0x6000), 0x0A6D, "now waiting for AT's operands");
+    }
+
+    #[test]
     fn anywhere_else_is_left_to_the_interpreter() {
         let mut m = calling(0x9000);
         assert!(!answer(&mut m.zx));

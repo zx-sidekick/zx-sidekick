@@ -372,6 +372,63 @@ mod tests {
         ));
     }
     #[test]
+    fn the_program_s_folder_comes_first_and_the_working_folder_last() {
+        let list = folders();
+        let exe = std::env::current_exe().unwrap();
+        assert_eq!(list[0], exe.parent().unwrap());
+        assert_eq!(list[1], exe.parent().unwrap().join("assets"));
+        assert_eq!(
+            &list[list.len() - 2..],
+            [PathBuf::from("."), PathBuf::from("assets")]
+        );
+        if let Some(data) = data_dir() {
+            assert_eq!(list[2], data.join(APP));
+        }
+    }
+
+    #[test]
+    fn not_found_says_where_it_looked_and_for_what() {
+        let msg = not_found_message(&[PathBuf::from("/one"), PathBuf::from("/two")]);
+        assert!(msg.starts_with("error: no copy of Starquake found."));
+        assert!(msg.contains("  /one\n  /two\n"), "{msg}");
+        for name in NAMES {
+            assert!(msg.contains(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn reading_a_file_that_is_not_the_tape_says_which_file() {
+        let dir = folder("read");
+        let path = dir.join("starquake.tap");
+        fs::write(&path, BAD).unwrap();
+        let err = read(&path).unwrap_err();
+        assert!(err.starts_with(&path.display().to_string()), "{err}");
+        assert!(err.contains("not the Starquake tape"), "{err}");
+        let err = read(&dir.join("missing.tap")).unwrap_err();
+        assert!(err.contains("cannot read"), "{err}");
+    }
+
+    #[test]
+    fn a_zip_that_cannot_be_read_is_unreadable() {
+        let dir = folder("badzip");
+        let path = dir.join("starquake.zip");
+        fs::write(&path, b"not a zip").unwrap();
+        let Err(Refused::Unreadable(why)) = load(&path, accept) else {
+            panic!("should be unreadable");
+        };
+        assert!(why.contains("is not a zip"), "{why}");
+    }
+
+    #[test]
+    fn keeping_fails_where_it_cannot_write() {
+        let dir = folder("keepfail");
+        let blocker = dir.join("file");
+        fs::write(&blocker, b"in the way").unwrap();
+        let err = keep_in(&blocker, GOOD).unwrap_err();
+        assert!(err.starts_with("cannot create"), "{err}");
+    }
+
+    #[test]
     fn keeping_creates_the_folder() {
         let dir = folder("keep").join("deeper").join(APP);
         let path = keep_in(&dir, GOOD).unwrap();

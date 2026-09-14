@@ -347,3 +347,56 @@ pub fn run(shared: Arc<Shared>, prompt: Option<Prompt>, launch: Launcher) -> Res
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn screen(bitmap: u8, attr: u8) -> Vec<u8> {
+        let mut mem = vec![bitmap; BITMAP_LEN];
+        mem.extend(std::iter::repeat_n(attr, 768));
+        mem
+    }
+
+    fn pixel(frame: &[u8], x: usize, y: usize) -> [u8; 4] {
+        let at = (y * FULL_W + x) * 4;
+        frame[at..at + 4].try_into().unwrap()
+    }
+
+    #[test]
+    fn the_picture_sits_inside_a_border_of_its_colour() {
+        let mut out = vec![0u8; FULL_W * FULL_H * 4];
+        // All ink, blue ink on red paper; a green border.
+        draw(&screen(0xFF, 0o21), 4, 0, &mut out);
+        assert_eq!(pixel(&out, 0, 0), [0, 0xD8, 0, 0xFF]);
+        assert_eq!(pixel(&out, BORDER - 1, BORDER), [0, 0xD8, 0, 0xFF]);
+        assert_eq!(pixel(&out, BORDER, BORDER), [0, 0, 0xD8, 0xFF]);
+        assert_eq!(pixel(&out, BORDER + 255, BORDER + 191), [0, 0, 0xD8, 0xFF]);
+        assert_eq!(pixel(&out, BORDER + 256, BORDER + 191), [0, 0xD8, 0, 0xFF]);
+        assert_eq!(pixel(&out, FULL_W - 1, FULL_H - 1), [0, 0xD8, 0, 0xFF]);
+    }
+
+    #[test]
+    fn flashing_cells_swap_every_16_frames() {
+        let mem = screen(0xFF, 0x80 | 0o21);
+        let at = |frame| {
+            let mut out = vec![0u8; FULL_W * FULL_H * 4];
+            draw(&mem, 0, frame, &mut out);
+            pixel(&out, BORDER, BORDER)
+        };
+        assert_eq!(at(0), [0, 0, 0xD8, 0xFF]);
+        assert_eq!(at(15), [0, 0, 0xD8, 0xFF]);
+        assert_eq!(at(16), [0xD8, 0, 0, 0xFF]);
+        assert_eq!(at(32), [0, 0, 0xD8, 0xFF]);
+    }
+
+    #[test]
+    fn clearing_colours_are_converted_to_linear_light() {
+        let c = clear_colour([0, 255, 188]);
+        assert!(c.r.abs() < 1e-9);
+        assert!((c.g - 1.0).abs() < 1e-9);
+        assert!((c.b - 0.5).abs() < 0.01, "sRGB 188 is about half the light");
+        assert!((clear_colour([10, 10, 10]).r - 10.0 / 255.0 / 12.92).abs() < 1e-9);
+        assert_eq!(c.a, 1.0);
+    }
+}

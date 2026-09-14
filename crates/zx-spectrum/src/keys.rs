@@ -72,3 +72,29 @@ impl Zx {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_key_on_the_matrix_has_a_name() {
+        let mut seen = std::collections::HashSet::new();
+        for (row, keys) in ROWS.iter().enumerate() {
+            for (bit, name) in keys.iter().enumerate() {
+                assert_eq!(Key::by_name(name), Some(Key::Matrix(row as u8, bit as u8)));
+                assert!(seen.insert(*name), "{name} twice");
+            }
+        }
+        assert_eq!(seen.len(), 40);
+    }
+
+    #[test]
+    fn names_are_case_insensitive_and_unknown_names_are_none() {
+        assert_eq!(Key::by_name("ENTER"), Some(Key::Matrix(6, 0)));
+        assert_eq!(Key::by_name("Joy_Fire"), Some(Key::Kempston(4)));
+        assert_eq!(Key::by_name("joy_right"), Some(Key::Kempston(0)));
+        assert_eq!(Key::by_name("escape"), None);
+        assert_eq!(Key::by_name(""), None);
+    }
+}

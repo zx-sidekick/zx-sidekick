@@ -29,6 +29,10 @@ locally.
   plays it. Add `--headless <frames> <dir>` for screenshots.
 - `cargo about generate --all-features about.hbs -o THIRD-PARTY.md`
   regenerates the attributions after a dependency change.
+- `cargo llvm-cov --workspace --summary-only` measures test coverage (needs
+  `cargo install cargo-llvm-cov` and `rustup component add llvm-tools`). The
+  line counts include the tests' own code; what is left uncovered needs a
+  window, a sound card, a gamepad, or the player's tape (`sk-check`).
 - The tool shell is zsh: never name a variable `status`, and run anything
   loop-shaped as a `bash` script.
 

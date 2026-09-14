@@ -540,3 +540,116 @@ mod render_check {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(name: &str, bytes: &[u8]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("zx-sidekick-prompt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    fn draw(p: &mut Prompt) -> Vec<u8> {
+        let (w, h) = (WIDTH as usize, HEIGHT as usize);
+        let mut pixels = vec![0u8; w * h * 4];
+        let mut canvas = Canvas {
+            pixels: &mut pixels,
+            width: w,
+            height: h,
+            scale: 1.0,
+        };
+        p.draw(&mut canvas);
+        pixels
+    }
+
+    #[test]
+    fn escape_quits_and_other_keys_do_nothing() {
+        let mut p = Prompt::new();
+        assert!(matches!(p.key(KeyCode::Escape), Outcome::Quit));
+        assert!(matches!(p.key(KeyCode::KeyA), Outcome::Nothing));
+        assert!(
+            matches!(p.clicked(), Outcome::Nothing),
+            "a click on nothing"
+        );
+    }
+
+    #[test]
+    fn the_cursor_redraws_only_when_it_crosses_a_button() {
+        let mut p = Prompt::new();
+        let (x, y, w, h) = p.button(Button::Locate);
+        assert!(matches!(
+            p.cursor(x + w / 2.0, y + h / 2.0),
+            Outcome::Redraw
+        ));
+        assert!(p.hover == Some(Button::Locate));
+        assert!(matches!(
+            p.cursor(x + w / 2.0 + 1.0, y + h / 2.0),
+            Outcome::Nothing
+        ));
+        let (x, y, w, h) = p.button(Button::Website);
+        assert!(matches!(
+            p.cursor(x + w / 2.0, y + h / 2.0),
+            Outcome::Redraw
+        ));
+        assert!(p.hover == Some(Button::Website));
+        assert!(matches!(p.cursor(0.0, 0.0), Outcome::Redraw));
+        assert!(p.hover.is_none());
+    }
+
+    #[test]
+    fn a_wrong_file_dropped_says_why_and_moves_the_drop_zone_down() {
+        let mut p = Prompt::new();
+        let before = p.zone_top();
+        assert!(matches!(
+            p.dropped(&file("other.tap", b"another game")),
+            Outcome::Redraw
+        ));
+        let message = p.message.as_ref().expect("a message");
+        assert!(message.title.contains("isn't the Starquake tape"));
+        assert!(message.detail.contains("other.tap"));
+        assert!(p.zone_top() > before);
+        assert_eq!(p.locate_label(), "Locate the tape\u{2026}");
+        assert_eq!(p.enter_does(), "locate");
+    }
+
+    #[test]
+    fn a_zip_without_a_tape_and_a_missing_file_are_explained() {
+        let mut p = Prompt::new();
+        let zip = file("empty.zip", b"");
+        let mut w = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        w.start_file("readme.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        std::io::Write::write_all(&mut w, b"no tape here").unwrap();
+        w.finish().unwrap();
+        p.dropped(&zip);
+        assert_eq!(
+            p.message.as_ref().unwrap().title,
+            "There is no tape in that zip"
+        );
+        p.dropped(Path::new("/no/such/starquake.tap"));
+        assert_eq!(
+            p.message.as_ref().unwrap().title,
+            "That file could not be read"
+        );
+    }
+
+    #[test]
+    fn the_prompt_draws_on_its_background_with_and_without_a_message() {
+        let mut p = Prompt::new();
+        let idle = draw(&mut p);
+        assert_eq!(&idle[..3], &BACKGROUND);
+        assert!(
+            idle.as_chunks::<4>().0.iter().any(|c| c[..3] != BACKGROUND),
+            "something is drawn"
+        );
+        p.dropped(&file("other2.tap", b"another game"));
+        p.hover = Some(Button::Website);
+        let error = draw(&mut p);
+        assert_ne!(idle, error);
+        assert!(error.as_chunks::<4>().0.iter().any(|c| c[..3] == ERROR));
+    }
+}
