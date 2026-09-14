@@ -141,6 +141,34 @@ fn the_kempston_port_and_an_unattached_port() {
 }
 
 #[test]
+fn keys_are_pressed_and_let_go_one_at_a_time() {
+    let mut z = machine(&[]);
+    let (fire, up) = (
+        Key::by_name("joy_fire").unwrap(),
+        Key::by_name("joy_up").unwrap(),
+    );
+    z.set_key(fire, true);
+    z.set_key(up, true);
+    z.set_key(fire, false);
+    assert_eq!(z.kempston, 0x08);
+    let a = Key::by_name("a").unwrap();
+    z.set_key(a, true);
+    z.set_key(a, false);
+    assert_eq!(z.keys, [0xFF; 8]);
+    // A place that is not on the matrix presses nothing.
+    z.set_key(Key::Matrix(8, 0), true);
+    z.set_key(Key::Matrix(0, 5), true);
+    assert_eq!(z.keys, [0xFF; 8]);
+}
+
+#[test]
+fn ix_can_be_set() {
+    let mut z = machine(&[]);
+    z.set_ix(0x1234);
+    assert_eq!(z.ix(), 0x1234);
+}
+
+#[test]
 fn a_port_reader_replaces_the_hardware() {
     let mut z = machine(&[]);
     z.port_in = Some(|port| (port >> 8) as u8);
