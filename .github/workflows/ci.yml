@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The repository must never carry any part of the original game. This is
+  # the one check that protects the project's whole footing, so it runs
+  # first and on its own.
+  no-game-data:
+    name: no game or ROM data committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Nothing under assets/ but its README
+        run: |
+          stray=$(git ls-files assets | grep -v '^assets/README\.md$' || true)
+          if [ -n "$stray" ]; then
+            echo "::error::These must never be committed:"
+            echo "$stray"
+            exit 1
+          fi
+
+      - name: No game dumps anywhere in the tree
+        run: |
+          stray=$(git ls-files | grep -iE '\.(tap|tzx|z80|sna|rom|szx)$' || true)
+          if [ -n "$stray" ]; then
+            echo "::error::Game or ROM dumps must never be committed:"
+            echo "$stray"
+            exit 1
+          fi
+
+  build:
+    name: build, test and lint (${{ matrix.os }})
+    # Every `run:` below is a bash script. Windows runners default to
+    # PowerShell, so say it once here rather than on each step.
+    defaults:
+      run:
+        shell: bash
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      # Keep in step with rust-toolchain.toml, which pins the same version
+      # for local builds. Tracking `stable` here would mean a future Rust
+      # release could fail CI on untouched code, because `clippy -D warnings`
+      # gains lints with every release.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # What the window, sound and gamepad crates need to build on Linux.
+      - name: System libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libudev-dev libxkbcommon-dev \
+            libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev
+
+      - name: Build
+        run: cargo build --workspace --all-targets --locked
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings

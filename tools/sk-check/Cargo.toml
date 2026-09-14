@@ -1,0 +1,12 @@
+[package]
+name = "sk-check"
+description = "Local checks of ZX Sidekick against the player's own copy of the game (and, for one, a Spectrum ROM). Never run in CI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

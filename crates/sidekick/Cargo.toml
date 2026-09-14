@@ -1,0 +1,12 @@
+[package]
+name = "sidekick"
+description = "An emulated ZX Spectrum that runs a player's own copy of a game without a ROM"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

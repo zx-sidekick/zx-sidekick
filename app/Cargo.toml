@@ -1,0 +1,12 @@
+[package]
+name = "zx-sidekick-starquake"
+description = "ZX Sidekick: Starquake, running your own copy of the original game. Not affiliated with the rights holders."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

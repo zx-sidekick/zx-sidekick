@@ -1,0 +1,12 @@
+[package]
+name = "zx-spectrum"
+description = "A ZX Spectrum 48K around the rustzx-z80 processor: memory, keyboard, Kempston joystick, border, speaker and the ULA's contention"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

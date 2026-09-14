@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/zx-core",
+    "crates/zx-spectrum",
+    "crates/sidekick",
+    "tools/sk-check",
+    "app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+# Nothing here belongs on crates.io: the program needs the player's own copy
+# of the game to do anything.
+publish = false
+
+[workspace.dependencies]
+zx-core = { path = "crates/zx-core" }
+zx-spectrum = { path = "crates/zx-spectrum" }
+sidekick = { path = "crates/sidekick" }
+
+# The whole game runs on an emulated processor, so even dev builds need
+# optimising to keep up with a real Spectrum.
+[profile.dev]
+opt-level = 2
+
+[profile.dev.build-override]
+opt-level = 3
+
+[profile.release.build-override]
+opt-level = 3
+
+# Clippy's default set, plus the pedantic lints that earn their keep here.
+[workspace.lints.clippy]
+missing_panics_doc = "warn"
+missing_errors_doc = "warn"
+items_after_statements = "warn"
+match_same_arms = "warn"
+if_not_else = "warn"
+default_trait_access = "warn"
+needless_pass_by_value = "warn"
+semicolon_if_nothing_returned = "warn"
+redundant_closure_for_method_calls = "warn"
+wildcard_imports = "warn"
