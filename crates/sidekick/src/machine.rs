@@ -55,8 +55,10 @@ pub struct Machine {
 /// listens for them: as the Kempston port's bits in method 1, and in
 /// methods 2 to 5 as the five keys the method's table names, so a joystick
 /// moves Blob whichever option was chosen on the title screen. Start
-/// presses the key the game keeps as its pause key. Nothing is released:
-/// the caller sets the keys afresh each frame.
+/// presses the key the game pauses with in that method: the one it keeps
+/// at [`PAUSE_KEY`], except that the Kempston method pauses with Space
+/// whatever was defined. Nothing is released: the caller sets the keys
+/// afresh each frame.
 pub fn press(z: &mut Zx, joystick: u8, start: bool) {
     let method = z.mem[usize::from(CONTROL_METHOD)];
     match method {
@@ -74,10 +76,20 @@ pub fn press(z: &mut Zx, joystick: u8, start: bool) {
         }
         _ => {}
     }
-    if start && let Some(key) = starquake::key(z.mem[usize::from(PAUSE_KEY)]) {
-        z.set_key(key, true);
+    if start {
+        let pause = if method == 1 {
+            SPACE
+        } else {
+            z.mem[usize::from(PAUSE_KEY)]
+        };
+        if let Some(key) = starquake::key(pause) {
+            z.set_key(key, true);
+        }
     }
 }
+
+/// Space, as the game's tables name it: the Kempston method's pause key.
+const SPACE: u8 = b'*';
 
 /// `JR $`: an instruction that jumps to itself. With no ROM, one sits at each
 /// ROM routine ZX Sidekick answers, so the processor stops there instead of
@@ -306,24 +318,19 @@ mod tests {
     }
 
     #[test]
-    fn start_presses_the_pause_key_the_game_keeps() {
+    fn start_presses_the_pause_key_the_game_uses_in_that_method() {
         for method in 1..=5 {
             let mut m = with_tables(method);
             press(&mut m.zx, 0, true);
             assert_eq!(m.zx.keys, keys_named(&["space"]), "method {method}");
             assert_eq!(m.zx.kempston, 0);
-            // The define-keys screen wrote N as the pause key.
+            // The define-keys screen wrote N as the pause key: methods 2 to
+            // 5 pause with it, the Kempston method with Space regardless.
             let mut m = with_tables(method);
             m.zx.mem[usize::from(PAUSE_KEY)] = b'N';
-            press(&mut m.zx, JOY_FIRE, true);
-            assert!(
-                m.zx.keys[7] & 0x08 == 0,
-                "method {method}: N is bit 3 of half-row 7"
-            );
-            assert!(
-                m.zx.keys[7] & 0x01 != 0,
-                "method {method}: Space is not pressed"
-            );
+            press(&mut m.zx, 0, true);
+            let expected = if method == 1 { "space" } else { "n" };
+            assert_eq!(m.zx.keys, keys_named(&[expected]), "method {method}");
         }
     }
 
@@ -343,6 +350,7 @@ mod tests {
         m.zx.mem[usize::from(PAUSE_KEY)] = 0xFF;
         press(&mut m.zx, JOY_LEFT | JOY_FIRE, true);
         assert_eq!((m.zx.keys, m.zx.kempston), (keys_named(&["m"]), 0));
+        assert_eq!(starquake::key(SPACE), zx_spectrum::Key::by_name("space"));
     }
 
     /// A machine with the tables in place whose program starts at `pc`: a

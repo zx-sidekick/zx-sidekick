@@ -14,8 +14,9 @@
 //!   a game, and checks that the joystick and Start reach it through the
 //!   machine: every direction and fire move the picture where Blob is, Start
 //!   freezes it and a direction then resumes it; that Start or fire alone
-//!   starts a game from the title screen and goes past the intro text; and
-//!   that the control facts read as recorded.
+//!   starts a game from the title screen and goes past the intro text; that
+//!   Start still pauses in every method after the pause key was redefined;
+//!   and that the control facts read as recorded.
 //! - `shot <frames> [out-dir]`: runs the ROM-free machine and writes a PNG of
 //!   the screen every so often, to look at.
 
@@ -484,12 +485,52 @@ fn starts_from_the_controller(dir: &Path) -> bool {
     ok
 }
 
+/// With the pause key redefined as N on the define-keys screen, then each
+/// method chosen and a game started: Start through the machine must still
+/// freeze the picture. The game pauses with Space in the Kempston method
+/// whatever was defined, and with the defined key in the others; Start
+/// presses whichever that is.
+fn pauses_after_redefining(dir: &Path) -> bool {
+    let mut ok = true;
+    for method in 1..=5u8 {
+        let mut m = machine(dir);
+        let key = |n: &str| Key::by_name(n).expect("a key name");
+        for frame in 0..1100u64 {
+            m.zx.release_all_keys();
+            let defined = ["z", "x", "c", "v", "b", "n"];
+            match frame {
+                50..=54 => m.zx.set_key(key("6"), true),
+                100..=304 if (frame - 100) % 40 < 5 => {
+                    m.zx.set_key(key(defined[((frame - 100) / 40) as usize]), true);
+                }
+                500..=506 => m.zx.set_key(key(&method.to_string()), true),
+                600..=606 => m.zx.set_key(key("0"), true),
+                850..=856 => m.zx.set_key(key("enter"), true),
+                _ => {}
+            }
+            m.run_frame();
+        }
+        let none = after(&m, 0, false);
+        let held = after(&m, 0, true);
+        let good = m.zx.mem[usize::from(PAUSE_KEY)] == b'N'
+            && m.zx.mem[usize::from(CONTROL_METHOD)] == method
+            && held[3] == held[4]
+            && none[3] != none[4];
+        println!(
+            "  pause redefined as N, method {method}: Start pauses {}",
+            if good { "ok" } else { "FAILED" }
+        );
+        ok &= good;
+    }
+    ok
+}
+
 /// For every control method: the control facts read as recorded, each
 /// joystick direction and fire change the picture where Blob is within a
 /// few frames of being pressed, Start freezes it and a direction resumes
 /// it; and Start or fire alone gets from the title screen into play.
 fn keys_check(dir: &Path) -> bool {
-    let mut ok = starts_from_the_controller(dir);
+    let mut ok = starts_from_the_controller(dir) & pauses_after_redefining(dir);
     for method in 1..=5u8 {
         let m = into_play(dir, method);
         let facts = m.zx.mem[usize::from(CONTROL_METHOD)] == method

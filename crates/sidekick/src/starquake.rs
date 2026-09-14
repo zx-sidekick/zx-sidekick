@@ -32,7 +32,9 @@ pub const CONTROL_METHOD: u16 = 0x5E58;
 pub const KEY_TABLES: u16 = 0x5E5C;
 
 /// The pause key, as [`key`] reads it: Space as the tape ships it, and
-/// whatever the define-keys screen was given after that.
+/// whatever the define-keys screen was given after that. Methods 2 to 5
+/// pause with it; the Kempston method pauses with Space whatever it holds.
+/// Checked by hand and on the tape on 2026-09-14, in every method.
 pub const PAUSE_KEY: u16 = 0x5E70;
 
 /// The game's play-time key reader: the one routine that consults
