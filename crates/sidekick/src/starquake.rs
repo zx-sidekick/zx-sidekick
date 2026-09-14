@@ -102,6 +102,9 @@ pub mod routine {
     /// A teleporter booth, one of the screens play hands over to. It prints
     /// the code of the teleporter Blob is standing in.
     pub const TELEPORT_BOOTH: u16 = 0xCED4;
+    /// Drawing a room's tiles, from its first instruction to its last.
+    pub const BUILD_ROOM_TILES: u16 = 0xA80A;
+    pub const BUILD_ROOM_TILES_END: u16 = 0xAA30;
 }
 
 /// Where the game keeps what the guidance panel shows. Addresses in the
@@ -123,6 +126,79 @@ pub mod at {
     pub const MARKERS_END: u16 = 0x96FA;
     /// Why the room was entered (0 walking in).
     pub const ENTRY_REASON: u16 = 0xD2C4;
+    /// The rooms not yet visited this game: 512 bits, most significant
+    /// first.
+    pub const UNVISITED_ROOMS: u16 = 0xA390;
+    /// The restore list the room builder writes, and the pointer into it.
+    pub const RESTORE_LIST: u16 = 0x5B20;
+    pub const RESTORE_PTR: u16 = 0xEA60;
+}
+
+/// The core room, which the game runs as a screen of its own.
+pub const CORE_ROOM: u16 = 199;
+
+/// Has the game draw `room` on this machine, which should be a copy, and
+/// reads its cells and markers.
+///
+/// # Panics
+///
+/// If the game's room drawing does not finish, which means the machine does
+/// not hold Starquake.
+pub fn read_room(machine: &mut crate::Machine, room: u16) -> crate::map::Room {
+    let z = &mut machine.zx;
+    // As the game leaves the screen before drawing a room: the room area
+    // (rows 6 to 23) blank, in bright white on black, which Blob can pass.
+    z.mem[0x4000..0x5800].fill(0);
+    z.mem[0x5800 + 6 * 32..0x5B00].fill(0x47);
+    z.mem[usize::from(at::RESTORE_LIST)..usize::from(at::RESTORE_LIST) + 0xA0].fill(0);
+    z.write16(at::RESTORE_PTR, at::RESTORE_LIST);
+    z.write16(at::ROOM, room);
+    assert!(
+        machine.call(
+            routine::BUILD_ROOM_TILES,
+            routine::BUILD_ROOM_TILES_END,
+            5_000_000
+        ),
+        "room {room} did not finish drawing"
+    );
+    let z = &machine.zx;
+    let end = z.read16(at::MARKERS_END).max(at::MARKERS);
+    let markers: Vec<(u8, u8, u8)> = (at::MARKERS..end)
+        .step_by(3)
+        .map(|a| {
+            let a = usize::from(a);
+            (z.mem[a], z.mem[a + 1], z.mem[a + 2])
+        })
+        .collect();
+    crate::map::Room::read(
+        |row, col| z.mem[0x5800 + usize::from(row) * 32 + usize::from(col)],
+        &markers,
+    )
+}
+
+/// Every room's openings, read by having the game draw each room on a copy
+/// of `machine`.
+///
+/// # Panics
+///
+/// As [`read_room`].
+#[must_use]
+pub fn all_openings(machine: &crate::Machine) -> Vec<crate::map::Openings> {
+    let rooms: Vec<crate::map::Room> = (0..crate::map::COLS * crate::map::ROWS)
+        .map(|room| read_room(&mut machine.clone(), room))
+        .collect();
+    crate::map::openings(&rooms, CORE_ROOM)
+}
+
+/// The parts of `room` Blob can move between with its doors open, read by
+/// having the game draw it on a copy of `machine`.
+///
+/// # Panics
+///
+/// As [`read_room`].
+#[must_use]
+pub fn room_parts(machine: &crate::Machine, room: u16) -> crate::map::Parts {
+    read_room(&mut machine.clone(), room).open
 }
 
 /// The marker a teleporter booth's tile leaves in its room.

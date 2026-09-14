@@ -23,6 +23,11 @@
 //!   back round to the menu, in every control method; and that the
 //!   teleporter table holds fifteen codes in fifteen rooms and, with a ROM,
 //!   that walking into each booth prints its code.
+//! - `map [walks]`: has the game draw every room and reads the map from
+//!   them, then walks Blob at random through play from many rooms and checks
+//!   that he never leaves a room through an edge the map shows closed, and
+//!   never gets from one part of a room to another across a wall it shows
+//!   inside.
 //! - `shot <frames> [out-dir]`: runs the ROM-free machine and writes a PNG of
 //!   the screen every so often, to look at.
 
@@ -773,6 +778,128 @@ fn facts_check(dir: &Path) -> bool {
     ok
 }
 
+/// Reads the map by having the game draw every room, then walks Blob at
+/// random from `walks` rooms, and fails if he ever leaves a room through an
+/// edge the map shows closed or crosses a wall it shows inside a room.
+fn map_check(dir: &Path, walks: usize) -> bool {
+    use sidekick::starquake::{all_openings, at, room_parts, routine};
+    let mut base = machine(dir);
+    let openings = all_openings(&base);
+    let parts: Vec<_> = (0..512).map(|room| room_parts(&base, room)).collect();
+    // Into play, as a player would.
+    base.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut base, frame.min(399));
+        if base.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    base.watch = vec![routine::MODAL, routine::DEATH, routine::MAIN_LOOP];
+    let mut rng = Script(0x3A9);
+    let mut next = |n: u64| {
+        rng.0 ^= rng.0 << 13;
+        rng.0 ^= rng.0 >> 7;
+        rng.0 ^= rng.0 << 17;
+        rng.0 % n
+    };
+    let (mut crossings, mut positions, mut failures) = (0u64, 0u64, 0u64);
+    for walk in 0..walks {
+        let mut m = base.clone();
+        // Start each walk in a different room, entered as walking in.
+        let start = next(512) as u16;
+        if start != sidekick::starquake::CORE_ROOM {
+            let z = &mut m.zx;
+            z.write16(at::ROOM, start);
+            z.mem[usize::from(at::ENTRY_REASON)] = 0;
+            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+                continue;
+            }
+            let z = &mut m.zx;
+            z.t = 0;
+            z.set_interrupts(true);
+        }
+        let mut part = 0;
+        for frame in 0..1500 {
+            if frame % 25 == 0 {
+                m.zx.release_all_keys();
+                m.zx.kempston = next(16) as u8;
+            }
+            let from = m.zx.read16(at::ROOM);
+            let hits = m.run_frame();
+            if hits
+                .iter()
+                .any(|&h| h == routine::MODAL || h == routine::DEATH)
+            {
+                // A door, booth or pyramid screen, or a lost life: this walk's
+                // view of where Blob is starts again.
+                part = 0;
+                continue;
+            }
+            let z = &m.zx;
+            let room = z.read16(at::ROOM);
+            if room != from {
+                part = 0;
+                let o = openings[usize::from(from) % 512];
+                let edge = match room.wrapping_sub(from) {
+                    1 => Some(("right", o.right)),
+                    0xFFFF => Some(("left", o.left)),
+                    16 => Some(("bottom", o.down)),
+                    0xFFF0 => Some(("top", o.up)),
+                    _ => None,
+                };
+                if let Some((name, open)) = edge {
+                    crossings += 1;
+                    if !open {
+                        failures += 1;
+                        println!(
+                            "map: walk {walk}: left room {from} through its {name} edge, shown closed"
+                        );
+                    }
+                }
+            }
+            let (x, y) = (
+                z.mem[usize::from(at::ENTITIES) + 5],
+                z.mem[usize::from(at::ENTITIES) + 6],
+            );
+            if x & 7 != 0 || room >= 512 {
+                continue;
+            }
+            let here = parts[usize::from(room)].at((0xBF - y) >> 3, x >> 3);
+            if here == 0 {
+                continue;
+            }
+            positions += 1;
+            if part == 0 {
+                part = here;
+            } else if here != part {
+                failures += 1;
+                println!(
+                    "map: walk {walk}: crossed a wall inside room {room} at ({x:#04x}, {y:#04x})"
+                );
+                part = here;
+            }
+        }
+    }
+    let open: usize = openings
+        .iter()
+        .map(|o| {
+            [o.left, o.right, o.up, o.down]
+                .into_iter()
+                .filter(|&e| e)
+                .count()
+        })
+        .sum();
+    let divided = openings
+        .iter()
+        .filter(|o| o.walls.iter().any(Option::is_some))
+        .count();
+    println!(
+        "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map"
+    );
+    failures == 0 && crossings > 0
+}
+
 fn shots(dir: &Path, frames: u64, out: &Path) {
     let mut m = machine(dir);
     let mut script = Script(0xBEEF);
@@ -811,6 +938,10 @@ fn main() {
         Some("entry") => std::process::exit(i32::from(!entry_check(&dir))),
         Some("keys") => std::process::exit(i32::from(!keys_check(&dir))),
         Some("facts") => std::process::exit(i32::from(!facts_check(&dir))),
+        Some("map") => {
+            let walks = args.get(2).and_then(|f| f.parse().ok()).unwrap_or(120);
+            std::process::exit(i32::from(!map_check(&dir, walks)));
+        }
         Some("shot") => {
             let frames = args.get(2).and_then(|f| f.parse().ok()).unwrap_or(600);
             shots(
@@ -820,7 +951,9 @@ fn main() {
             );
         }
         _ => {
-            eprintln!("usage: sk-check rom|entry|keys|facts|shot <assets-dir> [frames] [out-dir]");
+            eprintln!(
+                "usage: sk-check rom|entry|keys|facts|map|shot <assets-dir> [frames] [out-dir]"
+            );
             std::process::exit(2);
         }
     }
