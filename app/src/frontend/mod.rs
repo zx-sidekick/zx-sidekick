@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use sidekick::machine::JOY_FIRE;
 use sidekick::starquake::{ENTRY_PC, ENTRY_SP};
 use sidekick::{Input, Machine};
 
@@ -26,12 +25,6 @@ const FRAMES_PER_SECOND: u32 = 50;
 /// How long the tape's loading picture stays up before the game starts, as it
 /// would at the end of loading from a cassette.
 const LOADING_FRAMES: u32 = 150;
-
-/// How many frames a fresh press of Start or fire counts as a start press:
-/// long enough for the title screen, which sees the key, prints for three
-/// frames, then reads again and needs it still down; and no longer, so
-/// holding the button is not pressing it again.
-const START_PRESS_FRAMES: u8 = 8;
 
 /// State shared between the machine's thread and the window.
 pub struct Shared {
@@ -98,8 +91,6 @@ impl Runner {
 
     fn run(&mut self, tape: &[u8]) -> Result<(), String> {
         let mut machine = Machine::from_tape(tape, ENTRY_PC, ENTRY_SP)?;
-        let mut start_was_down = false;
-        let mut start_press = 0;
         let loading = zx_core::tape::load_tap(tape)?.loading_screen;
         if let Some(picture) = loading {
             let mut memory = vec![0u8; 0x1B00];
@@ -121,15 +112,6 @@ impl Runner {
             // presses them as the game's chosen control method listens.
             machine.joystick = input.joystick | pad.bits;
             machine.start = pad.start;
-            // Start or fire going down is a start press for a few frames:
-            // `0` on the title screen, any key on the intro text.
-            let start_down = pad.start || machine.joystick & JOY_FIRE != 0;
-            if start_down && !start_was_down {
-                start_press = START_PRESS_FRAMES;
-            }
-            start_was_down = start_down;
-            machine.start_game = start_press > 0;
-            start_press = start_press.saturating_sub(1);
             machine.run_frame();
             let edges = std::mem::take(&mut machine.zx.speaker);
             let border = machine.zx.border;

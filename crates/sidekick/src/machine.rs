@@ -44,17 +44,14 @@ pub struct Machine {
     /// game gets it however its chosen control method listens, see
     /// [`press`].
     pub joystick: u8,
-    /// Whether the joystick's Start is held: the game's pause key.
+    /// Whether the joystick's Start is held: the game's pause key in play.
+    /// On the title screen Start or fire is `0`, which starts a game, and
+    /// on the intro text the key it waits for, held for as long as the
+    /// button is, as a key would be.
     pub start: bool,
-    /// Whether a start press is fresh: Start or fire went down within the
-    /// last few frames. On the title screen it presses `0`, which starts a
-    /// game; on the intro text that is the key it waits for. Fresh, not
-    /// held, so a button still down when a game ends does not start the
-    /// next one by itself. Nothing else reads it.
-    pub start_game: bool,
-    /// The frame of the last `0` pressed for a start press at the title
-    /// screen's reader, so the confirming read a few frames later can be
-    /// told from the define-keys screen using the same routine.
+    /// The frame `0` was last pressed at the title screen's reader, so the
+    /// confirming read a few frames later can be told from the define-keys
+    /// screen, which uses the same routine.
     menu_pressed: Option<u64>,
 }
 
@@ -158,7 +155,6 @@ impl Machine {
             zx,
             joystick: 0,
             start: false,
-            start_game: false,
             menu_pressed: None,
         }
     }
@@ -191,12 +187,13 @@ impl Machine {
     /// pressing the joystick's keys as the game's play-time key reader
     /// starts ([`starquake::PLAY_INPUT`]) and where it reads the controls
     /// ([`starquake::CONTROLS_INPUT`]), which is also where a paused game
-    /// waits: the moments they reach the game in play, and no menu. A fresh
-    /// start press is `0` as the title screen's reader starts
+    /// waits: the moments they reach the game in play, and no menu. Start
+    /// or fire held is `0` as the title screen's reader starts
     /// ([`starquake::MENU_INPUT`]) and, in its wake, as the game reads again
     /// to confirm it ([`starquake::MENU_CONFIRM_INPUT`]); nowhere else.
     pub fn run_frame(&mut self) {
-        let (joystick, start, start_game) = (self.joystick, self.start, self.start_game);
+        let (joystick, start) = (self.joystick, self.start);
+        let start_game = start || joystick & JOY_FIRE != 0;
         let menu_pressed = &mut self.menu_pressed;
         self.zx.run_frame(|z| {
             let pc = z.pc();
@@ -415,15 +412,20 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_start_press_is_zero_as_the_title_screen_reads_the_keys() {
+    fn start_or_fire_is_zero_as_the_title_screen_reads_the_keys() {
         assert_eq!(Some(START_GAME), zx_spectrum::Key::by_name("0"));
+        for (joystick, start) in [(0, true), (JOY_FIRE, false), (0x1F, true)] {
+            let mut m = at_the_reader(starquake::MENU_INPUT);
+            m.joystick = joystick;
+            m.start = start;
+            m.run_frame();
+            // The directions mean nothing to the title screen.
+            assert_eq!((m.zx.keys, m.zx.kempston), (keys_named(&["0"]), 0));
+        }
         let mut m = at_the_reader(starquake::MENU_INPUT);
-        m.start_game = true;
-        // The joystick and Start mean nothing to the title screen.
-        m.joystick = 0x1F;
-        m.start = true;
+        m.joystick = JOY_LEFT | JOY_UP;
         m.run_frame();
-        assert_eq!((m.zx.keys, m.zx.kempston), (keys_named(&["0"]), 0));
+        assert_eq!((m.zx.keys, m.zx.kempston), ([0xFF; 8], 0));
     }
 
     #[test]
@@ -431,7 +433,7 @@ mod tests {
         // Pressed at the title screen's reader, then read again to confirm
         // a few frames later: still down.
         let mut m = at_the_reader(starquake::MENU_INPUT);
-        m.start_game = true;
+        m.start = true;
         m.run_frame();
         m.zx.release_all_keys();
         m.zx.set_pc(starquake::MENU_CONFIRM_INPUT);
@@ -447,29 +449,25 @@ mod tests {
         assert_eq!(m.zx.keys, [0xFF; 8]);
         // And never without one: the define-keys screen reads here too.
         let mut m = at_the_reader(starquake::MENU_CONFIRM_INPUT);
-        m.start_game = true;
+        m.start = true;
+        m.joystick = JOY_FIRE;
         m.run_frame();
         assert_eq!(m.zx.keys, [0xFF; 8]);
     }
 
     #[test]
-    fn a_start_press_is_nothing_in_play_and_a_held_one_is_nothing_anywhere() {
+    fn in_play_start_is_the_pause_key_and_fire_is_fire_not_zero() {
         let mut m = at_the_reader(starquake::PLAY_INPUT);
-        m.start_game = true;
-        m.run_frame();
-        assert_eq!(m.zx.keys, [0xFF; 8]);
-        let mut m = at_the_reader(starquake::MENU_INPUT);
-        m.start_game = false;
-        m.joystick = JOY_FIRE;
         m.start = true;
+        m.joystick = JOY_FIRE;
         m.run_frame();
-        assert_eq!((m.zx.keys, m.zx.kempston), ([0xFF; 8], 0));
+        assert_eq!(m.zx.keys, keys_named(&["space", "m"]));
     }
 
     #[test]
     fn a_new_machine_has_the_joystick_at_rest() {
         let m = Machine::blank(0, 0);
-        assert_eq!((m.joystick, m.start, m.start_game), (0, false, false));
+        assert_eq!((m.joystick, m.start, m.menu_pressed), (0, false, None));
     }
 
     #[test]
