@@ -179,17 +179,22 @@ impl Fonts {
     /// the badge's width.
     pub fn key_badge(&mut self, canvas: &mut Canvas, x: f32, y: f32, h: f32, label: &str) -> f32 {
         let size = h * 0.58;
-        let tw = self.measure(&[Span {
-            text: label,
-            size,
-            weight: Weight::SemiBold,
-            colour: palette::BADGE_TEXT,
-        }]);
-        let w = (tw + h * 0.62).max(h);
+        let w = self.key_width(h, label);
         canvas.round_rect(x, y, w, h, h * 0.19, palette::BADGE);
         canvas.outline(x, y, w, h, h * 0.19, 1.5, None, palette::BADGE_LINE);
         self.centred(canvas, (x, y, w, h), label, size);
         w
+    }
+
+    /// The width of [`Fonts::key_badge`]'s badge for `label`, `h` high.
+    pub fn key_width(&mut self, h: f32, label: &str) -> f32 {
+        let tw = self.measure(&[Span {
+            text: label,
+            size: h * 0.58,
+            weight: Weight::SemiBold,
+            colour: palette::BADGE_TEXT,
+        }]);
+        (tw + h * 0.62).max(h)
     }
 
     /// A gamepad button in a legend: its letter in a round badge `h` logical

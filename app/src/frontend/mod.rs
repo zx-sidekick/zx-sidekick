@@ -150,6 +150,12 @@ impl Runner {
                 if self.shared.quit.load(Ordering::Relaxed) {
                     return Ok(());
                 }
+                if self.pad.poll().select {
+                    self.shared.guidance.lock().unwrap().open();
+                }
+                if self.shared.guidance.lock().unwrap().picker_open() {
+                    self.hold_for_picker();
+                }
                 self.present(&memory, 0, &[], false);
             }
         }

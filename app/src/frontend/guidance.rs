@@ -60,8 +60,8 @@ pub struct Guidance {
     /// The level and training mode when the picker opened, which Undo goes
     /// back to.
     opened: (u8, bool),
-    /// "This will show on your score", asked when leaving the picker would add to
-    /// the record, and which answer is highlighted.
+    /// "This will show on your score", asked when leaving the picker would
+    /// add to the record, and which answer is highlighted.
     asking: Option<Choice>,
     /// The row the picker has highlighted.
     focus: Setting,

@@ -2,10 +2,11 @@
 //! guidance panel, the picker and the pause notice (#25).
 //!
 //! `pixels` scales the game's small buffer up to the window, which is right
-//! for the Spectrum's picture and wrong for text. So the panel and picker are
-//! drawn into their own RGBA texture, the size of the rectangle the picture
-//! occupies on screen, and laid over it in a second pass. The texture is
-//! uploaded only when its contents have changed.
+//! for the Spectrum's picture and wrong for text. So the panel, the picker
+//! and the notice are drawn into their own RGBA texture, the size of the
+//! rectangle the buffer, picture and panel, occupies on screen, and laid over
+//! it in a second pass. The texture is uploaded only when its contents have
+//! changed.
 
 use pixels::wgpu;
 use pixels::wgpu::util::DeviceExt;
@@ -147,7 +148,7 @@ impl Overlay {
     }
 
     /// Lays the overlay over `view` inside `clip`, the rectangle (x, y,
-    /// width, height) the game picture was drawn in.
+    /// width, height) the buffer was drawn in.
     pub fn render(
         &mut self,
         device: &wgpu::Device,

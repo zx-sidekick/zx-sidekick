@@ -100,10 +100,7 @@ impl Panel {
                 1.2,
                 &[span(&title, 19.0, Weight::SemiBold, BRIGHT)],
             );
-            let esc = self
-                .fonts
-                .measure(&[span("Esc", HINT_H * 0.58, Weight::SemiBold, BRIGHT)]);
-            let esc_w = (esc + HINT_H * 0.62).max(HINT_H);
+            let esc_w = self.fonts.key_width(HINT_H, "Esc");
             self.fonts
                 .key_badge(canvas, WINDOW_W - 24.0 - esc_w, 24.0, HINT_H, "Esc");
             let lines = if level == 0 {
@@ -398,14 +395,14 @@ impl Panel {
 
         if let Some(choice) = guidance.asking() {
             canvas.shade(x, y, w, h, DIM, 150);
-            self.noted_with_score(canvas, guidance, choice);
+            self.score_question(canvas, guidance, choice);
         }
     }
 
     /// The question over the picker when leaving it would add to the score
     /// note: exactly what changed since it opened, what the score will say,
     /// and buttons named for what they do.
-    fn noted_with_score(&mut self, canvas: &mut Canvas, guidance: &Guidance, choice: Choice) {
+    fn score_question(&mut self, canvas: &mut Canvas, guidance: &Guidance, choice: Choice) {
         let (was_level, was_training) = guidance.opened();
         let (level, training) = (guidance.level(), guidance.training());
         let record = guidance.record();
