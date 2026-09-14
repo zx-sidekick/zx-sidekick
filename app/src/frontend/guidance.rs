@@ -157,13 +157,15 @@ impl Guidance {
     }
 
     /// Esc, B or Select. With the question up, back to the picker.
-    /// Otherwise leave it.
+    /// Otherwise close it and put back the level and training mode it
+    /// opened with, which are already on the record, so nothing is added.
     pub fn back(&mut self) {
         if self.asking.is_some() {
             self.asking = None;
             self.version += 1;
         } else {
-            self.leave();
+            (self.level, self.training) = self.opened;
+            self.close();
         }
     }
 
@@ -192,7 +194,8 @@ impl Guidance {
     }
 
     /// Enter or A. With the question up, it takes the highlighted answer.
-    /// On a setting it leaves the picker, as Esc does. On an action the
+    /// On a setting it keeps the changes and leaves the picker, asking first
+    /// if they would add to the record. On an action the
     /// first press asks for a second, and the second requests the action
     /// and closes the picker.
     pub fn enter(&mut self) {
@@ -372,7 +375,7 @@ mod tests {
         g.set_level(3);
         g.open();
         g.change(false);
-        g.back();
+        g.enter();
         assert!(!g.picker_open(), "a lower level: no question");
         assert_eq!(g.level(), 2);
 
@@ -380,7 +383,7 @@ mod tests {
         g.change(true);
         g.change(true);
         g.change(false);
-        g.back();
+        g.enter();
         assert!(!g.picker_open(), "back to level 3, already recorded");
     }
 
@@ -390,7 +393,7 @@ mod tests {
         g.open();
         g.change(true);
         g.change(true);
-        g.back();
+        g.enter();
         assert!(g.picker_open());
         assert_eq!(g.asking(), Some(Choice::Undo));
         g.enter();
@@ -423,11 +426,35 @@ mod tests {
         let mut g = Guidance::default();
         g.open();
         g.change(true);
-        g.back();
+        g.enter();
         g.back();
         assert!(g.picker_open());
         assert_eq!(g.asking(), None);
         assert_eq!(g.level(), 1, "still changed");
+    }
+
+    #[test]
+    fn closing_puts_back_what_the_picker_opened_with() {
+        let mut g = Guidance::default();
+        g.set_level(2);
+        g.open();
+        g.change(true);
+        g.focus_down();
+        g.change(true);
+        g.back();
+        assert!(!g.picker_open(), "no question on the way out");
+        assert_eq!((g.level(), g.training()), (2, false), "put back");
+        assert_eq!(
+            g.record(),
+            Record {
+                highest: 2,
+                training: false
+            }
+        );
+        g.open();
+        g.change(false);
+        g.back();
+        assert_eq!(g.level(), 2, "a lower level is put back too");
     }
 
     #[test]

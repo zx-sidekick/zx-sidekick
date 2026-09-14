@@ -389,7 +389,7 @@ impl Panel {
                 (&[Hint::Arrows(&["\u{2191}", "\u{2193}"])], "choose"),
                 (&[Hint::Arrows(&["\u{2190}", "\u{2192}"])], "change"),
                 (&[Hint::Key("Enter"), Hint::Button("A")], "OK"),
-                (&[Hint::Key("Esc"), Hint::Button("B")], "close"),
+                (&[Hint::Key("Esc"), Hint::Button("B")], "cancel"),
             ],
         );
 
@@ -772,7 +772,7 @@ mod tests {
                     g.change(true);
                     g.focus_down();
                     g.change(true);
-                    g.back();
+                    g.enter();
                     g
                 },
                 Scene::Play,
@@ -786,7 +786,7 @@ mod tests {
                     g.open();
                     g.change(true);
                     g.change(true);
-                    g.back();
+                    g.enter();
                     g
                 },
                 Scene::Play,

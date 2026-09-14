@@ -90,9 +90,10 @@ built; for now the panel shows what you have chosen.
   on a gamepad         it is open.
   Up and down          Choose a row.
   Left and right       Change the guidance level or training mode.
-  Enter, or A          OK. End this game and Exit Starquake need a
-                       second press.
-  Esc, B or Select     Leave the picker, keeping what you changed.
+  Enter, or A          OK: keep what you changed. End this game and
+                       Exit Starquake need a second press.
+  Esc, B or Select     Cancel: leave the picker as it was when it
+                       opened.
 
 Raising the level, or turning training mode on, shows on that game's
 score, so the picker asks first. When a game is over the panel says how
