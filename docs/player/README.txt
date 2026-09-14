@@ -78,6 +78,26 @@ made: in play, the program presses the keys the game is listening for.
                        in Switch mode is detected but sends no input.
 
 
+GUIDANCE
+--------
+
+The panel beside the picture is for guidance: optional help, in levels
+from 0 (none) to 5. The levels, and training mode, are still to be
+built; for now the panel shows what you have chosen.
+
+  Esc, or Select       Open the guidance picker. The game waits while
+  on a gamepad         it is open.
+  Up and down          Choose a row.
+  Left and right       Change the guidance level or training mode.
+  Enter, or A          OK. End this game and Exit Starquake need a
+                       second press.
+  Esc, B or Select     Leave the picker, keeping what you changed.
+
+Raising the level, or turning training mode on, shows on that game's
+score, so the picker asks first. When a game is over the panel says how
+much help it had. Nothing is saved: every start is at level 0.
+
+
 LEGAL
 -----
 
