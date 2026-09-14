@@ -51,6 +51,27 @@ pub const PLAY_INPUT: u16 = 0xC55D;
 /// tracing a paused game on the player's tape, in every control method.
 pub const CONTROLS_INPUT: u16 = 0xC566;
 
+/// The title screen's key reader, which the intro text uses too: it reads
+/// every half-row, and on the title screen the digits choose while `0`
+/// starts a game; on the intro text any key goes on. Found on 2026-09-14 by
+/// tracing every `IN` the game runs on each screen.
+pub const MENU_INPUT: u16 = 0xDA2B;
+
+/// The reader the game turns to a few frames after [`MENU_INPUT`] saw a
+/// key: it prints for three frames, then reads here and goes on only if the
+/// key is still down, else waits. The define-keys screen reads its keys
+/// through this routine too, so a press made here for the player follows
+/// one made at [`MENU_INPUT`] within [`MENU_CONFIRM_FRAMES`], and never
+/// starts there. Found on 2026-09-14 by logging every key read around a
+/// press of `0` on the player's tape.
+pub const MENU_CONFIRM_INPUT: u16 = 0xD5D4;
+
+/// How many frames after a press at [`MENU_INPUT`] one at
+/// [`MENU_CONFIRM_INPUT`] still belongs to it: the game gets there four
+/// frames later on the tape, and a whole title-screen highlight cycle is
+/// much longer.
+pub const MENU_CONFIRM_FRAMES: u64 = 12;
+
 /// The key a byte of the game's tables names. Letters and digits are their
 /// ASCII; the four keys with no character of their own are the codes the
 /// define-keys screen writes for them, seen on the player's tape: `*` for

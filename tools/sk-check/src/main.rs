@@ -13,8 +13,9 @@
 //! - `keys`: chooses each control method on the title screen in turn, starts
 //!   a game, and checks that the joystick and Start reach it through the
 //!   machine: every direction and fire move the picture where Blob is, Start
-//!   freezes it and a direction then resumes it; and that the control facts
-//!   read as recorded.
+//!   freezes it and a direction then resumes it; that a start press alone
+//!   starts a game from the title screen and goes past the intro text; and
+//!   that the control facts read as recorded.
 //! - `shot <frames> [out-dir]`: runs the ROM-free machine and writes a PNG of
 //!   the screen every so often, to look at.
 
@@ -444,11 +445,33 @@ fn pauses_and_resumes(m: &Machine) -> bool {
     shots[0] == shots[1] && shots[1] != shots[2] && shots[2] != shots[3]
 }
 
+/// From the title screen with nothing chosen, a start press (Start or fire
+/// going down) starts a game, another goes past the intro text, and the
+/// joystick then moves Blob: a controller alone gets into play.
+fn starts_from_the_controller(dir: &Path) -> bool {
+    let mut m = machine(dir);
+    for frame in 0..420u64 {
+        m.zx.release_all_keys();
+        m.joystick = 0;
+        m.start_game = matches!(frame, 60..=67 | 330..=337);
+        m.run_frame();
+    }
+    let none = after(&m, 0, false);
+    let with = after(&m, JOY_RIGHT, false);
+    let ok = (0..3).any(|i| with[i] != none[i]);
+    println!(
+        "  from the title screen: a start press alone reaches play {}",
+        if ok { "ok" } else { "FAILED" }
+    );
+    ok
+}
+
 /// For every control method: the control facts read as recorded, each
 /// joystick direction and fire change the picture where Blob is within a
-/// few frames of being pressed, and Start freezes it.
+/// few frames of being pressed, Start freezes it and a direction resumes
+/// it; and a start press alone gets from the title screen into play.
 fn keys_check(dir: &Path) -> bool {
-    let mut ok = true;
+    let mut ok = starts_from_the_controller(dir);
     for method in 1..=5u8 {
         let m = into_play(dir, method);
         let facts = m.zx.mem[usize::from(CONTROL_METHOD)] == method
