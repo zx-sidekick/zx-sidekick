@@ -1,12 +1,18 @@
 //! Running the machine without a window, for screenshots: scripted keys
-//! carry it past the menu into a game, and every so often the picture, with
-//! its border, is saved as a PNG; the tape's loading picture first.
+//! carry it past the menu into a game, and every so often the whole window,
+//! the picture with its border and the guidance panel beside it, is saved as
+//! a PNG; the tape's loading picture first.
 
 use std::path::Path;
 
 use sidekick::Machine;
 use sidekick::starquake::{ENTRY_PC, ENTRY_SP};
 
+use super::guidance::Guidance;
+use super::overlay;
+use super::panel::Panel;
+use super::text::Canvas;
+use super::track::{self, Scene, Tracker};
 use super::video::{FULL_H, FULL_W, draw};
 
 /// Keys that carry an unattended run past the menu: `1` for the Kempston
@@ -31,6 +37,10 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let tape = super::tape::read(path)?;
     let mut machine = Machine::from_tape(&tape, ENTRY_PC, ENTRY_SP)?;
+    machine.watch = track::WATCH.to_vec();
+    let mut tracker = Tracker::default();
+    let mut guidance = Guidance::default();
+    let mut panel = Panel::new();
     let mut picture = vec![0u8; FULL_W * FULL_H * 4];
     // The tape's loading picture, which the window shows before the game.
     if let Some(loading) = zx_core::tape::load_tap(&tape)?.loading_screen {
@@ -38,12 +48,15 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
         let n = loading.len().min(memory.len());
         memory[..n].copy_from_slice(&loading[..n]);
         draw(&memory, 0, 0, &mut picture);
-        save(&picture, &dir.join("loading.png"))?;
+        let shot = window(&picture, &mut panel, &guidance, Scene::Loading, false);
+        save(&shot, &dir.join("loading.png"))?;
     }
     let every = (frames / 40).max(1);
     for frame in 0..frames {
         script(&mut machine, frame);
-        machine.run_frame();
+        for hit in machine.run_frame() {
+            tracker.follow(hit, &mut guidance);
+        }
         machine.zx.speaker.clear();
         if frame % every == 0 || frame + 1 == frames {
             draw(
@@ -52,20 +65,59 @@ pub fn run(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
                 frame,
                 &mut picture,
             );
-            save(&picture, &dir.join(format!("frame{frame:06}.png")))?;
+            let shot = window(
+                &picture,
+                &mut panel,
+                &guidance,
+                tracker.scene,
+                machine.paused,
+            );
+            save(&shot, &dir.join(format!("frame{frame:06}.png")))?;
         }
     }
     Ok(())
 }
 
-/// Writes an RGBA picture the size of the window's Spectrum screen as a PNG.
-fn save(picture: &[u8], file: &Path) -> Result<(), String> {
-    let pixels: Vec<u32> = picture
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|&[r, g, b, _]| u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b))
-        .collect();
-    std::fs::write(file, zx_core::png::encode(&pixels, FULL_W, FULL_H))
+/// The window as it would look at its first size: the picture scaled up on
+/// the left and the overlay laid over it, as 0xRRGGBB pixels.
+fn window(
+    picture: &[u8],
+    panel: &mut Panel,
+    guidance: &Guidance,
+    scene: Scene,
+    paused: bool,
+) -> Vec<u32> {
+    let (w, h) = (overlay::WIDTH as usize, overlay::HEIGHT as usize);
+    let mut over = vec![0u8; w * h * 4];
+    let mut canvas = Canvas {
+        pixels: &mut over,
+        width: w,
+        height: h,
+        scale: 1.0,
+    };
+    canvas.clear_transparent();
+    panel.draw(&mut canvas, guidance, scene, paused);
+    let k = h / FULL_H;
+    (0..w * h)
+        .map(|i| {
+            let (x, y) = (i % w, i / w);
+            let under = if x < FULL_W * k {
+                let at = ((y / k) * FULL_W + x / k) * 4;
+                [picture[at], picture[at + 1], picture[at + 2]]
+            } else {
+                [0; 3]
+            };
+            let o = &over[i * 4..i * 4 + 4];
+            let alpha = u32::from(o[3]);
+            let channel = |c: usize| u32::from(o[c]) + u32::from(under[c]) * (255 - alpha) / 255;
+            channel(0) << 16 | channel(1) << 8 | channel(2)
+        })
+        .collect()
+}
+
+/// Writes the window's pixels as a PNG.
+fn save(pixels: &[u32], file: &Path) -> Result<(), String> {
+    let (w, h) = (overlay::WIDTH as usize, overlay::HEIGHT as usize);
+    std::fs::write(file, zx_core::png::encode(pixels, w, h))
         .map_err(|e| format!("{}: {e}", file.display()))
 }
