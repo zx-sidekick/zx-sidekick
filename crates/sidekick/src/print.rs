@@ -318,6 +318,138 @@ mod tests {
         assert_eq!(m.zx.mem[ATTR_T as usize] & 7, 2, "INK 2");
     }
 
+    /// The eight display-file bytes of character cell (`row`, `col`).
+    fn cell_bytes(m: &Machine, row: u8, col: u8) -> [u8; 8] {
+        let base = cell(row, col) as usize;
+        std::array::from_fn(|line| m.zx.mem[base + (line << 8)])
+    }
+
+    #[test]
+    fn block_graphics_fill_the_quarters_their_bits_name() {
+        let mut m = screen();
+        // 0x81: top right; 0x82: top left; 0x84: bottom right; 0x8F: all.
+        print(&mut m, &[0x81, 0x82, 0x84, 0x8F, 0x80]);
+        let top = |b| [b, b, b, b, 0, 0, 0, 0];
+        assert_eq!(cell_bytes(&m, 0, 0), top(0x0F));
+        assert_eq!(cell_bytes(&m, 0, 1), top(0xF0));
+        assert_eq!(cell_bytes(&m, 0, 2), [0, 0, 0, 0, 0x0F, 0x0F, 0x0F, 0x0F]);
+        assert_eq!(cell_bytes(&m, 0, 3), [0xFF; 8]);
+        assert_eq!(cell_bytes(&m, 0, 4), [0; 8]);
+    }
+
+    #[test]
+    fn user_defined_graphics_come_from_udg() {
+        let mut m = screen();
+        m.zx.write16(UDG, 0xA000);
+        m.zx.mem[0xA008..0xA010].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        print(&mut m, &[0x91]);
+        assert_eq!(cell_bytes(&m, 0, 0), [1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn backspace_moves_back_and_up_a_line_from_the_left_edge() {
+        let mut m = screen();
+        print(&mut m, &[0x16, 3, 0, 0x08]);
+        assert_eq!(position(&m.zx), (2, 31));
+        print(&mut m, &[0x08]);
+        assert_eq!(position(&m.zx), (2, 30));
+        print(&mut m, &[0x16, 0, 0, 0x08]);
+        assert_eq!(position(&m.zx), (0, 31), "nothing above the top line");
+    }
+
+    #[test]
+    fn other_codes_and_tokens_print_nothing() {
+        let mut m = screen();
+        for b in [0x00, 0x07, 0x0D, 0x17, 0x1F, 0xA5, 0xFF] {
+            assert_eq!(put(&mut m.zx, b), CODE_T);
+        }
+        assert_eq!(position(&m.zx), (0, 0));
+        assert!(m.zx.mem[0x4000..0x5800].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn a_full_line_wraps_on_the_next_character() {
+        let mut m = screen();
+        print(&mut m, &[0x16, 5, 31, b'A']);
+        assert_eq!(position(&m.zx), (5, 32), "waits at the end of the line");
+        print(&mut m, b"B");
+        assert_eq!(position(&m.zx), (6, 1));
+        assert_eq!(m.zx.mem[cell(6, 0) as usize], 0xAA);
+    }
+
+    #[test]
+    fn printing_past_the_bottom_draws_nothing() {
+        let mut m = screen();
+        print(&mut m, &[0x16, 23, 31, b'A', b'B']);
+        assert_eq!(position(&m.zx), (23, 0));
+        assert_eq!(m.zx.mem[cell(23, 0) as usize], 0);
+    }
+
+    #[test]
+    fn at_is_limited_to_the_screen() {
+        let mut m = screen();
+        print(&mut m, &[0x16, 40, 99]);
+        assert_eq!(position(&m.zx), (23, 31));
+        assert_eq!(m.zx.read16(DF_CC), cell(23, 31));
+    }
+
+    #[test]
+    fn paper_flash_and_bright_set_their_bits() {
+        let mut m = screen();
+        print(&mut m, &[0x11, 5, 0x12, 1, 0x13, 1, b'A']);
+        assert_eq!(m.zx.mem[0x5800], 0x80 | 0x40 | (5 << 3) | 7);
+        print(&mut m, &[0x12, 0, 0x13, 0, b'A']);
+        assert_eq!(m.zx.mem[0x5801], (5 << 3) | 7);
+    }
+
+    #[test]
+    fn transparent_flash_and_bright_keep_the_screen_s() {
+        let mut m = screen();
+        m.zx.mem[0x5800] = 0xC0;
+        print(&mut m, &[0x12, 8, 0x13, 8, b'A']);
+        assert_eq!(m.zx.mem[0x5800], 0xC7);
+    }
+
+    #[test]
+    fn ink_9_contrasts_with_the_paper() {
+        let mut m = screen();
+        // Dark paper (blue): white ink. Light paper (yellow): black ink.
+        print(&mut m, &[0x10, 9, 0x11, 1, b'A', 0x11, 6, b'A']);
+        assert_eq!(m.zx.mem[0x5800] & 0x3F, (1 << 3) | 7);
+        assert_eq!(m.zx.mem[0x5801] & 0x3F, 6 << 3);
+        // Setting an ink turns contrast off again.
+        print(&mut m, &[0x10, 2, b'A']);
+        assert_eq!(m.zx.mem[0x5802] & 7, 2);
+    }
+
+    #[test]
+    fn paper_9_contrasts_with_the_ink() {
+        let mut m = screen();
+        print(&mut m, &[0x11, 9, 0x10, 1, b'A', 0x10, 6, b'A']);
+        assert_eq!(m.zx.mem[0x5800] & 0x3F, (7 << 3) | 1);
+        assert_eq!(m.zx.mem[0x5801] & 0x3F, 6);
+    }
+
+    #[test]
+    fn inverse_and_over_change_how_a_glyph_lands() {
+        let mut m = screen();
+        print(&mut m, &[0x14, 1, b'A']);
+        assert_eq!(cell_bytes(&m, 0, 0), [0x55; 8], "inverse");
+        print(&mut m, &[0x14, 0, 0x16, 0, 0, 0x15, 1, b'A']);
+        assert_eq!(cell_bytes(&m, 0, 0), [0xFF; 8], "over XORs onto the screen");
+        print(&mut m, &[0x15, 0, 0x16, 0, 0, b'A']);
+        assert_eq!(cell_bytes(&m, 0, 0), [0xAA; 8], "over off replaces it");
+    }
+
+    #[test]
+    fn a_glyph_and_a_control_code_take_the_rom_s_time() {
+        let mut m = screen();
+        assert_eq!(put(&mut m.zx, b'A'), GLYPH_T);
+        assert_eq!(put(&mut m.zx, 0x16), CODE_T);
+        assert_eq!(put(&mut m.zx, 1), CODE_T);
+        assert_eq!(put(&mut m.zx, 1), CODE_T);
+    }
+
     #[test]
     fn transparent_ink_keeps_the_screen_s_ink() {
         let mut m = screen();
