@@ -135,7 +135,7 @@ gh api repos/zx-sidekick/zx-sidekick-starquake/pulls/<n>/comments \
 
 Any other reply is a question or an extra comment: answer it in the thread,
 and act on it only when it asks for a change. Resolve a thread once it is
-acted on and nothing is left to answer; **the ruleset blocks merging while any
+acted on and nothing is left to answer; **`merge-pr` does not merge while any
 conversation is unresolved**, so a thread left open holds the PR. Resolving
 takes the thread's node id:
 

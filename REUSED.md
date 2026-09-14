@@ -2,11 +2,10 @@
 
 Everything listed here is our own work, under the same licence (MIT OR Apache-2.0), from:
 
-- **starquake-recompiled**, [starquake/starquake-recompiled](https://github.com/starquake/starquake-recompiled), at commit `15d43902f06aafc8ff09b91659fda2ce6e176015`;
-- **starquake-recompiled's way of working and CI**, at commit `15d43902f06aafc8ff09b91659fda2ce6e176015` too (the files marked *recompiled* below);
+- **starquake-recompiled**, [starquake/starquake-recompiled](https://github.com/starquake/starquake-recompiled), at commit `15d43902f06aafc8ff09b91659fda2ce6e176015` (marked *recompiled* below);
 - **the earlier ZX Sidekick build**, `starquake/zx-sidekick-starquake` (private), at commit `5b61d71`, which itself took the files marked below from starquake-recompiled at that commit.
 
-It is generic Spectrum, ROM-behaviour or frontend code. **None of starquake-recompiled's Starquake game logic is reused** (`games/starquake/src` outside the frontend files below); see `GOAL.md`, rule 2. The processor is not our work: it is `rustzx-z80`, a dependency.
+It is generic Spectrum, ROM-behaviour or frontend code, and the way of working and CI around it. **None of starquake-recompiled's Starquake game logic is reused** (`games/starquake/src` outside the frontend files below); see `GOAL.md`, rule 2. The processor is not our work: it is `rustzx-z80`, a dependency.
 
 | Here | From | Changes |
 |---|---|---|
@@ -29,6 +28,7 @@ It is generic Spectrum, ROM-behaviour or frontend code. **None of starquake-reco
 | `Cargo.toml`, each crate's `Cargo.toml` | the earlier build | the processor from our fork pinned to a commit, and descriptions without the guidance |
 | `CLAUDE.md`, `.claude/skills/*`, `.claude/scripts/board.sh`, `.github/ISSUE_TEMPLATE/spec.md` | recompiled | adapted: this project's board (an org Project), its checks and hard rules in place of the differential suites, the gate at `scripts/check.sh`, and qualified references to recompiled's issues |
 | the `dependencies` and `intel-mac` jobs and the documentation step in `.github/workflows/ci.yml` | recompiled | the binary's name; the frontend-free check reads the dependency tree (`scripts/no-frontend.sh`), since this project has no frontend feature |
+| `.github/rulesets/main.json` | recompiled's `main: require CI` ruleset, read from its API | not applied: the organisation's free plan allows no ruleset on a private repository |
 | `.github/workflows/release.yml` | recompiled | the binary's name, the font's path, and the release notes |
 | `about.toml`, `about.hbs` | recompiled | the program's name and how it uses the game; Windows added to the attributed targets |
 | `docs/player/README.txt` | recompiled | rewritten for a program that runs the original game |
