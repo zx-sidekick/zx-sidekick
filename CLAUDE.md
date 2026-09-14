@@ -21,11 +21,10 @@ locally.
   `starquake.tap` and `48.rom`, the checks against the game. **Gate on the
   exit code, never on grepped output.**
 - `cargo run --release -p sk-check -- entry "$SK_ASSETS"`,
-  `… -- rom "$SK_ASSETS" 6000`, `… -- keys "$SK_ASSETS"` and
+  `… -- rom "$SK_ASSETS" 6000`, `… -- keys "$SK_ASSETS"`,
   `… -- facts "$SK_ASSETS"` and `… -- map "$SK_ASSETS" 60` run the checks
-  against the game on their own
-  (`keys` needs only the tape; `facts` walks into the teleporter booths only
-  with the ROM).
+  against the game on their own (`keys` and `map` need only the tape;
+  `facts` walks into the teleporter booths only with the ROM).
 - `cargo test -p zx-spectrum --test fuse -- --nocapture` checks the processor
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
   `assets/tests.expected`).
