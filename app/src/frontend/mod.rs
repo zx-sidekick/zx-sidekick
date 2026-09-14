@@ -2,6 +2,8 @@
 
 mod audio;
 mod gamepad;
+#[expect(dead_code, reason = "followed and drawn by the tasks after this one")]
+mod guidance;
 pub mod headless;
 mod input;
 mod notice;
