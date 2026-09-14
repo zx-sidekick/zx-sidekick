@@ -52,16 +52,22 @@ fn fatal(message: &str) -> ! {
     std::process::exit(1)
 }
 
+/// Takes `--headless [FRAMES [DIR]]` and everything after it out of `args`,
+/// and returns the frames and the folder, with their defaults. What is left in
+/// `args` is the tape, if one was named.
+fn headless_args(args: &mut Vec<String>) -> Option<(u64, PathBuf)> {
+    let i = args.iter().position(|a| a == "--headless")?;
+    let rest: Vec<String> = args.drain(i..).skip(1).collect();
+    let frames = rest.first().and_then(|f| f.parse().ok()).unwrap_or(3000);
+    let dir = rest
+        .get(1)
+        .map_or_else(|| PathBuf::from("screenshots"), PathBuf::from);
+    Some((frames, dir))
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
-    let headless = args.iter().position(|a| a == "--headless").map(|i| {
-        let rest: Vec<String> = args.drain(i..).skip(1).collect();
-        let frames = rest.first().and_then(|f| f.parse().ok()).unwrap_or(3000);
-        let dir = rest
-            .get(1)
-            .map_or_else(|| PathBuf::from("screenshots"), PathBuf::from);
-        (frames, dir)
-    });
+    let headless = headless_args(&mut args);
     // A tape named on the command line is used as it is; otherwise the usual
     // places are searched.
     let folders = frontend::tape::folders();
@@ -80,5 +86,43 @@ fn main() {
     };
     if let Err(e) = result {
         fatal(&format!("error: {e}"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn no_headless_flag_leaves_the_arguments_alone() {
+        let mut a = args(&["game.tap"]);
+        assert_eq!(headless_args(&mut a), None);
+        assert_eq!(a, ["game.tap"]);
+    }
+
+    #[test]
+    fn headless_takes_its_frames_and_folder_and_leaves_the_tape() {
+        let mut a = args(&["game.tap", "--headless", "120", "out"]);
+        assert_eq!(headless_args(&mut a), Some((120, PathBuf::from("out"))));
+        assert_eq!(a, ["game.tap"]);
+    }
+
+    #[test]
+    fn headless_defaults_its_frames_and_folder() {
+        let mut a = args(&["--headless"]);
+        assert_eq!(
+            headless_args(&mut a),
+            Some((3000, PathBuf::from("screenshots")))
+        );
+        assert!(a.is_empty());
+        let mut a = args(&["--headless", "lots"]);
+        assert_eq!(
+            headless_args(&mut a),
+            Some((3000, PathBuf::from("screenshots")))
+        );
     }
 }

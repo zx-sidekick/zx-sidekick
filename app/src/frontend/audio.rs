@@ -160,3 +160,71 @@ impl Output {
         self.queue.lock().unwrap().len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RATE: u32 = 44100;
+    const FRAME_T: u32 = zx_core::timing::FRAME_T;
+
+    /// Samples in one frame at 44.1 kHz: 69888 T-states of 3.5 MHz.
+    fn per_frame() -> f64 {
+        f64::from(FRAME_T) * f64::from(RATE) / CPU_HZ
+    }
+
+    #[test]
+    fn a_frame_makes_a_frame_of_samples() {
+        let mut b = Beeper::new(RATE);
+        for _ in 0..50 {
+            b.play(&[], FRAME_T);
+        }
+        let expected = 50.0 * per_frame();
+        assert!((b.samples().len() as f64 - expected).abs() <= 1.0);
+    }
+
+    #[test]
+    fn a_speaker_left_alone_settles_to_silence() {
+        let mut b = Beeper::new(RATE);
+        b.play(&[(0, true)], FRAME_T);
+        for _ in 0..100 {
+            b.clear_samples();
+            b.play(&[], FRAME_T);
+        }
+        assert!(b.samples().iter().all(|s| s.abs() < 0.01));
+    }
+
+    #[test]
+    fn a_toggling_speaker_swings_both_ways_within_the_volume() {
+        let mut b = Beeper::new(RATE);
+        // 440 Hz: a change every 3977 T-states.
+        let half = CPU_HZ as u32 / 880;
+        for frame in 0..10u32 {
+            let start = frame * FRAME_T;
+            let edges: Vec<(u32, bool)> = (0..)
+                .map(|n| n * half)
+                .skip_while(|&t| t < start)
+                .take_while(|&t| t < start + FRAME_T)
+                .map(|t| (t - start, (t / half).is_multiple_of(2)))
+                .collect();
+            b.play(&edges, FRAME_T);
+        }
+        let s = b.samples();
+        let (min, max) = s
+            .iter()
+            .fold((0f32, 0f32), |(lo, hi), &x| (lo.min(x), hi.max(x)));
+        assert!(max > 0.2 && min < -0.2, "swings {min}..{max}");
+        assert!(max <= 2.0 * VOLUME && min >= -2.0 * VOLUME);
+    }
+
+    #[test]
+    fn a_change_past_the_frame_counts_at_its_end() {
+        let mut b = Beeper::new(RATE);
+        b.play(&[(FRAME_T + 500, true)], FRAME_T);
+        assert!(b.level);
+        let n = b.samples().len();
+        b.clear_samples();
+        assert!(b.samples().is_empty());
+        assert!((n as f64 - per_frame()).abs() <= 1.0);
+    }
+}
