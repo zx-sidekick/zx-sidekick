@@ -103,7 +103,11 @@ from 0 (none) to 5, each adding to the ones below.
                        way to leave the room, marked "item" or "core",
                        with a legend under the map; and the code to
                        select when a teleporter is next.
-  Level 5              Still to be built, and training mode too.
+  Level 5              The same two routes through the whole map,
+                       dashed through rooms you have not visited.
+                       They never pass a security door, and a climb
+                       with nothing to lift you counts once you have
+                       made it. Training mode is still to be built.
 
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.
