@@ -429,13 +429,23 @@ impl Canvas<'_> {
     }
 }
 
+/// `v` brought into the range between `a` and `b`, whichever way round the
+/// two are. A shape no wider than its corners are round — the round badge a
+/// pad button is drawn as — leaves the two ends of its straight middle equal
+/// in arithmetic and, at a scale that is not a whole number, a hair apart in
+/// floating point. `f32::clamp` panics outright on a range the wrong way
+/// round, which took the window down with it.
+fn between(v: f32, a: f32, b: f32) -> f32 {
+    v.clamp(a.min(b), a.max(b))
+}
+
 #[allow(clippy::too_many_arguments, reason = "a point and a rounded rectangle")]
 fn inside(px: f32, py: f32, x0: f32, y0: f32, x1: f32, y1: f32, r: f32) -> bool {
     if px < x0 || px >= x1 || py < y0 || py >= y1 {
         return false;
     }
-    let cx = px.clamp(x0 + r, x1 - r);
-    let cy = py.clamp(y0 + r, y1 - r);
+    let cx = between(px, x0 + r, x1 - r);
+    let cy = between(py, y0 + r, y1 - r);
     (px - cx).powi(2) + (py - cy).powi(2) <= r * r
 }
 
@@ -557,5 +567,28 @@ mod tests {
         let at = |x: usize, y: usize| pixels[(y * w + x) * 4];
         assert_eq!(at(0, 0), 0, "the corner is cut");
         assert_eq!(at(10, 10), 255, "the middle is filled");
+    }
+
+    /// The pad buttons in the picker's legend are circles: exactly as wide
+    /// as their corners are round. At a scale that is not a whole number the
+    /// two edges of such a shape's middle land a hair apart, which used to
+    /// reach `f32::clamp` the wrong way round and bring the window down as
+    /// soon as the picker was opened.
+    #[test]
+    fn a_circle_is_drawn_at_any_scale() {
+        let (w, h) = (64, 64);
+        let mut pixels = vec![0u8; w * h * 4];
+        for step in 0..500 {
+            let scale = 1.0 + step as f32 * 0.013;
+            let mut canvas = Canvas {
+                pixels: &mut pixels,
+                width: w,
+                height: h,
+                scale,
+            };
+            let at = 3.0 + step as f32 * 0.017;
+            canvas.round_rect(at, at, 22.0, 22.0, 11.0, [0xFF, 0xFF, 0xFF]);
+            canvas.outline(at, at, 22.0, 22.0, 11.0, 1.5, None, [0xFF, 0xFF, 0xFF]);
+        }
     }
 }
