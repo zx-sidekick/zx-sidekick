@@ -107,9 +107,10 @@ impl Tracker {
 }
 
 /// The core's nine holes as the column draws them: each one's graphic from
-/// the game's memory `mem`, whether it is open, the colour of an item with
-/// its graphic (white if none has it), and whether such an item is carried,
-/// which is while its row is 1 to 5.
+/// the game's memory `mem`, whether it is open, the colour its items share
+/// (white when the two of a pair differ, so the column never names the wrong
+/// one, or when none has it), and whether such an item is carried, which is
+/// while its row is 1 to 5.
 fn holes(mem: &[u8], core: &[u8; 9], items: &[Item]) -> Vec<Hole> {
     core.iter()
         .enumerate()
@@ -119,7 +120,10 @@ fn holes(mem: &[u8], core: &[u8; 9], items: &[Item]) -> Vec<Hole> {
             Hole {
                 graphic: graphic(mem, number),
                 open,
-                colour: piece.clone().next().map_or(7, Item::colour),
+                colour: match piece.clone().map(Item::colour).collect::<Vec<_>>()[..] {
+                    [first, ref rest @ ..] if rest.iter().all(|&c| c == first) => first,
+                    _ => 7,
+                },
                 carried: open && piece.clone().any(|item| (1..=5).contains(&item.row())),
             }
         })
@@ -227,9 +231,15 @@ mod tests {
         core[0] = 0x80 | 33; // open, wanting graphic 33
         core[1] = 1; // filled: its own number
         core[2] = 0x80 | 34; // open, its piece carried
+        core[3] = 0x80 | 35; // open, a pair in two colours
+        core[4] = 0x80 | 36; // open, a pair in one colour
         let items = [
             Item([0x95, 12, 16, 33]), // colour 4, placed
             Item([0x60, 3, 16, 34]),  // colour 3, carried
+            Item([0x40, 12, 20, 35]), // colour 2
+            Item([0xC0, 12, 21, 35]), // colour 6, its twin
+            Item([0xA0, 12, 22, 36]), // colour 5
+            Item([0xA0, 12, 23, 36]), // colour 5, its twin
         ];
         let h = holes(&mem, &core, &items);
         assert_eq!(h.len(), 9);
@@ -242,7 +252,9 @@ mod tests {
             (1, false, false)
         );
         assert_eq!((h[2].open, h[2].colour, h[2].carried), (true, 3, true));
-        assert_eq!(h[3].colour, 7, "no item has its graphic: white");
+        assert_eq!(h[3].colour, 7, "a pair in two colours: white");
+        assert_eq!(h[4].colour, 5, "a pair in one colour keeps it");
+        assert_eq!(h[5].colour, 7, "no item has its graphic: white");
     }
 
     #[test]
