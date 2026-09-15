@@ -815,9 +815,16 @@ fn visited_check(dir: &Path) -> bool {
     let (mut playing, mut last_room, mut visits, mut late, mut slowest, mut bad) =
         (false, None, 0, 0, 0, 0);
     let mut waiting: Option<(u16, u64)> = None;
+    // The reason each room was entered with, as the game enters it.
+    let mut reasons: Vec<u8> = vec![];
     for frame in 0..6000u64 {
         script.apply(&mut m, frame);
-        for hit in m.run_frame() {
+        let hits = m.run_frame_observing(|z| {
+            if z.pc() == routine::ENTER_ROOM {
+                reasons.push(z.mem[usize::from(at::ENTRY_REASON)]);
+            }
+        });
+        for hit in hits {
             playing = hit == routine::MAIN_LOOP;
             if !playing {
                 last_room = None;
@@ -854,9 +861,15 @@ fn visited_check(dir: &Path) -> bool {
             last_room = Some(room);
         }
     }
+    // Walking about, every room is entered with the reason for walking in.
+    let entered = reasons.len();
+    bad += reasons
+        .iter()
+        .filter(|&&why| why != sidekick::starquake::entry::WALKED)
+        .count();
     let good = visits > 0 && late == 0 && bad == 0;
     println!(
-        "  the rooms visited: {visits} rooms walked into, each marked within {slowest} frames, {late} late, {bad} frames outside a room {}",
+        "  the rooms visited: {visits} rooms walked into, each marked within {slowest} frames; {entered} rooms entered, all as walked; {late} late, {bad} out of place {}",
         if good { "ok" } else { "FAILED" }
     );
     good
@@ -953,6 +966,49 @@ fn teleporters_check(dir: &Path) -> bool {
             && teleporter_code(&z.mem[..], room) == Some(code);
         printed_ok += usize::from(good);
         ok &= good;
+        // From the first booth, type the next booth's code: the game should
+        // move Blob there and record the room as entered by teleport.
+        if room == entries[0].0 && good {
+            let (to, next) = entries[1];
+            // Let the booth finish printing and wait for a key.
+            for _ in 0..60 {
+                m.zx.release_all_keys();
+                m.run_frame();
+            }
+            let letter = |c: u8| {
+                Key::by_name(&(c as char).to_ascii_lowercase().to_string()).expect("a letter")
+            };
+            for &c in &next {
+                for frame in 0..15 {
+                    m.zx.release_all_keys();
+                    m.zx.set_key(letter(c), frame < 5);
+                    m.run_frame();
+                }
+            }
+            // The room number changes as the booth takes the code; the game
+            // enters the room, with its reason set, when the booth is done.
+            let (mut arrived, mut reason) = (false, 0xFF);
+            for _ in 0..300 {
+                m.zx.release_all_keys();
+                let mut entering = None;
+                m.run_frame_observing(|z| {
+                    if z.pc() == routine::ENTER_ROOM && entering.is_none() {
+                        entering = Some((z.read16(at::ROOM), z.mem[usize::from(at::ENTRY_REASON)]));
+                    }
+                });
+                if let Some((room, why)) = entering {
+                    (arrived, reason) = (room == to, why);
+                    break;
+                }
+            }
+            let teleported = arrived && reason == sidekick::starquake::entry::TELEPORTED;
+            println!(
+                "  typing another booth's code: arrived in room {to} {}, entry reason {reason} {}",
+                if arrived { "yes" } else { "no" },
+                if teleported { "ok" } else { "FAILED" }
+            );
+            ok &= teleported;
+        }
     }
     println!(
         "  walking into each booth prints its code: {printed_ok} of {} {}",
@@ -1048,6 +1104,9 @@ fn map_check(dir: &Path, walks: usize) -> bool {
         rng.0 % n
     };
     let (mut crossings, mut positions, mut failures) = (0u64, 0u64, 0u64);
+    // Decision 9 on #9: every sideways crossing walked can be walked back.
+    let (mut sideways, mut walked_back) = (0u64, 0u64);
+    let mut tried = std::collections::HashSet::new();
     for walk in 0..walks {
         let mut m = base.clone();
         // Start each walk in a different room, entered as walking in.
@@ -1100,6 +1159,29 @@ fn map_check(dir: &Path, walks: usize) -> bool {
                             "map: walk {walk}: left room {from} through its {name} edge, shown closed"
                         );
                     }
+                    let back = match name {
+                        "right" => Some(0x02),
+                        "left" => Some(0x01),
+                        _ => None,
+                    };
+                    if let Some(back) = back
+                        && tried.insert((from, room))
+                    {
+                        match walks_back(&m, from, back) {
+                            Some(true) => {
+                                sideways += 1;
+                                walked_back += 1;
+                            }
+                            Some(false) => {
+                                sideways += 1;
+                                failures += 1;
+                                println!(
+                                    "map: walk {walk}: went {name} from room {from} into {room} and could not walk back"
+                                );
+                            }
+                            None => {}
+                        }
+                    }
                 }
             }
             let (x, y) = (
@@ -1139,9 +1221,30 @@ fn map_check(dir: &Path, walks: usize) -> bool {
         .filter(|o| o.walls.iter().any(Option::is_some))
         .count();
     println!(
-        "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map"
+        "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map; {walked_back} of {sideways} sideways crossings walked back"
     );
-    failures == 0 && crossings > 0
+    failures == 0 && crossings > 0 && sideways > 0
+}
+
+/// From `m`, just after crossing sideways out of room `from`, holds the
+/// joystick `back` (the opposite way) for five seconds: whether Blob gets
+/// back into `from`, or `None` if a death or another screen interrupts the
+/// try and it says nothing.
+fn walks_back(m: &Machine, from: u16, back: u8) -> Option<bool> {
+    use sidekick::starquake::{at, routine};
+    let mut m = m.clone();
+    m.watch = vec![routine::MODAL, routine::DEATH];
+    for _ in 0..250 {
+        m.zx.release_all_keys();
+        m.zx.kempston = back;
+        if !m.run_frame().is_empty() {
+            return None;
+        }
+        if m.zx.read16(at::ROOM) == from {
+            return Some(true);
+        }
+    }
+    Some(false)
 }
 
 fn shots(dir: &Path, frames: u64, out: &Path) {
