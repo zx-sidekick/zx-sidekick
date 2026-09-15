@@ -1192,7 +1192,7 @@ fn map_check(dir: &Path, walks: usize) -> bool {
         .sum();
     let divided = openings
         .iter()
-        .filter(|o| o.walls.iter().any(Option::is_some))
+        .filter(|o| o.divides.cells.iter().any(|&bits| bits != 0))
         .count();
     println!(
         "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map"

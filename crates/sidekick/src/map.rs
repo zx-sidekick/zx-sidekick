@@ -36,10 +36,8 @@ pub struct Openings {
     pub right: bool,
     pub up: bool,
     pub down: bool,
-    /// Walls inside the room, each from its centre out to a place on its
-    /// edge; unused slots are `None`.
-    pub walls: [Option<Wall>; 8],
-    /// The same walls where they stand: the solid cells between parts.
+    /// Walls inside the room, where they stand: the solid cells between
+    /// openings that do not reach each other.
     pub divides: Divides,
 }
 
@@ -137,16 +135,6 @@ impl Divides {
         }
         Divides { cells, doors }
     }
-}
-
-/// A wall inside a room, from its centre out to `to`, a place on the edge
-/// measured clockwise from the top-left corner in cells (up to [`AROUND`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Wall {
-    pub to: u8,
-    /// Whether something the right item opens is all that divides the
-    /// room here: a security door, or a teleporter pad.
-    pub door: bool,
 }
 
 /// Whether a cell's attribute lets Blob through: below `0x40` (not bright) is
@@ -334,9 +322,7 @@ pub fn openings(rooms: &[Room], core_room: u16) -> Vec<Openings> {
         let mut o = room.openings;
         o.right |= right;
         o.left |= left;
-        let ports = ports(room, left, right);
-        o.walls = walls(&ports);
-        let ported: Vec<u8> = ports.iter().map(|p| p.shut).collect();
+        let ported: Vec<u8> = ports(room, left, right).iter().map(|p| p.shut).collect();
         o.divides = Divides::find(room, &ported);
         openings.push(o);
     }
@@ -364,7 +350,6 @@ fn scan(free: impl Fn(u8, u8) -> bool) -> Openings {
         right: (FIRST_ROW..LAST_ROW).any(|row| window(row, LAST_COL - 1)),
         up: (0..LAST_COL).any(|col| window(FIRST_ROW, col)),
         down: (0..LAST_COL).any(|col| window(LAST_ROW - 1, col)),
-        walls: [None; 8],
         divides: Divides::default(),
     }
 }
@@ -451,33 +436,6 @@ fn ports(room: &Room, passage_left: bool, passage_right: bool) -> Vec<Port> {
         }
     }
     joined
-}
-
-/// The walls inside a room with these ports: none when every port is in one
-/// part, and otherwise one from the centre to halfway between each pair of
-/// neighbouring ports in different parts. A wall is a door's when opening
-/// the doors joins the two.
-fn walls(ports: &[Port]) -> [Option<Wall>; 8] {
-    let mut walls = [None; 8];
-    let first = ports.first().map(|p| p.shut);
-    if ports.iter().all(|p| Some(p.shut) == first) {
-        return walls;
-    }
-    let n = ports.len();
-    let apart = (0..n).filter_map(|i| {
-        let (a, b) = (ports[i], ports[(i + 1) % n]);
-        (a.shut != b.shut).then(|| {
-            let gap = (b.start + AROUND - a.end) % AROUND;
-            Wall {
-                to: (a.end + gap / 2) % AROUND,
-                door: a.open == b.open,
-            }
-        })
-    });
-    for (slot, wall) in walls.iter_mut().zip(apart) {
-        *slot = Some(wall);
-    }
-    walls
 }
 
 /// A set of the 512 rooms, a bit each, most significant bit first: the way
@@ -645,26 +603,6 @@ mod tests {
             .collect()
     }
 
-    /// The walls of a room drawn as text, with `D` for a door's cells:
-    /// solid while shut.
-    fn walls_of(lines: &[String]) -> Vec<Wall> {
-        let open_lines: Vec<String> = lines.iter().map(|l| l.replace('D', ".")).collect();
-        let open_refs: Vec<&str> = open_lines.iter().map(String::as_str).collect();
-        let shut_lines: Vec<String> = lines.iter().map(|l| l.replace('D', "#")).collect();
-        let shut_refs: Vec<&str> = shut_lines.iter().map(String::as_str).collect();
-        let r = Room {
-            openings: scan(room(&shut_refs)),
-            shut: Parts::find(room(&shut_refs)),
-            open: Parts::find(room(&open_refs)),
-            passage: None,
-            solid: solid_of(&shut_refs),
-        };
-        walls(&ports(&r, false, false))
-            .into_iter()
-            .flatten()
-            .collect()
-    }
-
     fn targets(rooms: &[u16]) -> RoomSet {
         let mut set = RoomSet::default();
         for &r in rooms {
@@ -773,38 +711,8 @@ mod tests {
 
     #[test]
     fn a_room_in_one_part_has_no_walls_inside() {
-        assert!(walls_of(&open_both_sides()).is_empty());
-    }
-
-    #[test]
-    fn a_wall_down_the_middle_is_a_line_from_top_to_bottom() {
-        let mut lines = open_both_sides();
-        for line in &mut lines {
-            line.replace_range(15..17, "##");
-        }
-        let walls = walls_of(&lines);
-        // Halfway along the closed top and the closed bottom.
-        let tos: Vec<u8> = walls.iter().map(|w| w.to).collect();
-        assert_eq!(tos.len(), 2, "{walls:?}");
-        assert!(tos.iter().any(|&t| t < TOP), "one to the top: {tos:?}");
-        assert!(
-            tos.iter()
-                .any(|&t| (TOP + SIDE..2 * TOP + SIDE).contains(&t)),
-            "one to the bottom: {tos:?}"
-        );
-        assert!(walls.iter().all(|w| !w.door));
-    }
-
-    #[test]
-    fn a_door_in_the_dividing_wall_makes_it_a_door() {
-        let mut lines = open_both_sides();
-        for (r, line) in lines.iter_mut().enumerate() {
-            let cells = if (7..10).contains(&r) { "DD" } else { "##" };
-            line.replace_range(15..17, cells);
-        }
-        let walls = walls_of(&lines);
-        assert_eq!(walls.len(), 2);
-        assert!(walls.iter().all(|w| w.door));
+        let d = divides_of(&open_both_sides());
+        assert!(d.cells.iter().all(|&bits| bits == 0));
     }
 
     /// Room 210: two doors either side of a solid pillar four cells wide,
@@ -825,9 +733,13 @@ mod tests {
             |row, col| if grid(row, col) { 0x47 } else { 0x07 },
             &[(96, 87, DOOR), (144, 87, DOOR)],
         );
-        let walls: Vec<Wall> = openings(&[r], 999)[0].walls.into_iter().flatten().collect();
-        assert_eq!(walls.len(), 2, "{walls:?}");
-        assert!(walls.iter().all(|w| w.door), "{walls:?}");
+        let d = openings(&[r], 999)[0].divides;
+        let drawn = draw_divides(&d);
+        assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
+        assert!(
+            drawn.iter().all(|l| !l.contains('#')),
+            "a door's wall, nothing plain: {drawn:?}"
+        );
     }
 
     /// Room 190: a teleporter pad, one cell wide and three tall, closing the
@@ -851,9 +763,13 @@ mod tests {
             |row, col| if grid(row, col) { 0x47 } else { 0x07 },
             &[(128, 87, PAD), (136, 87, PAD)],
         );
-        let walls: Vec<Wall> = openings(&[r], 999)[0].walls.into_iter().flatten().collect();
-        assert_eq!(walls.len(), 2, "{walls:?}");
-        assert!(walls.iter().all(|w| w.door), "{walls:?}");
+        let d = openings(&[r], 999)[0].divides;
+        let drawn = draw_divides(&d);
+        assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
+        assert!(
+            drawn.iter().all(|l| !l.contains('#')),
+            "a door's wall, nothing plain: {drawn:?}"
+        );
     }
 
     /// A room's divides from its text, with `D` a door's cells (solid while
@@ -951,6 +867,6 @@ mod tests {
                 line.replace_range(15..17, "##");
             }
         }
-        assert!(walls_of(&lines).is_empty());
+        assert!(divides_of(&lines).cells.iter().all(|&bits| bits == 0));
     }
 }
