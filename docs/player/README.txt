@@ -89,8 +89,8 @@ from 0 (none) to 5, each adding to the ones below.
                        you have entered their booths.
   Level 2              A map of the rooms you have visited: every edge
                        open or closed, walls inside a room (dashed where
-                       a security door divides it), your room, and the
-                       teleporters you have seen.
+                       a security door or a teleporter pad divides it),
+                       your room, and the teleporters you have seen.
   Level 3              The missing core pieces marked on the map, in
                        rooms you have visited or not, and the core's
                        nine holes beside it: the pieces still needed,

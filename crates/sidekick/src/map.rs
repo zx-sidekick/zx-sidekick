@@ -46,7 +46,8 @@ pub struct Openings {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Wall {
     pub to: u8,
-    /// Whether a security door is all that divides the room here.
+    /// Whether something the right item opens is all that divides the
+    /// room here: a security door, or a teleporter pad.
     pub door: bool,
 }
 
@@ -99,20 +100,21 @@ impl Parts {
         Parts(parts)
     }
 
-    /// Joins the parts on either side of a door's tile, four cells by three
-    /// from its cell at screen (`row`, `col`): what a door does when it
-    /// opens, moving Blob 48 pixels past the tile rather than through its
-    /// cells. So on each side the nearest place Blob fits within six cells
-    /// counts, and whatever lies between two doors' tiles, the second
-    /// tile included, does not keep the sides apart.
-    fn join_across(&mut self, row: u8, col: u8) {
+    /// Joins the parts on either side of a tile `width` cells wide and
+    /// three tall from its cell at screen (`row`, `col`): what a door does
+    /// when it opens, moving Blob 48 pixels past the tile rather than
+    /// through its cells, and what a teleporter pad does when it is blanked.
+    /// So on each side the nearest place Blob fits within six cells counts,
+    /// and whatever lies between two doors' tiles, the second tile included,
+    /// does not keep the sides apart.
+    fn join_across(&mut self, row: u8, col: u8, width: u8) {
         const REACH: u8 = 6;
         let rows = row.saturating_sub(1)..row + 3;
         // Blob's top-left cell beside the tile: two cells to its left, so
         // his right cell touches it, or just past its right side; then
         // further out.
         let left = (0..REACH).map(|d| col.wrapping_sub(2 + d));
-        let right = (0..REACH).map(|d| col + 4 + d);
+        let right = (0..REACH).map(|d| col + width + d);
         let mut parts: Vec<u8> = Vec::new();
         for side in [left.collect::<Vec<u8>>(), right.collect()] {
             let nearest = side
@@ -169,6 +171,12 @@ const PASSAGE: u8 = 0x0F;
 /// The marker a security door's tile leaves.
 const DOOR: u8 = 0;
 
+/// The marker a teleporter pad's tile leaves, one on each side of the pad's
+/// own column, which stands one cell wide and three tall in a gap and is
+/// blanked, once, when Blob touches it carrying item `0x10`. Found on
+/// 2026-09-15 by walking Blob into the pads on the player's tape (#40).
+const PAD: u8 = 0x0B;
+
 impl Room {
     /// Reads a room from its attribute cells as drawn, `attr(row, col)`, and
     /// the markers its tiles left, as (x, y, kind).
@@ -176,11 +184,18 @@ impl Room {
         let cell = |&(x, y, _): &(u8, u8, u8)| marker_cell(x, y);
         let passage = markers.iter().find(|m| m.2 == PASSAGE).map(cell);
         // A door's tile is four cells by three, from its marker's cell; open,
-        // it joins the parts on either side of it.
+        // it joins the parts on either side of it. A pad's column is one
+        // cell wide, at the pair's cell rounded down to four plus one, as
+        // the game blanks it.
         let shut = Parts::find(|row, col| free(attr(row, col)));
         let mut open = shut.clone();
-        for (r, c) in markers.iter().filter(|m| m.2 == DOOR).map(cell) {
-            open.join_across(r, c);
+        for &(x, y, kind) in markers {
+            let (r, c) = marker_cell(x, y);
+            match kind {
+                DOOR => open.join_across(r, c, 4),
+                PAD => open.join_across(r, (c & !3) | 1, 1),
+                _ => {}
+            }
         }
         Room {
             openings: scan(|row, col| free(attr(row, col))),
@@ -681,6 +696,32 @@ mod tests {
         let r = Room::read(
             |row, col| if grid(row, col) { 0x47 } else { 0x07 },
             &[(96, 87, DOOR), (144, 87, DOOR)],
+        );
+        let walls: Vec<Wall> = openings(&[r], 999)[0].walls.into_iter().flatten().collect();
+        assert_eq!(walls.len(), 2, "{walls:?}");
+        assert!(walls.iter().all(|w| w.door), "{walls:?}");
+    }
+
+    /// Room 190: a teleporter pad, one cell wide and three tall, closing the
+    /// only gap between the halves; its two markers sit either side of it.
+    #[test]
+    fn a_teleporter_pad_in_the_only_gap_makes_a_door() {
+        let mut lines = open_both_sides();
+        for (r, line) in lines.iter_mut().enumerate() {
+            line.replace_range(15..18, if (7..10).contains(&r) { "#.#" } else { "###" });
+            if (7..10).contains(&r) {
+                line.replace_range(17..18, "#");
+                line.replace_range(15..17, "..");
+            }
+        }
+        // Rows 7 to 9: free up to column 16, the pad's column 17 solid, free
+        // from 18; walls above and below. Markers at (13, 16) and (13, 17).
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        let grid = room(&refs);
+        assert_eq!(marker_cell(128, 87), (13, 16));
+        let r = Room::read(
+            |row, col| if grid(row, col) { 0x47 } else { 0x07 },
+            &[(128, 87, PAD), (136, 87, PAD)],
         );
         let walls: Vec<Wall> = openings(&[r], 999)[0].walls.into_iter().flatten().collect();
         assert_eq!(walls.len(), 2, "{walls:?}");
