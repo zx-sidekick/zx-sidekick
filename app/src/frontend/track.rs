@@ -160,7 +160,7 @@ fn routes(
     core: &[Hole],
 ) -> (Option<Vec<Step>>, Option<Vec<Step>>) {
     let search = |targets: &RoomSet| match whole {
-        Some((graph, place)) => graph.route(place, known, booths, targets),
+        Some((graph, place)) => graph.route(place, booths, targets),
         None => known.route(here, booths, targets, CORE_ROOM),
     };
     let piece = search(pieces);

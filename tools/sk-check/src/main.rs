@@ -1107,9 +1107,8 @@ fn map_check(dir: &Path, walks: usize) -> bool {
     };
     let (mut crossings, mut positions, mut failures) = (0u64, 0u64, 0u64);
     // Level 5's graph against the same walks (#10): every crossing between
-    // two places Blob stood in must be a way; a climb is counted, not failed,
-    // since a platform or a jump can make one.
-    let (mut checked, mut climbs, mut missing) = (0u64, 0u64, 0u64);
+    // two places Blob stood in must be a way.
+    let (mut checked, mut missing) = (0u64, 0u64);
     for walk in 0..walks {
         let mut m = base.clone();
         // Start each walk in a different room, entered as walking in.
@@ -1187,16 +1186,12 @@ fn map_check(dir: &Path, walks: usize) -> bool {
                     && to == room
                 {
                     checked += 1;
-                    match graph.ways(was).iter().find(|w| w.to == place) {
-                        Some(w) if w.climb => climbs += 1,
-                        Some(_) => {}
-                        None => {
-                            missing += 1;
-                            println!(
-                                "map: walk {walk}: from room {} part {} into room {room} part {}, which the graph has no way for",
-                                was.0, was.1, place.1
-                            );
-                        }
+                    if !graph.ways(was).contains(&place) {
+                        missing += 1;
+                        println!(
+                            "map: walk {walk}: from room {} part {} into room {room} part {}, which the graph has no way for",
+                            was.0, was.1, place.1
+                        );
                     }
                 }
                 last_place = Some(place);
@@ -1233,8 +1228,7 @@ fn map_check(dir: &Path, walks: usize) -> bool {
     println!(
         "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map"
     );
-    // The graph's reach from where play starts, doors shut, with and without
-    // climbs.
+    // The graph's reach from where play starts.
     let start = {
         let z = &base.zx;
         graph.place(
@@ -1243,33 +1237,25 @@ fn map_check(dir: &Path, walks: usize) -> bool {
             z.mem[usize::from(at::ENTITIES) + 6],
         )
     };
-    let reach = |climbing: bool| {
-        let mut seen = std::collections::BTreeSet::from([start]);
-        let mut todo = vec![start];
-        while let Some(p) = todo.pop() {
-            for w in graph.ways(p) {
-                if (climbing || !w.climb) && seen.insert(w.to) {
-                    todo.push(w.to);
-                }
+    let mut seen = std::collections::BTreeSet::from([start]);
+    let mut todo = vec![start];
+    while let Some(p) = todo.pop() {
+        for &to in graph.ways(p) {
+            if seen.insert(to) {
+                todo.push(to);
             }
         }
-        seen.iter()
-            .map(|p| p.0)
-            .collect::<std::collections::BTreeSet<u16>>()
-            .len()
-    };
-    let (places, ways, all_climbs) = graph.places().fold((0, 0, 0), |(n, w, c), p| {
-        let out = graph.ways(p);
-        (
-            n + 1,
-            w + out.len(),
-            c + out.iter().filter(|w| w.climb).count(),
-        )
-    });
+    }
+    let reach = seen
+        .iter()
+        .map(|p| p.0)
+        .collect::<std::collections::BTreeSet<u16>>()
+        .len();
+    let (places, ways) = graph
+        .places()
+        .fold((0, 0), |(n, w), p| (n + 1, w + graph.ways(p).len()));
     println!(
-        "map: level 5's graph: {places} places, {ways} ways ({all_climbs} of them climbs); from the start it reaches {} rooms, {} with every climb; {checked} crossings checked against it, {climbs} up a climb, {missing} with no way",
-        reach(false),
-        reach(true)
+        "map: level 5's graph: {places} places, {ways} ways; from the start it reaches {reach} rooms without a teleport; {checked} crossings checked against it, {missing} with no way"
     );
     let passages_ok = passages_check(&base, &rooms, &openings);
     failures == 0 && crossings > 0 && passages_ok && missing == 0 && checked > 0
