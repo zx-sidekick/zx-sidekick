@@ -102,9 +102,92 @@ impl Image {
         }
     }
 
-    /// The picture as a PNG.
+    /// The picture as a PNG, compressed: a planet picture is about 65 MB
+    /// stored and a megabyte or two this way. Each row is filtered by
+    /// the pixel above it, which suits pictures of rooms.
+    ///
+    /// # Panics
+    ///
+    /// If the picture has no pixels.
     #[must_use]
     pub fn png(&self) -> Vec<u8> {
-        zx_core::png::encode(&self.pixels, self.width, self.height)
+        use std::io::Write as _;
+        assert!(
+            self.width > 0 && self.height > 0,
+            "a picture with no pixels"
+        );
+        let rgb = |p: u32| [(p >> 16) as u8, (p >> 8) as u8, p as u8];
+        let mut raw = Vec::with_capacity((self.width * 3 + 1) * self.height);
+        let mut above = vec![0u8; self.width * 3];
+        for row in self.pixels.chunks(self.width) {
+            let bytes: Vec<u8> = row.iter().flat_map(|&p| rgb(p)).collect();
+            raw.push(2); // filter: up
+            raw.extend(bytes.iter().zip(&above).map(|(b, a)| b.wrapping_sub(*a)));
+            above = bytes;
+        }
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+        z.write_all(&raw).expect("writing to memory");
+        let idat = z.finish().expect("writing to memory");
+
+        let mut ihdr = Vec::with_capacity(13);
+        ihdr.extend_from_slice(&u32::try_from(self.width).expect("width").to_be_bytes());
+        ihdr.extend_from_slice(&u32::try_from(self.height).expect("height").to_be_bytes());
+        ihdr.extend_from_slice(&[8, 2, 0, 0, 0]); // 8-bit RGB
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        for (kind, data) in [
+            (b"IHDR", &ihdr[..]),
+            (b"IDAT", &idat[..]),
+            (b"IEND", &[][..]),
+        ] {
+            png.extend_from_slice(&u32::try_from(data.len()).expect("chunk size").to_be_bytes());
+            let mut crc = flate2::Crc::new();
+            crc.update(kind);
+            crc.update(data);
+            png.extend_from_slice(kind);
+            png.extend_from_slice(data);
+            png.extend_from_slice(&crc.sum().to_be_bytes());
+        }
+        png
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_png_decodes_to_the_same_pixels() {
+        let mut img = Image::new(5, 3, 0x102030);
+        img.set(4, 2, 0xFFEEDD);
+        img.set(0, 1, 0x00FF00);
+        let png = img.png();
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        // The IDAT chunk, inflated and unfiltered, gives back every pixel.
+        let len = |at: usize| u32::from_be_bytes(png[at..at + 4].try_into().unwrap()) as usize;
+        let idat_at = 8 + 12 + len(8);
+        assert_eq!(&png[idat_at + 4..idat_at + 8], b"IDAT");
+        let mut raw = Vec::new();
+        std::io::Read::read_to_end(
+            &mut flate2::read::ZlibDecoder::new(&png[idat_at + 8..idat_at + 8 + len(idat_at)]),
+            &mut raw,
+        )
+        .unwrap();
+        let mut above = vec![0u8; 15];
+        for (y, line) in raw.chunks(16).enumerate() {
+            assert_eq!(line[0], 2);
+            let row: Vec<u8> = line[1..]
+                .iter()
+                .zip(&above)
+                .map(|(b, a)| b.wrapping_add(*a))
+                .collect();
+            for x in 0..5 {
+                let p = img.pixels[y * 5 + x];
+                assert_eq!(
+                    &row[x * 3..x * 3 + 3],
+                    &[(p >> 16) as u8, (p >> 8) as u8, p as u8]
+                );
+            }
+            above = row;
+        }
     }
 }

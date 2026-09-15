@@ -1896,6 +1896,7 @@ dependencies = [
 name = "sk-lab"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "sidekick",
  "zx-core",
  "zx-spectrum",

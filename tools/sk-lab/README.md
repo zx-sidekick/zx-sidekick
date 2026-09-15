@@ -6,7 +6,7 @@ Every tool takes the assets folder first, reads `starquake.tap` from it and writ
 
 ## Pictures
 
-- `planet <dir> [--half]`: the whole planet as one picture, `planet.png`: every room as the game draws it, with its openings (green bars), walls inside a divided room (orange; a door's dashed yellow), wall passages (purple), lift cells (green boxes), the start room (white) and the core (pink), and rooms not reachable from the start with doors shut dimmed. The PNG writer stores pixels uncompressed, so the picture is large; any image tool will shrink it.
+- `planet <dir> [--half]`: the whole planet as one picture, `planet.png`: every room as the game draws it, with its openings (green bars), walls inside a divided room (orange; a door's dashed yellow), wall passages (purple), lift cells (green boxes), the start room (white) and the core (pink), and rooms not reachable from the start with doors shut dimmed.
 - `tiles <dir> <room>[,<room>…] [--png] [--stack]`: rooms as text side by side (`#` solid, `.` free, `=` a lift); `--png` writes each as the game draws it (`room-N.png`), `--stack` all of them in one picture top to bottom.
 
 ## Probes
