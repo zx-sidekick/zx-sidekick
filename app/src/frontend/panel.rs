@@ -130,17 +130,20 @@ impl Panel {
             let esc_w = self.fonts.key_width(HINT_H, "Esc");
             self.fonts
                 .key_badge(canvas, WINDOW_W - 24.0 - esc_w, 24.0, HINT_H, "Esc");
-            // Level 4 (#9, #44): the first teleport on the piece route has
-            // its chip highlighted, or on the core route when only that one
-            // teleports next, in that route's colour.
-            let jump = (level >= 4).then(|| jump(guidance)).flatten();
+            // Level 4 (#9, #44): the first teleport on each route has its
+            // chip outlined in that route's colour.
+            let jump = if level >= 4 {
+                jumps(guidance)
+            } else {
+                Vec::new()
+            };
             let below = if level >= 1 {
-                self.teleporters(canvas, left, width - 48.0, guidance.teleporters(), jump)
+                self.teleporters(canvas, left, width - 48.0, guidance.teleporters(), &jump)
             } else {
                 WINDOW_H
             };
             if level >= 4 && guidance.room().is_some() {
-                self.route_line(canvas, guidance, below, jump);
+                self.route_line(canvas, guidance, below, &jump);
             }
             if level >= 2 {
                 let explored = format!("explored {} of {} rooms", guidance.explored(), COLS * ROWS);
@@ -563,17 +566,34 @@ impl Panel {
         canvas: &mut Canvas,
         guidance: &Guidance,
         label_y: f32,
-        jump: Option<Jump>,
+        jumps: &[Jump],
     ) {
-        let (text, colour) = match (guidance.route(), jump) {
-            (_, Some(j)) if j.next => (
-                format!("Select code {}", String::from_utf8_lossy(&j.code)),
-                j.colour,
-            ),
-            (None, _) => ("No known route to a missing piece".to_string(), QUIET),
+        let next: Vec<&Jump> = jumps.iter().filter(|j| j.next).collect();
+        let code = |j: &Jump| String::from_utf8_lossy(&j.code).into_owned();
+        let (a, b) = (next.first().map(|j| code(j)), next.get(1).map(|j| code(j)));
+        let texts: Vec<(String, Rgb)> = match (next.as_slice(), a, b) {
+            ([one], Some(a), _) => vec![(format!("Select code {a}"), one.colour)],
+            ([p, _], Some(a), Some(b)) if a == b => vec![
+                ("Select code ".into(), SOFT),
+                (a, p.colour),
+                (" for the item and the core".into(), SOFT),
+            ],
+            ([p, c], Some(a), Some(b)) => vec![
+                ("Select code ".into(), SOFT),
+                (a, p.colour),
+                (" for the item, ".into(), SOFT),
+                (b, c.colour),
+                (" for the core".into(), SOFT),
+            ],
+            _ if guidance.route().is_none() => {
+                vec![("No known route to a missing piece".into(), QUIET)]
+            }
             _ => return,
         };
-        let spans = [span(&text, 13.0, Weight::SemiBold, colour)];
+        let spans: Vec<Span> = texts
+            .iter()
+            .map(|(t, c)| span(t, 13.0, Weight::SemiBold, *c))
+            .collect();
         self.fonts.text(
             Some(canvas),
             PICTURE_W + 24.0,
@@ -594,7 +614,7 @@ impl Panel {
         left: f32,
         width: f32,
         seen: &[SeenTeleporter],
-        highlight: Option<Jump>,
+        highlight: &[Jump],
     ) -> f32 {
         let (chip_h, gap) = (26.0, 8.0);
         // Lay the chips out in rows first, so the block can sit on the
@@ -642,10 +662,24 @@ impl Panel {
             let mut x = left;
             for (text, w) in row {
                 canvas.round_rect(x, y, w, chip_h, 4.0, CODE_FILL);
-                if let Some(j) = highlight
-                    && String::from_utf8_lossy(&j.code) == text
+                // The piece route's outline on the chip, the core route's
+                // around it when both use the same one.
+                for (i, j) in highlight
+                    .iter()
+                    .filter(|j| String::from_utf8_lossy(&j.code) == text)
+                    .enumerate()
                 {
-                    canvas.outline(x, y, w, chip_h, 4.0, 2.0, None, j.colour);
+                    let out = i as f32 * 4.0;
+                    canvas.outline(
+                        x - out,
+                        y - out,
+                        w + 2.0 * out,
+                        chip_h + 2.0 * out,
+                        4.0 + out,
+                        2.0,
+                        None,
+                        j.colour,
+                    );
                 }
                 self.fonts.text(
                     Some(canvas),
@@ -1225,10 +1259,10 @@ struct Jump {
     next: bool,
 }
 
-/// Which teleport the panel names (#9, #44): the piece route's first; the
-/// core route's when only that route teleports as its next step, or when
-/// the piece route takes no teleport at all.
-fn jump(guidance: &Guidance) -> Option<Jump> {
+/// The teleports the panel names (#9, #44): the piece route's first, then
+/// the core route's first, each in its route's colour; either may be
+/// missing.
+fn jumps(guidance: &Guidance) -> Vec<Jump> {
     let first = |route: Option<&[Step]>, colour| {
         let route = route?;
         let step = route.iter().find(|s| s.teleport)?;
@@ -1246,11 +1280,7 @@ fn jump(guidance: &Guidance) -> Option<Jump> {
         first(guidance.route(), PIECE),
         first(guidance.core_route(), ROUTE),
     );
-    match (piece, core) {
-        (p, Some(c)) if c.next && !p.is_some_and(|p| p.next) => Some(c),
-        (None, c) => c,
-        (p, _) => p,
-    }
+    piece.into_iter().chain(core).collect()
 }
 
 /// The steps a route walks, from `here`, as pairs of rooms; teleports are
@@ -1427,7 +1457,7 @@ mod tests {
     }
 
     #[test]
-    fn the_code_named_follows_the_piece_route_unless_only_the_core_route_teleports_next() {
+    fn each_route_names_its_first_teleport_in_its_colour() {
         let seen = |g: &mut Guidance| {
             g.set_teleporters(&[
                 SeenTeleporter {
@@ -1440,63 +1470,61 @@ mod tests {
                 },
             ]);
         };
+        let jump = |code: &[u8; 5], colour, next| Jump {
+            code: *code,
+            colour,
+            next,
+        };
         let mut g = routed(200, &[(201, false), (300, true)], &[(400, true)]);
         seen(&mut g);
         assert_eq!(
-            jump(&g),
-            Some(Jump {
-                code: *b"BBBBB",
-                colour: ROUTE,
-                next: true
-            }),
-            "the core route teleports next, the piece route walks first"
+            jumps(&g),
+            [jump(b"AAAAA", PIECE, false), jump(b"BBBBB", ROUTE, true)],
+            "both routes' teleports, the piece route's first"
         );
-        let mut g = routed(200, &[(300, true)], &[(400, true)]);
+        let mut g = routed(200, &[(300, true)], &[(300, true)]);
         seen(&mut g);
         assert_eq!(
-            jump(&g).map(|j| (j.code, j.colour)),
-            Some((*b"AAAAA", PIECE)),
-            "both next: the piece's"
+            jumps(&g),
+            [jump(b"AAAAA", PIECE, true), jump(b"AAAAA", ROUTE, true)],
+            "the same teleport for both: named twice, one outline each"
         );
-        let mut g = routed(200, &[(201, false), (300, true)], &[]);
+        let mut g = routed(200, &[(201, false)], &[(400, true)]);
         seen(&mut g);
         assert_eq!(
-            jump(&g),
-            Some(Jump {
-                code: *b"AAAAA",
-                colour: PIECE,
-                next: false
-            })
+            jumps(&g),
+            [jump(b"BBBBB", ROUTE, true)],
+            "only the core route teleports"
         );
-        let mut g = routed(200, &[], &[(400, true)]);
+        let mut g = routed(200, &[(201, false)], &[]);
         seen(&mut g);
-        assert_eq!(
-            jump(&g).map(|j| j.code),
-            Some(*b"BBBBB"),
-            "no piece route: the core's"
+        assert!(jumps(&g).is_empty(), "no teleport, nothing named");
+    }
+
+    #[test]
+    fn a_chip_both_routes_use_has_both_outlines() {
+        let mut g = routed(200, &[(300, true)], &[(300, true)]);
+        g.set_teleporters(&[SeenTeleporter {
+            room: 300,
+            code: *b"AAAAA",
+        }]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        let chips = (PICTURE_W + 10.0, WINDOW_H - 60.0, 140.0, 50.0);
+        assert!(
+            count(&pixels, w, chips, PIECE) > 0,
+            "the piece route's outline"
         );
-        let mut g = routed(200, &[(201, false)], &[(201, false), (400, true)]);
-        seen(&mut g);
-        assert_eq!(
-            jump(&g),
-            Some(Jump {
-                code: *b"BBBBB",
-                colour: ROUTE,
-                next: false
-            }),
-            "the piece route takes no teleport: the core route's, highlighted but not yet to select"
+        assert!(
+            count(&pixels, w, chips, ROUTE) > 0,
+            "and the core route's around it"
         );
-        let mut g = routed(
-            200,
-            &[(201, false), (300, true)],
-            &[(201, false), (400, true)],
-        );
-        seen(&mut g);
-        assert_eq!(
-            jump(&g).map(|j| j.code),
-            Some(*b"AAAAA"),
-            "both teleport later: the piece route's"
-        );
+        let mut g = routed(200, &[(300, true)], &[]);
+        g.set_teleporters(&[SeenTeleporter {
+            room: 300,
+            code: *b"AAAAA",
+        }]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(count(&pixels, w, chips, ROUTE), 0, "one route, one outline");
     }
 
     /// Nine made-up holes, not the game's graphics: simple shapes, three
