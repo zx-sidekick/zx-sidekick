@@ -706,6 +706,105 @@ fn items_check(dir: &Path) -> bool {
     good
 }
 
+/// The high-score table (#47): as the tape ships it, the STARQUAKES names;
+/// and a table written into memory is the one a game's score is ranked
+/// against, the new entry named and in before the CORE OF HEROES screen,
+/// which is where the app keeps it.
+fn heroes_check(dir: &Path) -> bool {
+    use sidekick::starquake::{
+        HighScore, at, end_game_hold, high_scores, routine, write_high_scores,
+    };
+    let mut play = machine(dir);
+    play.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut play, frame.min(399));
+        if play.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    let names: Vec<u8> = high_scores(&play.zx.mem[..])
+        .map(|t| t.iter().flat_map(|e| e.name).collect())
+        .unwrap_or_default();
+    let shipped = names == b"STATARARQRQUQUAUAKAKEKES";
+    // Ends the game from `m`, pressing `0` for the screens that wait (and
+    // the name), and returns the table and final score at the CORE OF
+    // HEROES screen, and whether the table was the same back at the menu.
+    let end = |mut m: sidekick::Machine| -> Option<([HighScore; 8], [u8; 6], bool)> {
+        m.watch = vec![routine::GAME_OVER, routine::HEROES, routine::MENU];
+        m.hold = Some(end_game_hold());
+        let (mut over, mut heroes) = (false, None);
+        for frame in 0..4000u64 {
+            m.zx.release_all_keys();
+            if over && frame % 50 < 5 {
+                m.zx.set_key(Key::by_name("0").expect("a key"), true);
+            }
+            for hit in m.run_frame() {
+                let mem = &m.zx.mem[..];
+                match hit {
+                    routine::GAME_OVER => {
+                        over = true;
+                        m.hold = None;
+                    }
+                    routine::HEROES if over && heroes.is_none() => {
+                        let a = usize::from(at::FINAL_SCORE);
+                        heroes = Some((high_scores(mem)?, mem[a..a + 6].try_into().ok()?));
+                    }
+                    routine::MENU if over => {
+                        let (table, score) = heroes?;
+                        return Some((table, score, high_scores(mem)? == table));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        None
+    };
+    // The score a game ended at once reaches, then a table it lands fourth in.
+    let Some((_, score, _)) = end(play.clone()) else {
+        println!("  the high scores: End this game never reached the CORE OF HEROES screen FAILED");
+        return false;
+    };
+    let entry = |i: u8, score: &[u8; 6]| HighScore {
+        name: [b'A' + i; 3],
+        score: *score,
+        percent: 40 - i,
+    };
+    let digits = |text: String| -> [u8; 6] { text.as_bytes().try_into().expect("six digits") };
+    let above = |i: u8| digits(format!("{}00000", 9 - i));
+    let below = |i: u8| digits(format!("00000{}", 8 - i));
+    let written: [HighScore; 8] = std::array::from_fn(|i| {
+        let i = i as u8;
+        if i < 3 {
+            entry(i, &above(i))
+        } else {
+            entry(i, &below(i))
+        }
+    });
+    let ranks = score.as_slice() > b"000005".as_slice();
+    let mut m = play.clone();
+    write_high_scores(&mut m.zx.mem[..], &written);
+    let landed = end(m).is_some_and(|(table, s, same)| {
+        s == score
+            && table[..3] == written[..3]
+            && table[3].score == score
+            && table[4..] == written[3..7]
+            && same
+    });
+    let good = shipped && ranks && landed;
+    println!(
+        "  the high scores: the tape's table {}; a table written in ranks the game's score {} fourth, the rest moved down and final at the CORE OF HEROES screen {}",
+        if shipped {
+            "names STARQUAKES"
+        } else {
+            "has other names"
+        },
+        String::from_utf8_lossy(&score),
+        if good { "ok" } else { "FAILED" }
+    );
+    good
+}
+
 /// Starts a game and, for every room marked as holding a missing core piece,
 /// has the game enter that room and checks it placed a pickup whose item is
 /// one the core still wants.
@@ -1170,6 +1269,7 @@ fn facts_check(dir: &Path) -> bool {
     ok &= pieces_check(dir);
     ok &= graphics_check(dir);
     ok &= items_check(dir);
+    ok &= heroes_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }
