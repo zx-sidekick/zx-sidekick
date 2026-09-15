@@ -25,6 +25,10 @@ locally.
   `… -- facts "$SK_ASSETS"` and `… -- map "$SK_ASSETS" 60` run the checks
   against the game on their own (`keys` and `map` need only the tape;
   `facts` walks into the teleporter booths only with the ROM).
+- `cargo run --release -p sk-lab --bin planet -- "$SK_ASSETS"` draws the whole
+  planet with every room's openings into `assets/planet.png`; the other
+  `sk-lab` tools (`tools/sk-lab/README.md`) probe rooms and run the level 5
+  search. They look, `sk-check` proves; none runs in CI or the gate.
 - `cargo test -p zx-spectrum --test fuse -- --nocapture` checks the processor
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
   `assets/tests.expected`).

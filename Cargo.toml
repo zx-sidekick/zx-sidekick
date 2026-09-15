@@ -5,6 +5,7 @@ members = [
     "crates/zx-spectrum",
     "crates/sidekick",
     "tools/sk-check",
+    "tools/sk-lab",
     "app",
 ]
 

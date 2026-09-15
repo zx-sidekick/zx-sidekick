@@ -8,7 +8,7 @@ It says nothing about the game itself. Starquake is Stephen Crow's, this
 project contains no part of it, and the program runs the player's own copy,
 unchanged. The README says where to get one.
 
-- Apache License 2.0: 160 crates
+- Apache License 2.0: 161 crates
 - MIT License: 51 crates
 - ISC License: 3 crates
 - zlib License: 3 crates
@@ -3529,7 +3529,7 @@ limitations under the License.
 
 ## Apache License 2.0
 
-Used by `zx-sidekick-starquake 0.1.0`, `sidekick 0.1.0`, `zx-core 0.1.0`, `zx-spectrum 0.1.0`, `sk-check 0.1.0`, `ab_glyph 0.2.32`, `ab_glyph_rasterizer 0.1.10`, `allocator-api2 0.2.21`, `alsa 0.11.0`, `dasp_sample 0.11.0`, `dispatch2 0.3.1`, `document-features 0.2.12`, `fontdue 0.9.4`, `gilrs-core 0.6.8`, `gilrs 0.11.2`, `gl_generator 0.14.0`, `gpu-descriptor-types 0.2.0`, `gpu-descriptor 0.3.2`, `half 2.7.1`, `khronos_api 3.1.0`, `libc 0.2.189`, `litrs 1.0.0`, `mach2 0.6.0`, `naga 29.0.4`, `objc2-app-kit 0.3.2`, `objc2-audio-toolbox 0.3.2`, `objc2-core-audio-types 0.3.2`, `objc2-core-audio 0.3.2`, `objc2-core-foundation 0.3.2`, `objc2-io-kit 0.3.2`, `objc2-metal 0.3.2`, `objc2-quartz-core 0.3.2`, `owned_ttf_parser 0.25.1`, `pin-project-lite 0.2.17`, `proc-macro2 1.0.107`, `profiling 1.0.18`, `quote 1.0.47`, `range-alloc 0.1.5`, `raw-window-handle 0.6.2`, `shlex 2.0.1`, `spirv 0.4.0+sdk-1.4.341.0`, `syn 2.0.119`, `syn 3.0.5`, `thiserror-impl 1.0.69`, `thiserror-impl 2.0.20`, `thiserror 1.0.69`, `thiserror 2.0.20`, `typed-path 0.12.3`, `ultraviolet 0.10.0`, `unicode-ident 1.0.24`, `wgpu-core-deps-apple 29.0.4`, `wgpu-core-deps-windows-linux-android 29.0.4`, `wgpu-core 29.0.4`, `wgpu-hal 29.0.4`, `wgpu-naga-bridge 29.0.4`, `wgpu-types 29.0.4`, `wgpu 29.0.4`, `wide 0.7.33`.
+Used by `zx-sidekick-starquake 0.1.0`, `sidekick 0.1.0`, `zx-core 0.1.0`, `zx-spectrum 0.1.0`, `sk-check 0.1.0`, `sk-lab 0.1.0`, `ab_glyph 0.2.32`, `ab_glyph_rasterizer 0.1.10`, `allocator-api2 0.2.21`, `alsa 0.11.0`, `dasp_sample 0.11.0`, `dispatch2 0.3.1`, `document-features 0.2.12`, `fontdue 0.9.4`, `gilrs-core 0.6.8`, `gilrs 0.11.2`, `gl_generator 0.14.0`, `gpu-descriptor-types 0.2.0`, `gpu-descriptor 0.3.2`, `half 2.7.1`, `khronos_api 3.1.0`, `libc 0.2.189`, `litrs 1.0.0`, `mach2 0.6.0`, `naga 29.0.4`, `objc2-app-kit 0.3.2`, `objc2-audio-toolbox 0.3.2`, `objc2-core-audio-types 0.3.2`, `objc2-core-audio 0.3.2`, `objc2-core-foundation 0.3.2`, `objc2-io-kit 0.3.2`, `objc2-metal 0.3.2`, `objc2-quartz-core 0.3.2`, `owned_ttf_parser 0.25.1`, `pin-project-lite 0.2.17`, `proc-macro2 1.0.107`, `profiling 1.0.18`, `quote 1.0.47`, `range-alloc 0.1.5`, `raw-window-handle 0.6.2`, `shlex 2.0.1`, `spirv 0.4.0+sdk-1.4.341.0`, `syn 2.0.119`, `syn 3.0.5`, `thiserror-impl 1.0.69`, `thiserror-impl 2.0.20`, `thiserror 1.0.69`, `thiserror 2.0.20`, `typed-path 0.12.3`, `ultraviolet 0.10.0`, `unicode-ident 1.0.24`, `wgpu-core-deps-apple 29.0.4`, `wgpu-core-deps-windows-linux-android 29.0.4`, `wgpu-core 29.0.4`, `wgpu-hal 29.0.4`, `wgpu-naga-bridge 29.0.4`, `wgpu-types 29.0.4`, `wgpu 29.0.4`, `wide 0.7.33`.
 
 ```
 Apache License
