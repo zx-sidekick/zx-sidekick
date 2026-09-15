@@ -119,6 +119,9 @@ pub struct Guidance {
     /// The security doors whose codes were seen this game, in the order
     /// their screens were opened (#49).
     door_codes: Vec<DoorCode>,
+    /// The game's font, read from memory once play starts, for drawing
+    /// codes in its letters (#49); empty until then.
+    font: Vec<u8>,
     /// Every room's openings, for the map (#5). Empty until they are read.
     openings: Vec<Openings>,
     /// The rooms visited in the game being played, or just ended; empty on
@@ -230,6 +233,26 @@ impl Guidance {
     )]
     pub fn door_codes(&self) -> &[DoorCode] {
         &self.door_codes
+    }
+
+    /// The game's font, 96 letters of eight bytes from the space, once read.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the panel draws codes in it once the mockup is approved (#49)"
+        )
+    )]
+    pub fn font(&self) -> Option<&[u8]> {
+        (!self.font.is_empty()).then_some(&self.font[..])
+    }
+
+    /// Takes the game's font, if it has changed.
+    pub fn set_font(&mut self, font: &[u8]) {
+        if self.font != font {
+            self.font = font.to_vec();
+            self.version += 1;
+        }
     }
 
     /// Takes the game's list of door codes seen, if it has changed.

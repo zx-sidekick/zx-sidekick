@@ -1307,6 +1307,36 @@ fn doors_check(dir: &Path) -> bool {
     ok
 }
 
+/// The font the panel draws codes in (#49): once play starts, `CHARS`
+/// points 256 bytes below [`at::FONT`], so the game prints with the letters
+/// there, and they are 96 letters with the space blank.
+fn font_check(dir: &Path) -> bool {
+    use sidekick::starquake::{at, font, routine};
+    let mut m = machine(dir);
+    m.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut m, frame.min(399));
+        if m.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    let chars = m.zx.read16(at::CHARS);
+    let letters = font(&m.zx.mem[..]).unwrap_or_default();
+    let good = chars.wrapping_add(256) == at::FONT
+        && letters.len() == 96 * 8
+        && letters[..8].iter().all(|&b| b == 0)
+        && letters[8 * (usize::from(b'A') - 0x20)..][..8]
+            .iter()
+            .any(|&b| b != 0);
+    println!(
+        "  the font: CHARS {chars:#06x} once play starts, the letters at {:#06x} {}",
+        chars.wrapping_add(256),
+        if good { "ok" } else { "FAILED" }
+    );
+    good
+}
+
 fn facts_check(dir: &Path) -> bool {
     use sidekick::starquake::routine;
     let mut ok = true;
@@ -1357,6 +1387,7 @@ fn facts_check(dir: &Path) -> bool {
     ok &= items_check(dir);
     ok &= heroes_check(dir);
     ok &= doors_check(dir);
+    ok &= font_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }
