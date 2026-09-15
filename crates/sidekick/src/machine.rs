@@ -232,6 +232,18 @@ impl Machine {
     /// instructions. For having the game do something on a copy of the
     /// machine, such as entering a room.
     pub fn call(&mut self, addr: u16, stop: u16, max: u64) -> bool {
+        self.call_observing(addr, stop, max, |_| {})
+    }
+
+    /// [`Machine::call`], with `see` shown the machine before each
+    /// instruction.
+    pub fn call_observing(
+        &mut self,
+        addr: u16,
+        stop: u16,
+        max: u64,
+        mut see: impl FnMut(&Zx),
+    ) -> bool {
         let z = &mut self.zx;
         let sp = z.sp();
         z.push(0);
@@ -241,6 +253,7 @@ impl Machine {
             if z.pc() == stop || (z.pc() == 0 && z.sp() == sp) {
                 return true;
             }
+            see(z);
             if !answer(z) {
                 z.step();
             }
@@ -266,6 +279,12 @@ impl Machine {
     /// its ends, and returns the [watched](Machine::watch) addresses the
     /// program arrived at, in order.
     pub fn run_frame(&mut self) -> Vec<u16> {
+        self.run_frame_observing(|_| {})
+    }
+
+    /// [`Machine::run_frame`], with `see` shown the machine before each
+    /// instruction, for checks that follow what the game does.
+    pub fn run_frame_observing(&mut self, mut see: impl FnMut(&Zx)) -> Vec<u16> {
         let (joystick, start) = (self.joystick, self.start);
         let start_game = start || joystick & JOY_FIRE != 0;
         let Machine {
@@ -283,6 +302,7 @@ impl Machine {
         let mut kept = None;
         let mut hits = Vec::new();
         zx.run_frame(|z| {
+            see(z);
             let pc = z.pc();
             if watch.contains(&pc) {
                 hits.push(pc);
@@ -485,6 +505,15 @@ mod tests {
         assert!(m.call(0x8000, 0x8001, 10), "reached the stop");
         let mut m = nop_then_loop();
         assert!(!m.call(0x8000, 0x9000, 10), "neither, within ten");
+    }
+
+    #[test]
+    fn an_observer_sees_every_instruction() {
+        let mut m = nop_then_loop();
+        let mut seen = vec![];
+        m.run_frame_observing(|z| seen.push(z.pc()));
+        assert_eq!(seen[..2], [0x8000, 0x8001]);
+        assert!(seen.len() > 1000, "the whole frame");
     }
 
     #[test]

@@ -25,7 +25,9 @@
 //!   that walking into each booth prints its code; and that in play the
 //!   room stays a room and every room walked into is marked visited; and
 //!   that every room marked as holding a missing core piece gets a wanted
-//!   piece placed in it when the game enters it.
+//!   piece placed in it when the game enters it; and that the pieces and
+//!   the core's holes are drawn from the graphics table as the core column
+//!   reads it.
 //! - `map [walks]`: has the game draw every room and reads the map from
 //!   them, then walks Blob at random through play from many rooms and checks
 //!   that he never leaves a room through an edge the map shows closed, and
@@ -681,6 +683,126 @@ fn pieces_check(dir: &Path) -> bool {
     good
 }
 
+/// The 32 bytes of the 2 × 2 cells at character (`row`, `col`) of `z`'s
+/// screen, top left, top right, bottom left, bottom right.
+fn cells(z: &zx_spectrum::Zx, row: u8, col: u8) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    for (k, (dr, dc)) in [(0, 0), (0, 1), (1, 0), (1, 1)].into_iter().enumerate() {
+        for y in 0..8 {
+            let line = zx_core::screen::line_offset(usize::from(row + dr) * 8 + y);
+            out[k * 8 + y] = z.mem[0x4000 + line + usize::from(col + dc)];
+        }
+    }
+    out
+}
+
+/// The graphics the core column draws (#7): entering every room marked as
+/// holding a missing piece, the game lays the table's bytes for the item's
+/// graphic on the screen at the item's cell; and walking into the core, with
+/// three holes filled, draws each hole with the graphic `hole` gives, red
+/// while open and white once filled.
+fn graphics_check(dir: &Path) -> bool {
+    use sidekick::starquake::{
+        CORE_ROOM, at, graphic, hole, items_and_core, missing_piece_rooms, routine,
+    };
+    let mut base = machine(dir);
+    base.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut base, frame.min(399));
+        if base.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    base.watch.clear();
+    let (items, core) = items_and_core(&base.zx.mem[..]);
+    let marked = missing_piece_rooms(&core, &items);
+    let (mut drawn, mut rooms) = (0, 0);
+    for room in (0..512u16).filter(|&r| marked.contains(r) && r != CORE_ROOM) {
+        rooms += 1;
+        let mut m = base.clone();
+        m.zx.write16(at::ROOM, room);
+        m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+        // Each draw: its cell, the cells before it, and where it returns.
+        let mut pending: Vec<(u8, u8, [u8; 32], u16)> = vec![];
+        let mut done: Vec<(u8, u8, [u8; 32])> = vec![];
+        m.call_observing(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000, |z| {
+            if z.pc() == routine::DRAW_GRAPHIC {
+                pending.push((z.b(), z.c(), cells(z, z.b(), z.c()), z.read16(z.sp())));
+            }
+            if let Some(i) = pending.iter().position(|p| p.3 == z.pc()) {
+                let (row, col, before, _) = pending.remove(i);
+                let after = cells(z, row, col);
+                let mut xor = [0u8; 32];
+                for k in 0..32 {
+                    xor[k] = before[k] ^ after[k];
+                }
+                done.push((row, col, xor));
+            }
+        });
+        let (placed, _) = items_and_core(&m.zx.mem[..]);
+        let good = placed.iter().filter(|i| i.room() == room).any(|i| {
+            done.iter().any(|d| {
+                (d.0, d.1) == (i.row(), i.column()) && d.2 == graphic(&m.zx.mem[..], i.graphic())
+            })
+        });
+        drawn += usize::from(good);
+        if !good {
+            println!("  room {room}: the piece was not drawn as the table has it");
+        }
+    }
+    let pieces_ok = rooms > 0 && drawn == rooms;
+    println!(
+        "  the pieces' graphics: drawn from the table in {drawn} of {rooms} marked rooms {}",
+        if pieces_ok { "ok" } else { "FAILED" }
+    );
+
+    // The core: three holes filled, then walk in from the room to its left.
+    let mut m = base.clone();
+    let slots = usize::from(at::CORE_SLOTS);
+    for i in [0usize, 1, 4] {
+        m.zx.mem[slots + i] = i as u8;
+    }
+    let bytes: Vec<u8> = m.zx.mem[slots..slots + 9].to_vec();
+    m.zx.write16(at::ROOM, CORE_ROOM - 1);
+    m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+    let entered = m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000);
+    m.zx.t = 0;
+    m.zx.set_interrupts(true);
+    m.zx.mem[usize::from(at::ENTITIES) + 5] = 0xE8;
+    let mut draws: Vec<(u8, u8, u8, u16)> = vec![];
+    for frame in 0..200 {
+        m.zx.release_all_keys();
+        m.zx.kempston = if frame < 100 { 0x01 } else { 0 };
+        m.run_frame_observing(|z| {
+            if z.pc() == routine::DRAW_GRAPHIC {
+                draws.push((
+                    z.b(),
+                    z.c(),
+                    z.a(),
+                    u16::from(z.h()) << 8 | u16::from(z.l()),
+                ));
+            }
+        });
+    }
+    let holes_ok = entered
+        && (0..9).all(|i| {
+            let (g, open) = hole(i, bytes[i]);
+            let (row, col) = (12 + 2 * (i / 3) as u8, 13 + 2 * (i % 3) as u8);
+            draws
+                .iter()
+                .find(|d| (d.0, d.1) == (row, col))
+                .is_some_and(|d| {
+                    d.3 == at::GRAPHICS + u16::from(g) * 32 && d.2 == if open { 2 } else { 7 }
+                })
+        });
+    println!(
+        "  the core's holes: each drawn with its graphic, red while open and white once filled {}",
+        if holes_ok { "ok" } else { "FAILED" }
+    );
+    pieces_ok && holes_ok
+}
+
 /// Plays 6,000 frames under random joystick input and checks the two
 /// addresses the map follows (#5): the room stays a room, and every room
 /// walked into is marked visited in the game's own set within 50 frames,
@@ -892,6 +1014,7 @@ fn facts_check(dir: &Path) -> bool {
     ok &= teleporters_check(dir);
     ok &= visited_check(dir);
     ok &= pieces_check(dir);
+    ok &= graphics_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }
