@@ -1,4 +1,6 @@
-//! Rooms as text, side by side: `#` solid, `.` free, `=` a lift; and with
+//! Rooms as text, side by side: `#` solid, `.` free, `=` a lift, with the
+//! map's openings and inner walls (each as its place on the edge, clockwise
+//! from the top left in cells, `d` for a door's) above; and with
 //! `--png`, each room as the game draws it, `room-N.png` in the assets
 //! folder, or with `--stack` all of them in one picture top to bottom,
 //! `rooms-N-M.png`.
@@ -20,13 +22,20 @@ fn main() {
         .iter()
         .map(|&r| {
             let o = planet.openings[usize::from(r)];
+            let walls: Vec<String> = o
+                .walls
+                .iter()
+                .flatten()
+                .map(|w| format!("{}{}", w.to, if w.door { "d" } else { "" }))
+                .collect();
             let mut g = vec![format!(
-                "room {r}: L{} R{} U{} D{} passage {:?}",
+                "room {r}: L{} R{} U{} D{} passage {:?} walls [{}]",
                 u8::from(o.left),
                 u8::from(o.right),
                 u8::from(o.up),
                 u8::from(o.down),
-                planet.rooms[usize::from(r)].passage
+                planet.rooms[usize::from(r)].passage,
+                walls.join(" ")
             )];
             g.extend(draw(&planet.cells[usize::from(r)]));
             g
