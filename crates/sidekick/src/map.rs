@@ -750,11 +750,19 @@ impl Graph {
     /// part 0 when none is found.
     #[must_use]
     pub fn place(&self, room: u16, x: u8, y: u8) -> Place {
+        (room, self.part_at(room, (0xBF - y.min(0xBF)) >> 3, x >> 3))
+    }
+
+    /// The part of `room` at the screen cell (`row`, `col`), such as an
+    /// item's spot (#50), or the part beside it when the cell is one Blob
+    /// does not fit at; 0 when none is found.
+    #[must_use]
+    pub fn part_at(&self, room: u16, row: u8, col: u8) -> u8 {
         let Some(parts) = self.parts.get(usize::from(room)) else {
-            return (room, 0);
+            return 0;
         };
-        let (row, col) = (i16::from((0xBF - y.min(0xBF)) >> 3), i16::from(x >> 3));
-        let part = [
+        let (row, col) = (i16::from(row), i16::from(col));
+        [
             (0, 0),
             (0, 1),
             (1, 0),
@@ -769,8 +777,7 @@ impl Graph {
         .filter(|&(r, c)| r >= 0 && c >= 0)
         .map(|(r, c)| parts.at(r as u8, c as u8))
         .find(|&p| p != 0)
-        .unwrap_or(0);
-        (room, part)
+        .unwrap_or(0)
     }
 
     /// The places one step from `place`.
@@ -784,15 +791,23 @@ impl Graph {
         self.ways.keys().copied()
     }
 
-    /// The fewest steps from `start` to a room in `targets` over the whole
-    /// map (level 5, #10), a teleport counting as one: the graph's ways, and
-    /// a jump from a booth in a room in `booths` to another such booth.
-    /// `start` with part 0 starts from every place in its room. `None` when
-    /// no target can be reached; empty when `start`'s room is one.
+    /// The fewest steps from `start` to a room in `targets` or a place in
+    /// `places` over the whole map (level 5, #10), a teleport counting as
+    /// one: the graph's ways, and a jump from a booth in a room in `booths`
+    /// to another such booth. `start` with part 0 starts from every place
+    /// in its room. `None` when no target can be reached; empty when
+    /// `start` is at one.
     #[must_use]
-    pub fn route(&self, start: Place, booths: &[u16], targets: &RoomSet) -> Option<Vec<Step>> {
+    pub fn route(
+        &self,
+        start: Place,
+        booths: &[u16],
+        targets: &RoomSet,
+        places: &[Place],
+    ) -> Option<Vec<Step>> {
         use std::collections::{BTreeMap, BTreeSet, VecDeque};
-        if targets.contains(start.0) {
+        let reached = |p: Place| targets.contains(p.0) || places.contains(&p);
+        if targets.contains(start.0) || places.contains(&start) {
             return Some(vec![]);
         }
         let starts: Vec<Place> = if start.1 == 0 {
@@ -813,7 +828,7 @@ impl Graph {
         let mut queue: VecDeque<Place> = starts.iter().copied().collect();
         let mut seen: BTreeSet<Place> = starts.iter().copied().collect();
         while let Some(here) = queue.pop_front() {
-            if targets.contains(here.0) {
+            if reached(here) {
                 let mut path = vec![];
                 let mut at = here;
                 while let Some(&(from, teleport)) = came.get(&at) {
@@ -1322,9 +1337,9 @@ mod tests {
         ]);
         rooms.push(read_text(&gapped(false, false, true, false), &[]));
         let g = Graph::new(&rooms, 999);
-        let there = g.route((0, 1), &[], &targets(&[17])).unwrap();
+        let there = g.route((0, 1), &[], &targets(&[17]), &[]).unwrap();
         assert_eq!(there.iter().map(|s| s.room).collect::<Vec<_>>(), [1, 17]);
-        let back = g.route((17, 1), &[], &targets(&[0])).unwrap();
+        let back = g.route((17, 1), &[], &targets(&[0]), &[]).unwrap();
         assert_eq!(back.iter().map(|s| s.room).collect::<Vec<_>>(), [1, 0]);
     }
 
@@ -1340,11 +1355,11 @@ mod tests {
         ]);
         let g = Graph::new(&rooms, 999);
         assert_eq!(
-            g.route((0, 1), &[0], &targets(&[16])),
+            g.route((0, 1), &[0], &targets(&[16]), &[]),
             None,
             "16's booth not entered"
         );
-        let route = g.route((0, 1), &[0, 16], &targets(&[16])).unwrap();
+        let route = g.route((0, 1), &[0, 16], &targets(&[16]), &[]).unwrap();
         assert_eq!(
             route,
             [Step {
@@ -1373,11 +1388,47 @@ mod tests {
         let g = Graph::new(&rooms, 999);
         let from_left = g.place(0, 5 * 8, 143 - 8 * 6);
         assert_eq!(
-            g.route(from_left, &[], &targets(&[1])),
+            g.route(from_left, &[], &targets(&[1]), &[]),
             Some(vec![Step {
                 room: 1,
                 teleport: false
             }])
+        );
+    }
+
+    #[test]
+    fn level_5_goes_round_to_the_part_a_piece_is_in() {
+        // Room 1 split by a pillar, open on both sides; the way from its
+        // left half to its right half runs through 0, the row below and 2.
+        let mut split = gapped(true, true, false, false);
+        for line in &mut split {
+            line.replace_range(15..17, "##");
+        }
+        let mut rooms = planet_of(&[
+            (0, read_text(&gapped(false, true, false, true), &[])),
+            (1, read_text(&split, &[])),
+            (2, read_text(&gapped(true, false, false, true), &[])),
+            (16, read_text(&gapped(false, true, true, false), &[])),
+        ]);
+        rooms.push(read_text(&gapped(true, true, false, false), &[]));
+        rooms.push(read_text(&gapped(true, false, true, false), &[]));
+        let g = Graph::new(&rooms, 999);
+        let (left, right) = ((1, g.part_at(1, 12, 5)), (1, g.part_at(1, 12, 25)));
+        assert!(left.1 != 0 && right.1 != 0 && left != right, "two halves");
+        let route = g.route(left, &[], &RoomSet::default(), &[right]).unwrap();
+        assert_eq!(
+            route.iter().map(|s| s.room).collect::<Vec<_>>(),
+            [0, 16, 17, 18, 2, 1]
+        );
+        assert_eq!(
+            g.route(left, &[], &RoomSet::default(), &[left]),
+            Some(vec![]),
+            "already in the piece's part"
+        );
+        assert_eq!(
+            g.route(left, &[], &targets(&[1]), &[]),
+            Some(vec![]),
+            "the whole room, before the piece's spot is known"
         );
     }
 
