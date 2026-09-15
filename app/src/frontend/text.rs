@@ -279,6 +279,23 @@ impl Canvas<'_> {
             .fill([colour[0], colour[1], colour[2], 0xFF]);
     }
 
+    /// A square `size` logical pixels across, filled solid over whole device
+    /// pixels: its edges round to the nearest device pixel, so squares laid
+    /// side by side meet exactly, with no softened seam between them. For
+    /// drawing a picture's pixels scaled up.
+    pub fn cell(&mut self, x: f32, y: f32, size: f32, colour: Rgb) {
+        let s = self.scale;
+        let edge = |v: f32| (v * s).round().max(0.0) as usize;
+        let (x0, x1) = (edge(x).min(self.width), edge(x + size).min(self.width));
+        let (y0, y1) = (edge(y).min(self.height), edge(y + size).min(self.height));
+        for py in y0..y1 {
+            for px in x0..x1 {
+                let i = (py * self.width + px) * 4;
+                self.pixels[i..i + 4].copy_from_slice(&[colour[0], colour[1], colour[2], 0xFF]);
+            }
+        }
+    }
+
     /// A filled rectangle with rounded corners, in logical pixels.
     pub fn round_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, colour: Rgb) {
         self.shape(x, y, w, h, radius, colour, 255, |_, _| true);
@@ -499,6 +516,31 @@ mod tests {
         let at = |x: usize, y: usize| pixels[(y * w + x) * 4 + 3];
         assert_eq!(at(1, 1), 255, "inside the triangle");
         assert_eq!(at(7, 7), 0, "beyond its long edge, still clear");
+    }
+
+    #[test]
+    fn cells_side_by_side_meet_with_no_seam() {
+        let (w, h) = (20, 4);
+        let mut pixels = vec![0u8; w * h * 4];
+        let mut canvas = Canvas {
+            pixels: &mut pixels,
+            width: w,
+            height: h,
+            scale: 1.5,
+        };
+        // Squares of 2.25 logical pixels, 3.375 device pixels: fractional.
+        for i in 0..4 {
+            canvas.cell(i as f32 * 2.25, 0.0, 2.25, [255, 255, 255]);
+        }
+        let row: Vec<u8> = (0..w).map(|x| pixels[x * 4]).collect();
+        assert!(
+            row[..14].iter().all(|&v| v == 255),
+            "solid, no seam: {row:?}"
+        );
+        assert!(
+            row[14..].iter().all(|&v| v == 0),
+            "and nothing past the last: {row:?}"
+        );
     }
 
     #[test]

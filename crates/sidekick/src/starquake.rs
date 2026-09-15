@@ -102,6 +102,11 @@ pub mod routine {
     /// A teleporter booth, one of the screens play hands over to. It prints
     /// the code of the teleporter Blob is standing in.
     pub const TELEPORT_BOOTH: u16 = 0xCED4;
+    /// Drawing a 2 × 2 graphic: the attribute in A, the character row in B,
+    /// the column in C, and the graphic's 32 bytes at HL (see
+    /// [`super::at::GRAPHICS`]), laid on the screen by XOR. Pickups in a room and
+    /// the core's holes are drawn with it.
+    pub const DRAW_GRAPHIC: u16 = 0xDB24;
     /// Drawing a room's tiles, from its first instruction to its last.
     pub const BUILD_ROOM_TILES: u16 = 0xA80A;
     pub const BUILD_ROOM_TILES_END: u16 = 0xAA30;
@@ -133,10 +138,14 @@ pub mod at {
     /// then the graphic of the piece that fills it; a filled hole holds its
     /// own number.
     pub const CORE_SLOTS: u16 = 0xD2DE;
-    /// The 45 items, four bytes each: column and colour, row with the room's
+    /// The 45 items, four bytes each: column (and colour), row with the room's
     /// top bit, the room's low byte, graphic.
     pub const ITEMS: u16 = 0x94E8;
     pub const ITEM_COUNT: usize = 45;
+    /// The graphics pickups and the core's holes are drawn with: 32 bytes
+    /// each, from graphic 0, four 8 × 8 cells top left, top right, bottom
+    /// left, bottom right.
+    pub const GRAPHICS: u16 = 0x9088;
     /// The restore list the room builder writes, and the pointer into it.
     pub const RESTORE_LIST: u16 = 0x5B20;
     pub const RESTORE_PTR: u16 = 0xEA60;
@@ -294,6 +303,11 @@ impl Item {
     pub fn graphic(&self) -> u8 {
         self.0[3]
     }
+    /// The screen column it is drawn at once placed in its room.
+    #[must_use]
+    pub fn column(&self) -> u8 {
+        self.0[0] & 0x1F
+    }
 }
 
 /// The items and the core's holes, from the machine's memory.
@@ -307,6 +321,30 @@ pub fn items_and_core(mem: &[u8]) -> (Vec<Item>, [u8; 9]) {
         .collect();
     let core = std::array::from_fn(|i| mem[usize::from(at::CORE_SLOTS) + i]);
     (items, core)
+}
+
+/// Graphic `number`'s 32 bytes, from the machine's memory `mem`.
+///
+/// # Panics
+///
+/// If `mem` is not the machine's whole memory.
+#[must_use]
+pub fn graphic(mem: &[u8], number: u8) -> [u8; 32] {
+    let at = usize::from(at::GRAPHICS) + usize::from(number) * 32;
+    mem[at..at + 32].try_into().expect("32 bytes")
+}
+
+/// What the core shows in hole `index`, from its byte `slot`: the graphic,
+/// and whether the hole is still open. An open hole shows the piece that
+/// fills it; a filled one keeps only its own number, and shows that
+/// graphic as its placeholder.
+#[must_use]
+pub fn hole(index: usize, slot: u8) -> (u8, bool) {
+    if slot & 0x80 == 0 {
+        (index as u8, false)
+    } else {
+        (slot & 0x7F, true)
+    }
 }
 
 /// The rooms of the items that would fill a hole still open in the core.
@@ -421,6 +459,24 @@ mod tests {
         for code in [0, b' ', b'\r', b'!', 0x7F, 0xFF] {
             assert_eq!(key(code), None, "{code:#04x}");
         }
+    }
+
+    #[test]
+    fn an_item_s_column_is_in_its_first_byte() {
+        let i = Item([0x95, 19, 16, 33]);
+        assert_eq!((i.column(), i.row(), i.graphic()), (21, 19, 33));
+    }
+
+    #[test]
+    fn an_open_hole_shows_its_piece_and_a_filled_one_its_own_number() {
+        assert_eq!(hole(0, 0x9B), (0x1B, true));
+        assert_eq!(hole(4, 0x04), (4, false));
+        let mut mem = vec![0u8; 0x10000];
+        let at = usize::from(at::GRAPHICS) + 33 * 32;
+        mem[at] = 0xAB;
+        mem[at + 31] = 0xCD;
+        let g = graphic(&mem, 33);
+        assert_eq!((g[0], g[31]), (0xAB, 0xCD));
     }
 
     #[test]
