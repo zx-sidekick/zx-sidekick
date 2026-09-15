@@ -607,7 +607,7 @@ impl Panel {
             ],
             _ if guidance.route().is_none() => {
                 let text = if guidance.level() >= 5 {
-                    "No route to a missing piece without a door"
+                    "No route to a missing piece yet"
                 } else {
                     "No known route to a missing piece"
                 };

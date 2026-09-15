@@ -236,6 +236,7 @@ impl Parts {
 }
 
 /// One room as the map reads it.
+#[derive(Clone)]
 pub struct Room {
     pub openings: Openings,
     /// Its parts with security doors shut, and with them open.
@@ -1238,25 +1239,9 @@ mod tests {
     fn planet_of(drawn: &[(usize, Room)]) -> Vec<Room> {
         let mut rooms: Vec<Room> = (0..17).map(|_| read_text(&walled(), &[])).collect();
         for (i, r) in drawn.iter() {
-            rooms[*i] = read_text_clone(r);
+            rooms[*i] = r.clone();
         }
         rooms
-    }
-
-    fn read_text_clone(r: &Room) -> Room {
-        Room {
-            openings: r.openings,
-            shut: r.shut.clone(),
-            open: r.open.clone(),
-            passage: r.passage,
-            passage_right: r.passage_right,
-            passage_left: r.passage_left,
-            solid: r.solid,
-            lift: r.lift,
-            passage_part: r.passage_part,
-            hover_parts: r.hover_parts.clone(),
-            booth_part: r.booth_part,
-        }
     }
 
     /// A walled room with gaps: `left`/`right` rows 8 and 9, `down`/`up`
