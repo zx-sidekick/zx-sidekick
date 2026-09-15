@@ -138,7 +138,7 @@ impl Tracker {
 
 /// The two routes over the connections `known` from `here` (#44): to the
 /// nearest room holding a missing piece, and to the core room while a piece
-/// it needs is carried (decision 5), `None` otherwise or when there is no
+/// it needs is carried (#44, decision 5), `None` otherwise or when there is no
 /// way. A teleport between two of `booths` counts as one step.
 fn routes(
     known: &Known,

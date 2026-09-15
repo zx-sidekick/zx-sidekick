@@ -259,7 +259,7 @@ impl Guidance {
         }
     }
 
-    /// Takes the route, if it has changed.
+    /// Takes the route to the nearest missing piece, if it has changed.
     pub fn set_route(&mut self, route: Option<Vec<Step>>) {
         if self.route != route {
             self.route = route;
