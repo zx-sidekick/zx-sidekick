@@ -1225,8 +1225,9 @@ struct Jump {
     next: bool,
 }
 
-/// Which teleport the panel names (#9, #44): the piece route's first, or
-/// the core route's when only that route teleports as its next step.
+/// Which teleport the panel names (#9, #44): the piece route's first; the
+/// core route's when only that route teleports as its next step, or when
+/// the piece route takes no teleport at all.
 fn jump(guidance: &Guidance) -> Option<Jump> {
     let first = |route: Option<&[Step]>, colour| {
         let route = route?;
@@ -1247,6 +1248,7 @@ fn jump(guidance: &Guidance) -> Option<Jump> {
     );
     match (piece, core) {
         (p, Some(c)) if c.next && !p.is_some_and(|p| p.next) => Some(c),
+        (None, c) => c,
         (p, _) => p,
     }
 }
@@ -1477,8 +1479,23 @@ mod tests {
         seen(&mut g);
         assert_eq!(
             jump(&g),
-            None,
-            "the core route teleports later: nothing named yet"
+            Some(Jump {
+                code: *b"BBBBB",
+                colour: ROUTE,
+                next: false
+            }),
+            "the piece route takes no teleport: the core route's, highlighted but not yet to select"
+        );
+        let mut g = routed(
+            200,
+            &[(201, false), (300, true)],
+            &[(201, false), (400, true)],
+        );
+        seen(&mut g);
+        assert_eq!(
+            jump(&g).map(|j| j.code),
+            Some(*b"AAAAA"),
+            "both teleport later: the piece route's"
         );
     }
 
