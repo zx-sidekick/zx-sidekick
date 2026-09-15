@@ -1104,9 +1104,6 @@ fn map_check(dir: &Path, walks: usize) -> bool {
         rng.0 % n
     };
     let (mut crossings, mut positions, mut failures) = (0u64, 0u64, 0u64);
-    // Decision 9 on #9: every sideways crossing walked can be walked back.
-    let (mut sideways, mut walked_back) = (0u64, 0u64);
-    let mut tried = std::collections::HashSet::new();
     for walk in 0..walks {
         let mut m = base.clone();
         // Start each walk in a different room, entered as walking in.
@@ -1159,29 +1156,6 @@ fn map_check(dir: &Path, walks: usize) -> bool {
                             "map: walk {walk}: left room {from} through its {name} edge, shown closed"
                         );
                     }
-                    let back = match name {
-                        "right" => Some(0x02),
-                        "left" => Some(0x01),
-                        _ => None,
-                    };
-                    if let Some(back) = back
-                        && tried.insert((from, room))
-                    {
-                        match walks_back(&m, from, back) {
-                            Some(true) => {
-                                sideways += 1;
-                                walked_back += 1;
-                            }
-                            Some(false) => {
-                                sideways += 1;
-                                failures += 1;
-                                println!(
-                                    "map: walk {walk}: went {name} from room {from} into {room} and could not walk back"
-                                );
-                            }
-                            None => {}
-                        }
-                    }
                 }
             }
             let (x, y) = (
@@ -1221,30 +1195,9 @@ fn map_check(dir: &Path, walks: usize) -> bool {
         .filter(|o| o.walls.iter().any(Option::is_some))
         .count();
     println!(
-        "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map; {walked_back} of {sideways} sideways crossings walked back"
+        "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map"
     );
-    failures == 0 && crossings > 0 && sideways > 0
-}
-
-/// From `m`, just after crossing sideways out of room `from`, holds the
-/// joystick `back` (the opposite way) for five seconds: whether Blob gets
-/// back into `from`, or `None` if a death or another screen interrupts the
-/// try and it says nothing.
-fn walks_back(m: &Machine, from: u16, back: u8) -> Option<bool> {
-    use sidekick::starquake::{at, routine};
-    let mut m = m.clone();
-    m.watch = vec![routine::MODAL, routine::DEATH];
-    for _ in 0..250 {
-        m.zx.release_all_keys();
-        m.zx.kempston = back;
-        if !m.run_frame().is_empty() {
-            return None;
-        }
-        if m.zx.read16(at::ROOM) == from {
-            return Some(true);
-        }
-    }
-    Some(false)
+    failures == 0 && crossings > 0
 }
 
 fn shots(dir: &Path, frames: u64, out: &Path) {

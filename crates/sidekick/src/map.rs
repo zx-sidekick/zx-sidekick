@@ -345,9 +345,9 @@ impl RoomSet {
 /// The connections between rooms a player has proven this game (#9), and
 /// the way to the nearest target over them.
 ///
-/// A walked step left or right counts both ways, and a step up or down only
-/// the way it was made: `sk-check map` finds every sideways crossing walks
-/// back, while most drops cannot be climbed again (decision 9 on #9).
+/// Every walked step counts both ways, up and down included: a drop that
+/// cannot be climbed can be flown back up on the hover platform (decision 9
+/// on #9).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Known {
     /// `from → to` for each proven step.
@@ -365,15 +365,9 @@ impl Known {
     /// Records walking from `from` into the neighbouring room `to`. A step
     /// that is not to a neighbour records nothing.
     pub fn walked(&mut self, from: u16, to: u16) {
-        match to.wrapping_sub(from) {
-            1 | 0xFFFF => {
-                self.steps.insert((from, to));
-                self.steps.insert((to, from));
-            }
-            16 | 0xFFF0 => {
-                self.steps.insert((from, to));
-            }
-            _ => {}
+        if [1, 0xFFFF, 16, 0xFFF0].contains(&to.wrapping_sub(from)) {
+            self.steps.insert((from, to));
+            self.steps.insert((to, from));
         }
     }
 
@@ -501,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn a_route_follows_walked_steps_and_respects_their_direction() {
+    fn a_route_follows_walked_steps_both_ways() {
         let mut k = Known::default();
         // 100 → 101 → 117 (down), and 117 → 118.
         k.walked(100, 101);
@@ -510,13 +504,10 @@ mod tests {
         let route = k.route(100, &[], &targets(&[118]), 199).unwrap();
         let rooms: Vec<u16> = route.iter().map(|s| s.room).collect();
         assert_eq!(rooms, [101, 117, 118]);
-        // Sideways back is known; back up the drop is not.
-        assert!(k.route(118, &[], &targets(&[117]), 199).is_some());
-        assert_eq!(
-            k.route(118, &[], &targets(&[101]), 199),
-            None,
-            "no climb up the drop"
-        );
+        // Back again, up the drop too.
+        let back = k.route(118, &[], &targets(&[100]), 199).unwrap();
+        let rooms: Vec<u16> = back.iter().map(|s| s.room).collect();
+        assert_eq!(rooms, [117, 101, 100]);
     }
 
     #[test]
