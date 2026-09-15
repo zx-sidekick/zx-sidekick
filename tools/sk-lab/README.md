@@ -14,6 +14,7 @@ Every tool takes the assets folder first, reads `starquake.tap` from it and writ
 - `markers <dir> <room>[,<room>…]`: a room's markers, the three bytes each of its tiles leaves, with the cell each is at.
 - `attrs <dir> <room> [first-col] [last-col]`: the attribute bytes of a room's cells.
 - `survey <dir>`: every attribute value used across all rooms, and the rooms holding lift cells.
+- `door <dir> <room> <x> <y> [input] [--carry=G,G,...]`: walks Blob into a security door and runs its screen on a copy: the three items it asks for, whether it opens with what he carries, and where he ends up (#33).
 - `fall <dir> <room> <x> <y> [input] [frames] [--carry=G]`: stands Blob somewhere with one input held and prints where he goes; `--carry=G` first puts the item drawn with graphic G in his inventory (16 opens a teleporter pad). Standing with his top cell in room row R reads `y = 143 - 8R`.
 
 ## The search

@@ -234,6 +234,13 @@ pub const INVENTORY: u16 = 0xD2D2;
 pub const PADS: u16 = 0x95F0;
 pub const PAD_COUNT: usize = 8;
 
+/// The per-game random seed, a word, which the security door screen mixes
+/// with the room to choose what a door asks for (#33).
+pub const SEED: u16 = 0xD2C6;
+/// The code a screen asks for: its column and row on screen, its length,
+/// then that many (graphic, matched) pairs (#33).
+pub const CODE: u16 = 0xD5F4;
+
 /// Puts the first item drawn with `graphic` into Blob's inventory on this
 /// machine, as the game keeps a carried item: its row byte set to 2, the
 /// first inventory slot, its room bits kept, and the slot itself at
@@ -244,7 +251,11 @@ pub fn carry(m: &mut Machine, graphic: u8) -> bool {
         let a = usize::from(at::ITEMS) + i * 4;
         if m.zx.mem[a + 3] == graphic {
             m.zx.mem[a + 1] = (m.zx.mem[a + 1] & 0x80) | 2;
-            let slot = usize::from(INVENTORY);
+            // The first free slot of the four.
+            let slot = (0..4)
+                .map(|s| usize::from(INVENTORY) + s * 2)
+                .find(|&s| m.zx.mem[s] == 0)
+                .unwrap_or(usize::from(INVENTORY));
             m.zx.mem[slot] = graphic;
             m.zx.mem[slot + 1] = m.zx.mem[a] >> 5;
             return true;
