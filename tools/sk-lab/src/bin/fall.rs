@@ -3,20 +3,27 @@
 //! position every ten frames. `y` is pixels from the bottom; standing with
 //! his top cell in room row R reads `y = 143 - 8R`.
 //!
-//! `fall <assets-dir> <room> <x> <y> [input] [frames]`, the input as Kempston
-//! bits: 1 right, 2 left, 4 down (builds a platform), 8 up.
+//! `fall <assets-dir> <room> <x> <y> [input] [frames] [--carry=G]`, the input
+//! as Kempston bits: 1 right, 2 left, 4 down (builds a platform), 8 up;
+//! `--carry=G` puts the item drawn with graphic G in Blob's inventory first.
 
 use sidekick::starquake::routine;
 use sk_lab::search::Platforms;
-use sk_lab::{Args, into_play, stand};
+use sk_lab::{Args, carry, into_play, stand};
 
 fn main() {
-    let args = Args::parse("fall <assets-dir> <room> <x> <y> [input] [frames]");
+    let args = Args::parse("fall <assets-dir> <room> <x> <y> [input] [frames] [--carry=G]");
     let base = into_play(&args.tape());
     let room: u16 = args.get(0, 0);
     let (x, y): (u8, u8) = (args.get(1, 0), args.get(2, 39));
     let input: u8 = args.get(3, 0);
     let frames: u64 = args.get(4, 200);
+    let mut base = base;
+    let carried: u8 = args.value("carry", 0);
+    if carried != 0 && !carry(&mut base, carried) {
+        println!("no item is drawn with graphic {carried}");
+        return;
+    }
     let Some(mut m) = stand(&base, room, x, y) else {
         println!("room {room}: Blob at ({x},{y}) left the room or it did not settle");
         return;

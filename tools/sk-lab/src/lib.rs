@@ -225,6 +225,34 @@ pub fn stand(base: &Machine, room: u16, x: u8, y: u8) -> Option<Machine> {
     (settled && self::room(&m) == room).then_some(m)
 }
 
+/// The inventory: four slots of (graphic, colour), which the game consults
+/// at a door or a teleporter pad (#10).
+pub const INVENTORY: u16 = 0xD2D2;
+/// The eight teleporter pads: (room low byte, flags with the room's high
+/// bit), the low seven bits of the flags cleared once the pad has been
+/// switched with item `0x10` (#10).
+pub const PADS: u16 = 0x95F0;
+pub const PAD_COUNT: usize = 8;
+
+/// Puts the first item drawn with `graphic` into Blob's inventory on this
+/// machine, as the game keeps a carried item: its row byte set to 2, the
+/// first inventory slot, its room bits kept, and the slot itself at
+/// [`INVENTORY`] holding the graphic and its colour. Whether an item with
+/// that graphic exists.
+pub fn carry(m: &mut Machine, graphic: u8) -> bool {
+    for i in 0..at::ITEM_COUNT {
+        let a = usize::from(at::ITEMS) + i * 4;
+        if m.zx.mem[a + 3] == graphic {
+            m.zx.mem[a + 1] = (m.zx.mem[a + 1] & 0x80) | 2;
+            let slot = usize::from(INVENTORY);
+            m.zx.mem[slot] = graphic;
+            m.zx.mem[slot + 1] = m.zx.mem[a] >> 5;
+            return true;
+        }
+    }
+    false
+}
+
 /// A small xorshift, for walks that are the same every run.
 pub struct Rng(pub u64);
 
