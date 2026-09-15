@@ -1,0 +1,9 @@
+[package]
+name = "level5-search"
+version = "0.1.0"
+edition = "2024"
+[workspace]
+[dependencies]
+sidekick = { path = "../../crates/sidekick" }
+zx-core = { path = "../../crates/zx-core" }
+zx-spectrum = { path = "../../crates/zx-spectrum" }
