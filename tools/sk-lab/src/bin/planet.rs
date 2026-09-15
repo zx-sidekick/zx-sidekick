@@ -1,5 +1,5 @@
 //! The whole planet as one picture, `planet.png` in the assets folder:
-//! every room as the game draws it, with its openings, inner walls, doors,
+//! every room as the game draws it, with its openings, inner walls where they stand, doors,
 //! wall passages and lifts drawn over it, the start room and the core room
 //! outlined, and rooms not reachable from the start with doors shut dimmed.
 //!
@@ -26,23 +26,6 @@ const LIFT: u32 = 0x3CB043;
 const NUMBER: u32 = 0xE0E4EC;
 const START: u32 = 0xFFFFFF;
 const CORE: u32 = 0xFF5C8A;
-
-/// A point on a room's edge, measured clockwise from its top-left corner in
-/// cells, as `map::Wall::to` has it.
-fn edge_point(x: f64, y: f64, to: u8) -> (f64, f64) {
-    let (w, h) = (ROOM_W as f64, ROOM_H as f64);
-    let (top, side) = (32.0, 18.0);
-    let t = f64::from(to);
-    if t < top {
-        (x + w * t / top, y)
-    } else if t < top + side {
-        (x + w, y + h * (t - top) / side)
-    } else if t < 2.0 * top + side {
-        (x + w - w * (t - top - side) / top, y + h)
-    } else {
-        (x, y + h - h * (t - 2.0 * top - side) / side)
-    }
-}
 
 fn dim(colour: u32) -> u32 {
     let (r, g, b) = (colour >> 16 & 0xFF, colour >> 8 & 0xFF, colour & 0xFF);
@@ -133,19 +116,23 @@ fn main() {
                 img.fill(x0 + ROOM_W as i64 + 1, py, 4, 24, PASSAGE);
             }
         }
-        // Walls inside a divided room, from the centre out; a door's dashed.
-        let (cx, cy) = (
-            x0 as f64 + ROOM_W as f64 / 2.0,
-            y0 as f64 + ROOM_H as f64 / 2.0,
-        );
-        for wall in planet.openings[usize::from(room)]
-            .walls
-            .into_iter()
-            .flatten()
-        {
-            let (ex, ey) = edge_point(x0 as f64, y0 as f64, wall.to);
-            let colour = if wall.door { DOOR } else { WALL };
-            img.line(cx, cy, ex, ey, 3, wall.door, colour);
+        // Walls inside a divided room, where they stand: the solid cells
+        // between two openings; a door's or a pad's every other cell.
+        let d = planet.openings[usize::from(room)].divides;
+        for r in 0..18 {
+            for c in 0..32 {
+                if !d.wall(r, c) {
+                    continue;
+                }
+                let (colour, skip) = if d.door(r, c) {
+                    (DOOR, (r + c) % 2 == 1)
+                } else {
+                    (WALL, false)
+                };
+                if !skip {
+                    img.outline(x0 + c as i64 * 8, y0 + r as i64 * 8, 8, 8, 2, colour);
+                }
+            }
         }
         img.fill(x0 + 3, y0 + 3, 4 * 2 * 3 + 2, 5 * 2 + 4, 0x000000);
         img.number(x0 + 5, y0 + 5, room, 2, NUMBER);
@@ -184,7 +171,7 @@ fn main() {
         std::process::exit(2);
     });
     eprintln!(
-        "wrote {} ({} x {}): green bars are openings, orange lines walls inside a room, yellow dashed a door, purple a wall passage, green boxes lift cells; white outline the start, pink the core; dimmed rooms are not reachable from the start with doors shut",
+        "wrote {} ({} x {}): green bars are openings, orange boxes the cells of a wall inside a room, yellow ones a door's or a pad's, purple a wall passage, green boxes lift cells; white outline the start, pink the core; dimmed rooms are not reachable from the start with doors shut",
         path.display(),
         out.width,
         out.height

@@ -1,6 +1,6 @@
-//! Rooms as text, side by side: `#` solid, `.` free, `=` a lift, with the
-//! map's openings and inner walls (each as its place on the edge, clockwise
-//! from the top left in cells, `d` for a door's) above; and with
+//! Rooms as text, side by side: `#` solid, `.` free, `=` a lift, `W` a
+//! cell of a wall inside the room as the map reads it, `D` a door's or a
+//! pad's, with the map's openings above; and with
 //! `--png`, each room as the game draws it, `room-N.png` in the assets
 //! folder, or with `--stack` all of them in one picture top to bottom,
 //! `rooms-N-M.png`.
@@ -22,22 +22,34 @@ fn main() {
         .iter()
         .map(|&r| {
             let o = planet.openings[usize::from(r)];
-            let walls: Vec<String> = o
-                .walls
-                .iter()
-                .flatten()
-                .map(|w| format!("{}{}", w.to, if w.door { "d" } else { "" }))
-                .collect();
+            let d = o.divides;
             let mut g = vec![format!(
-                "room {r}: L{} R{} U{} D{} passage {:?} walls [{}]",
+                "room {r}: L{} R{} U{} D{} passage {:?} wall cells {} (door {})",
                 u8::from(o.left),
                 u8::from(o.right),
                 u8::from(o.up),
                 u8::from(o.down),
                 planet.rooms[usize::from(r)].passage,
-                walls.join(" ")
+                d.cells.iter().map(|bits| bits.count_ones()).sum::<u32>(),
+                d.doors.iter().map(|bits| bits.count_ones()).sum::<u32>()
             )];
-            g.extend(draw(&planet.cells[usize::from(r)]));
+            // A wall cell shows as `W`, a door's as `D`, over the tiles.
+            for (row, line) in draw(&planet.cells[usize::from(r)]).into_iter().enumerate() {
+                let marked: String = line
+                    .chars()
+                    .enumerate()
+                    .map(|(col, ch)| {
+                        if d.door(row, col) {
+                            'D'
+                        } else if d.wall(row, col) {
+                            'W'
+                        } else {
+                            ch
+                        }
+                    })
+                    .collect();
+                g.push(marked);
+            }
             g
         })
         .collect();
