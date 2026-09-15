@@ -26,7 +26,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 - [x] Guidance level 1: the codes of the teleporters whose booths you have entered, listed in the panel.
 - [x] Guidance level 2: a map of the rooms you have visited, with every edge shown open or closed and walls inside divided rooms.
 - [x] Guidance level 3: the missing core pieces marked on the map, in rooms visited or not.
-- [ ] Guidance level 3's core column: the nine holes beside the map, missing pieces in their own graphic, in white, delivered ones dimmed, a carried one outlined (built; awaiting a check by hand). Levels 4 and 5 and training mode are still to come.
+- [x] Guidance level 3's core column: the nine holes beside the map, missing pieces in their own graphic, in white, delivered ones dimmed, a carried one outlined. Levels 4 and 5 and training mode are still to come.
 
 ## Playing
 
