@@ -254,11 +254,14 @@ pub struct Room {
     pub solid: [u32; 18],
     /// Its lift cells, the same way: standing in a lift carries Blob up.
     pub lift: [u32; 18],
-    /// The parts (doors shut) Blob can reach its wall passage from, and the
-    /// parts holding a hover pad and a teleporter booth.
+    /// The part (doors shut) Blob can reach its wall passage from, and the
+    /// part its teleporter booth is in.
     pub passage_part: u8,
-    pub hover_parts: Vec<u8>,
     pub booth_part: u8,
+    /// The columns where Blob, flying from a hover pad in the room, can
+    /// reach the top edge: bit `col` for his top-left cell there. A lift's
+    /// cells stop the flight, since a lift carries him up where it stands.
+    pub hover_top: u32,
 }
 
 /// The character cell of a marker's position (the way the game's tiles place them).
@@ -344,17 +347,6 @@ impl Room {
                 .find(|&p| p != 0)
                 .unwrap_or(0)
         };
-        let mut hover_parts: Vec<u8> = markers
-            .iter()
-            .filter(|m| m.2 == HOVER)
-            .map(|m| part_at_marker(cell(m)))
-            .filter(|&p| p != 0)
-            .collect();
-        hover_parts.dedup();
-        let booth_part = markers
-            .iter()
-            .find(|m| m.2 == BOOTH)
-            .map_or(0, |m| part_at_marker(cell(m)));
         let mut solid = [0u32; 18];
         let mut lift = [0u32; 18];
         for r in 0..18 {
@@ -368,6 +360,50 @@ impl Room {
                 }
             }
         }
+        // From each hover pad, the places Blob can fly to without touching a
+        // lift's cells, and which of them are against the top edge.
+        let clear = |r: usize, c: usize| {
+            shut.at(FIRST_ROW + r as u8, c as u8) != 0 && (lift[r] | lift[r + 1]) & (0b11 << c) == 0
+        };
+        let mut hover_top = 0u32;
+        for m in markers.iter().filter(|m| m.2 == HOVER) {
+            let (row, col) = cell(m);
+            let start = (0..=2u8)
+                .flat_map(|up| [0, 1, -1i16].map(move |d| (row.saturating_sub(up), d)))
+                .map(|(r, d)| {
+                    (
+                        usize::from(r.saturating_sub(FIRST_ROW)),
+                        (i16::from(col) + d).clamp(0, 30) as usize,
+                    )
+                })
+                .find(|&(r, c)| r < SPOTS_DOWN && clear(r, c));
+            let Some(start) = start else {
+                continue;
+            };
+            let mut seen = [[false; SPOTS_ACROSS]; SPOTS_DOWN];
+            seen[start.0][start.1] = true;
+            let mut todo = vec![start];
+            while let Some((r, c)) = todo.pop() {
+                if r == 0 {
+                    hover_top |= 1 << c;
+                }
+                for (rr, cc) in [
+                    (r, c + 1),
+                    (r + 1, c),
+                    (r, c.wrapping_sub(1)),
+                    (r.wrapping_sub(1), c),
+                ] {
+                    if rr < SPOTS_DOWN && cc < SPOTS_ACROSS && !seen[rr][cc] && clear(rr, cc) {
+                        seen[rr][cc] = true;
+                        todo.push((rr, cc));
+                    }
+                }
+            }
+        }
+        let booth_part = markers
+            .iter()
+            .find(|m| m.2 == BOOTH)
+            .map_or(0, |m| part_at_marker(cell(m)));
         Room {
             openings: scan(|row, col| free(attr(row, col))),
             shut,
@@ -378,8 +414,8 @@ impl Room {
             solid,
             lift,
             passage_part,
-            hover_parts,
             booth_part,
+            hover_top,
         }
     }
 }
@@ -742,7 +778,7 @@ impl Graph {
                     // Up: a climb unless a lift reaches the edge or the part
                     // below has a hover pad.
                     let lifted =
-                        lift(below, 0, c) || lift(below, 1, c) || below.hover_parts.contains(&b);
+                        lift(below, 0, c) || lift(below, 1, c) || below.hover_top & (1 << c) != 0;
                     add((under, b), (room, a), !lifted);
                 }
             }
@@ -1109,8 +1145,8 @@ mod tests {
             solid: solid_of(&shut_refs),
             lift: [0; 18],
             passage_part: 0,
-            hover_parts: Vec::new(),
             booth_part: 0,
+            hover_top: 0,
         };
         openings(&[r], 999)[0].divides
     }
@@ -1371,13 +1407,43 @@ mod tests {
                 read_text(&gapped(false, false, true, false), &[(x, y, HOVER)]),
             ),
         ]);
-        assert_eq!(rooms[16].hover_parts, [1]);
+        assert_ne!(
+            rooms[16].hover_top & (1 << 10),
+            0,
+            "the pad reaches the gap"
+        );
         let g = Graph::new(&rooms, 999);
         assert_eq!(
             ways_between(&g, 16, 0),
             [Way {
                 to: (0, 1),
                 climb: false
+            }]
+        );
+    }
+
+    /// Room 438: a hover pad on one side of a lift that runs the height of
+    /// the room, and the gap up on the other side. Flying into the lift
+    /// carries Blob up it, so the pad does not reach the gap (#10).
+    #[test]
+    fn a_lift_between_a_hover_pad_and_a_gap_stops_the_flight() {
+        let (x, y) = (160, 15);
+        let mut below = gapped(false, false, true, false);
+        for line in &mut below[1..17] {
+            line.replace_range(14..16, "LL");
+        }
+        let rooms = planet_of(&[
+            (0, read_text(&gapped(false, false, false, true), &[])),
+            (16, read_text(&below, &[(x, y, HOVER)])),
+        ]);
+        assert_eq!(rooms[16].hover_top & (1 << 10), 0);
+
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(
+            ways_between(&g, 16, 0),
+            [Way {
+                to: (0, 1),
+                climb: true
             }]
         );
     }
