@@ -228,17 +228,6 @@ pub fn all_rooms(machine: &crate::Machine) -> Vec<crate::map::Room> {
         .collect()
 }
 
-/// The parts of `room` Blob can move between with its doors open, read by
-/// having the game draw it on a copy of `machine`.
-///
-/// # Panics
-///
-/// As [`read_room`].
-#[must_use]
-pub fn room_parts(machine: &crate::Machine, room: u16) -> crate::map::Parts {
-    read_room(&mut machine.clone(), room).open
-}
-
 /// The marker a teleporter booth's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;
 

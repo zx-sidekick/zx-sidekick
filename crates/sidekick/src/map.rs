@@ -658,8 +658,9 @@ pub type Place = (u16, u8);
 /// for Blob at the same spot on their shared edge, both ways and in every
 /// direction, since level 5 assumes Blob can fly everywhere and leaves the
 /// logistics to the player (decision 5), except down through a lift, which
-/// only ever goes up; and where their wall passages lead to each other. Doors and teleporter pads count as open, lifts as ways, and
-/// the core room is reached from the room to its left.
+/// only ever goes up; and where their wall passages lead to each other.
+/// Doors and teleporter pads count as open, and the core room is reached
+/// from the room to its left.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Graph {
     ways: std::collections::BTreeMap<Place, Vec<Place>>,
@@ -1166,7 +1167,7 @@ mod tests {
     /// Rooms 192 to 195 on the tape: each passage is walked into from its one
     /// free side and leads to the room on that side, so 192 joins 193 and 194
     /// joins 195, but 193 and 194, whose passages face away from each other,
-    /// do not join (#10, decision 7).
+    /// do not join (#10, decision 6).
     #[test]
     fn a_passage_joins_only_the_room_on_the_side_it_is_walked_into_from() {
         // Free on its left, a wall on its right: walked into going right.
@@ -1262,7 +1263,7 @@ mod tests {
         assert_eq!(from[0].1, rooms[0].shut.at(12, 20));
     }
 
-    /// Blob can fly everywhere at level 5 (decision 6): a drop is a way back
+    /// Blob can fly everywhere at level 5 (#10, decision 5): a drop is a way back
     /// up as well as down.
     #[test]
     fn a_drop_is_a_way_down_and_back_up() {
