@@ -28,6 +28,7 @@ It is generic Spectrum, ROM-behaviour or frontend code, and the way of working a
 | the teleporter table, room, new-game, enter-room and booth facts and `teleporter_code` in `crates/sidekick/src/starquake.rs`, `Machine::call`, and the booth walk in `sk-check facts` | the earlier build | the booth walk reports inside `facts` |
 | `crates/sidekick/src/map.rs`, the room reading and map facts in `crates/sidekick/src/starquake.rs`, and `sk-check map` | the earlier build | none beyond naming Blob; the check runs 60 walks in the gate |
 | the core and item facts, `Item`, `items_and_core` and `missing_piece_rooms` in `crates/sidekick/src/starquake.rs`, and the pieces check in `sk-check facts` | the earlier build | none |
+| `stroke` in `app/src/frontend/panel.rs`, used for the route | the earlier build | none |
 | `app/fonts/` | the earlier build (from starquake-recompiled's `games/starquake/fonts/`) | none (Inter, under the SIL Open Font License) |
 | `.github/workflows/ci.yml`, `scripts/check.sh` | the earlier build | without the guidance's local checks (`facts`, `map`) |
 | `Cargo.toml`, each crate's `Cargo.toml` | the earlier build | the processor from our fork pinned to a commit, and descriptions without the guidance |
