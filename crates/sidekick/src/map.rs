@@ -252,6 +252,8 @@ pub struct Room {
     /// Its solid cells, a bit per cell: bit `col` of `solid[row]`, rows from
     /// the top of the play area.
     pub solid: [u32; 18],
+    /// Its lift cells, the same way: a lift only ever carries Blob up.
+    pub lift: [u32; 18],
     /// The part (doors shut) Blob can reach its wall passage from, and the
     /// part its teleporter booth is in.
     pub passage_part: u8,
@@ -269,6 +271,10 @@ const PASSAGE: u8 = 0x0F;
 
 /// The marker a security door's tile leaves.
 const DOOR: u8 = 0;
+
+/// The attributes of a lift's cells, bright with green paper and used for
+/// nothing else on the planet: standing in one carries Blob up (#10).
+pub const LIFT_ATTRS: [u8; 2] = [0x60, 0x64];
 
 /// The marker a teleporter booth's tile leaves.
 const BOOTH: u8 = 0x0D;
@@ -332,10 +338,15 @@ impl Room {
                 .unwrap_or(0)
         };
         let mut solid = [0u32; 18];
-        for (r, bits) in solid.iter_mut().enumerate() {
+        let mut lift = [0u32; 18];
+        for r in 0..18 {
             for col in 0..32u8 {
-                if !free(attr(FIRST_ROW + r as u8, col)) {
-                    *bits |= 1 << col;
+                let a = attr(FIRST_ROW + r as u8, col);
+                if !free(a) {
+                    solid[r] |= 1 << col;
+                }
+                if LIFT_ATTRS.contains(&a) {
+                    lift[r] |= 1 << col;
                 }
             }
         }
@@ -351,6 +362,7 @@ impl Room {
             passage_right,
             passage_left,
             solid,
+            lift,
             passage_part,
             booth_part,
         }
@@ -645,8 +657,8 @@ pub type Place = (u16, u8);
 /// places a step leads to from each. Two rooms join where both have a place
 /// for Blob at the same spot on their shared edge, both ways and in every
 /// direction, since level 5 assumes Blob can fly everywhere and leaves the
-/// logistics to the player (decision 6); and where their wall passages lead
-/// to each other. Doors and teleporter pads count as open, lifts as ways, and
+/// logistics to the player (decision 5), except down through a lift, which
+/// only ever goes up; and where their wall passages lead to each other. Doors and teleporter pads count as open, lifts as ways, and
 /// the core room is reached from the room to its left.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Graph {
@@ -704,12 +716,18 @@ impl Graph {
             if let Some(below) = rooms.get(i + usize::from(COLS))
                 && room + COLS != core_room
             {
+                let lift = |room: &Room, row: usize, c: u8| room.lift[row] & (0b11 << c) != 0;
                 for c in 0..LAST_COL {
-                    join(
-                        (room, r.open.at(LAST_ROW - 1, c)),
+                    let (up, down) = (
                         (room + COLS, below.open.at(FIRST_ROW, c)),
-                        true,
+                        (room, r.open.at(LAST_ROW - 1, c)),
                     );
+                    // Up always; down only where no lift stands at the edge.
+                    join(up, down, false);
+                    if !(lift(r, 16, c) || lift(r, 17, c) || lift(below, 0, c) || lift(below, 1, c))
+                    {
+                        join(down, up, false);
+                    }
                 }
             }
         }
@@ -1051,6 +1069,7 @@ mod tests {
             passage_right: false,
             passage_left: false,
             solid: solid_of(&shut_refs),
+            lift: [0; 18],
             passage_part: 0,
             booth_part: 0,
         };
@@ -1163,17 +1182,15 @@ mod tests {
         assert!(!o[0].left && !o[3].right);
     }
 
-    /// A room read from text, `#` solid and anything else free, with the
-    /// markers given.
+    /// A room read from text, `#` solid, `L` a lift's cell and anything else
+    /// free, with the markers given.
     fn read_text(lines: &[String], markers: &[(u8, u8, u8)]) -> Room {
         let grid: Vec<Vec<char>> = lines.iter().map(|l| l.chars().collect()).collect();
         Room::read(
-            |row, col| {
-                if grid[usize::from(row - FIRST_ROW)][usize::from(col)] == '#' {
-                    0x07
-                } else {
-                    0x47
-                }
+            |row, col| match grid[usize::from(row - FIRST_ROW)][usize::from(col)] {
+                '#' => 0x07,
+                'L' => LIFT_ATTRS[0],
+                _ => 0x47,
             },
             markers,
         )
@@ -1256,6 +1273,24 @@ mod tests {
         let g = Graph::new(&rooms, 999);
         assert_eq!(ways_between(&g, 0, 16), [(16, 1)]);
         assert_eq!(ways_between(&g, 16, 0), [(0, 1)]);
+    }
+
+    #[test]
+    fn a_lift_is_a_way_up_and_never_down() {
+        let mut below = gapped(false, false, true, false);
+        for line in &mut below[0..17] {
+            line.replace_range(10..12, "LL");
+        }
+        let rooms = planet_of(&[
+            (0, read_text(&gapped(false, false, false, true), &[])),
+            (16, read_text(&below, &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(ways_between(&g, 16, 0), [(0, 1)]);
+        assert!(
+            ways_between(&g, 0, 16).is_empty(),
+            "a lift only ever goes up"
+        );
     }
 
     #[test]
