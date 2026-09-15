@@ -453,6 +453,42 @@ fn main() {
             marks.push((from.0, e.clone(), class));
         }
     }
+    // The same verdicts for level 5's own graph (sidekick::map::Graph, #10):
+    // each of its ways, a climb or not.
+    let level5 = sidekick::map::Graph::new(&sidekick::starquake::all_rooms(&base), CORE_ROOM);
+    let mut l5: BTreeMap<(Class, bool), usize> = BTreeMap::new();
+    let mut l5_unproven = Vec::new();
+    let mut l5_outside = 0;
+    for from in level5.places() {
+        for w in level5.ways(from) {
+            if !graph.contains_key(&from) {
+                l5_outside += 1;
+                continue;
+            }
+            let class = match crossed.get(&(from, w.to)) {
+                Some(false) => Class::Proven,
+                Some(true) => Class::FromMapEntry,
+                None => Class::NotProven,
+            };
+            *l5.entry((class, w.climb)).or_default() += 1;
+            if class == Class::NotProven && !w.climb {
+                l5_unproven.push(format!("{}:{} -> {}:{}", from.0, from.1, w.to.0, w.to.1));
+            }
+        }
+    }
+    let n = |c, climb| l5.get(&(c, climb)).copied().unwrap_or(0);
+    let l5_line = format!(
+        "LEVEL 5 GRAPH: ways that are not climbs: proven {} , from a map entry {}, not proven {} {:?}; climbs: proven {}, from a map entry {}, not proven {}; ways out of places the search's graph never reached: {l5_outside}",
+        n(Class::Proven, false),
+        n(Class::FromMapEntry, false),
+        n(Class::NotProven, false),
+        l5_unproven,
+        n(Class::Proven, true),
+        n(Class::FromMapEntry, true),
+        n(Class::NotProven, true)
+    );
+    println!("{l5_line}");
+    let _ = writeln!(out, "{l5_line}");
     let mut gaps = Vec::new();
     for ((from, to), assumed) in &crossed {
         let in_graph = graph
