@@ -51,6 +51,10 @@ pub struct Room {
     pub parent: HashMap<Vec<u8>, (Vec<u8>, u8)>,
     /// How each exit was first reached.
     pub exit_path: HashMap<(u16, u8, u8), (Vec<u8>, u8)>,
+    /// States still to expand, so a search can stop early and carry on later.
+    pub queue: VecDeque<Machine>,
+    /// Where each entry came from: the room before and its exit.
+    pub origin: HashMap<Vec<u8>, (u16, (u16, u8, u8))>,
 }
 
 /// One frame as the search runs it.
@@ -80,14 +84,26 @@ impl Room {
 }
 
 impl Room {
-    /// Explores from `entries` (machines standing in `room`), adding to what is known.
-    pub fn explore(&mut self, room: u16, entries: Vec<Machine>, p: Platforms) {
-        let mut q = VecDeque::new();
+    /// Adds entries to search from.
+    pub fn seed(&mut self, entries: Vec<Machine>) -> usize {
+        let mut added = 0;
         for mut s in entries {
             s.watch = vec![routine::MODAL, routine::DEATH, sidekick::starquake::PLAY_INPUT];
-            if self.seen.insert(key(&s)) { q.push_back(s); }
+            if self.seen.insert(key(&s)) { self.queue.push_back(s); added += 1; }
         }
-        while let Some(m) = q.pop_front() {
+        added
+    }
+
+    /// Explores from `entries` (machines standing in `room`), adding to what is known.
+    pub fn explore(&mut self, room: u16, entries: Vec<Machine>, p: Platforms) {
+        self.seed(entries);
+        self.explore_until(room, p, None);
+    }
+
+    /// Explores until an exit into `until` is newly found (returns true) or nothing is left.
+    pub fn explore_until(&mut self, room: u16, p: Platforms, until: Option<u16>) -> bool {
+        while let Some(m) = self.queue.pop_front() {
+            let mut found = false;
             let mut reads = true;
             let inputs: &[u8] = if std::env::var("NO_DIAG").is_ok() { &INPUTS[..5] } else { &INPUTS };
             let hold: usize = std::env::var("HOLD").ok().and_then(|h| h.parse().ok()).unwrap_or(1);
@@ -116,6 +132,7 @@ impl Room {
                         if self.exit_keys.insert(k) {
                             self.exit_path.insert(k, (key(&m), inp));
                             self.exits.insert(k, n);
+                            if until == Some(now) { found = true; }
                         }
                     }
                     continue;
@@ -125,9 +142,11 @@ impl Room {
                 if !self.seen.contains(&nk) {
                     self.parent.insert(nk.clone(), (key(&m), inp));
                     self.seen.insert(nk);
-                    q.push_back(n);
+                    self.queue.push_back(n);
                 }
             }
+            if found { return true; }
         }
+        false
     }
 }
