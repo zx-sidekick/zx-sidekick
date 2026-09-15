@@ -78,10 +78,10 @@ fn main() {
         mem[code + 1],
         resumed.map_or("never".to_string(), |f| format!("after {f} frames")),
         sk_lab::room(&m),
-        if nx != bx {
-            ", moved through"
-        } else {
+        if nx == bx {
             ", not moved"
+        } else {
+            ", moved through"
         }
     );
 }
