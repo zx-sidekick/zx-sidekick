@@ -11,6 +11,8 @@ Every tool takes the assets folder first, reads `starquake.tap` from it and writ
 
 ## Probes
 
+- `items <dir>`: the item table as play starts, counted by graphic, with the rooms each lies in.
+- `doorshot <dir> <room> <x> <y> [input] [--carry=G,...]`: the security door screen as the game draws it (`door-<room>-<frame>.png`), beside the graphics table numbered (`graphics.png`).
 - `markers <dir> <room>[,<room>…]`: a room's markers, the three bytes each of its tiles leaves, with the cell each is at.
 - `attrs <dir> <room> [first-col] [last-col]`: the attribute bytes of a room's cells.
 - `survey <dir>`: every attribute value used across all rooms, and the rooms holding lift cells.
@@ -28,3 +30,4 @@ The level 5 spike's search, on copies of the machine: from a way into a room, ev
 - `residual <dir>`: every open edge the search never crossed, and whether the map's parts explain it; the (room, part) graph's reach against the search's.
 - `gaps <dir>`: how wide the gaps the search crossed are, against the map's.
 - `route <dir> [cold|warm] [threads] [seconds]`: the "verify only the route" idea, measured and found wanting.
+- `proof <dir> [threads] [--half]`: proves the level 5 graph by play. Every edge of the (room, part) graph from the start, with doors shut, is tried by the search from the ways play really gets into that part, then from where the graph says Blob comes in; every crossing is checked against the graph. Writes `proof.txt` (each edge not proven from play, and each crossing the graph lacks) and `proof.png` (the planet with a mark on the source side of every edge: green proven from play, blue proven from the map's way in, red not proven).

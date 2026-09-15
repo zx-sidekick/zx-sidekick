@@ -14,6 +14,7 @@ use sidekick::starquake::{ENTRY_PC, ENTRY_SP, PLAY_INPUT, at, routine};
 use zx_spectrum::Key;
 
 pub mod exits;
+pub mod picture;
 pub mod raster;
 pub mod rooms;
 pub mod search;
