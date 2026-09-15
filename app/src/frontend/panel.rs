@@ -12,7 +12,7 @@ use super::notice;
 use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
 use super::track::Scene;
-use sidekick::map::{COLS, ROWS};
+use sidekick::map::{COLS, ROWS, Step};
 use sidekick::starquake::SeenTeleporter;
 
 const PANEL: Rgb = [0x0f, 0x11, 0x17];
@@ -52,6 +52,13 @@ const PIECE_ROOM: Rgb = [0x15, 0x1a, 0x26];
 const PIECE_ROOM_LINE: Rgb = [0x6b, 0x75, 0x94];
 const TILE: Rgb = [0x1b, 0x1f, 0x29];
 const ROUTE: Rgb = [0xf5, 0xb8, 0x4b];
+/// The words on the two border arrows and in their legend (#44).
+const PIECE_WORD: &str = "item";
+const CORE_WORD: &str = "core";
+/// How far apart the two border arrows stand when they leave the same way.
+const ARROW_APART: f32 = 22.0;
+/// The room the routes' legend takes under the map (#44).
+const LEGEND_H: f32 = 52.0;
 const DELIVERED: Rgb = [0x3a, 0x3f, 0x4b];
 
 /// The core column (#7): its tiles' size and pitch, and how many layout
@@ -123,13 +130,10 @@ impl Panel {
             let esc_w = self.fonts.key_width(HINT_H, "Esc");
             self.fonts
                 .key_badge(canvas, WINDOW_W - 24.0 - esc_w, 24.0, HINT_H, "Esc");
-            // Level 4 (#9): the first teleport on the route has its chip
-            // highlighted.
-            let route = (level >= 4).then(|| guidance.route()).flatten();
-            let jump = route
-                .and_then(|r| r.iter().find(|s| s.teleport))
-                .and_then(|s| guidance.teleporters().iter().find(|t| t.room == s.room))
-                .map(|t| t.code);
+            // Level 4 (#9, #44): the first teleport on the piece route has
+            // its chip highlighted, or on the core route when only that one
+            // teleports next, in that route's colour.
+            let jump = (level >= 4).then(|| jump(guidance)).flatten();
             let below = if level >= 1 {
                 self.teleporters(canvas, left, width - 48.0, guidance.teleporters(), jump)
             } else {
@@ -148,7 +152,13 @@ impl Panel {
                     1.0,
                     &[span(&explored, 12.0, Weight::Regular, LABEL)],
                 );
-                self.map(canvas, guidance, level >= 3, 96.0, below - 16.0);
+                // Level 4 (#44): the two routes' legend under the map.
+                let legend = if level >= 4 { LEGEND_H } else { 0.0 };
+                let map_bottom =
+                    self.map(canvas, guidance, level >= 3, 96.0, below - 16.0 - legend);
+                if level >= 4 {
+                    self.route_legend(canvas, guidance, map_bottom + 14.0);
+                }
                 if level >= 3 && !guidance.core().is_empty() {
                     self.core(canvas, guidance, 72.0, 96.0);
                 }
@@ -172,13 +182,31 @@ impl Panel {
             }
         }
 
+        // Level 4 (#9, #44): an arrow in the picture's border for each route
+        // that walks out of the room next, side by side when both leave the
+        // same way.
         if scene == Scene::Play
             && guidance.level() >= 4
-            && let (Some(route), Some(here)) = (guidance.route(), guidance.room())
-            && let Some(first) = route.first()
-            && !first.teleport
+            && let Some(here) = guidance.room()
         {
-            border_arrow(canvas, first.room.wrapping_sub(here));
+            let leaving = |route: Option<&[Step]>| {
+                route
+                    .and_then(|r| r.first())
+                    .filter(|s| !s.teleport)
+                    .map(|s| s.room.wrapping_sub(here))
+            };
+            let (piece, core) = (leaving(guidance.route()), leaving(guidance.core_route()));
+            let apart = if piece.is_some() && piece == core {
+                ARROW_APART
+            } else {
+                0.0
+            };
+            if let Some(step) = core {
+                self.border_arrow(canvas, step, CORE_WORD, ROUTE, apart);
+            }
+            if let Some(step) = piece {
+                self.border_arrow(canvas, step, PIECE_WORD, PIECE, -apart);
+            }
         }
         if paused && !guidance.picker_open() {
             notice::draw(&mut self.fonts, canvas);
@@ -203,7 +231,7 @@ impl Panel {
         pieces: bool,
         top: f32,
         bottom: f32,
-    ) {
+    ) -> f32 {
         let (cols, rows) = (f32::from(COLS), f32::from(ROWS));
         // 18 pixels a room as in the mockup, smaller when the teleporter codes
         // take more than one row.
@@ -282,28 +310,48 @@ impl Panel {
                 }
             }
         }
-        // Level 4 (#9): the route, through the centres of the rooms walked,
-        // above the floor and walls and below the markers. A teleport step
-        // jumps, so no line joins it.
+        // Level 4 (#9, #44): the routes, through the centres of the rooms
+        // walked, above the floor and walls and below the markers: to the
+        // core in orange and to the nearest piece in pink. Where both take
+        // the same step they run side by side, thinner, so neither hides
+        // the other. A teleport step jumps, so no line joins it.
         if guidance.level() >= 4
-            && let (Some(route), Some(mut from)) = (guidance.route(), guidance.room())
+            && let Some(here) = guidance.room()
         {
             let centre = |room: u16| {
                 let (x, y) = at(room);
                 (x + pitch / 2.0, y + pitch / 2.0)
             };
-            for step in route {
-                if !step.teleport {
+            let (piece, core) = (
+                walked_steps(here, guidance.route()),
+                walked_steps(here, guidance.core_route()),
+            );
+            for (steps, other, colour, side) in
+                [(&core, &piece, ROUTE, 1.0), (&piece, &core, PIECE, -1.0)]
+            {
+                for &(a, b) in steps {
+                    let shared = other.contains(&(a, b)) || other.contains(&(b, a));
+                    let (width, off) = if shared {
+                        (2.6 * unit, side * 1.8 * unit)
+                    } else {
+                        (3.0 * unit, 0.0)
+                    };
+                    // Across the step: down for a step sideways, right for one up or down.
+                    let (ox, oy) = if a.abs_diff(b) == 1 {
+                        (0.0, off)
+                    } else {
+                        (off, 0.0)
+                    };
+                    let ((ax, ay), (bx, by)) = (centre(a), centre(b));
                     stroke(
                         canvas,
-                        centre(from),
-                        centre(step.room),
-                        3.0 * unit,
+                        (ax + ox, ay + oy),
+                        (bx + ox, by + oy),
+                        width,
                         None,
-                        ROUTE,
+                        colour,
                     );
                 }
-                from = step.room;
             }
         }
         for seen in guidance.teleporters() {
@@ -333,6 +381,138 @@ impl Panel {
             let (cx, cy) = (x + pitch / 2.0, y + pitch / 2.0);
             canvas.round_rect(cx - r, cy - r, 2.0 * r, 2.0 * r, r, PIECE);
         }
+        // The core's end of its route, ringed in the route's colour (#44):
+        // the map marks no core room otherwise.
+        if guidance.level() >= 4
+            && let Some(end) = guidance.core_route().and_then(|r| r.last())
+        {
+            let (x, y) = at(end.room);
+            let (outer, inner) = (2.0 * unit, 5.0 * unit);
+            let size = |inset: f32| pitch - 2.0 * inset;
+            canvas.round_rect(
+                x + outer,
+                y + outer,
+                size(outer),
+                size(outer),
+                3.0 * unit,
+                ROUTE,
+            );
+            canvas.round_rect(
+                x + inner,
+                y + inner,
+                size(inner),
+                size(inner),
+                1.5 * unit,
+                FLOOR,
+            );
+        }
+        top + rows * pitch
+    }
+
+    /// Level 4 (#44): what the two route colours mean, under the map at
+    /// `y`: each route's word in a chip of its colour, then what it leads to.
+    /// The core's line is dimmed while no piece it needs is carried.
+    fn route_legend(&mut self, canvas: &mut Canvas, guidance: &Guidance, y: f32) {
+        let x = PICTURE_W + 24.0;
+        let lines = [
+            (PIECE_WORD, PIECE, "To the nearest missing piece", true),
+            (
+                CORE_WORD,
+                ROUTE,
+                "To the core, while you carry a piece it needs",
+                guidance.core_route().is_some(),
+            ),
+        ];
+        let word = |text| [span(text, 11.0, Weight::SemiBold, PANEL)];
+        let chip_w = lines
+            .iter()
+            .map(|l| self.fonts.measure(&word(l.0)))
+            .fold(0.0, f32::max)
+            + 10.0;
+        for (i, (text, colour, meaning, lit)) in lines.into_iter().enumerate() {
+            let y = y + i as f32 * 22.0;
+            let w = self.fonts.measure(&word(text));
+            canvas.round_rect(x, y - 9.0, chip_w, 17.0, 3.0, colour);
+            self.fonts.text(
+                Some(canvas),
+                x + (chip_w - w) / 2.0,
+                y - 8.0,
+                None,
+                1.0,
+                &word(text),
+            );
+            let spans = [span(
+                meaning,
+                12.0,
+                Weight::Regular,
+                if lit { SOFT } else { QUIET },
+            )];
+            self.fonts
+                .text(Some(canvas), x + chip_w + 10.0, y - 8.0, None, 1.0, &spans);
+        }
+    }
+
+    /// An arrow in the picture's border pointing the way a route leaves the
+    /// room (#9): `step` is the room number's change, 1 right, -1 left, 16
+    /// down and -16 up. A box in `colour` with `word` in it, which stays
+    /// level on every edge, and a head on the side it points to (#44), so
+    /// the arrows are told apart without their colours; `shift` moves it
+    /// along the edge.
+    fn border_arrow(
+        &mut self,
+        canvas: &mut Canvas,
+        step: u16,
+        word: &str,
+        colour: Rgb,
+        shift: f32,
+    ) {
+        let border = (PICTURE_W - 768.0) / 2.0;
+        let spans = [span(word, 15.0, Weight::SemiBold, PANEL)];
+        let text_w = self.fonts.measure(&spans);
+        let (w, h, head) = (text_w + 16.0, 26.0, 14.0);
+        // The box's centre, and the way the head points.
+        let (cx, cy, dx, dy) = match step {
+            1 => (
+                PICTURE_W - border / 2.0 - head / 2.0,
+                WINDOW_H / 2.0 + shift,
+                1.0,
+                0.0,
+            ),
+            0xFFFF => (border / 2.0 + head / 2.0, WINDOW_H / 2.0 + shift, -1.0, 0.0),
+            16 => (
+                PICTURE_W / 2.0 + shift,
+                WINDOW_H - border / 2.0 - head / 2.0,
+                0.0,
+                1.0,
+            ),
+            0xFFF0 => (
+                PICTURE_W / 2.0 + shift,
+                border / 2.0 + head / 2.0,
+                0.0,
+                -1.0,
+            ),
+            _ => return,
+        };
+        canvas.round_rect(cx - w / 2.0, cy - h / 2.0, w, h, 4.0, colour);
+        // The head's base overlaps the box by a pixel, so no seam shows.
+        let (bx, by) = (cx + dx * (w / 2.0 - 1.0), cy + dy * (h / 2.0 - 1.0));
+        let spread = if dx == 0.0 { w / 2.0 } else { h / 2.0 + 6.0 };
+        canvas.triangle(
+            [
+                (bx + dx * (head + 1.0), by + dy * (head + 1.0)),
+                (bx - dy * spread, by + dx * spread),
+                (bx + dy * spread, by - dx * spread),
+            ],
+            colour,
+        );
+        self.fonts.text(
+            Some(canvas),
+            cx - text_w / 2.0,
+            cy - 10.0,
+            None,
+            1.0,
+            &spans,
+        );
     }
 
     /// Level 3 (#7): the core's nine holes in a column at the panel's right
@@ -383,20 +563,16 @@ impl Panel {
         canvas: &mut Canvas,
         guidance: &Guidance,
         label_y: f32,
-        jump: Option<[u8; 5]>,
+        jump: Option<Jump>,
     ) {
-        let next_teleports = guidance
-            .route()
-            .and_then(|r| r.first())
-            .is_some_and(|s| s.teleport);
-        let text = match (guidance.route(), jump) {
-            (None, _) => "No known route to a missing piece".to_string(),
-            (Some(_), Some(code)) if next_teleports => {
-                format!("Select code {}", String::from_utf8_lossy(&code))
-            }
+        let (text, colour) = match (guidance.route(), jump) {
+            (_, Some(j)) if j.next => (
+                format!("Select code {}", String::from_utf8_lossy(&j.code)),
+                j.colour,
+            ),
+            (None, _) => ("No known route to a missing piece".to_string(), QUIET),
             _ => return,
         };
-        let colour = if next_teleports { ROUTE } else { QUIET };
         let spans = [span(&text, 13.0, Weight::SemiBold, colour)];
         self.fonts.text(
             Some(canvas),
@@ -418,7 +594,7 @@ impl Panel {
         left: f32,
         width: f32,
         seen: &[SeenTeleporter],
-        highlight: Option<[u8; 5]>,
+        highlight: Option<Jump>,
     ) -> f32 {
         let (chip_h, gap) = (26.0, 8.0);
         // Lay the chips out in rows first, so the block can sit on the
@@ -466,8 +642,10 @@ impl Panel {
             let mut x = left;
             for (text, w) in row {
                 canvas.round_rect(x, y, w, chip_h, 4.0, CODE_FILL);
-                if highlight.is_some_and(|code| String::from_utf8_lossy(&code) == text) {
-                    canvas.outline(x, y, w, chip_h, 4.0, 2.0, None, ROUTE);
+                if let Some(j) = highlight
+                    && String::from_utf8_lossy(&j.code) == text
+                {
+                    canvas.outline(x, y, w, chip_h, 4.0, 2.0, None, j.colour);
                 }
                 self.fonts.text(
                     Some(canvas),
@@ -1038,32 +1216,53 @@ fn stroke(
     }
 }
 
-/// An arrow in the picture's border pointing the way the route leaves the
-/// room: `step` is the room number's change, 1 right, -1 left, 16 down and
-/// -16 up (#9).
-fn border_arrow(canvas: &mut Canvas, step: u16) {
-    let border = (PICTURE_W - 768.0) / 2.0;
-    let (cx, cy, dx, dy) = match step {
-        1 => (PICTURE_W - border / 2.0, WINDOW_H / 2.0, 1.0, 0.0),
-        0xFFFF => (border / 2.0, WINDOW_H / 2.0, -1.0, 0.0),
-        16 => (PICTURE_W / 2.0, WINDOW_H - border / 2.0, 0.0, 1.0),
-        0xFFF0 => (PICTURE_W / 2.0, border / 2.0, 0.0, -1.0),
-        _ => return,
+/// The teleport a route takes, for its chip and the "Select code" line:
+/// its code, the route's colour, and whether it is the route's next step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Jump {
+    code: [u8; 5],
+    colour: Rgb,
+    next: bool,
+}
+
+/// Which teleport the panel names (#9, #44): the piece route's first, or
+/// the core route's when only that route teleports as its next step.
+fn jump(guidance: &Guidance) -> Option<Jump> {
+    let first = |route: Option<&[Step]>, colour| {
+        let route = route?;
+        let step = route.iter().find(|s| s.teleport)?;
+        let seen = guidance
+            .teleporters()
+            .iter()
+            .find(|t| t.room == step.room)?;
+        Some(Jump {
+            code: seen.code,
+            colour,
+            next: route.first().is_some_and(|s| s.teleport),
+        })
     };
-    // Along the arrow (dx, dy) and across it (-dy, dx), from its centre.
-    let p =
-        |along: f32, across: f32| (cx + dx * along - dy * across, cy + dy * along + dx * across);
-    canvas.triangle([p(24.0, 0.0), p(4.0, -18.0), p(4.0, 18.0)], ROUTE);
-    // The shaft lies along an axis, so one rectangle, with no seam.
-    let (a, b) = (p(5.0, -8.0), p(-24.0, 8.0));
-    canvas.round_rect(
-        a.0.min(b.0),
-        a.1.min(b.1),
-        (a.0 - b.0).abs(),
-        (a.1 - b.1).abs(),
-        0.0,
-        ROUTE,
+    let (piece, core) = (
+        first(guidance.route(), PIECE),
+        first(guidance.core_route(), ROUTE),
     );
+    match (piece, core) {
+        (p, Some(c)) if c.next && !p.is_some_and(|p| p.next) => Some(c),
+        (p, _) => p,
+    }
+}
+
+/// The steps a route walks, from `here`, as pairs of rooms; teleports are
+/// left out.
+fn walked_steps(here: u16, route: Option<&[Step]>) -> Vec<(u16, u16)> {
+    let mut steps = Vec::new();
+    let mut from = here;
+    for step in route.unwrap_or_default() {
+        if !step.teleport {
+            steps.push((from, step.room));
+        }
+        from = step.room;
+    }
+    steps
 }
 
 fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
@@ -1123,6 +1322,164 @@ mod tests {
         let (picker, _, _) = render(&open, Scene::Play, false);
         assert!(at(&picker, 100.0, 5.0) < 0x30_30_30, "the picture dimmed");
         assert!(at(&picker, 1300.0, 700.0) < 0x0f_11_17, "the panel dimmed");
+    }
+
+    /// A level 4 guidance with Blob in room `here`, every room open and
+    /// visited, and the given routes.
+    fn routed(here: u16, piece: &[(u16, bool)], core: &[(u16, bool)]) -> Guidance {
+        let mut g = Guidance::default();
+        g.set_level(4);
+        let open = Openings {
+            left: true,
+            right: true,
+            up: true,
+            down: true,
+            ..Openings::default()
+        };
+        g.set_openings(vec![open; usize::from(COLS * ROWS)]);
+        g.set_unvisited(&RoomSet::default());
+        g.set_room(Some(here));
+        let steps = |r: &[(u16, bool)]| {
+            (!r.is_empty()).then(|| {
+                r.iter()
+                    .map(|&(room, teleport)| Step { room, teleport })
+                    .collect()
+            })
+        };
+        g.set_route(steps(piece));
+        g.set_core_route(steps(core));
+        g
+    }
+
+    /// How many pixels of `colour` lie in the box at layout `(x, y, w, h)`.
+    fn count(pixels: &[u32], w: usize, (x, y, bw, bh): (f32, f32, f32, f32), colour: Rgb) -> usize {
+        let want = u32::from(colour[0]) << 16 | u32::from(colour[1]) << 8 | u32::from(colour[2]);
+        let (x0, y0) = ((x * 2.0) as usize, (y * 2.0) as usize);
+        (y0..y0 + (bh * 2.0) as usize)
+            .flat_map(|py| (x0..x0 + (bw * 2.0) as usize).map(move |px| py * w + px))
+            .filter(|&i| pixels[i] == want)
+            .count()
+    }
+
+    #[test]
+    fn a_step_both_routes_take_shows_both_colours() {
+        // Blob in 200; both routes go right to 201, then apart.
+        let g = routed(
+            200,
+            &[(201, false), (202, false)],
+            &[(201, false), (217, false)],
+        );
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        // The map's pitch and origin at level 4, as `map` works them out.
+        let below = WINDOW_H - 24.0 - 22.0 - 22.0 - 16.0 - LEGEND_H;
+        let pitch = ((below - 96.0) / f32::from(ROWS)).floor().min(18.0);
+        let at = |room: u16| {
+            (
+                PICTURE_W + 24.0 + f32::from(room % COLS) * pitch,
+                96.0 + f32::from(room / COLS) * pitch,
+            )
+        };
+        let (x, y) = at(200);
+        let between = (x + pitch * 0.7, y, pitch * 0.6, pitch);
+        assert!(
+            count(&pixels, w, between, PIECE) > 0,
+            "the piece route on the shared step"
+        );
+        assert!(
+            count(&pixels, w, between, ROUTE) > 0,
+            "and the core route beside it"
+        );
+        let (x, y) = at(201);
+        let apart = (x + pitch * 1.2, y + pitch * 0.3, pitch * 0.6, pitch * 0.4);
+        assert!(
+            count(&pixels, w, apart, PIECE) > 0,
+            "only the piece route goes on to 202"
+        );
+        assert_eq!(count(&pixels, w, apart, ROUTE), 0);
+    }
+
+    #[test]
+    fn each_route_leaving_the_room_has_its_own_border_arrow() {
+        let border = (PICTURE_W - 768.0) / 2.0;
+        let right_edge = (PICTURE_W - border, 0.0, border, WINDOW_H);
+        let bottom_edge = (0.0, WINDOW_H - border, PICTURE_W, border);
+        // Both leave to the right: two arrows on that edge, none below.
+        let g = routed(200, &[(201, false)], &[(201, false)]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert!(count(&pixels, w, right_edge, PIECE) > 0);
+        assert!(count(&pixels, w, right_edge, ROUTE) > 0);
+        assert_eq!(
+            count(&pixels, w, bottom_edge, PIECE) + count(&pixels, w, bottom_edge, ROUTE),
+            0
+        );
+        // The core route down, the piece route right: an arrow on each edge.
+        let g = routed(200, &[(201, false)], &[(216, false)]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert!(count(&pixels, w, right_edge, PIECE) > 0);
+        assert_eq!(count(&pixels, w, right_edge, ROUTE), 0);
+        assert!(count(&pixels, w, bottom_edge, ROUTE) > 0);
+        // No core route: only the piece's arrow.
+        let g = routed(200, &[(201, false)], &[]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(count(&pixels, w, (0.0, 0.0, PICTURE_W, WINDOW_H), ROUTE), 0);
+    }
+
+    #[test]
+    fn the_code_named_follows_the_piece_route_unless_only_the_core_route_teleports_next() {
+        let seen = |g: &mut Guidance| {
+            g.set_teleporters(&[
+                SeenTeleporter {
+                    room: 300,
+                    code: *b"AAAAA",
+                },
+                SeenTeleporter {
+                    room: 400,
+                    code: *b"BBBBB",
+                },
+            ]);
+        };
+        let mut g = routed(200, &[(201, false), (300, true)], &[(400, true)]);
+        seen(&mut g);
+        assert_eq!(
+            jump(&g),
+            Some(Jump {
+                code: *b"BBBBB",
+                colour: ROUTE,
+                next: true
+            }),
+            "the core route teleports next, the piece route walks first"
+        );
+        let mut g = routed(200, &[(300, true)], &[(400, true)]);
+        seen(&mut g);
+        assert_eq!(
+            jump(&g).map(|j| (j.code, j.colour)),
+            Some((*b"AAAAA", PIECE)),
+            "both next: the piece's"
+        );
+        let mut g = routed(200, &[(201, false), (300, true)], &[]);
+        seen(&mut g);
+        assert_eq!(
+            jump(&g),
+            Some(Jump {
+                code: *b"AAAAA",
+                colour: PIECE,
+                next: false
+            })
+        );
+        let mut g = routed(200, &[], &[(400, true)]);
+        seen(&mut g);
+        assert_eq!(
+            jump(&g).map(|j| j.code),
+            Some(*b"BBBBB"),
+            "no piece route: the core's"
+        );
+        let mut g = routed(200, &[(201, false)], &[(201, false), (400, true)]);
+        seen(&mut g);
+        assert_eq!(
+            jump(&g),
+            None,
+            "the core route teleports later: nothing named yet"
+        );
     }
 
     /// Nine made-up holes, not the game's graphics: simple shapes, three
@@ -1311,6 +1668,18 @@ mod tests {
                     let booths: Vec<u16> = g.teleporters().iter().map(|t| t.room).collect();
                     let route = known.route(here, &booths, &pieces, 199);
                     g.set_route(route);
+                    // The made-up walk never reaches room 199, so a room far
+                    // along it stands in for the core, as in the mockup (#44).
+                    let far = (0..COLS * ROWS)
+                        .filter(|&r| g.visited(r))
+                        .max_by_key(|&r| {
+                            (i32::from(r / COLS) - i32::from(here / COLS)).abs() * 3
+                                + (i32::from(r % COLS) - i32::from(here % COLS)).abs()
+                        })
+                        .unwrap();
+                    let mut core = RoomSet::default();
+                    core.set(far, true);
+                    g.set_core_route(known.route(here, &booths, &core, 999));
                     g
                 },
                 Scene::Play,
