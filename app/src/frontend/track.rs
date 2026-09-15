@@ -3,7 +3,7 @@
 //! panel so it knows when a game starts and ends; and the teleporter booths
 //! entered, for level 1 (#4).
 
-use sidekick::map::{Known, RoomSet, Step};
+use sidekick::map::{Graph, Known, Place, RoomSet, Step};
 use sidekick::starquake::{
     CORE_ROOM, Item, SeenTeleporter, at, entry, graphic, hole, items_and_core, missing_piece_rooms,
     routine, teleporter_code,
@@ -47,6 +47,9 @@ pub struct Tracker {
     /// The room last entered this game, which a walk into the next starts
     /// from.
     entered: Option<u16>,
+    /// The planet as the map reads it, for level 5's routes (#10); empty
+    /// until the program has read the rooms.
+    pub graph: Graph,
 }
 
 impl Tracker {
@@ -125,7 +128,14 @@ impl Tracker {
                 guidance.set_core(holes(mem, &core, &items));
                 let here = u16::from_le_bytes([mem[room], mem[room + 1]]);
                 let booths: Vec<u16> = self.seen.iter().map(|t| t.room).collect();
-                let (piece, core) = routes(&self.known, here, &booths, &pieces, guidance.core());
+                // Level 5 routes over the whole map from the place Blob is in
+                // (#10); below it, over the ways walked (#9).
+                let blob = usize::from(at::ENTITIES);
+                let place = (guidance.level() >= 5)
+                    .then(|| self.graph.place(here, mem[blob + 5], mem[blob + 6]));
+                let whole = place.map(|p| (&self.graph, p));
+                let (piece, core) =
+                    routes(&self.known, whole, here, &booths, &pieces, guidance.core());
                 guidance.set_route(piece);
                 guidance.set_core_route(core);
                 guidance.set_pieces(&pieces);
@@ -136,22 +146,28 @@ impl Tracker {
     }
 }
 
-/// The two routes over the connections `known` from `here` (#44): to the
-/// nearest room holding a missing piece, and to the core room while a piece
-/// it needs is carried (#44, decision 5), `None` otherwise or when there is no
-/// way. A teleport between two of `booths` counts as one step.
+/// The two routes from `here` (#44): to the nearest room holding a missing
+/// piece, and to the core room while a piece it needs is carried (#44,
+/// decision 5), `None` otherwise or when there is no way. Over the
+/// connections `known`, or with `whole`, over the whole map from that place
+/// (#10). A teleport between two of `booths` counts as one step.
 fn routes(
     known: &Known,
+    whole: Option<(&Graph, Place)>,
     here: u16,
     booths: &[u16],
     pieces: &RoomSet,
     core: &[Hole],
 ) -> (Option<Vec<Step>>, Option<Vec<Step>>) {
-    let piece = known.route(here, booths, pieces, CORE_ROOM);
+    let search = |targets: &RoomSet| match whole {
+        Some((graph, place)) => graph.route(place, known, booths, targets),
+        None => known.route(here, booths, targets, CORE_ROOM),
+    };
+    let piece = search(pieces);
     let core = core.iter().any(|h| h.carried).then(|| {
         let mut room = RoomSet::default();
         room.set(CORE_ROOM, true);
-        known.route(here, booths, &room, CORE_ROOM)
+        search(&room)
     });
     (piece, core.flatten())
 }
@@ -315,20 +331,61 @@ mod tests {
         let piece = Some(vec![step(196)]);
         let core = Some(vec![step(198), step(CORE_ROOM)]);
 
-        let none_carried = routes(&known, 197, &[], &pieces, &[hole(false), hole(false)]);
+        let none_carried = routes(&known, None, 197, &[], &pieces, &[hole(false), hole(false)]);
         assert_eq!(none_carried, (piece.clone(), None), "no core route");
 
-        let one_carried = routes(&known, 197, &[], &pieces, &[hole(false), hole(true)]);
+        let one_carried = routes(&known, None, 197, &[], &pieces, &[hole(false), hole(true)]);
         assert_eq!(one_carried, (piece, core.clone()), "both routes");
 
         let mut far = RoomSet::default();
         far.set(100, true);
-        let no_way = routes(&known, 197, &[], &far, &[hole(true)]);
+        let no_way = routes(&known, None, 197, &[], &far, &[hole(true)]);
         assert_eq!(
             no_way,
             (None, core),
             "no way to a piece leaves the core route"
         );
+    }
+
+    #[test]
+    fn level_5_routes_through_the_whole_map() {
+        // Rooms 0 and 1 open to each other on screen rows 12 and 13, every
+        // other room closed; nothing walked.
+        let room = |open_left: bool, open_right: bool| {
+            sidekick::map::Room::read(
+                |row, col| {
+                    let edge = row == 6 || row == 23 || col == 0 || col == 31;
+                    let gap = (12..14).contains(&row)
+                        && ((col == 0 && open_left) || (col == 31 && open_right));
+                    if edge && !gap { 0x07 } else { 0x47 }
+                },
+                &[],
+            )
+        };
+        let mut rooms = vec![room(false, true), room(true, false)];
+        rooms.extend((2..512).map(|_| room(false, false)));
+        let graph = Graph::new(&rooms, CORE_ROOM);
+        let mut pieces = RoomSet::default();
+        pieces.set(1, true);
+        let place = graph.place(0, 64, 63);
+        assert_eq!(place, (0, 1), "Blob in room 0's one part");
+        let (piece, _) = routes(
+            &Known::default(),
+            Some((&graph, place)),
+            0,
+            &[],
+            &pieces,
+            &[],
+        );
+        assert_eq!(
+            piece,
+            Some(vec![Step {
+                room: 1,
+                teleport: false
+            }])
+        );
+        let (walked_only, _) = routes(&Known::default(), None, 0, &[], &pieces, &[]);
+        assert_eq!(walked_only, None, "level 4 knows no way");
     }
 
     #[test]

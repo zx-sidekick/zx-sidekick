@@ -142,10 +142,12 @@ impl Runner {
 
     fn run(&mut self, tape: &[u8]) -> Result<(), String> {
         let mut machine = Machine::from_tape(tape, ENTRY_PC, ENTRY_SP)?;
-        // Every room's openings, for the map: the same every game, so read
+        // Every room, for the map's openings and level 5's graph (#10): the same every game, so read
         // once, by having the game draw each room on a copy of the machine.
         // It takes about a third of a second, before the loading picture.
-        let openings = sidekick::starquake::all_openings(&machine);
+        let rooms = sidekick::starquake::all_rooms(&machine);
+        let graph = sidekick::map::Graph::new(&rooms, sidekick::starquake::CORE_ROOM);
+        let openings = sidekick::map::openings(&rooms, sidekick::starquake::CORE_ROOM);
         self.shared.guidance.lock().unwrap().set_openings(openings);
         let loading = zx_core::tape::load_tap(tape)?.loading_screen;
         if let Some(picture) = loading {
@@ -167,6 +169,7 @@ impl Runner {
         }
         machine.watch = track::WATCH.to_vec();
         let mut tracker = track::Tracker::default();
+        tracker.graph = graph;
         let mut freeze = freeze::Freeze::default();
         // Whether the game's pause key was pressed in the last frame.
         let mut pause = false;

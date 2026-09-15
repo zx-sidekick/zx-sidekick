@@ -677,6 +677,8 @@ pub struct Way {
 pub struct Graph {
     ways: std::collections::BTreeMap<Place, Vec<Way>>,
     booths: Vec<Place>,
+    /// Every room's parts with doors shut, to find where Blob is.
+    parts: Vec<Parts>,
 }
 
 impl Graph {
@@ -750,7 +752,39 @@ impl Graph {
             .filter(|(_, r)| r.booth_part != 0)
             .map(|(i, r)| (i as u16, r.booth_part))
             .collect();
-        Graph { ways, booths }
+        Graph {
+            ways,
+            booths,
+            parts: rooms.iter().map(|r| r.shut.clone()).collect(),
+        }
+    }
+
+    /// The place Blob is in, standing at (`x`, `y`) in `room`: the part
+    /// under his top-left cell, or one beside it while he is between cells;
+    /// part 0 when none is found.
+    #[must_use]
+    pub fn place(&self, room: u16, x: u8, y: u8) -> Place {
+        let Some(parts) = self.parts.get(usize::from(room)) else {
+            return (room, 0);
+        };
+        let (row, col) = (i16::from((0xBF - y.min(0xBF)) >> 3), i16::from(x >> 3));
+        let part = [
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (1, 1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (1, -1),
+        ]
+        .into_iter()
+        .map(|(dr, dc)| (row + dr, col + dc))
+        .filter(|&(r, c)| r >= 0 && c >= 0)
+        .map(|(r, c)| parts.at(r as u8, c as u8))
+        .find(|&p| p != 0)
+        .unwrap_or(0);
+        (room, part)
     }
 
     /// The ways out of `place`.

@@ -76,7 +76,7 @@ const ADDS: [&str; 6] = [
     "A map of the rooms you have visited.",
     "The missing core pieces, marked on the map.",
     "An arrow along routes you know.",
-    "Not built yet: the arrow routed through the whole map.",
+    "An arrow along routes through the whole map.",
 ];
 
 /// A legend entry: a key, a pad button, or arrows.
@@ -156,7 +156,11 @@ impl Panel {
                     &[span(&explored, 12.0, Weight::Regular, LABEL)],
                 );
                 // Level 4 (#44): the two routes' legend under the map.
-                let legend = if level >= 4 { LEGEND_H } else { 0.0 };
+                let legend = match level {
+                    0..=3 => 0.0,
+                    4 => LEGEND_H,
+                    _ => LEGEND_H + 22.0,
+                };
                 let map_bottom =
                     self.map(canvas, guidance, level >= 3, 96.0, below - 16.0 - legend);
                 if level >= 4 {
@@ -346,12 +350,15 @@ impl Panel {
                         (off, 0.0)
                     };
                     let ((ax, ay), (bx, by)) = (centre(a), centre(b));
+                    // Level 5 (#10): dashed into or out of a room not yet
+                    // visited, as the mockup on #25 has it.
+                    let dash = (!guidance.visited(a) || !guidance.visited(b)).then_some(3.0 * unit);
                     stroke(
                         canvas,
                         (ax + ox, ay + oy),
                         (bx + ox, by + oy),
                         width,
-                        None,
+                        dash,
                         colour,
                     );
                 }
@@ -449,6 +456,19 @@ impl Panel {
                 12.0,
                 Weight::Regular,
                 if lit { SOFT } else { QUIET },
+            )];
+            self.fonts
+                .text(Some(canvas), x + chip_w + 10.0, y - 8.0, None, 1.0, &spans);
+        }
+        // Level 5 (#10): what a dashed line means.
+        if guidance.level() >= 5 {
+            let y = y + 2.0 * 22.0;
+            stroke(canvas, (x, y), (x + chip_w, y), 3.0, Some(4.0), SOFT);
+            let spans = [span(
+                "Dashed through rooms you have not visited",
+                12.0,
+                Weight::Regular,
+                SOFT,
             )];
             self.fonts
                 .text(Some(canvas), x + chip_w + 10.0, y - 8.0, None, 1.0, &spans);
@@ -586,7 +606,12 @@ impl Panel {
                 (" for the core".into(), SOFT),
             ],
             _ if guidance.route().is_none() => {
-                vec![("No known route to a missing piece".into(), QUIET)]
+                let text = if guidance.level() >= 5 {
+                    "No route to a missing piece without a door"
+                } else {
+                    "No known route to a missing piece"
+                };
+                vec![(text.into(), QUIET)]
             }
             _ => return,
         };
@@ -1431,6 +1456,28 @@ mod tests {
     }
 
     #[test]
+    fn a_step_into_a_room_not_visited_is_dashed() {
+        let pink = |visited: bool| {
+            let mut g = routed(200, &[(201, false)], &[]);
+            g.set_level(5);
+            let mut unvisited = RoomSet::default();
+            unvisited.set(201, !visited);
+            g.set_unvisited(&unvisited);
+            let (pixels, w, _) = render(&g, Scene::Play, false);
+            // The whole panel: all else in it is the same either way.
+            count(
+                &pixels,
+                w,
+                (PICTURE_W, 0.0, WINDOW_W - PICTURE_W, WINDOW_H),
+                PIECE,
+            )
+        };
+        let (solid, dashed) = (pink(true), pink(false));
+        assert!(dashed < solid, "the step with gaps: {dashed} of {solid}");
+        assert!(solid - dashed < 200, "and still drawn: {dashed} of {solid}");
+    }
+
+    #[test]
     fn each_route_leaving_the_room_has_its_own_border_arrow() {
         let border = (PICTURE_W - 768.0) / 2.0;
         let right_edge = (PICTURE_W - border, 0.0, border, WINDOW_H);
@@ -1725,6 +1772,40 @@ mod tests {
                     let mut core = RoomSet::default();
                     core.set(far, true);
                     g.set_core_route(known.route(here, &booths, &core, 999));
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
+            (
+                "level5",
+                {
+                    let mut g = Guidance::default();
+                    g.set_level(5);
+                    explore(&mut g, 3);
+                    let here = g.room().unwrap();
+                    let mut pieces = RoomSet::default();
+                    for (col, row) in [(12, 13), (2, 24), (6, 8), (13, 29), (10, 4), (9, 21)] {
+                        pieces.set(row * COLS + col, true);
+                    }
+                    g.set_pieces(&pieces);
+                    g.set_core(made_up_core());
+                    // A made-up route: three rooms along the walk, then on
+                    // through rooms never visited towards the piece at (10, 4).
+                    let mut steps = Vec::new();
+                    let (mut col, mut row) = (here % COLS, here / COLS);
+                    while (col, row) != (10, 4) {
+                        if col == 10 {
+                            row = if row < 4 { row + 1 } else { row - 1 };
+                        } else {
+                            col = if col < 10 { col + 1 } else { col - 1 };
+                        }
+                        steps.push(Step {
+                            room: row * COLS + col,
+                            teleport: false,
+                        });
+                    }
+                    g.set_route(Some(steps));
                     g
                 },
                 Scene::Play,
