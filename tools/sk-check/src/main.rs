@@ -1308,7 +1308,7 @@ fn doors_check(dir: &Path) -> bool {
 }
 
 /// The font the panel draws codes in (#49): once play starts, `CHARS`
-/// points 256 bytes below [`at::FONT`], so the game prints with the letters
+/// points 256 bytes below the font (`at::FONT`), so the game prints with the letters
 /// there, and they are 96 letters with the space blank.
 fn font_check(dir: &Path) -> bool {
     use sidekick::starquake::{at, font, routine};
