@@ -149,13 +149,13 @@ direct maintainer request, and they are named as exceptions.
 | State | Action | Owner |
 |---|---|---|
 | unanswered comment (issue/PR) | reply: factual auto-post, substantive draft for OK | `issue-comment-replies` |
-| new issue, no `needs:` label | triage: a design question → `needs: spec`, spec + questions → `Your input`; none left → `needs: build` → `Plan` (or `Your sign-off` if its plan is written); a bug or tweak needing no plan → `needs: build` → `Build` | `design-slice` |
-| **bug** routed `needs: build` | reproduce → root-cause → **green PR** | debug → PR |
-| `Spec` | **choose the route first** (see Routing): a bug or tweak needing no plan → comment the route → `Build`; no design question left → `needs: build` → `Plan`; otherwise draft the spec + its open questions → `Your input` (or `Plan` if nothing is open) | `design-slice` |
-| `Your input` | **stop**, UNLESS a new maintainer comment answers the block → write the answers into the body → nothing left open: relabel `needs: build` → `Plan` | `design-slice` |
+| new issue, in no lane yet | triage: a design question → spec + questions → `Your input`; none left → `Plan` (or `Your sign-off` if its plan is written); a bug or tweak needing no plan → `Build`. Filed into `Backlog` instead? It carries its route label, `needs: spec` or `needs: build` | `design-slice` |
+| **bug** in `Build` | reproduce → root-cause → **green PR** | debug → PR |
+| `Spec` | **choose the route first** (see Routing): a bug or tweak needing no plan → comment the route → `Build`; no design question left → `Plan`; otherwise draft the spec + its open questions → `Your input` (or `Plan` if nothing is open) | `design-slice` |
+| `Your input` | **stop**, UNLESS a new maintainer comment answers the block → write the answers into the body → nothing left open → `Plan` | `design-slice` |
 | `Plan` | write the plan (and mockup) → `Your sign-off`. A plan already in the body (ported, or drafted earlier)? Check it against this repository, say in the Next-steps comment what does not fit, and move on to `Your sign-off` | `design-slice`, `mockup` |
 | `Your sign-off` | **stop**, UNLESS the maintainer signalled go (a `go`/`approved` comment, OR moved it to `Build`) → build | `build-slice` |
-| `Build` | build the slice → green PR → `Your review`, dropping the `needs:` label. No plan that fits this repository? Write it into the body first and build it: the move was the go. | `build-slice` |
+| `Build` | build the slice → green PR → `Your review`. No plan that fits this repository? Write it into the body first and build it: the move was the go. | `build-slice` |
 | `Your review` | **stop**: only `ready to merge` moves it. Do keep the PR mergeable: CI green, rebased if behind, and no thread left open that Claude has acted on (the ruleset refuses to merge with one). | `merge-pr` |
 | reply to one of Claude's review comments | `fix`: fix, push, reply with the commit, **resolve the thread**; `skip`: acknowledge, resolve; `ticket`: file a Backlog issue, reply with the link, resolve; anything else: answer in the thread (starquake-recompiled#77) | `build-slice` |
 | PR with new maintainer comments | address them, re-push | rework |
@@ -171,43 +171,41 @@ direct maintainer request, and they are named as exceptions.
    mockup is safe autonomous work, since it ends at a gate. Never defer it as
    "needs supervision".
 6. **A ticket you FILE gets the same treatment as one you find, in the same
-   action**: a Status naming whose turn it is, a `needs:` label with the
-   routing reason in the body, and a Next-steps comment. A filed ticket with no
+   action**: a Status naming whose turn it is, the routing reason in the body
+   (and its `needs:` label only if it is filed into `Backlog`), and a
+   Next-steps comment. A filed ticket with no
    next step is close to not having been filed.
 7. **A ticket PORTED from a sibling repository is filed in the lane its content
    puts it in**, not all in `Backlog` (#27): open questions → `Your input`
-   with `needs: spec` and the answer block posted; a settled spec with a plan
-   → `Your sign-off` with `needs: build`, noting in the comment where the plan
-   names the other project's code; a settled spec with no plan → `Plan` with
-   `needs: build`; a parent with sub-issues → `Backlog`, with no `needs:`
-   label, since its sub-issues carry the routes. Leave out
+   with the answer block posted; a settled spec with a plan → `Your sign-off`,
+   noting in the comment where the plan names the other project's code; a
+   settled spec with no plan → `Plan`; a parent with sub-issues → `Backlog`,
+   with no `needs:` label, since its sub-issues carry the routes. Leave out
    tickets about the other project's own history or internals, and list them
    in the report instead.
 
 ## Routing a ticket
 
-Every ticket you file states its route, with the reason, and carries the label:
+Every ticket you file states its route, with the reason:
 
 ```
 Routing: straight to Build — a tweak, no unexamined assumption.
 Routing: Spec first — the scoring change affects every platform's contract.
 ```
 
-The label says what the ticket needs next, and it changes as the ticket moves
-(#27):
+The route is a lane once the card is in one. **A route label exists only while
+the ticket waits in `Backlog`** (@starquake, 2026-09-15: "Some labels can go
+because the issues are in a lane"), to say where it goes when picked up:
 
-- **`needs: spec`**: a design decision still to settle, in `Spec` or
-  `Your input`.
-- **`needs: build`**: no design question left. It goes to `Plan` for its plan,
-  or to `Your sign-off` if the plan is already written. Only a bug or a tweak
-  small enough to need no plan (a number, a default, copy, a build script)
-  goes straight to `Build` and a PR.
-- **No label** once it is built: the label comes off when the PR moves the
-  ticket to `Your review`. A parent with sub-issues has none either.
-
-**Relabel in the same step as the move**: the last question answered turns
-`needs: spec` into `needs: build`; the PR in review removes it. A label that
-disagrees with the lane is the bug.
+- **`needs: spec`**: a design decision still to settle. Picked up, it goes to
+  `Spec`.
+- **`needs: build`**: no design question left. Picked up, it goes to `Plan`,
+  or to `Your sign-off` if its plan is written. Only a bug or a tweak small
+  enough to need no plan (a number, a default, copy, a build script) goes
+  straight to `Build` and a PR.
+- **No label in a lane**: the label comes off in the same step as the move out
+  of `Backlog`, and nothing adds one back. A label on a card in a lane is the
+  bug; drop it. A parent with sub-issues has none either.
 
 The maintainer disagrees by dragging the card elsewhere, and that is the
 override. **Never add a Status option to carry a property**: reordering a
@@ -235,10 +233,10 @@ gh api graphql -f query='{ organization(login:"zx-sidekick"){ projectV2(number:1
   --jq '[.data.organization.projectV2.items.nodes[] | select(.fieldValueByName.name=="Backlog")][0].content'
 ```
 
-Picking it up follows its label: `needs: build` goes to `Plan`, to
-`Your sign-off` if its plan is written, or to `Build` if it is a bug or tweak
-needing no plan; anything else to `Spec` (where the route is decided as
-above). Post a
+Picking it up follows its label, and takes the label off: `needs: build` goes
+to `Plan`, to `Your sign-off` if its plan is written, or to `Build` if it is a
+bug or tweak needing no plan; anything else to `Spec` (where the route is
+decided as above). Post a
 Next-steps comment saying it was picked up and by whose request.
 
 ## The Next-steps comment: a new one whenever the state moves

@@ -112,17 +112,17 @@ answer given in chat is written back into the issue body before acting on it.
 - **Merging needs the `ready to merge` label** on the PR, re-read from the API
   at the moment of merging. Claude never adds it and never merges without it.
 - **A position in the flow is a Status; a property of a ticket is a label**:
-  `ready to merge`, `hold` (skip entirely), `needs: spec` / `needs: build`
-  (what the ticket needs next, with the routing reason in the body, relabelled
-  in the same step as the move that changes it). `needs: spec` has a design
-  question to settle (`Spec`, `Your input`). `needs: build` has none left: it
-  goes to `Plan`, to `Your sign-off` once its plan is written, or straight to
-  `Build` if it is a bug or tweak needing no plan. A built ticket in
-  `Your review`, and a parent, carry neither.
+  `ready to merge`, `hold` (skip entirely), and, **only while a ticket waits in
+  `Backlog`**, its route: `needs: spec` (a design question to settle) or
+  `needs: build` (none left), with the routing reason in the body. The route
+  says where the card goes when it is picked up. **A card in a lane carries no
+  route label**: the lane already says where it stands, so the label comes off
+  in the same step as the move out of `Backlog` (@starquake, 2026-09-15). A
+  parent carries none either.
 - **A ticket ported from a sibling repository goes in the lane its content puts
-  it in**: open questions to `Your input` (`needs: spec`), a settled spec with
-  a plan to `Your sign-off` and one without to `Plan` (`needs: build`), a
-  parent to `Backlog` with no label.
+  it in**: open questions to `Your input`, a settled spec with a plan to
+  `Your sign-off` and one without to `Plan`, a parent to `Backlog` with no
+  label.
 - **The body is the living spec; the comments are append-only history.** When
   a question is answered it moves into _Decisions_ and is deleted from _Open
   questions_. Every state change gets a NEW `> 🤖 **Next steps**` comment;

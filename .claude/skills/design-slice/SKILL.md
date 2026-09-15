@@ -26,10 +26,9 @@ maintainer's.
   "write a spec": decide how much process it needs, and say so on the ticket
   with the reason (starquake-recompiled#26).
   - **A bug or tweak** small enough to need no plan: comment *"Routing: straight
-    to Build — …"*, label it `needs: build`, move it to `Build`, and hand it
-    to `build-slice`. No spec.
-  - **No design question left, but work that wants a plan**: label it
-    `needs: build`, move it to `Plan`, and write the plan (#27). No spec.
+    to Build — …"*, move it to `Build`, and hand it to `build-slice`. No spec.
+  - **No design question left, but work that wants a plan**: move it to
+    `Plan` and write the plan (#27). No spec.
   - **A small decision**: a short spec with its answer block; the plan is a few
     lines in the same body once it's answered.
   - **A feature**: the full route below.
@@ -99,14 +98,14 @@ maintainer's.
 - **Mockup**: if the change's value is how it looks, make the mockup now
   (`mockup` skill) and embed it in the *Mockup* section. Approving the
   screenshot is part of the spec OK.
-- **Hand off**: posting the block moves the ticket to `Your input`, labelled
-  `needs: spec`, in the same step. Nothing open? Relabel it `needs: build` and
-  skip straight to the plan.
+- **Hand off**: posting the block moves the ticket to `Your input` in the same
+  step. Nothing open? Skip straight to the plan. A card in a lane carries no
+  `needs:` label; drop one if it still has it.
 
 ## Step 3: settle, then plan
 
-Fill the plan only once the decisions are settled: the ticket is
-`needs: build` from here (#27). Set `Plan` while you write it. A plan already
+Fill the plan only once the decisions are settled (#27). Set `Plan` while you
+write it. A plan already
 in the body, ported from another project or drafted earlier, is checked
 against this repository rather than rewritten: fix what names code that isn't
 here, or say in the Next-steps comment what the build will map. Tasks go in landing order, each one green commit

@@ -183,7 +183,6 @@ the maintainer's replies are part of the review.
   open (starquake-recompiled#84). A PR for
   a sub-issue says `Closes` only for that sub-issue, never for its parent.
 - Move the card to **`Your review`** (NOT `Your sign-off`, which is the
-  pre-build gate), **remove its `needs:` label**, since a built ticket has no
-  route left (#27), and post a Next-steps comment: *Next: review the PR and add
+  pre-build gate), and post a Next-steps comment: *Next: review the PR and add
   `ready to merge`.* List any task still open after the merge in that comment,
   with whose it is.
