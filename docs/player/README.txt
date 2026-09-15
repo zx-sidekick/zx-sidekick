@@ -96,11 +96,13 @@ from 0 (none) to 5, each adding to the ones below.
                        nine holes beside it: the pieces still needed,
                        the ones delivered dimmed, and a piece you carry
                        outlined.
-  Level 4              A route to the nearest missing piece over the
-                       ways you have walked (or to the core while you
-                       carry a piece it needs): a line on the map, an
-                       arrow in the border the way to leave the room,
-                       and the code to select when a teleporter is next.
+  Level 4              Two routes over the ways you have walked: to the
+                       nearest missing piece in pink, and to the core in
+                       orange while you carry a piece it needs. Each is a
+                       line on the map and an arrow in the border the
+                       way to leave the room, marked "item" or "core",
+                       with a legend under the map; and the code to
+                       select when a teleporter is next.
   Level 5              Still to be built, and training mode too.
 
   Esc, or Select       Open the guidance picker. The game waits while
