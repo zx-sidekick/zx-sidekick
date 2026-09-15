@@ -104,7 +104,7 @@ pub mod routine {
     pub const TELEPORT_BOOTH: u16 = 0xCED4;
     /// Drawing a 2 × 2 graphic: the attribute in A, the character row in B,
     /// the column in C, and the graphic's 32 bytes at HL (see
-    /// [`at::GRAPHICS`]), laid on the screen by XOR. Pickups in a room and
+    /// [`super::at::GRAPHICS`]), laid on the screen by XOR. Pickups in a room and
     /// the core's holes are drawn with it.
     pub const DRAW_GRAPHIC: u16 = 0xDB24;
     /// Drawing a room's tiles, from its first instruction to its last.
