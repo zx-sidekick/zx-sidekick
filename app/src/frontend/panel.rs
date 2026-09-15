@@ -307,12 +307,10 @@ impl Panel {
                     let byte = hole.graphic[cell * 8 + row];
                     for bit in 0..8 {
                         if byte & (0x80 >> bit) != 0 {
-                            canvas.round_rect(
+                            canvas.cell(
                                 x + inset + (cx + bit) as f32 * PIECE_PIXEL,
                                 y + inset + (cy + row) as f32 * PIECE_PIXEL,
                                 PIECE_PIXEL,
-                                PIECE_PIXEL,
-                                0.0,
                                 colour,
                             );
                         }
