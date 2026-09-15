@@ -1087,6 +1087,7 @@ fn map_check(dir: &Path, walks: usize) -> bool {
     let rooms = all_rooms(&base);
     let openings = sidekick::map::openings(&rooms, CORE_ROOM);
     let parts: Vec<_> = rooms.iter().map(|r| r.open.clone()).collect();
+    let graph = sidekick::map::Graph::new(&rooms, CORE_ROOM);
     // Into play, as a player would.
     base.watch = vec![routine::MAIN_LOOP];
     let mut script = Script(0xBEEF);
@@ -1105,6 +1106,10 @@ fn map_check(dir: &Path, walks: usize) -> bool {
         rng.0 % n
     };
     let (mut crossings, mut positions, mut failures) = (0u64, 0u64, 0u64);
+    // Level 5's graph against the same walks (#10): every crossing between
+    // two places Blob stood in must be a way; a climb is counted, not failed,
+    // since a platform or a jump can make one.
+    let (mut checked, mut climbs, mut missing) = (0u64, 0u64, 0u64);
     for walk in 0..walks {
         let mut m = base.clone();
         // Start each walk in a different room, entered as walking in.
@@ -1121,6 +1126,8 @@ fn map_check(dir: &Path, walks: usize) -> bool {
             z.set_interrupts(true);
         }
         let mut part = 0;
+        let mut last_place: Option<sidekick::map::Place> = None;
+        let mut pending: Option<(sidekick::map::Place, u16)> = None;
         for frame in 0..1500 {
             if frame % 25 == 0 {
                 m.zx.release_all_keys();
@@ -1135,12 +1142,20 @@ fn map_check(dir: &Path, walks: usize) -> bool {
                 // A door, booth or pyramid screen, or a lost life: this walk's
                 // view of where Blob is starts again.
                 part = 0;
+                last_place = None;
+                pending = None;
                 continue;
             }
             let z = &m.zx;
             let room = z.read16(at::ROOM);
             if room != from {
                 part = 0;
+                // Only a step to a room beside: a teleport lands anywhere.
+                let beside = [1, 0xFFFF, 16, 0xFFF0].contains(&room.wrapping_sub(from));
+                pending = last_place
+                    .filter(|p| beside && p.0 != CORE_ROOM && room != CORE_ROOM)
+                    .map(|p| (p, room));
+                last_place = None;
                 let o = openings[usize::from(from) % 512];
                 let edge = match room.wrapping_sub(from) {
                     1 => Some(("right", o.right)),
@@ -1165,6 +1180,26 @@ fn map_check(dir: &Path, walks: usize) -> bool {
             );
             if x & 7 != 0 || room >= 512 {
                 continue;
+            }
+            let place = graph.place(room, x, y);
+            if place.1 != 0 {
+                if let Some((was, to)) = pending.take()
+                    && to == room
+                {
+                    checked += 1;
+                    match graph.ways(was).iter().find(|w| w.to == place) {
+                        Some(w) if w.climb => climbs += 1,
+                        Some(_) => {}
+                        None => {
+                            missing += 1;
+                            println!(
+                                "map: walk {walk}: from room {} part {} into room {room} part {}, which the graph has no way for",
+                                was.0, was.1, place.1
+                            );
+                        }
+                    }
+                }
+                last_place = Some(place);
             }
             let here = parts[usize::from(room)].at((0xBF - y) >> 3, x >> 3);
             if here == 0 {
@@ -1198,8 +1233,46 @@ fn map_check(dir: &Path, walks: usize) -> bool {
     println!(
         "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map"
     );
+    // The graph's reach from where play starts, doors shut, with and without
+    // climbs.
+    let start = {
+        let z = &base.zx;
+        graph.place(
+            z.read16(at::ROOM),
+            z.mem[usize::from(at::ENTITIES) + 5],
+            z.mem[usize::from(at::ENTITIES) + 6],
+        )
+    };
+    let reach = |climbing: bool| {
+        let mut seen = std::collections::BTreeSet::from([start]);
+        let mut todo = vec![start];
+        while let Some(p) = todo.pop() {
+            for w in graph.ways(p) {
+                if (climbing || !w.climb) && seen.insert(w.to) {
+                    todo.push(w.to);
+                }
+            }
+        }
+        seen.iter()
+            .map(|p| p.0)
+            .collect::<std::collections::BTreeSet<u16>>()
+            .len()
+    };
+    let (places, ways, all_climbs) = graph.places().fold((0, 0, 0), |(n, w, c), p| {
+        let out = graph.ways(p);
+        (
+            n + 1,
+            w + out.len(),
+            c + out.iter().filter(|w| w.climb).count(),
+        )
+    });
+    println!(
+        "map: level 5's graph: {places} places, {ways} ways ({all_climbs} of them climbs); from the start it reaches {} rooms, {} with every climb; {checked} crossings checked against it, {climbs} up a climb, {missing} with no way",
+        reach(false),
+        reach(true)
+    );
     let passages_ok = passages_check(&base, &rooms, &openings);
-    failures == 0 && crossings > 0 && passages_ok
+    failures == 0 && crossings > 0 && passages_ok && missing == 0 && checked > 0
 }
 
 /// Every wall passage walked into from each side Blob can stand beside it,
