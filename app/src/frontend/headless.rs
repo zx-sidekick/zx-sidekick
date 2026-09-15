@@ -49,7 +49,12 @@ pub fn run(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), String
     let mut tracker = Tracker::default();
     let mut guidance = Guidance::default();
     guidance.set_level(level);
-    guidance.set_openings(sidekick::starquake::all_openings(&machine));
+    let rooms = sidekick::starquake::all_rooms(&machine);
+    tracker.graph = sidekick::map::Graph::new(&rooms, sidekick::starquake::CORE_ROOM);
+    guidance.set_openings(sidekick::map::openings(
+        &rooms,
+        sidekick::starquake::CORE_ROOM,
+    ));
     let mut panel = Panel::new();
     let mut picture = vec![0u8; FULL_W * FULL_H * 4];
     // The tape's loading picture, which the window shows before the game.

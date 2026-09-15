@@ -1082,10 +1082,12 @@ fn facts_check(dir: &Path) -> bool {
 /// random from `walks` rooms, and fails if he ever leaves a room through an
 /// edge the map shows closed or crosses a wall it shows inside a room.
 fn map_check(dir: &Path, walks: usize) -> bool {
-    use sidekick::starquake::{all_openings, at, room_parts, routine};
+    use sidekick::starquake::{CORE_ROOM, all_rooms, at, routine};
     let mut base = machine(dir);
-    let openings = all_openings(&base);
-    let parts: Vec<_> = (0..512).map(|room| room_parts(&base, room)).collect();
+    let rooms = all_rooms(&base);
+    let openings = sidekick::map::openings(&rooms, CORE_ROOM);
+    let parts: Vec<_> = rooms.iter().map(|r| r.open.clone()).collect();
+    let graph = sidekick::map::Graph::new(&rooms, CORE_ROOM);
     // Into play, as a player would.
     base.watch = vec![routine::MAIN_LOOP];
     let mut script = Script(0xBEEF);
@@ -1104,6 +1106,9 @@ fn map_check(dir: &Path, walks: usize) -> bool {
         rng.0 % n
     };
     let (mut crossings, mut positions, mut failures) = (0u64, 0u64, 0u64);
+    // Level 5's graph against the same walks (#10): every crossing between
+    // two places Blob stood in must be a way.
+    let (mut checked, mut missing) = (0u64, 0u64);
     for walk in 0..walks {
         let mut m = base.clone();
         // Start each walk in a different room, entered as walking in.
@@ -1120,6 +1125,8 @@ fn map_check(dir: &Path, walks: usize) -> bool {
             z.set_interrupts(true);
         }
         let mut part = 0;
+        let mut last_place: Option<sidekick::map::Place> = None;
+        let mut pending: Option<(sidekick::map::Place, u16)> = None;
         for frame in 0..1500 {
             if frame % 25 == 0 {
                 m.zx.release_all_keys();
@@ -1134,12 +1141,20 @@ fn map_check(dir: &Path, walks: usize) -> bool {
                 // A door, booth or pyramid screen, or a lost life: this walk's
                 // view of where Blob is starts again.
                 part = 0;
+                last_place = None;
+                pending = None;
                 continue;
             }
             let z = &m.zx;
             let room = z.read16(at::ROOM);
             if room != from {
                 part = 0;
+                // Only a step to a room beside: a teleport lands anywhere.
+                let beside = [1, 0xFFFF, 16, 0xFFF0].contains(&room.wrapping_sub(from));
+                pending = last_place
+                    .filter(|p| beside && p.0 != CORE_ROOM && room != CORE_ROOM)
+                    .map(|p| (p, room));
+                last_place = None;
                 let o = openings[usize::from(from) % 512];
                 let edge = match room.wrapping_sub(from) {
                     1 => Some(("right", o.right)),
@@ -1164,6 +1179,22 @@ fn map_check(dir: &Path, walks: usize) -> bool {
             );
             if x & 7 != 0 || room >= 512 {
                 continue;
+            }
+            let place = graph.place(room, x, y);
+            if place.1 != 0 {
+                if let Some((was, to)) = pending.take()
+                    && to == room
+                {
+                    checked += 1;
+                    if !graph.ways(was).contains(&place) {
+                        missing += 1;
+                        println!(
+                            "map: walk {walk}: from room {} part {} into room {room} part {}, which the graph has no way for",
+                            was.0, was.1, place.1
+                        );
+                    }
+                }
+                last_place = Some(place);
             }
             let here = parts[usize::from(room)].at((0xBF - y) >> 3, x >> 3);
             if here == 0 {
@@ -1197,7 +1228,132 @@ fn map_check(dir: &Path, walks: usize) -> bool {
     println!(
         "map: {open} of 2048 edges open, {divided} rooms divided inside; {crossings} crossings and {positions} positions walked, {failures} against the map"
     );
-    failures == 0 && crossings > 0
+    // The graph's reach from where play starts.
+    let start = {
+        let z = &base.zx;
+        graph.place(
+            z.read16(at::ROOM),
+            z.mem[usize::from(at::ENTITIES) + 5],
+            z.mem[usize::from(at::ENTITIES) + 6],
+        )
+    };
+    let mut seen = std::collections::BTreeSet::from([start]);
+    let mut todo = vec![start];
+    while let Some(p) = todo.pop() {
+        for &to in graph.ways(p) {
+            if seen.insert(to) {
+                todo.push(to);
+            }
+        }
+    }
+    let reach = seen
+        .iter()
+        .map(|p| p.0)
+        .collect::<std::collections::BTreeSet<u16>>()
+        .len();
+    let (places, ways) = graph
+        .places()
+        .fold((0, 0), |(n, w), p| (n + 1, w + graph.ways(p).len()));
+    println!(
+        "map: level 5's graph: {places} places, {ways} ways; from the start it reaches {reach} rooms without a teleport; {checked} crossings checked against it, {missing} with no way"
+    );
+    let passages_ok = passages_check(&base, &rooms, &openings);
+    failures == 0 && crossings > 0 && passages_ok && missing == 0 && checked > 0
+}
+
+/// Every wall passage walked into from each side Blob can stand beside it,
+/// on copies of `base` in play: he must reach the room on that side, and the
+/// map must join the two rooms that way, and join no two rooms a walk does
+/// not (#10).
+fn passages_check(
+    base: &Machine,
+    rooms: &[sidekick::map::Room],
+    openings: &[sidekick::map::Openings],
+) -> bool {
+    use sidekick::map::COLS;
+    use sidekick::starquake::{at, routine};
+    let (mut walked, mut failures) = (0, 0);
+    let mut joined = std::collections::BTreeSet::new();
+    for (i, r) in rooms.iter().enumerate() {
+        let Some((row, col)) = r.passage else {
+            continue;
+        };
+        let room = i as u16;
+        // Blob's top-left column beside the tile, the Kempston input that
+        // walks him into it, and the room that way.
+        for (beside, input, to) in [
+            (i16::from(col) - 2, 1u8, room + 1),
+            (i16::from(col) + 4, 2, room.wrapping_sub(1)),
+        ] {
+            let Some((c, r_top)) =
+                (0..31)
+                    .contains(&beside)
+                    .then_some(beside as u8)
+                    .and_then(|c| {
+                        (row.saturating_sub(1)..=row + 1)
+                            .find(|&rr| r.shut.at(rr, c) != 0)
+                            .map(|rr| (c, rr))
+                    })
+            else {
+                continue;
+            };
+            let mut m = base.clone();
+            m.zx.write16(at::ROOM, room);
+            m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+                continue;
+            }
+            m.zx.t = 0;
+            m.zx.set_interrupts(true);
+            m.zx.mem[usize::from(at::ENTITIES) + 5] = c * 8;
+            m.zx.mem[usize::from(at::ENTITIES) + 6] = 143 - 8 * (r_top - 6);
+            m.watch = vec![routine::MODAL, routine::DEATH];
+            let mut reached = None;
+            for _ in 0..80 {
+                m.zx.release_all_keys();
+                m.zx.kempston = input;
+                if !m.run_frame().is_empty() {
+                    break;
+                }
+                let now = m.zx.read16(at::ROOM);
+                if now != room {
+                    reached = Some(now);
+                    break;
+                }
+            }
+            walked += 1;
+            let shown = if input == 1 {
+                room % COLS != COLS - 1 && openings[i].right
+            } else {
+                !room.is_multiple_of(COLS) && openings[i].left
+            };
+            if reached == Some(to) && shown {
+                joined.insert((room.min(to), room.max(to)));
+            } else {
+                failures += 1;
+                println!(
+                    "map: walking into room {room}'s passage toward {to} reached {reached:?}; the map joins them: {shown}"
+                );
+            }
+        }
+    }
+    // No join the walks did not make.
+    for (i, o) in openings.iter().enumerate() {
+        let room = i as u16;
+        // Open on the right only through a passage, not a gap in the wall.
+        if o.right && !rooms[i].openings.right && !joined.contains(&(room, room + 1)) {
+            failures += 1;
+            println!(
+                "map: rooms {room} and {} are joined by passages no walk went through",
+                room + 1
+            );
+        }
+    }
+    println!(
+        "map: {walked} walks into wall passages, {} pairs of rooms joined by them, {failures} against the map",
+        joined.len()
+    );
+    failures == 0 && walked > 0
 }
 
 fn shots(dir: &Path, frames: u64, out: &Path) {

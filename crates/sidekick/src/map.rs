@@ -236,6 +236,7 @@ impl Parts {
 }
 
 /// One room as the map reads it.
+#[derive(Clone)]
 pub struct Room {
     pub openings: Openings,
     /// Its parts with security doors shut, and with them open.
@@ -243,9 +244,20 @@ pub struct Room {
     pub open: Parts,
     /// The cell of its wall passage marker, if it has one.
     pub passage: Option<(u8, u8)>,
+    /// Which way its passage leads: right when Blob can stand beside the
+    /// tile on its left and walk into it, left when he can on its right. On
+    /// the tape every passage has one such side (#10).
+    pub passage_right: bool,
+    pub passage_left: bool,
     /// Its solid cells, a bit per cell: bit `col` of `solid[row]`, rows from
     /// the top of the play area.
     pub solid: [u32; 18],
+    /// Its lift cells, the same way: a lift only ever carries Blob up.
+    pub lift: [u32; 18],
+    /// The part (doors shut) Blob can reach its wall passage from, and the
+    /// part its teleporter booth is in.
+    pub passage_part: u8,
+    pub booth_part: u8,
 }
 
 /// The character cell of a marker's position (the way the game's tiles place them).
@@ -259,6 +271,13 @@ const PASSAGE: u8 = 0x0F;
 
 /// The marker a security door's tile leaves.
 const DOOR: u8 = 0;
+
+/// The attributes of a lift's cells, bright with green paper and used for
+/// nothing else on the planet: standing in one carries Blob up (#10).
+pub const LIFT_ATTRS: [u8; 2] = [0x60, 0x64];
+
+/// The marker a teleporter booth's tile leaves.
+const BOOTH: u8 = 0x0D;
 
 /// The marker a teleporter pad's tile leaves, one on each side of the pad's
 /// own column, which stands one cell wide and three tall in a gap and is
@@ -286,20 +305,66 @@ impl Room {
                 _ => {}
             }
         }
+        // Where Blob can stand beside the passage's tile, four cells wide and
+        // three tall: with his top-left cell two columns left of it, or just
+        // past its right side, on a row that overlaps it. Walking into it
+        // from there takes him through to the room on that side.
+        let beside = |col: i16| {
+            passage.is_some_and(|(row, _)| {
+                (0..SPOTS_ACROSS as i16).contains(&col)
+                    && (row.saturating_sub(1)..=row + 1).any(|r| shut.at(r, col as u8) != 0)
+            })
+        };
+        let at = passage.map_or(0, |(_, col)| i16::from(col));
+        let (passage_right, passage_left) = (beside(at - 2), beside(at + 4));
+        // The part on the side Blob walks into the passage from, where he
+        // also arrives through it from the room beside.
+        let passage_part = passage
+            .map(|(row, _)| {
+                let side = if passage_right { at - 2 } else { at + 4 };
+                (row.saturating_sub(1)..=row + 1)
+                    .map(|r| shut.at(r, side.clamp(0, 30) as u8))
+                    .find(|&p| p != 0)
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0);
+        // The part a tile's marker stands in: Blob on it, his top cell on the
+        // marker's row or up to two above, at its column or beside.
+        let part_at_marker = |(row, col): (u8, u8)| {
+            (0..=2u8)
+                .flat_map(|up| [0, 1, -1i16].map(move |d| (row.saturating_sub(up), d)))
+                .map(|(r, d)| shut.at(r, (i16::from(col) + d).clamp(0, 30) as u8))
+                .find(|&p| p != 0)
+                .unwrap_or(0)
+        };
         let mut solid = [0u32; 18];
-        for (r, bits) in solid.iter_mut().enumerate() {
+        let mut lift = [0u32; 18];
+        for r in 0..18 {
             for col in 0..32u8 {
-                if !free(attr(FIRST_ROW + r as u8, col)) {
-                    *bits |= 1 << col;
+                let a = attr(FIRST_ROW + r as u8, col);
+                if !free(a) {
+                    solid[r] |= 1 << col;
+                }
+                if LIFT_ATTRS.contains(&a) {
+                    lift[r] |= 1 << col;
                 }
             }
         }
+        let booth_part = markers
+            .iter()
+            .find(|m| m.2 == BOOTH)
+            .map_or(0, |m| part_at_marker(cell(m)));
         Room {
             openings: scan(|row, col| free(attr(row, col))),
             shut,
             open,
             passage,
+            passage_right,
+            passage_left,
             solid,
+            lift,
+            passage_part,
+            booth_part,
         }
     }
 }
@@ -307,18 +372,27 @@ impl Room {
 /// The openings of every room, from each room read in number order.
 ///
 /// An edge is open where there is a gap in it, or a passage through the
-/// wall: two rooms side by side that both have a passage marker. The core
+/// wall: two rooms side by side whose passages lead to each other, the left
+/// one's walked into going right and the right one's going left (#10). The core
 /// room is not played in its tiles (walking in from the left runs its own
 /// screen, which puts Blob back in the room he came from), so its one way in
 /// and out is its left edge.
 #[must_use]
 pub fn openings(rooms: &[Room], core_room: u16) -> Vec<Openings> {
-    let passage = |room: usize| rooms.get(room).is_some_and(|r| r.passage.is_some());
+    let leads = |room: usize, right: bool| {
+        rooms.get(room).is_some_and(|r| {
+            if right {
+                r.passage_right
+            } else {
+                r.passage_left
+            }
+        })
+    };
     let mut openings = Vec::with_capacity(rooms.len());
     for (i, room) in rooms.iter().enumerate() {
         let col = i as u16 % COLS;
-        let right = col != COLS - 1 && passage(i) && passage(i + 1);
-        let left = col != 0 && passage(i) && i > 0 && passage(i - 1);
+        let right = col != COLS - 1 && leads(i, true) && leads(i + 1, false);
+        let left = col != 0 && leads(i, false) && leads(i - 1, true);
         let mut o = room.openings;
         o.right |= right;
         o.left |= left;
@@ -565,6 +639,215 @@ impl Known {
     }
 }
 
+/// The part with doors open that holds the part `shut` of a room with doors
+/// shut.
+fn open_part(room: &Room, shut: u8) -> u8 {
+    (0..SPOTS_DOWN)
+        .flat_map(|r| (0..SPOTS_ACROSS).map(move |c| (r, c)))
+        .map(|(r, c)| (FIRST_ROW + r as u8, c as u8))
+        .find(|&(r, c)| room.shut.at(r, c) == shut && shut != 0)
+        .map_or(0, |(r, c)| room.open.at(r, c))
+}
+
+/// Where Blob can be on the planet: a room, and the part of it he is in,
+/// with its doors and teleporter pads open (#10).
+pub type Place = (u16, u8);
+
+/// The planet as the map reads it, for level 5 (#10): every place, and the
+/// places a step leads to from each. Two rooms join where both have a place
+/// for Blob at the same spot on their shared edge, both ways and in every
+/// direction, since level 5 assumes Blob can fly everywhere and leaves the
+/// logistics to the player (decision 5), except down through a lift, which
+/// only ever goes up; and where their wall passages lead to each other.
+/// Doors and teleporter pads count as open, and the core room is reached
+/// from the room to its left.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Graph {
+    ways: std::collections::BTreeMap<Place, Vec<Place>>,
+    booths: Vec<Place>,
+    /// Every room's parts with doors open, to find where Blob is.
+    parts: Vec<Parts>,
+}
+
+impl Graph {
+    /// Builds the graph from every room, read in number order.
+    #[must_use]
+    pub fn new(rooms: &[Room], core_room: u16) -> Graph {
+        let mut ways = std::collections::BTreeMap::<Place, Vec<Place>>::new();
+        let mut join = |a: Place, b: Place, both: bool| {
+            if a.1 == 0 || b.1 == 0 {
+                return;
+            }
+            for (from, to) in [(a, b), (b, a)].into_iter().take(if both { 2 } else { 1 }) {
+                let list = ways.entry(from).or_default();
+                if !list.contains(&to) {
+                    list.push(to);
+                }
+            }
+        };
+        for (i, r) in rooms.iter().enumerate() {
+            let room = i as u16;
+            if room == core_room {
+                continue;
+            }
+            if room % COLS + 1 < COLS
+                && let Some(o) = rooms.get(i + 1)
+            {
+                if room + 1 == core_room {
+                    for row in FIRST_ROW..LAST_ROW {
+                        join((room, r.open.at(row, LAST_COL - 1)), (core_room, 1), false);
+                    }
+                } else {
+                    for row in FIRST_ROW..LAST_ROW {
+                        join(
+                            (room, r.open.at(row, LAST_COL - 1)),
+                            (room + 1, o.open.at(row, 0)),
+                            true,
+                        );
+                    }
+                    if r.passage_right && o.passage_left {
+                        join(
+                            (room, open_part(r, r.passage_part)),
+                            (room + 1, open_part(o, o.passage_part)),
+                            true,
+                        );
+                    }
+                }
+            }
+            if let Some(below) = rooms.get(i + usize::from(COLS))
+                && room + COLS != core_room
+            {
+                let lift = |room: &Room, row: usize, c: u8| room.lift[row] & (0b11 << c) != 0;
+                for c in 0..LAST_COL {
+                    let (up, down) = (
+                        (room + COLS, below.open.at(FIRST_ROW, c)),
+                        (room, r.open.at(LAST_ROW - 1, c)),
+                    );
+                    // Up always; down only where no lift stands at the edge.
+                    join(up, down, false);
+                    if !(lift(r, 16, c) || lift(r, 17, c) || lift(below, 0, c) || lift(below, 1, c))
+                    {
+                        join(down, up, false);
+                    }
+                }
+            }
+        }
+        let booths = rooms
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.booth_part != 0)
+            .map(|(i, r)| (i as u16, open_part(r, r.booth_part)))
+            .collect();
+        Graph {
+            ways,
+            booths,
+            parts: rooms.iter().map(|r| r.open.clone()).collect(),
+        }
+    }
+
+    /// The place Blob is in, standing at (`x`, `y`) in `room`: the part
+    /// under his top-left cell, or one beside it while he is between cells;
+    /// part 0 when none is found.
+    #[must_use]
+    pub fn place(&self, room: u16, x: u8, y: u8) -> Place {
+        let Some(parts) = self.parts.get(usize::from(room)) else {
+            return (room, 0);
+        };
+        let (row, col) = (i16::from((0xBF - y.min(0xBF)) >> 3), i16::from(x >> 3));
+        let part = [
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (1, 1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (1, -1),
+        ]
+        .into_iter()
+        .map(|(dr, dc)| (row + dr, col + dc))
+        .filter(|&(r, c)| r >= 0 && c >= 0)
+        .map(|(r, c)| parts.at(r as u8, c as u8))
+        .find(|&p| p != 0)
+        .unwrap_or(0);
+        (room, part)
+    }
+
+    /// The places one step from `place`.
+    #[must_use]
+    pub fn ways(&self, place: Place) -> &[Place] {
+        self.ways.get(&place).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every place the graph has a way out of.
+    pub fn places(&self) -> impl Iterator<Item = Place> + '_ {
+        self.ways.keys().copied()
+    }
+
+    /// The fewest steps from `start` to a room in `targets` over the whole
+    /// map (level 5, #10), a teleport counting as one: the graph's ways, and
+    /// a jump from a booth in a room in `booths` to another such booth.
+    /// `start` with part 0 starts from every place in its room. `None` when
+    /// no target can be reached; empty when `start`'s room is one.
+    #[must_use]
+    pub fn route(&self, start: Place, booths: &[u16], targets: &RoomSet) -> Option<Vec<Step>> {
+        use std::collections::{BTreeMap, BTreeSet, VecDeque};
+        if targets.contains(start.0) {
+            return Some(vec![]);
+        }
+        let starts: Vec<Place> = if start.1 == 0 {
+            self.ways
+                .range((start.0, 0)..=(start.0, u8::MAX))
+                .map(|(p, _)| *p)
+                .collect()
+        } else {
+            vec![start]
+        };
+        let seen_booths: Vec<Place> = self
+            .booths
+            .iter()
+            .copied()
+            .filter(|b| booths.contains(&b.0))
+            .collect();
+        let mut came: BTreeMap<Place, (Place, bool)> = BTreeMap::new();
+        let mut queue: VecDeque<Place> = starts.iter().copied().collect();
+        let mut seen: BTreeSet<Place> = starts.iter().copied().collect();
+        while let Some(here) = queue.pop_front() {
+            if targets.contains(here.0) {
+                let mut path = vec![];
+                let mut at = here;
+                while let Some(&(from, teleport)) = came.get(&at) {
+                    path.push(Step {
+                        room: at.0,
+                        teleport,
+                    });
+                    at = from;
+                }
+                path.reverse();
+                return Some(path);
+            }
+            let walks = self.ways(here).iter().map(|&to| (to, false));
+            let jumps = seen_booths
+                .contains(&here)
+                .then(|| {
+                    seen_booths
+                        .iter()
+                        .filter(move |&&b| b != here)
+                        .map(|&b| (b, true))
+                })
+                .into_iter()
+                .flatten();
+            for (to, teleport) in walks.chain(jumps).collect::<Vec<_>>() {
+                if seen.insert(to) {
+                    came.insert(to, (here, teleport));
+                    queue.push_back(to);
+                }
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -784,7 +1067,12 @@ mod tests {
             shut: Parts::find(room(&shut_refs)),
             open: Parts::find(room(&open_refs)),
             passage: None,
+            passage_right: false,
+            passage_left: false,
             solid: solid_of(&shut_refs),
+            lift: [0; 18],
+            passage_part: 0,
+            booth_part: 0,
         };
         openings(&[r], 999)[0].divides
     }
@@ -857,6 +1145,240 @@ mod tests {
             "{drawn:?}"
         );
         assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
+    }
+
+    /// A room walled all round with a wall passage's tile at screen row 13,
+    /// column `col`, and solid cells from `solid_from` to `solid_to` on rows
+    /// 12 to 15, so Blob can stand beside the tile on one side only.
+    fn passage_room(col: u8, solid_from: usize, solid_to: usize) -> Room {
+        let mut lines = walled();
+        for line in &mut lines[6..10] {
+            line.replace_range(solid_from..solid_to, &"#".repeat(solid_to - solid_from));
+        }
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        let grid = room(&refs);
+        assert_eq!(marker_cell(col * 8, 87), (13, col));
+        Room::read(
+            |row, c| if grid(row, c) { 0x47 } else { 0x07 },
+            &[(col * 8, 87, PASSAGE)],
+        )
+    }
+
+    /// Rooms 192 to 195 on the tape: each passage is walked into from its one
+    /// free side and leads to the room on that side, so 192 joins 193 and 194
+    /// joins 195, but 193 and 194, whose passages face away from each other,
+    /// do not join (#10, decision 6).
+    #[test]
+    fn a_passage_joins_only_the_room_on_the_side_it_is_walked_into_from() {
+        // Free on its left, a wall on its right: walked into going right.
+        let right = || passage_room(25, 27, 31);
+        // A wall on its left, free on its right: walked into going left.
+        let left = || passage_room(5, 1, 5);
+        assert!(right().passage_right && !right().passage_left);
+        assert!(left().passage_left && !left().passage_right);
+        let o = openings(&[right(), left(), right(), left()], 999);
+        assert!(o[0].right && o[1].left, "192 and 193 join");
+        assert!(!o[1].right && !o[2].left, "193 and 194 do not");
+        assert!(o[2].right && o[3].left, "194 and 195 join");
+        assert!(!o[0].left && !o[3].right);
+    }
+
+    /// A room read from text, `#` solid, `L` a lift's cell and anything else
+    /// free, with the markers given.
+    fn read_text(lines: &[String], markers: &[(u8, u8, u8)]) -> Room {
+        let grid: Vec<Vec<char>> = lines.iter().map(|l| l.chars().collect()).collect();
+        Room::read(
+            |row, col| match grid[usize::from(row - FIRST_ROW)][usize::from(col)] {
+                '#' => 0x07,
+                'L' => LIFT_ATTRS[0],
+                _ => 0x47,
+            },
+            markers,
+        )
+    }
+
+    /// Seventeen closed rooms, so rooms 0, 1 and 16 can be drawn.
+    fn planet_of(drawn: &[(usize, Room)]) -> Vec<Room> {
+        let mut rooms: Vec<Room> = (0..17).map(|_| read_text(&walled(), &[])).collect();
+        for (i, r) in drawn {
+            rooms[*i] = r.clone();
+        }
+        rooms
+    }
+
+    /// A walled room with gaps: `left`/`right` rows 8 and 9, `down`/`up`
+    /// columns 10 and 11.
+    fn gapped(left: bool, right: bool, up: bool, down: bool) -> Vec<String> {
+        let mut lines = walled();
+        for r in [8, 9] {
+            if left {
+                lines[r].replace_range(0..1, ".");
+            }
+            if right {
+                lines[r].replace_range(31..32, ".");
+            }
+        }
+        if up {
+            lines[0].replace_range(10..12, "..");
+        }
+        if down {
+            lines[17].replace_range(10..12, "..");
+        }
+        lines
+    }
+
+    fn ways_between(g: &Graph, from: u16, to: u16) -> Vec<Place> {
+        g.places()
+            .filter(|p| p.0 == from)
+            .flat_map(|p| g.ways(p).to_vec())
+            .filter(|w| w.0 == to)
+            .collect()
+    }
+
+    #[test]
+    fn rooms_open_to_each_other_join_both_ways() {
+        let rooms = planet_of(&[
+            (0, read_text(&gapped(false, true, false, false), &[])),
+            (1, read_text(&gapped(true, false, false, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(ways_between(&g, 0, 1), [(1, 1)]);
+        assert_eq!(ways_between(&g, 1, 0), [(0, 1)]);
+    }
+
+    #[test]
+    fn only_the_part_of_a_divided_room_that_touches_the_edge_joins() {
+        // Room 0 open on its right, but a wall down its middle.
+        let mut lines = gapped(false, true, false, false);
+        for line in &mut lines {
+            line.replace_range(15..17, "##");
+        }
+        let rooms = planet_of(&[
+            (0, read_text(&lines, &[])),
+            (1, read_text(&gapped(true, false, false, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        let from: Vec<Place> = g.places().filter(|p| p.0 == 0).collect();
+        assert_eq!(from.len(), 1, "one part of room 0 has a way out: {from:?}");
+        assert_eq!(from[0].1, rooms[0].shut.at(12, 20));
+    }
+
+    /// Blob can fly everywhere at level 5 (#10, decision 5): a drop is a way back
+    /// up as well as down.
+    #[test]
+    fn a_drop_is_a_way_down_and_back_up() {
+        let rooms = planet_of(&[
+            (0, read_text(&gapped(false, false, false, true), &[])),
+            (16, read_text(&gapped(false, false, true, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(ways_between(&g, 0, 16), [(16, 1)]);
+        assert_eq!(ways_between(&g, 16, 0), [(0, 1)]);
+    }
+
+    #[test]
+    fn a_lift_is_a_way_up_and_never_down() {
+        let mut below = gapped(false, false, true, false);
+        for line in &mut below[0..17] {
+            line.replace_range(10..12, "LL");
+        }
+        let rooms = planet_of(&[
+            (0, read_text(&gapped(false, false, false, true), &[])),
+            (16, read_text(&below, &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(ways_between(&g, 16, 0), [(0, 1)]);
+        assert!(
+            ways_between(&g, 0, 16).is_empty(),
+            "a lift only ever goes up"
+        );
+    }
+
+    #[test]
+    fn passages_join_the_parts_blob_uses_them_from() {
+        let rooms = planet_of(&[(0, passage_room(25, 27, 31)), (1, passage_room(5, 1, 5))]);
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(ways_between(&g, 0, 1), [(1, rooms[1].passage_part)]);
+        assert_eq!(ways_between(&g, 1, 0).len(), 1);
+    }
+
+    #[test]
+    fn the_core_is_reached_from_the_room_to_its_left_and_leads_nowhere() {
+        let rooms = planet_of(&[
+            (0, read_text(&gapped(false, true, false, false), &[])),
+            (1, read_text(&gapped(true, true, false, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 1);
+        assert_eq!(ways_between(&g, 0, 1), [(1, 1)]);
+        assert!(g.places().all(|p| p.0 != 1), "nothing out of the core");
+    }
+
+    #[test]
+    fn level_5_routes_through_rooms_never_walked() {
+        // 0 → 1 sideways, 1 → 17 down, and back up.
+        let mut rooms = planet_of(&[
+            (0, read_text(&gapped(false, true, false, false), &[])),
+            (1, read_text(&gapped(true, false, false, true), &[])),
+        ]);
+        rooms.push(read_text(&gapped(false, false, true, false), &[]));
+        let g = Graph::new(&rooms, 999);
+        let there = g.route((0, 1), &[], &targets(&[17])).unwrap();
+        assert_eq!(there.iter().map(|s| s.room).collect::<Vec<_>>(), [1, 17]);
+        let back = g.route((17, 1), &[], &targets(&[0])).unwrap();
+        assert_eq!(back.iter().map(|s| s.room).collect::<Vec<_>>(), [1, 0]);
+    }
+
+    #[test]
+    fn level_5_jumps_between_booths_entered_only() {
+        // Room 0 and room 16, closed all round, each with a booth: the only
+        // way into 16 is the jump.
+        let booth = (160, 15, BOOTH);
+        let rooms = planet_of(&[
+            (0, read_text(&gapped(false, true, false, false), &[booth])),
+            (16, read_text(&walled(), &[booth])),
+            (1, read_text(&gapped(true, false, false, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(
+            g.route((0, 1), &[0], &targets(&[16])),
+            None,
+            "16's booth not entered"
+        );
+        let route = g.route((0, 1), &[0, 16], &targets(&[16])).unwrap();
+        assert_eq!(
+            route,
+            [Step {
+                room: 16,
+                teleport: true
+            }]
+        );
+    }
+
+    #[test]
+    fn level_5_goes_through_a_door() {
+        // Room 0 open on its right, divided by a solid pillar with a door's
+        // tile against it, as in room 210: level 5 counts the door open and
+        // leaves the items to the player.
+        let mut lines = gapped(false, true, false, false);
+        for line in &mut lines {
+            line.replace_range(15..17, "##");
+        }
+        let door = read_text(&lines, &[(112, 87, DOOR)]);
+        let (left, right) = (door.shut.at(12, 5), door.shut.at(12, 25));
+        assert!(left != 0 && right != 0 && left != right, "two halves shut");
+        let rooms = planet_of(&[
+            (0, door),
+            (1, read_text(&gapped(true, false, false, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        let from_left = g.place(0, 5 * 8, 143 - 8 * 6);
+        assert_eq!(
+            g.route(from_left, &[], &targets(&[1])),
+            Some(vec![Step {
+                room: 1,
+                teleport: false
+            }])
+        );
     }
 
     #[test]
