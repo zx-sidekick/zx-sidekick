@@ -815,9 +815,16 @@ fn visited_check(dir: &Path) -> bool {
     let (mut playing, mut last_room, mut visits, mut late, mut slowest, mut bad) =
         (false, None, 0, 0, 0, 0);
     let mut waiting: Option<(u16, u64)> = None;
+    // The reason each room was entered with, as the game enters it.
+    let mut reasons: Vec<u8> = vec![];
     for frame in 0..6000u64 {
         script.apply(&mut m, frame);
-        for hit in m.run_frame() {
+        let hits = m.run_frame_observing(|z| {
+            if z.pc() == routine::ENTER_ROOM {
+                reasons.push(z.mem[usize::from(at::ENTRY_REASON)]);
+            }
+        });
+        for hit in hits {
             playing = hit == routine::MAIN_LOOP;
             if !playing {
                 last_room = None;
@@ -854,9 +861,15 @@ fn visited_check(dir: &Path) -> bool {
             last_room = Some(room);
         }
     }
+    // Walking about, every room is entered with the reason for walking in.
+    let entered = reasons.len();
+    bad += reasons
+        .iter()
+        .filter(|&&why| why != sidekick::starquake::entry::WALKED)
+        .count();
     let good = visits > 0 && late == 0 && bad == 0;
     println!(
-        "  the rooms visited: {visits} rooms walked into, each marked within {slowest} frames, {late} late, {bad} frames outside a room {}",
+        "  the rooms visited: {visits} rooms walked into, each marked within {slowest} frames; {entered} rooms entered, all as walked; {late} late, {bad} out of place {}",
         if good { "ok" } else { "FAILED" }
     );
     good
@@ -953,6 +966,49 @@ fn teleporters_check(dir: &Path) -> bool {
             && teleporter_code(&z.mem[..], room) == Some(code);
         printed_ok += usize::from(good);
         ok &= good;
+        // From the first booth, type the next booth's code: the game should
+        // move Blob there and record the room as entered by teleport.
+        if room == entries[0].0 && good {
+            let (to, next) = entries[1];
+            // Let the booth finish printing and wait for a key.
+            for _ in 0..60 {
+                m.zx.release_all_keys();
+                m.run_frame();
+            }
+            let letter = |c: u8| {
+                Key::by_name(&(c as char).to_ascii_lowercase().to_string()).expect("a letter")
+            };
+            for &c in &next {
+                for frame in 0..15 {
+                    m.zx.release_all_keys();
+                    m.zx.set_key(letter(c), frame < 5);
+                    m.run_frame();
+                }
+            }
+            // The room number changes as the booth takes the code; the game
+            // enters the room, with its reason set, when the booth is done.
+            let (mut arrived, mut reason) = (false, 0xFF);
+            for _ in 0..300 {
+                m.zx.release_all_keys();
+                let mut entering = None;
+                m.run_frame_observing(|z| {
+                    if z.pc() == routine::ENTER_ROOM && entering.is_none() {
+                        entering = Some((z.read16(at::ROOM), z.mem[usize::from(at::ENTRY_REASON)]));
+                    }
+                });
+                if let Some((room, why)) = entering {
+                    (arrived, reason) = (room == to, why);
+                    break;
+                }
+            }
+            let teleported = arrived && reason == sidekick::starquake::entry::TELEPORTED;
+            println!(
+                "  typing another booth's code: arrived in room {to} {}, entry reason {reason} {}",
+                if arrived { "yes" } else { "no" },
+                if teleported { "ok" } else { "FAILED" }
+            );
+            ok &= teleported;
+        }
     }
     println!(
         "  walking into each booth prints its code: {printed_ok} of {} {}",

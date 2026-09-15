@@ -96,7 +96,12 @@ from 0 (none) to 5, each adding to the ones below.
                        nine holes beside it: the pieces still needed,
                        the ones delivered dimmed, and a piece you carry
                        outlined.
-  Levels 4 and 5       Still to be built, and training mode too.
+  Level 4              A route to the nearest missing piece over the
+                       ways you have walked (or to the core while you
+                       carry a piece it needs): a line on the map, an
+                       arrow in the border the way to leave the room,
+                       and the code to select when a teleporter is next.
+  Level 5              Still to be built, and training mode too.
 
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.

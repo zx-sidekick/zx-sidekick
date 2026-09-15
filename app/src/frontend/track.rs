@@ -3,10 +3,10 @@
 //! panel so it knows when a game starts and ends; and the teleporter booths
 //! entered, for level 1 (#4).
 
-use sidekick::map::RoomSet;
+use sidekick::map::{Known, RoomSet};
 use sidekick::starquake::{
-    Item, SeenTeleporter, at, graphic, hole, items_and_core, missing_piece_rooms, routine,
-    teleporter_code,
+    CORE_ROOM, Item, SeenTeleporter, at, entry, graphic, hole, items_and_core, missing_piece_rooms,
+    routine, teleporter_code,
 };
 
 use super::guidance::{Guidance, Hole};
@@ -28,12 +28,13 @@ pub enum Scene {
 
 /// The routines whose arrival tells the tracker something: which scene the
 /// program is in, a new game, and a teleporter booth entered.
-pub const WATCH: [u16; 5] = [
+pub const WATCH: [u16; 6] = [
     routine::MENU,
     routine::MAIN_LOOP,
     routine::GAME_OVER,
     routine::NEW_GAME,
     routine::TELEPORT_BOOTH,
+    routine::ENTER_ROOM,
 ];
 
 #[derive(Default)]
@@ -41,6 +42,11 @@ pub struct Tracker {
     pub scene: Scene,
     /// The booths entered this game, in the order they were entered.
     seen: Vec<SeenTeleporter>,
+    /// The connections walked this game (#9).
+    known: Known,
+    /// The room last entered this game, which a walk into the next starts
+    /// from.
+    entered: Option<u16>,
 }
 
 impl Tracker {
@@ -63,7 +69,25 @@ impl Tracker {
                     self.seen.push(SeenTeleporter { room, code });
                 }
             }
-            routine::NEW_GAME | routine::MENU => self.seen.clear(),
+            routine::NEW_GAME | routine::MENU => {
+                self.seen.clear();
+                self.known = Known::default();
+                self.entered = None;
+            }
+            // The room and why it was entered are both set as the game
+            // enters it; the room number alone changes earlier for a teleport.
+            routine::ENTER_ROOM => {
+                let room = u16::from_le_bytes([
+                    mem[usize::from(at::ROOM)],
+                    mem[usize::from(at::ROOM) + 1],
+                ]);
+                if mem[usize::from(at::ENTRY_REASON)] == entry::WALKED
+                    && let Some(from) = self.entered
+                {
+                    self.known.walked(from, room);
+                }
+                self.entered = Some(room);
+            }
             _ => {}
         }
         guidance.set_teleporters(&self.seen);
@@ -97,8 +121,18 @@ impl Tracker {
                 let unvisited = RoomSet(mem[start..start + 64].try_into().expect("64 bytes"));
                 guidance.set_unvisited(&unvisited);
                 let (items, core) = items_and_core(mem);
-                guidance.set_pieces(&missing_piece_rooms(&core, &items));
+                let pieces = missing_piece_rooms(&core, &items);
                 guidance.set_core(holes(mem, &core, &items));
+                // The route to the nearest missing piece, or to the core while
+                // a piece it needs is carried (#9, decision 7).
+                let mut targets = pieces.clone();
+                if guidance.core().iter().any(|h| h.carried) {
+                    targets.set(CORE_ROOM, true);
+                }
+                let here = u16::from_le_bytes([mem[room], mem[room + 1]]);
+                let booths: Vec<u16> = self.seen.iter().map(|t| t.room).collect();
+                guidance.set_route(self.known.route(here, &booths, &targets, CORE_ROOM));
+                guidance.set_pieces(&pieces);
             }
             Scene::GameOver => guidance.set_room(None),
             Scene::Loading | Scene::Menu => guidance.forget_map(),
@@ -214,6 +248,35 @@ mod tests {
         t.follow(&mem, routine::MENU, &mut g);
         t.publish(&mem, &mut g);
         assert_eq!(g.explored(), 0);
+    }
+
+    #[test]
+    fn walked_entries_become_connections_and_a_teleport_does_not() {
+        let mut t = Tracker::default();
+        let mut g = Guidance::default();
+        let mut mem = vec![0u8; 0x10000];
+        let mut enter = |t: &mut Tracker, g: &mut Guidance, room: u16, why: u8| {
+            mem[usize::from(at::ROOM)..usize::from(at::ROOM) + 2]
+                .copy_from_slice(&room.to_le_bytes());
+            mem[usize::from(at::ENTRY_REASON)] = why;
+            t.follow(&mem, routine::ENTER_ROOM, g);
+        };
+        enter(&mut t, &mut g, 40, entry::WALKED);
+        enter(&mut t, &mut g, 41, entry::WALKED);
+        enter(&mut t, &mut g, 300, entry::TELEPORTED);
+        enter(&mut t, &mut g, 316, entry::WALKED);
+        let mut want = Known::default();
+        want.walked(40, 41);
+        want.walked(300, 316);
+        assert_eq!(
+            t.known, want,
+            "no step recorded for the teleport from 41 to 300"
+        );
+        t.follow(&[0u8; 0x10000], routine::NEW_GAME, &mut g);
+        assert!(
+            t.known.is_empty() && t.entered.is_none(),
+            "a new game forgets them"
+        );
     }
 
     #[test]

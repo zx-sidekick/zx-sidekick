@@ -129,7 +129,7 @@ pub mod at {
     /// held at [`MARKERS_END`], three bytes each (x, y, kind).
     pub const MARKERS: u16 = 0x96FC;
     pub const MARKERS_END: u16 = 0x96FA;
-    /// Why the room was entered (0 walking in).
+    /// Why the room was entered, as [`super::entry`] names the values.
     pub const ENTRY_REASON: u16 = 0xD2C4;
     /// The rooms not yet visited this game: 512 bits, most significant
     /// first.
@@ -149,6 +149,17 @@ pub mod at {
     /// The restore list the room builder writes, and the pointer into it.
     pub const RESTORE_LIST: u16 = 0x5B20;
     pub const RESTORE_PTR: u16 = 0xEA60;
+}
+
+/// Why a room was entered, as the game keeps it at [`at::ENTRY_REASON`].
+/// Found on 2026-09-15 by typing codes into a booth on the player's tape:
+/// any code that teleports, the booth's own included, leaves
+/// [`entry::TELEPORTED`]; a code not recognised leaves 3.
+pub mod entry {
+    /// Walking in through an edge or a wall passage.
+    pub const WALKED: u8 = 0;
+    /// Arriving by teleport.
+    pub const TELEPORTED: u8 = 4;
 }
 
 /// The core room, which the game runs as a screen of its own.

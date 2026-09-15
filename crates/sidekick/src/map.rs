@@ -342,6 +342,106 @@ impl RoomSet {
     }
 }
 
+/// The connections between rooms a player has proven this game (#9), and
+/// the way to the nearest target over them.
+///
+/// Every walked step counts both ways, up and down included: a drop that
+/// cannot be climbed can be flown back up on the hover platform (decision 9
+/// on #9).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Known {
+    /// `from → to` for each proven step.
+    steps: std::collections::BTreeSet<(u16, u16)>,
+}
+
+/// One step of a route: into `room`, walking or by teleport.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Step {
+    pub room: u16,
+    pub teleport: bool,
+}
+
+impl Known {
+    /// Records walking from `from` into the neighbouring room `to`. A step
+    /// that is not to a neighbour records nothing.
+    pub fn walked(&mut self, from: u16, to: u16) {
+        if [1, 0xFFFF, 16, 0xFFF0].contains(&to.wrapping_sub(from)) {
+            self.steps.insert((from, to));
+            self.steps.insert((to, from));
+        }
+    }
+
+    /// Whether any step is known.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.steps.is_empty()
+    }
+
+    /// The fewest steps from `start` to a room in `targets`, a teleport
+    /// counting as one step: walking over known steps, and from a booth in
+    /// `booths` to any other of them. The core room, whose screen a player
+    /// walks into from its left and is put back from, counts as reached
+    /// from the room to its left once that room is reached. `None` when no
+    /// target can be reached; empty when `start` is one.
+    #[must_use]
+    pub fn route(
+        &self,
+        start: u16,
+        booths: &[u16],
+        targets: &RoomSet,
+        core_room: u16,
+    ) -> Option<Vec<Step>> {
+        let rooms = usize::from(COLS * ROWS);
+        if usize::from(start) >= rooms {
+            return None;
+        }
+        let mut came: Vec<Option<Step>> = vec![None; rooms];
+        let mut seen = vec![false; rooms];
+        seen[usize::from(start)] = true;
+        let mut queue = std::collections::VecDeque::from([start]);
+        while let Some(room) = queue.pop_front() {
+            if targets.contains(room) {
+                let mut path = vec![];
+                let mut at = room;
+                // Every room reached but the start knows where it came from.
+                while let Some(step) = came[usize::from(at)] {
+                    path.push(Step {
+                        room: at,
+                        teleport: step.teleport,
+                    });
+                    at = step.room;
+                }
+                path.reverse();
+                return Some(path);
+            }
+            let walks = self
+                .steps
+                .range((room, 0)..(room, u16::MAX))
+                .map(|&(_, to)| (to, false))
+                .chain((room + 1 == core_room).then_some((core_room, false)));
+            let jumps = booths
+                .contains(&room)
+                .then(|| {
+                    booths
+                        .iter()
+                        .filter(move |&&b| b != room)
+                        .map(|&b| (b, true))
+                })
+                .into_iter()
+                .flatten();
+            for (next, teleport) in walks.chain(jumps).collect::<Vec<_>>() {
+                if usize::from(next) < rooms && !seen[usize::from(next)] {
+                    seen[usize::from(next)] = true;
+                    // Remember where each room was reached from.
+                    came[usize::from(next)] = Some(Step { room, teleport });
+                    queue.push_back(next);
+                }
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,6 +484,72 @@ mod tests {
             .into_iter()
             .flatten()
             .collect()
+    }
+
+    fn targets(rooms: &[u16]) -> RoomSet {
+        let mut set = RoomSet::default();
+        for &r in rooms {
+            set.set(r, true);
+        }
+        set
+    }
+
+    #[test]
+    fn a_route_follows_walked_steps_both_ways() {
+        let mut k = Known::default();
+        // 100 → 101 → 117 (down), and 117 → 118.
+        k.walked(100, 101);
+        k.walked(101, 117);
+        k.walked(117, 118);
+        let route = k.route(100, &[], &targets(&[118]), 199).unwrap();
+        let rooms: Vec<u16> = route.iter().map(|s| s.room).collect();
+        assert_eq!(rooms, [101, 117, 118]);
+        // Back again, up the drop too.
+        let back = k.route(118, &[], &targets(&[100]), 199).unwrap();
+        let rooms: Vec<u16> = back.iter().map(|s| s.room).collect();
+        assert_eq!(rooms, [117, 101, 100]);
+    }
+
+    #[test]
+    fn a_route_takes_the_fewest_steps_and_a_teleport_is_one() {
+        let mut k = Known::default();
+        for r in 40..47 {
+            k.walked(r, r + 1); // a long corridor 40 … 47
+        }
+        k.walked(300, 301);
+        let route = k.route(40, &[40, 300], &targets(&[47, 301]), 199).unwrap();
+        assert_eq!(
+            route,
+            [
+                Step {
+                    room: 300,
+                    teleport: true
+                },
+                Step {
+                    room: 301,
+                    teleport: false
+                }
+            ],
+            "two steps by teleport beat seven walking"
+        );
+    }
+
+    #[test]
+    fn standing_on_a_target_is_an_empty_route_and_the_core_is_reached_from_its_left() {
+        let k = Known::default();
+        assert_eq!(k.route(5, &[], &targets(&[5]), 199), Some(vec![]));
+        assert_eq!(k.route(5, &[], &targets(&[6]), 199), None);
+        let mut k = Known::default();
+        k.walked(197, 198);
+        let route = k.route(197, &[], &targets(&[199]), 199).unwrap();
+        assert_eq!(route.last().unwrap().room, 199);
+    }
+
+    #[test]
+    fn a_step_that_is_not_to_a_neighbour_records_nothing() {
+        let mut k = Known::default();
+        k.walked(10, 40);
+        assert!(k.is_empty());
     }
 
     #[test]
