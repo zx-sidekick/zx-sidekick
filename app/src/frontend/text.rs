@@ -573,22 +573,33 @@ mod tests {
     /// as their corners are round. At a scale that is not a whole number the
     /// two edges of such a shape's middle land a hair apart, which used to
     /// reach `f32::clamp` the wrong way round and bring the window down as
-    /// soon as the picker was opened.
+    /// soon as the picker was opened. The failure hangs on the exact product
+    /// of position and scale, so this sweeps both, on a canvas big enough to
+    /// hold every step.
     #[test]
     fn a_circle_is_drawn_at_any_scale() {
-        let (w, h) = (64, 64);
+        let (w, h) = (256, 256);
         let mut pixels = vec![0u8; w * h * 4];
         for step in 0..500 {
             let scale = 1.0 + step as f32 * 0.013;
+            let at = 3.0 + step as f32 * 0.017;
             let mut canvas = Canvas {
                 pixels: &mut pixels,
                 width: w,
                 height: h,
                 scale,
             };
-            let at = 3.0 + step as f32 * 0.017;
+            canvas.clear_transparent();
             canvas.round_rect(at, at, 22.0, 22.0, 11.0, [0xFF, 0xFF, 0xFF]);
             canvas.outline(at, at, 22.0, 22.0, 11.0, 1.5, None, [0xFF, 0xFF, 0xFF]);
+            let alpha =
+                |x: f32, y: f32| pixels[((y * scale) as usize * w + (x * scale) as usize) * 4 + 3];
+            assert_eq!(
+                alpha(at + 11.0, at + 11.0),
+                255,
+                "the middle at scale {scale}"
+            );
+            assert_eq!(alpha(at + 1.0, at + 1.0), 0, "the corner at scale {scale}");
         }
     }
 }
