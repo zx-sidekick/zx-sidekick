@@ -759,9 +759,94 @@ impl Graph {
         self.ways.get(&place).map_or(&[], Vec::as_slice)
     }
 
-    /// Every place the graph has a way out of or into.
+    /// Every place the graph has a way out of.
     pub fn places(&self) -> impl Iterator<Item = Place> + '_ {
         self.ways.keys().copied()
+    }
+
+    /// The fewest steps from `start` to a room in `targets` over the whole
+    /// map (level 5, #10), a teleport counting as one: the graph's ways, a
+    /// climb only once `known` has it walked, any step `known` has walked
+    /// (into every place of the room it leads to), and a jump from a booth in
+    /// a room in `booths` to another such booth. `start` with part 0 starts
+    /// from every place in its room. The core room counts as a room like any
+    /// other. `None` when no target can be reached; empty when `start`'s room
+    /// is one.
+    #[must_use]
+    pub fn route(
+        &self,
+        start: Place,
+        known: &Known,
+        booths: &[u16],
+        targets: &RoomSet,
+    ) -> Option<Vec<Step>> {
+        use std::collections::{BTreeMap, VecDeque};
+        if targets.contains(start.0) {
+            return Some(vec![]);
+        }
+        let rooms_places = |room: u16| {
+            self.ways
+                .range((room, 0)..=(room, u8::MAX))
+                .map(|(p, _)| *p)
+                .collect::<Vec<Place>>()
+        };
+        let starts = if start.1 == 0 {
+            rooms_places(start.0)
+        } else {
+            vec![start]
+        };
+        let seen_booths: Vec<Place> = self
+            .booths
+            .iter()
+            .copied()
+            .filter(|b| booths.contains(&b.0))
+            .collect();
+        let mut came: BTreeMap<Place, (Place, bool)> = BTreeMap::new();
+        let mut queue: VecDeque<Place> = starts.iter().copied().collect();
+        let mut seen: std::collections::BTreeSet<Place> = starts.iter().copied().collect();
+        while let Some(here) = queue.pop_front() {
+            if targets.contains(here.0) {
+                let mut path = vec![];
+                let mut at = here;
+                while let Some(&(from, teleport)) = came.get(&at) {
+                    path.push(Step {
+                        room: at.0,
+                        teleport,
+                    });
+                    at = from;
+                }
+                path.reverse();
+                return Some(path);
+            }
+            let mut next: Vec<(Place, bool)> = self
+                .ways(here)
+                .iter()
+                .filter(|w| !w.climb || known.steps.contains(&(here.0, w.to.0)))
+                .map(|w| (w.to, false))
+                .collect();
+            for &(_, to) in known.steps.range((here.0, 0)..=(here.0, u16::MAX)) {
+                let places = rooms_places(to);
+                if places.is_empty() {
+                    next.push(((to, 0), false));
+                }
+                next.extend(places.into_iter().map(|p| (p, false)));
+            }
+            if seen_booths.contains(&here) {
+                next.extend(
+                    seen_booths
+                        .iter()
+                        .filter(|&&b| b != here)
+                        .map(|&b| (b, true)),
+                );
+            }
+            for (to, teleport) in next {
+                if seen.insert(to) {
+                    came.insert(to, (here, teleport));
+                    queue.push_back(to);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -1303,6 +1388,91 @@ mod tests {
             }]
         );
         assert!(g.places().all(|p| p.0 != 1), "nothing out of the core");
+    }
+
+    #[test]
+    fn level_5_routes_through_rooms_never_walked() {
+        // 0 → 1 sideways, 1 → 17 down; nothing walked.
+        let rooms = {
+            let mut r = planet_of(&[
+                (0, read_text(&gapped(false, true, false, false), &[])),
+                (1, read_text(&gapped(true, false, false, true), &[])),
+            ]);
+            r.push(read_text(&gapped(false, false, true, false), &[]));
+            r
+        };
+        let g = Graph::new(&rooms, 999);
+        let route = g
+            .route((0, 1), &Known::default(), &[], &targets(&[17]))
+            .unwrap();
+        let rooms: Vec<u16> = route.iter().map(|s| s.room).collect();
+        assert_eq!(rooms, [1, 17]);
+        // Back up is a climb: not until walked.
+        assert_eq!(
+            g.route((17, 1), &Known::default(), &[], &targets(&[0])),
+            None
+        );
+        let mut walked = Known::default();
+        walked.walked(1, 17);
+        let back = g.route((17, 1), &walked, &[], &targets(&[0])).unwrap();
+        assert_eq!(back.iter().map(|s| s.room).collect::<Vec<_>>(), [1, 0]);
+    }
+
+    #[test]
+    fn level_5_jumps_between_booths_entered_only() {
+        // Room 0, open to room 1, and room 16, closed all round: each with a
+        // booth, so the only way into 16 is the jump.
+        let booth = (160, 15, BOOTH);
+        let with_booth = |i| (i, read_text(&gapped(false, i == 0, false, false), &[booth]));
+        let rooms = planet_of(&[
+            with_booth(0),
+            with_booth(16),
+            (1, read_text(&gapped(true, false, false, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(
+            g.route((0, 1), &Known::default(), &[0], &targets(&[16])),
+            None,
+            "16's booth not entered"
+        );
+        let route = g
+            .route((0, 1), &Known::default(), &[0, 16], &targets(&[16]))
+            .unwrap();
+        assert_eq!(
+            route,
+            [Step {
+                room: 16,
+                teleport: true
+            }]
+        );
+    }
+
+    #[test]
+    fn level_5_does_not_pass_a_door() {
+        // Room 0 open on its right, divided by a solid pillar with a door's
+        // tile against it, as in room 210: the door joins the halves when it
+        // opens, but level 5 keeps doors shut (decision 5).
+        let mut lines = gapped(false, true, false, false);
+        for line in &mut lines {
+            line.replace_range(15..17, "##");
+        }
+        let door = read_text(&lines, &[(112, 87, DOOR)]);
+        let (left, right) = (door.shut.at(12, 5), door.shut.at(12, 25));
+        assert!(left != 0 && right != 0 && left != right, "two halves shut");
+        assert_eq!(door.open.at(12, 5), door.open.at(12, 25), "one room open");
+        let rooms = planet_of(&[
+            (0, door),
+            (1, read_text(&gapped(true, false, false, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        assert_eq!(
+            g.route((0, left), &Known::default(), &[], &targets(&[1])),
+            None
+        );
+        assert!(
+            g.route((0, right), &Known::default(), &[], &targets(&[1]))
+                .is_some()
+        );
     }
 
     #[test]
