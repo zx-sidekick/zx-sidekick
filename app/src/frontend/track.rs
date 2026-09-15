@@ -5,10 +5,11 @@
 
 use sidekick::map::RoomSet;
 use sidekick::starquake::{
-    SeenTeleporter, at, items_and_core, missing_piece_rooms, routine, teleporter_code,
+    Item, SeenTeleporter, at, graphic, hole, items_and_core, missing_piece_rooms, routine,
+    teleporter_code,
 };
 
-use super::guidance::Guidance;
+use super::guidance::{Guidance, Hole};
 
 /// Which part of the program is running, for the panel beside it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -97,11 +98,32 @@ impl Tracker {
                 guidance.set_unvisited(&unvisited);
                 let (items, core) = items_and_core(mem);
                 guidance.set_pieces(&missing_piece_rooms(&core, &items));
+                guidance.set_core(holes(mem, &core, &items));
             }
             Scene::GameOver => guidance.set_room(None),
             Scene::Loading | Scene::Menu => guidance.forget_map(),
         }
     }
+}
+
+/// The core's nine holes as the column draws them: each one's graphic from
+/// the game's memory `mem`, whether it is open, the colour of an item with
+/// its graphic (white if none has it), and whether such an item is carried,
+/// which is while its row is 1 to 5.
+fn holes(mem: &[u8], core: &[u8; 9], items: &[Item]) -> Vec<Hole> {
+    core.iter()
+        .enumerate()
+        .map(|(i, &slot)| {
+            let (number, open) = hole(i, slot);
+            let piece = items.iter().filter(|item| item.graphic() == number);
+            Hole {
+                graphic: graphic(mem, number),
+                open,
+                colour: piece.clone().next().map_or(7, Item::colour),
+                carried: open && piece.clone().any(|item| (1..=5).contains(&item.row())),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -192,6 +214,35 @@ mod tests {
         t.follow(&mem, routine::MENU, &mut g);
         t.publish(&mem, &mut g);
         assert_eq!(g.explored(), 0);
+    }
+
+    #[test]
+    fn the_holes_show_their_piece_or_placeholder_and_what_is_carried() {
+        let mut mem = vec![0u8; 0x10000];
+        for g in 0u8..40 {
+            let at = usize::from(at::GRAPHICS) + usize::from(g) * 32;
+            mem[at] = g;
+        }
+        let mut core = [0x80 | 30; 9];
+        core[0] = 0x80 | 33; // open, wanting graphic 33
+        core[1] = 1; // filled: its own number
+        core[2] = 0x80 | 34; // open, its piece carried
+        let items = [
+            Item([0x95, 12, 16, 33]), // colour 4, placed
+            Item([0x60, 3, 16, 34]),  // colour 3, carried
+        ];
+        let h = holes(&mem, &core, &items);
+        assert_eq!(h.len(), 9);
+        assert_eq!(
+            (h[0].graphic[0], h[0].open, h[0].colour, h[0].carried),
+            (33, true, 4, false)
+        );
+        assert_eq!(
+            (h[1].graphic[0], h[1].open, h[1].carried),
+            (1, false, false)
+        );
+        assert_eq!((h[2].open, h[2].colour, h[2].carried), (true, 3, true));
+        assert_eq!(h[3].colour, 7, "no item has its graphic: white");
     }
 
     #[test]

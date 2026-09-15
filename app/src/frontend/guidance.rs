@@ -24,6 +24,19 @@ pub const LEVELS: [&str; 6] = [
     "Arrow, whole map",
 ];
 
+/// One of the core's nine holes as the column draws it (#7).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hole {
+    /// The graphic it shows, read from the game's memory: the piece while
+    /// the hole is open, its placeholder once filled.
+    pub graphic: [u8; 32],
+    pub open: bool,
+    /// The colour of an item that fills it, 0 to 7, as drawn in its room.
+    pub colour: u8,
+    /// Whether that piece is being carried.
+    pub carried: bool,
+}
+
 /// How much help one game has had: the highest level in use at any point,
 /// and whether training mode was ever on. It only ever rises within a game.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -91,6 +104,9 @@ pub struct Guidance {
     /// The rooms holding a core piece still needed, for level 3 (#6), in
     /// the game being played or just ended.
     pieces: RoomSet,
+    /// The core's nine holes, in the game being played or just ended; empty
+    /// on the title screen.
+    core: Vec<Hole>,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -220,14 +236,32 @@ impl Guidance {
         }
     }
 
-    /// Forgets the map and pieces of the game that has ended, once its
-    /// game-over screens are done: the title screen shows none.
+    /// The core's nine holes, or none outside a game.
+    pub fn core(&self) -> &[Hole] {
+        &self.core
+    }
+
+    /// Takes the core's holes, if they have changed.
+    pub fn set_core(&mut self, holes: Vec<Hole>) {
+        if self.core != holes {
+            self.core = holes;
+            self.version += 1;
+        }
+    }
+
+    /// Forgets the map, pieces and core of the game that has ended, once
+    /// its game-over screens are done: the title screen shows none.
     pub fn forget_map(&mut self) {
         let empty = RoomSet::default();
-        if !self.visited.is_empty() || self.room.is_some() || self.pieces != empty {
+        if !self.visited.is_empty()
+            || self.room.is_some()
+            || self.pieces != empty
+            || !self.core.is_empty()
+        {
             self.visited.clear();
             self.room = None;
             self.pieces = empty;
+            self.core.clear();
             self.version += 1;
         }
     }

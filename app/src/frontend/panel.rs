@@ -50,6 +50,14 @@ const HERE: Rgb = [0xe8, 0xec, 0xf4];
 const PIECE: Rgb = [0xf0, 0x7a, 0xb0];
 const PIECE_ROOM: Rgb = [0x15, 0x1a, 0x26];
 const PIECE_ROOM_LINE: Rgb = [0x6b, 0x75, 0x94];
+const TILE: Rgb = [0x1b, 0x1f, 0x29];
+const DELIVERED: Rgb = [0x3a, 0x3f, 0x4b];
+
+/// The core column (#7): its tiles' size and pitch, and how many layout
+/// units a pixel of a piece's graphic is.
+const TILE_W: f32 = 40.0;
+const TILE_PITCH: f32 = 46.0;
+const PIECE_PIXEL: f32 = 2.25;
 const CODE_FILL: Rgb = [0x14, 0x25, 0x2a];
 
 /// What each level adds, for the picker. The levels are built in their own
@@ -130,6 +138,9 @@ impl Panel {
                     &[span(&explored, 12.0, Weight::Regular, LABEL)],
                 );
                 self.map(canvas, guidance, level >= 3, 96.0, below - 16.0);
+                if level >= 3 && !guidance.core().is_empty() {
+                    self.core(canvas, guidance, 72.0, 96.0);
+                }
             }
             let lines = match level {
                 0 => ["No guidance.", "Press Esc or Select to choose a level."],
@@ -179,7 +190,13 @@ impl Panel {
         // take more than one row.
         let pitch = ((bottom - top) / rows).floor().min(18.0);
         let unit = pitch / 18.0;
-        let x0 = (PICTURE_W + (WINDOW_W - PICTURE_W - pitch * cols) / 2.0).floor();
+        // Centred at level 2; from level 3 at the panel's left margin, with
+        // the core column beside it (#7).
+        let x0 = if pieces {
+            PICTURE_W + 24.0
+        } else {
+            (PICTURE_W + (WINDOW_W - PICTURE_W - pitch * cols) / 2.0).floor()
+        };
         let rooms = COLS * ROWS;
         let at = |room: u16| {
             (
@@ -260,6 +277,53 @@ impl Panel {
             let r = 4.5 * unit;
             let (cx, cy) = (x + pitch / 2.0, y + pitch / 2.0);
             canvas.round_rect(cx - r, cy - r, 2.0 * r, 2.0 * r, r, PIECE);
+        }
+    }
+
+    /// Level 3 (#7): the core's nine holes in a column at the panel's right
+    /// margin, its label on the `label_y` line and its first tile level with
+    /// the map's top at `top`. An open hole shows its piece in the colour the
+    /// item has in its room, outlined in white while it is carried; a filled
+    /// one shows its placeholder, dimmed, as the core room does.
+    fn core(&mut self, canvas: &mut Canvas, guidance: &Guidance, label_y: f32, top: f32) {
+        let x = WINDOW_W - 24.0 - TILE_W;
+        let label = "CORE";
+        let width: f32 = label
+            .chars()
+            .map(|c| self.fonts.advance(c, 11.0, Weight::SemiBold) + 11.0 * 0.14)
+            .sum::<f32>()
+            - 11.0 * 0.14;
+        self.spaced(canvas, x + (TILE_W - width) / 2.0, label_y + 1.0, label);
+        for (i, hole) in guidance.core().iter().enumerate() {
+            let y = top + i as f32 * TILE_PITCH;
+            canvas.round_rect(x, y, TILE_W, TILE_W, 4.0, TILE);
+            if hole.carried {
+                canvas.outline(x, y, TILE_W, TILE_W, 4.0, 2.0, None, HERE);
+            }
+            let colour = if hole.open {
+                let c = zx_core::screen::PALETTE[8 + usize::from(hole.colour & 7)];
+                [(c >> 16) as u8, (c >> 8) as u8, c as u8]
+            } else {
+                DELIVERED
+            };
+            let inset = (TILE_W - 16.0 * PIECE_PIXEL) / 2.0;
+            for (cell, (cy, cx)) in [(0, 0), (0, 8), (8, 0), (8, 8)].into_iter().enumerate() {
+                for row in 0..8 {
+                    let byte = hole.graphic[cell * 8 + row];
+                    for bit in 0..8 {
+                        if byte & (0x80 >> bit) != 0 {
+                            canvas.round_rect(
+                                x + inset + (cx + bit) as f32 * PIECE_PIXEL,
+                                y + inset + (cy + row) as f32 * PIECE_PIXEL,
+                                PIECE_PIXEL,
+                                PIECE_PIXEL,
+                                0.0,
+                                colour,
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -965,6 +1029,30 @@ mod tests {
         assert!(at(&picker, 1300.0, 700.0) < 0x0f_11_17, "the panel dimmed");
     }
 
+    /// Nine made-up holes, not the game's graphics: simple shapes, three
+    /// filled, one carried.
+    fn made_up_core() -> Vec<crate::frontend::guidance::Hole> {
+        (0..9u8)
+            .map(|i| {
+                let mut graphic = [0u8; 32];
+                for (k, b) in graphic.iter_mut().enumerate() {
+                    let row = (k % 8) as u8;
+                    *b = match (i + k as u8 / 8) % 3 {
+                        0 => 0xFF >> row,
+                        1 => 0x3C | (0x81 * u8::from(row.is_multiple_of(2))),
+                        _ => 0x81 << (row % 4),
+                    };
+                }
+                crate::frontend::guidance::Hole {
+                    graphic,
+                    open: ![1, 4, 6].contains(&i),
+                    colour: [2, 7, 6, 5, 7, 3, 7, 3, 4][usize::from(i)],
+                    carried: i == 0,
+                }
+            })
+            .collect()
+    }
+
     /// A made-up exploration, like the mockup's: a random walk over the
     /// map, whose steps are its only openings, with `codes` teleporters seen
     /// on the way. The codes are placeholders; the real ones are the
@@ -1078,6 +1166,7 @@ mod tests {
                     // One in the room Blob is in, to show its dot over the marker.
                     pieces.set(g.room().unwrap(), true);
                     g.set_pieces(&pieces);
+                    g.set_core(made_up_core());
                     g
                 },
                 Scene::Play,
