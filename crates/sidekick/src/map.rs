@@ -243,6 +243,11 @@ pub struct Room {
     pub open: Parts,
     /// The cell of its wall passage marker, if it has one.
     pub passage: Option<(u8, u8)>,
+    /// Which way its passage leads: right when Blob can stand beside the
+    /// tile on its left and walk into it, left when he can on its right. On
+    /// the tape every passage has one such side (#10).
+    pub passage_right: bool,
+    pub passage_left: bool,
     /// Its solid cells, a bit per cell: bit `col` of `solid[row]`, rows from
     /// the top of the play area.
     pub solid: [u32; 18],
@@ -286,6 +291,18 @@ impl Room {
                 _ => {}
             }
         }
+        // Where Blob can stand beside the passage's tile, four cells wide and
+        // three tall: with his top-left cell two columns left of it, or just
+        // past its right side, on a row that overlaps it. Walking into it
+        // from there takes him through to the room on that side.
+        let beside = |col: i16| {
+            passage.is_some_and(|(row, _)| {
+                (0..SPOTS_ACROSS as i16).contains(&col)
+                    && (row.saturating_sub(1)..=row + 1).any(|r| shut.at(r, col as u8) != 0)
+            })
+        };
+        let at = passage.map_or(0, |(_, col)| i16::from(col));
+        let (passage_right, passage_left) = (beside(at - 2), beside(at + 4));
         let mut solid = [0u32; 18];
         for (r, bits) in solid.iter_mut().enumerate() {
             for col in 0..32u8 {
@@ -299,6 +316,8 @@ impl Room {
             shut,
             open,
             passage,
+            passage_right,
+            passage_left,
             solid,
         }
     }
@@ -307,18 +326,27 @@ impl Room {
 /// The openings of every room, from each room read in number order.
 ///
 /// An edge is open where there is a gap in it, or a passage through the
-/// wall: two rooms side by side that both have a passage marker. The core
+/// wall: two rooms side by side whose passages lead to each other, the left
+/// one's walked into going right and the right one's going left (#10). The core
 /// room is not played in its tiles (walking in from the left runs its own
 /// screen, which puts Blob back in the room he came from), so its one way in
 /// and out is its left edge.
 #[must_use]
 pub fn openings(rooms: &[Room], core_room: u16) -> Vec<Openings> {
-    let passage = |room: usize| rooms.get(room).is_some_and(|r| r.passage.is_some());
+    let leads = |room: usize, right: bool| {
+        rooms.get(room).is_some_and(|r| {
+            if right {
+                r.passage_right
+            } else {
+                r.passage_left
+            }
+        })
+    };
     let mut openings = Vec::with_capacity(rooms.len());
     for (i, room) in rooms.iter().enumerate() {
         let col = i as u16 % COLS;
-        let right = col != COLS - 1 && passage(i) && passage(i + 1);
-        let left = col != 0 && passage(i) && i > 0 && passage(i - 1);
+        let right = col != COLS - 1 && leads(i, true) && leads(i + 1, false);
+        let left = col != 0 && leads(i, false) && leads(i - 1, true);
         let mut o = room.openings;
         o.right |= right;
         o.left |= left;
@@ -784,6 +812,8 @@ mod tests {
             shut: Parts::find(room(&shut_refs)),
             open: Parts::find(room(&open_refs)),
             passage: None,
+            passage_right: false,
+            passage_left: false,
             solid: solid_of(&shut_refs),
         };
         openings(&[r], 999)[0].divides
@@ -857,6 +887,42 @@ mod tests {
             "{drawn:?}"
         );
         assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
+    }
+
+    /// A room walled all round with a wall passage's tile at screen row 13,
+    /// column `col`, and solid cells from `solid_from` to `solid_to` on rows
+    /// 12 to 15, so Blob can stand beside the tile on one side only.
+    fn passage_room(col: u8, solid_from: usize, solid_to: usize) -> Room {
+        let mut lines = walled();
+        for line in &mut lines[6..10] {
+            line.replace_range(solid_from..solid_to, &"#".repeat(solid_to - solid_from));
+        }
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        let grid = room(&refs);
+        assert_eq!(marker_cell(col * 8, 87), (13, col));
+        Room::read(
+            |row, c| if grid(row, c) { 0x47 } else { 0x07 },
+            &[(col * 8, 87, PASSAGE)],
+        )
+    }
+
+    /// Rooms 192 to 195 on the tape: each passage is walked into from its one
+    /// free side and leads to the room on that side, so 192 joins 193 and 194
+    /// joins 195, but 193 and 194, whose passages face away from each other,
+    /// do not join (#10, decision 7).
+    #[test]
+    fn a_passage_joins_only_the_room_on_the_side_it_is_walked_into_from() {
+        // Free on its left, a wall on its right: walked into going right.
+        let right = || passage_room(25, 27, 31);
+        // A wall on its left, free on its right: walked into going left.
+        let left = || passage_room(5, 1, 5);
+        assert!(right().passage_right && !right().passage_left);
+        assert!(left().passage_left && !left().passage_right);
+        let o = openings(&[right(), left(), right(), left()], 999);
+        assert!(o[0].right && o[1].left, "192 and 193 join");
+        assert!(!o[1].right && !o[2].left, "193 and 194 do not");
+        assert!(o[2].right && o[3].left, "194 and 195 join");
+        assert!(!o[0].left && !o[3].right);
     }
 
     #[test]

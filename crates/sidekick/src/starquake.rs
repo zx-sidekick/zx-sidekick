@@ -212,10 +212,20 @@ pub fn read_room(machine: &mut crate::Machine, room: u16) -> crate::map::Room {
 /// As [`read_room`].
 #[must_use]
 pub fn all_openings(machine: &crate::Machine) -> Vec<crate::map::Openings> {
-    let rooms: Vec<crate::map::Room> = (0..crate::map::COLS * crate::map::ROWS)
+    crate::map::openings(&all_rooms(machine), CORE_ROOM)
+}
+
+/// Every room as the map reads it, in number order, each read by having the
+/// game draw it on a copy of `machine`.
+///
+/// # Panics
+///
+/// As [`read_room`].
+#[must_use]
+pub fn all_rooms(machine: &crate::Machine) -> Vec<crate::map::Room> {
+    (0..crate::map::COLS * crate::map::ROWS)
         .map(|room| read_room(&mut machine.clone(), room))
-        .collect();
-    crate::map::openings(&rooms, CORE_ROOM)
+        .collect()
 }
 
 /// The parts of `room` Blob can move between with its doors open, read by
