@@ -8,7 +8,7 @@ It runs the original game on copies of the machine: from a way into a room, ever
 T="$SK_ASSETS/starquake.tap"
 cargo run --release --bin validate -- "$T" 80 platforms 8   # replay every exit found; random walks look for exits missed
 cargo run --release --bin variant -- "$T"                    # one room, to compare keys and inputs
-PRUNE=1 MASK=5,6,17,20 NO_DIAG=1 cargo run --release --bin whole2 -- "$T" 11 40 platforms  # the whole map from the start
+PRUNE=1 MASK=5,6,17,20 NO_DIAG=1 cargo run --release --bin whole2 -- "$T" 11 40            # the whole map from the start
 cargo run --release --bin tiles -- "$T" 226,227              # two rooms' cells side by side
 ```
 
