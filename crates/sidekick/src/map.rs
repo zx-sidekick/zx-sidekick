@@ -36,18 +36,105 @@ pub struct Openings {
     pub right: bool,
     pub up: bool,
     pub down: bool,
-    /// Walls inside the room, each from its centre out to a place on its
-    /// edge; unused slots are `None`.
-    pub walls: [Option<Wall>; 8],
+    /// Walls inside the room, where they stand: the solid cells between
+    /// openings that do not reach each other.
+    pub divides: Divides,
 }
 
-/// A wall inside a room, from its centre out to `to`, a place on the edge
-/// measured clockwise from the top-left corner in cells (up to [`AROUND`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Wall {
-    pub to: u8,
-    /// Whether a security door is all that divides the room here.
-    pub door: bool,
+/// The solid cells that keep two of a room's openings apart, a bit per
+/// cell (bit `col` of `cells[row]`, rows from the top of the play area), and
+/// which of them are a door's or a pad's: the two parts they keep apart
+/// become one when doors and pads are open (#43).
+///
+/// They are found by growing every part that has an opening outwards
+/// through the room, free cells and solid alike, one cell a step: a solid
+/// cell reached from two different parts at the same time, or next to a
+/// cell reached from another part, lies between them. A part with no
+/// opening of its own, a sealed pocket, grows nothing and draws nothing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Divides {
+    pub cells: [u32; 18],
+    pub doors: [u32; 18],
+}
+
+impl Divides {
+    /// Whether the cell at (`row`, `col`) of the play area is a wall.
+    #[must_use]
+    pub fn wall(&self, row: usize, col: usize) -> bool {
+        row < 18 && col < 32 && self.cells[row] & (1 << col) != 0
+    }
+
+    /// Whether the cell at (`row`, `col`) is a door's or a pad's.
+    #[must_use]
+    pub fn door(&self, row: usize, col: usize) -> bool {
+        row < 18 && col < 32 && self.doors[row] & (1 << col) != 0
+    }
+
+    /// Finds the walls of `room` between the parts in `ported`, those with
+    /// an opening.
+    fn find(room: &Room, ported: &[u8]) -> Divides {
+        // Every cell Blob stands on in a ported part is a source; each cell
+        // then remembers the nearest part, by breadth-first growth.
+        let mut nearest = [[0u8; 32]; 18];
+        let mut queue = std::collections::VecDeque::new();
+        for r in 0..SPOTS_DOWN {
+            for c in 0..SPOTS_ACROSS {
+                let p = room.shut.at(FIRST_ROW + r as u8, c as u8);
+                if p == 0 || !ported.contains(&p) {
+                    continue;
+                }
+                for (rr, cc) in [(r, c), (r, c + 1), (r + 1, c), (r + 1, c + 1)] {
+                    if nearest[rr][cc] == 0 {
+                        nearest[rr][cc] = p;
+                        queue.push_back((rr, cc));
+                    }
+                }
+            }
+        }
+        // A cell on the seam, reached by two parts in the same step, is
+        // recorded as a wall as it is claimed.
+        let mut cells = [0u32; 18];
+        let mut doors = [0u32; 18];
+        let open_of = |p: u8| {
+            (0..SPOTS_DOWN)
+                .flat_map(|r| (0..SPOTS_ACROSS).map(move |c| (r, c)))
+                .find(|&(r, c)| room.shut.at(FIRST_ROW + r as u8, c as u8) == p)
+                .map(|(r, c)| room.open.at(FIRST_ROW + r as u8, c as u8))
+                .unwrap_or(0)
+        };
+        let mut mark = |r: usize, c: usize, a: u8, b: u8| {
+            if room.solid[r] & (1 << c) == 0 {
+                return;
+            }
+            cells[r] |= 1 << c;
+            if open_of(a) == open_of(b) {
+                doors[r] |= 1 << c;
+            }
+        };
+        while let Some((r, c)) = queue.pop_front() {
+            let here = nearest[r][c];
+            let beside = [
+                (r, c + 1),
+                (r + 1, c),
+                (r, c.wrapping_sub(1)),
+                (r.wrapping_sub(1), c),
+            ];
+            for (rr, cc) in beside {
+                if rr >= 18 || cc >= 32 {
+                    continue;
+                }
+                let there = nearest[rr][cc];
+                if there == 0 {
+                    nearest[rr][cc] = here;
+                    queue.push_back((rr, cc));
+                } else if there != here {
+                    mark(r, c, here, there);
+                    mark(rr, cc, here, there);
+                }
+            }
+        }
+        Divides { cells, doors }
+    }
 }
 
 /// Whether a cell's attribute lets Blob through: below `0x40` (not bright) is
@@ -99,6 +186,43 @@ impl Parts {
         Parts(parts)
     }
 
+    /// Joins the parts on either side of a tile `width` cells wide and
+    /// three tall from its cell at screen (`row`, `col`): what a door does
+    /// when it opens, moving Blob 48 pixels past the tile rather than
+    /// through its cells, and what a teleporter pad does when it is blanked.
+    /// So on each side the nearest place Blob fits within six cells counts,
+    /// and whatever lies between two doors' tiles, the second tile included,
+    /// does not keep the sides apart.
+    fn join_across(&mut self, row: u8, col: u8, width: u8) {
+        const REACH: u8 = 6;
+        let rows = row.saturating_sub(1)..row + 3;
+        // Blob's top-left cell beside the tile: two cells to its left, so
+        // his right cell touches it, or just past its right side; then
+        // further out.
+        let left = (0..REACH).map(|d| col.wrapping_sub(2 + d));
+        let right = (0..REACH).map(|d| col + width + d);
+        let mut parts: Vec<u8> = Vec::new();
+        for side in [left.collect::<Vec<u8>>(), right.collect()] {
+            let nearest = side
+                .into_iter()
+                .find_map(|c| rows.clone().map(|r| self.at(r, c)).find(|&p| p != 0));
+            if let Some(p) = nearest
+                && !parts.contains(&p)
+            {
+                parts.push(p);
+            }
+        }
+        if let Some((&first, rest)) = parts.split_first() {
+            for line in &mut self.0 {
+                for cell in line.iter_mut() {
+                    if rest.contains(cell) {
+                        *cell = first;
+                    }
+                }
+            }
+        }
+    }
+
     /// The part of the room Blob is in with his top-left cell at screen
     /// (`row`, `col`), or 0 where he does not fit.
     pub fn at(&self, row: u8, col: u8) -> u8 {
@@ -119,6 +243,9 @@ pub struct Room {
     pub open: Parts,
     /// The cell of its wall passage marker, if it has one.
     pub passage: Option<(u8, u8)>,
+    /// Its solid cells, a bit per cell: bit `col` of `solid[row]`, rows from
+    /// the top of the play area.
+    pub solid: [u32; 18],
 }
 
 /// The character cell of a marker's position (the way the game's tiles place them).
@@ -133,24 +260,46 @@ const PASSAGE: u8 = 0x0F;
 /// The marker a security door's tile leaves.
 const DOOR: u8 = 0;
 
+/// The marker a teleporter pad's tile leaves, one on each side of the pad's
+/// own column, which stands one cell wide and three tall in a gap and is
+/// blanked, once, when Blob touches it carrying item `0x10`. Found on
+/// 2026-09-15 by walking Blob into the pads on the player's tape (#40).
+const PAD: u8 = 0x0B;
+
 impl Room {
     /// Reads a room from its attribute cells as drawn, `attr(row, col)`, and
     /// the markers its tiles left, as (x, y, kind).
     pub fn read(attr: impl Fn(u8, u8) -> u8, markers: &[(u8, u8, u8)]) -> Room {
         let cell = |&(x, y, _): &(u8, u8, u8)| marker_cell(x, y);
         let passage = markers.iter().find(|m| m.2 == PASSAGE).map(cell);
-        // A door's tile is four cells by three, from its marker's cell.
-        let doors: Vec<(u8, u8)> = markers.iter().filter(|m| m.2 == DOOR).map(cell).collect();
-        let in_door = |row: u8, col: u8| {
-            doors
-                .iter()
-                .any(|&(r, c)| (r..r + 3).contains(&row) && (c..c + 4).contains(&col))
-        };
+        // A door's tile is four cells by three, from its marker's cell; open,
+        // it joins the parts on either side of it. A pad's column is one
+        // cell wide, at the pair's cell rounded down to four plus one, as
+        // the game blanks it.
+        let shut = Parts::find(|row, col| free(attr(row, col)));
+        let mut open = shut.clone();
+        for &(x, y, kind) in markers {
+            let (r, c) = marker_cell(x, y);
+            match kind {
+                DOOR => open.join_across(r, c, 4),
+                PAD => open.join_across(r, (c & !3) | 1, 1),
+                _ => {}
+            }
+        }
+        let mut solid = [0u32; 18];
+        for (r, bits) in solid.iter_mut().enumerate() {
+            for col in 0..32u8 {
+                if !free(attr(FIRST_ROW + r as u8, col)) {
+                    *bits |= 1 << col;
+                }
+            }
+        }
         Room {
             openings: scan(|row, col| free(attr(row, col))),
-            shut: Parts::find(|row, col| free(attr(row, col))),
-            open: Parts::find(|row, col| free(attr(row, col)) || in_door(row, col)),
+            shut,
+            open,
             passage,
+            solid,
         }
     }
 }
@@ -173,7 +322,8 @@ pub fn openings(rooms: &[Room], core_room: u16) -> Vec<Openings> {
         let mut o = room.openings;
         o.right |= right;
         o.left |= left;
-        o.walls = walls(&ports(room, left, right));
+        let ported: Vec<u8> = ports(room, left, right).iter().map(|p| p.shut).collect();
+        o.divides = Divides::find(room, &ported);
         openings.push(o);
     }
     if let Some(core) = openings.get_mut(usize::from(core_room)) {
@@ -200,7 +350,7 @@ fn scan(free: impl Fn(u8, u8) -> bool) -> Openings {
         right: (FIRST_ROW..LAST_ROW).any(|row| window(row, LAST_COL - 1)),
         up: (0..LAST_COL).any(|col| window(FIRST_ROW, col)),
         down: (0..LAST_COL).any(|col| window(LAST_ROW - 1, col)),
-        walls: [None; 8],
+        divides: Divides::default(),
     }
 }
 
@@ -286,33 +436,6 @@ fn ports(room: &Room, passage_left: bool, passage_right: bool) -> Vec<Port> {
         }
     }
     joined
-}
-
-/// The walls inside a room with these ports: none when every port is in one
-/// part, and otherwise one from the centre to halfway between each pair of
-/// neighbouring ports in different parts. A wall is a door's when opening
-/// the doors joins the two.
-fn walls(ports: &[Port]) -> [Option<Wall>; 8] {
-    let mut walls = [None; 8];
-    let first = ports.first().map(|p| p.shut);
-    if ports.iter().all(|p| Some(p.shut) == first) {
-        return walls;
-    }
-    let n = ports.len();
-    let apart = (0..n).filter_map(|i| {
-        let (a, b) = (ports[i], ports[(i + 1) % n]);
-        (a.shut != b.shut).then(|| {
-            let gap = (b.start + AROUND - a.end) % AROUND;
-            Wall {
-                to: (a.end + gap / 2) % AROUND,
-                door: a.open == b.open,
-            }
-        })
-    });
-    for (slot, wall) in walls.iter_mut().zip(apart) {
-        *slot = Some(wall);
-    }
-    walls
 }
 
 /// A set of the 512 rooms, a bit each, most significant bit first: the way
@@ -455,6 +578,19 @@ mod tests {
         move |row, col| grid[(row - FIRST_ROW) as usize][col as usize]
     }
 
+    /// The solid cells of a room drawn as text.
+    fn solid_of(lines: &[&str]) -> [u32; 18] {
+        let mut solid = [0u32; 18];
+        for (r, line) in lines.iter().enumerate() {
+            for (c, ch) in line.chars().enumerate() {
+                if ch == '#' {
+                    solid[r] |= 1 << c;
+                }
+            }
+        }
+        solid
+    }
+
     fn walled() -> Vec<String> {
         (0..18)
             .map(|r| {
@@ -464,25 +600,6 @@ mod tests {
                     format!("#{}#", ".".repeat(30))
                 }
             })
-            .collect()
-    }
-
-    /// The walls of a room drawn as text, with `D` for a door's cells:
-    /// solid while shut.
-    fn walls_of(lines: &[String]) -> Vec<Wall> {
-        let open_lines: Vec<String> = lines.iter().map(|l| l.replace('D', ".")).collect();
-        let open_refs: Vec<&str> = open_lines.iter().map(String::as_str).collect();
-        let shut_lines: Vec<String> = lines.iter().map(|l| l.replace('D', "#")).collect();
-        let shut_refs: Vec<&str> = shut_lines.iter().map(String::as_str).collect();
-        let r = Room {
-            openings: scan(room(&shut_refs)),
-            shut: Parts::find(room(&shut_refs)),
-            open: Parts::find(room(&open_refs)),
-            passage: None,
-        };
-        walls(&ports(&r, false, false))
-            .into_iter()
-            .flatten()
             .collect()
     }
 
@@ -594,38 +711,152 @@ mod tests {
 
     #[test]
     fn a_room_in_one_part_has_no_walls_inside() {
-        assert!(walls_of(&open_both_sides()).is_empty());
+        let d = divides_of(&open_both_sides());
+        assert!(d.cells.iter().all(|&bits| bits == 0));
+    }
+
+    /// Room 210: two doors either side of a solid pillar four cells wide,
+    /// their own cells free as the game draws them. A door moves Blob 48
+    /// pixels past it, so the divide is a door, pillar or not.
+    #[test]
+    fn two_doors_with_solid_cells_between_them_still_make_a_door() {
+        let mut lines = open_both_sides();
+        for line in &mut lines {
+            line.replace_range(14..18, "####");
+        }
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        let grid = room(&refs);
+        // Doors at cells (13, 12) and (13, 18), as markers (x, y, kind 0):
+        // `marker_cell(96, 87)` is (13, 12).
+        assert_eq!(marker_cell(96, 87), (13, 12));
+        let r = Room::read(
+            |row, col| if grid(row, col) { 0x47 } else { 0x07 },
+            &[(96, 87, DOOR), (144, 87, DOOR)],
+        );
+        let d = openings(&[r], 999)[0].divides;
+        let drawn = draw_divides(&d);
+        assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
+        assert!(
+            drawn.iter().all(|l| !l.contains('#')),
+            "a door's wall, nothing plain: {drawn:?}"
+        );
+    }
+
+    /// Room 190: a teleporter pad, one cell wide and three tall, closing the
+    /// only gap between the halves; its two markers sit either side of it.
+    #[test]
+    fn a_teleporter_pad_in_the_only_gap_makes_a_door() {
+        let mut lines = open_both_sides();
+        for (r, line) in lines.iter_mut().enumerate() {
+            line.replace_range(15..18, if (7..10).contains(&r) { "#.#" } else { "###" });
+            if (7..10).contains(&r) {
+                line.replace_range(17..18, "#");
+                line.replace_range(15..17, "..");
+            }
+        }
+        // Rows 7 to 9: free up to column 16, the pad's column 17 solid, free
+        // from 18; walls above and below. Markers at (13, 16) and (13, 17).
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        let grid = room(&refs);
+        assert_eq!(marker_cell(128, 87), (13, 16));
+        let r = Room::read(
+            |row, col| if grid(row, col) { 0x47 } else { 0x07 },
+            &[(128, 87, PAD), (136, 87, PAD)],
+        );
+        let d = openings(&[r], 999)[0].divides;
+        let drawn = draw_divides(&d);
+        assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
+        assert!(
+            drawn.iter().all(|l| !l.contains('#')),
+            "a door's wall, nothing plain: {drawn:?}"
+        );
+    }
+
+    /// A room's divides from its text, with `D` a door's cells (solid while
+    /// shut) and the doors' tiles as markers.
+    fn divides_of(lines: &[String]) -> Divides {
+        let shut_lines: Vec<String> = lines.iter().map(|l| l.replace('D', "#")).collect();
+        let shut_refs: Vec<&str> = shut_lines.iter().map(String::as_str).collect();
+        let open_lines: Vec<String> = lines.iter().map(|l| l.replace('D', ".")).collect();
+        let open_refs: Vec<&str> = open_lines.iter().map(String::as_str).collect();
+        let r = Room {
+            openings: scan(room(&shut_refs)),
+            shut: Parts::find(room(&shut_refs)),
+            open: Parts::find(room(&open_refs)),
+            passage: None,
+            solid: solid_of(&shut_refs),
+        };
+        openings(&[r], 999)[0].divides
+    }
+
+    /// The wall cells of a divides map as text, `#` a wall, `D` a door's.
+    fn draw_divides(d: &Divides) -> Vec<String> {
+        (0..18)
+            .map(|r| {
+                (0..32)
+                    .map(|c| {
+                        if d.door(r, c) {
+                            'D'
+                        } else if d.wall(r, c) {
+                            '#'
+                        } else {
+                            '.'
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
     }
 
     #[test]
-    fn a_wall_down_the_middle_is_a_line_from_top_to_bottom() {
+    fn a_wall_down_the_middle_stands_where_it_is() {
         let mut lines = open_both_sides();
         for line in &mut lines {
             line.replace_range(15..17, "##");
         }
-        let walls = walls_of(&lines);
-        // Halfway along the closed top and the closed bottom.
-        let tos: Vec<u8> = walls.iter().map(|w| w.to).collect();
-        assert_eq!(tos.len(), 2, "{walls:?}");
-        assert!(tos.iter().any(|&t| t < TOP), "one to the top: {tos:?}");
-        assert!(
-            tos.iter()
-                .any(|&t| (TOP + SIDE..2 * TOP + SIDE).contains(&t)),
-            "one to the bottom: {tos:?}"
-        );
-        assert!(walls.iter().all(|w| !w.door));
+        let d = divides_of(&lines);
+        let drawn = draw_divides(&d);
+        // The two solid columns between the halves, and nothing else: not
+        // the outer walls, which keep no two openings apart.
+        for (r, line) in drawn.iter().enumerate() {
+            let expected: String = (0..32)
+                .map(|c| if (15..17).contains(&c) { '#' } else { '.' })
+                .collect();
+            assert_eq!(line, &expected, "row {r}");
+        }
+        assert!(d.doors.iter().all(|&bits| bits == 0));
     }
 
     #[test]
-    fn a_door_in_the_dividing_wall_makes_it_a_door() {
+    fn a_pocket_with_no_opening_draws_no_wall() {
+        // A sealed pocket in the top-right corner, beside a room open both sides.
+        let mut lines = open_both_sides();
+        for line in &mut lines[1..5] {
+            line.replace_range(24..25, "#");
+        }
+        lines[5].replace_range(24..31, "#######");
+        let d = divides_of(&lines);
+        assert!(
+            d.cells.iter().all(|&bits| bits == 0),
+            "{:?}",
+            draw_divides(&d)
+        );
+    }
+
+    #[test]
+    fn a_door_s_wall_is_marked_as_a_door_s() {
         let mut lines = open_both_sides();
         for (r, line) in lines.iter_mut().enumerate() {
             let cells = if (7..10).contains(&r) { "DD" } else { "##" };
             line.replace_range(15..17, cells);
         }
-        let walls = walls_of(&lines);
-        assert_eq!(walls.len(), 2);
-        assert!(walls.iter().all(|w| w.door));
+        let d = divides_of(&lines);
+        let drawn = draw_divides(&d);
+        assert!(
+            drawn.iter().all(|l| l.chars().all(|ch| ch != '#')),
+            "{drawn:?}"
+        );
+        assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
     }
 
     #[test]
@@ -636,6 +867,6 @@ mod tests {
                 line.replace_range(15..17, "##");
             }
         }
-        assert!(walls_of(&lines).is_empty());
+        assert!(divides_of(&lines).cells.iter().all(|&bits| bits == 0));
     }
 }

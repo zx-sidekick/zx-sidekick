@@ -12,7 +12,7 @@ use super::notice;
 use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
 use super::track::Scene;
-use sidekick::map::{AROUND, COLS, ROWS};
+use sidekick::map::{COLS, ROWS};
 use sidekick::starquake::SeenTeleporter;
 
 const PANEL: Rgb = [0x0f, 0x11, 0x17];
@@ -262,12 +262,24 @@ impl Panel {
             if !open.right {
                 canvas.round_rect(x + pitch - overhang, y - overhang, line, long, 0.0, WALL);
             }
-            // Walls inside, from the centre out; a door's is dashed.
-            let centre = (x + pitch / 2.0, y + pitch / 2.0);
-            for wall in open.walls.into_iter().flatten() {
-                let to = edge_point(x, y, pitch, wall.to);
-                let dash = wall.door.then_some(2.5 * unit);
-                stroke(canvas, centre, to, line, dash, WALL);
+            // Walls inside, where they stand: the solid cells between two
+            // openings, a door's or a pad's every other cell (#43).
+            let (cw, ch) = (pitch / 32.0, pitch / 18.0);
+            for r in 0..18 {
+                for c in 0..32 {
+                    let d = open.divides;
+                    if !d.wall(r, c) || (d.door(r, c) && (r + c) % 2 == 1) {
+                        continue;
+                    }
+                    canvas.round_rect(
+                        x + c as f32 * cw,
+                        y + r as f32 * ch,
+                        cw.max(1.0),
+                        ch.max(1.0),
+                        0.0,
+                        WALL,
+                    );
+                }
             }
         }
         // Level 4 (#9): the route, through the centres of the rooms walked,
@@ -989,23 +1001,6 @@ impl Panel {
     }
 }
 
-/// The point on the edge of the room square at (`x`, `y`) that a place on a
-/// room's edge (`map::Wall::to`) stands for. The room is 32 cells by 18 and
-/// its square is not, so each edge is stretched to fit.
-fn edge_point(x: f32, y: f32, pitch: f32, to: u8) -> (f32, f32) {
-    let (top, side) = (32.0, 18.0);
-    let t = f32::from(to % AROUND);
-    if t < top {
-        (x + t / top * pitch, y)
-    } else if t < top + side {
-        (x + pitch, y + (t - top) / side * pitch)
-    } else if t < 2.0 * top + side {
-        (x + pitch - (t - top - side) / top * pitch, y + pitch)
-    } else {
-        (x, y + pitch - (t - 2.0 * top - side) / side * pitch)
-    }
-}
-
 /// A straight line `width` wide from `a` to `b`, with square ends, dashed
 /// when `dash` gives the length of a dash and of a gap.
 fn stroke(
@@ -1083,7 +1078,7 @@ fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sidekick::map::{Openings, RoomSet, Wall};
+    use sidekick::map::{Divides, Openings, RoomSet};
 
     /// Draws the overlay in `guidance`'s state over a stand-in picture, at
     /// twice the layout's size, as 0xRRGGBB pixels.
@@ -1192,21 +1187,30 @@ mod tests {
             }
             (col, row) = (c as u16, r as u16);
         }
-        // Walls inside a few rooms along the walk: a straight one, a
-        // diagonal one, a three-way one and a door.
+        // Walls inside a few rooms along the walk: a bar down the middle,
+        // a bar across, and a door's bar.
         let visited: Vec<usize> = (0..openings.len())
             .filter(|&r| !unvisited.contains(r as u16))
             .collect();
-        let wall = |to, door| Some(Wall { to, door });
-        let shapes = [
-            [wall(16, false), wall(66, false)],
-            [wall(32, false), wall(82, false)],
-            [wall(41, true), wall(91, true)],
-        ];
+        let down = |door: bool| {
+            let mut d = Divides::default();
+            for row in 0..18 {
+                d.cells[row] = 0b11 << 15;
+                if door {
+                    d.doors[row] = d.cells[row];
+                }
+            }
+            d
+        };
+        let across = {
+            let mut d = Divides::default();
+            d.cells[8] = u32::MAX;
+            d.cells[9] = u32::MAX;
+            d
+        };
+        let shapes = [down(false), across, down(true)];
         for (k, room) in visited.iter().step_by(9).enumerate() {
-            let [a, b] = shapes[k % shapes.len()];
-            openings[*room].walls[0] = a;
-            openings[*room].walls[1] = b;
+            openings[*room].divides = shapes[k % shapes.len()];
         }
         g.set_openings(openings);
         g.set_unvisited(&unvisited);
