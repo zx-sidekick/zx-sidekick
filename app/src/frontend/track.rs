@@ -4,7 +4,9 @@
 //! entered, for level 1 (#4).
 
 use sidekick::map::RoomSet;
-use sidekick::starquake::{SeenTeleporter, at, routine, teleporter_code};
+use sidekick::starquake::{
+    SeenTeleporter, at, items_and_core, missing_piece_rooms, routine, teleporter_code,
+};
 
 use super::guidance::Guidance;
 
@@ -82,8 +84,9 @@ impl Tracker {
     }
 
     /// Passes on the map as the game has it now, in `mem`, after a frame:
-    /// the room Blob is in and the rooms visited while a game is played,
-    /// no room at the game's end, and nothing on the title screen (#5).
+    /// the room Blob is in, the rooms visited and the rooms holding a
+    /// missing core piece while a game is played (#5, #6), no room at the
+    /// game's end, and nothing on the title screen.
     pub fn publish(&self, mem: &[u8], guidance: &mut Guidance) {
         match self.scene {
             Scene::Play => {
@@ -92,6 +95,8 @@ impl Tracker {
                 let start = usize::from(at::UNVISITED_ROOMS);
                 let unvisited = RoomSet(mem[start..start + 64].try_into().expect("64 bytes"));
                 guidance.set_unvisited(&unvisited);
+                let (items, core) = items_and_core(mem);
+                guidance.set_pieces(&missing_piece_rooms(&core, &items));
             }
             Scene::GameOver => guidance.set_room(None),
             Scene::Loading | Scene::Menu => guidance.forget_map(),

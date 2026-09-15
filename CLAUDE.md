@@ -29,7 +29,7 @@ locally.
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
   `assets/tests.expected`).
 - `cargo run --release -p zx-sidekick-starquake -- "$SK_ASSETS/starquake.tap"`
-  plays it. Add `--headless <frames> <dir>` for screenshots.
+  plays it. Add `--headless <frames> <dir> [level]` for screenshots of real play at a guidance level.
 - `cargo about generate --all-features about.hbs -o THIRD-PARTY.md`
   regenerates the attributions after a dependency change.
 - `cargo llvm-cov --workspace --summary-only` measures test coverage (needs
