@@ -16,6 +16,7 @@ Every tool takes the assets folder first, reads `starquake.tap` from it and writ
 - `hiscan <dir>`, `hidump <dir> <from> <to>`, `refs <dir> <addr>…`: text runs in memory, a hex dump, and where the program names an address.
 - `hishot <dir>`: puts a changed high-score table into memory and runs the game's CORE OF HEROES screen on a copy (`heroes.png`) (#47).
 - `passages <dir>`: every wall passage walked into from each side Blob can stand beside it, and where he ends up (#10).
+- `flyon <dir>`, `crosslift <dir>`, `liftdown <dir>`: flights from hover pads through the rooms above, across room 438's lift, and down its shaft (#10).
 - `hover <dir>`, `hoverto <dir>`: Blob stood on hover pads, rising, steering and letting go; and flights from room 438's pad (#10).
 - `markers <dir> <room>[,<room>…]`: a room's markers, the three bytes each of its tiles leaves, with the cell each is at.
 - `attrs <dir> <room> [first-col] [last-col]`: the attribute bytes of a room's cells.
