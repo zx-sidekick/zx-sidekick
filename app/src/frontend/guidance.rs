@@ -105,9 +105,12 @@ pub struct Guidance {
     /// The core's nine holes, in the game being played or just ended; empty
     /// on the title screen.
     core: Vec<Hole>,
-    /// The route to the nearest target over known connections, for level 4
-    /// (#9); `None` when there is none.
+    /// The route to the nearest missing piece over known connections, for
+    /// level 4 (#9); `None` when there is none.
     route: Option<Vec<Step>>,
+    /// The route to the core while a piece it needs is carried (#44);
+    /// `None` otherwise or when there is none.
+    core_route: Option<Vec<Step>>,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -237,12 +240,26 @@ impl Guidance {
         }
     }
 
-    /// The route to the nearest target, or `None` when none is known.
+    /// The route to the nearest missing piece, or `None` when none is known.
     pub fn route(&self) -> Option<&[Step]> {
         self.route.as_deref()
     }
 
-    /// Takes the route, if it has changed.
+    /// The route to the core, while a piece it needs is carried and a way
+    /// is known.
+    pub fn core_route(&self) -> Option<&[Step]> {
+        self.core_route.as_deref()
+    }
+
+    /// Takes the route to the core, if it has changed.
+    pub fn set_core_route(&mut self, route: Option<Vec<Step>>) {
+        if self.core_route != route {
+            self.core_route = route;
+            self.version += 1;
+        }
+    }
+
+    /// Takes the route to the nearest missing piece, if it has changed.
     pub fn set_route(&mut self, route: Option<Vec<Step>>) {
         if self.route != route {
             self.route = route;
@@ -277,6 +294,7 @@ impl Guidance {
             self.pieces = empty;
             self.core.clear();
             self.route = None;
+            self.core_route = None;
             self.version += 1;
         }
     }
@@ -756,9 +774,27 @@ mod tests {
             None,
             "512 is where the game leaves it, not a room"
         );
+        let step = Step {
+            room: 99,
+            teleport: false,
+        };
+        g.set_route(Some(vec![step]));
+        g.set_core_route(Some(vec![step]));
+        assert_eq!(g.core_route(), Some(&[step][..]));
+        let routed = g.version();
+        g.set_core_route(Some(vec![step]));
+        assert_eq!(
+            g.version(),
+            routed,
+            "the same core route, nothing to redraw"
+        );
         g.forget_map();
         assert_eq!(g.explored(), 0, "the title screen shows no map");
         assert!(!g.piece(300), "nor any pieces");
+        assert!(
+            g.route().is_none() && g.core_route().is_none(),
+            "nor either route"
+        );
         let forgotten = g.version();
         g.forget_map();
         assert_eq!(g.version(), forgotten, "nothing left to forget");
