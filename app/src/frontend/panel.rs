@@ -282,9 +282,9 @@ impl Panel {
 
     /// Level 3 (#7): the core's nine holes in a column at the panel's right
     /// margin, its label on the `label_y` line and its first tile level with
-    /// the map's top at `top`. An open hole shows its piece in the colour the
-    /// item has in its room, outlined in white while it is carried; a filled
-    /// one shows its placeholder, dimmed, as the core room does.
+    /// the map's top at `top`. An open hole shows its piece in white,
+    /// outlined in white while it is carried; a filled one shows its
+    /// placeholder, dimmed, as the core room does.
     fn core(&mut self, canvas: &mut Canvas, guidance: &Guidance, label_y: f32, top: f32) {
         let x = WINDOW_W - 24.0 - TILE_W;
         let label = "CORE";
@@ -300,12 +300,7 @@ impl Panel {
             if hole.carried {
                 canvas.outline(x, y, TILE_W, TILE_W, 4.0, 2.0, None, HERE);
             }
-            let colour = if hole.open {
-                let c = zx_core::screen::PALETTE[8 + usize::from(hole.colour & 7)];
-                [(c >> 16) as u8, (c >> 8) as u8, c as u8]
-            } else {
-                DELIVERED
-            };
+            let colour = if hole.open { HERE } else { DELIVERED };
             let inset = (TILE_W - 16.0 * PIECE_PIXEL) / 2.0;
             for (cell, (cy, cx)) in [(0, 0), (0, 8), (8, 0), (8, 8)].into_iter().enumerate() {
                 for row in 0..8 {
@@ -1046,7 +1041,6 @@ mod tests {
                 crate::frontend::guidance::Hole {
                     graphic,
                     open: ![1, 4, 6].contains(&i),
-                    colour: [2, 7, 6, 5, 7, 3, 7, 3, 4][usize::from(i)],
                     carried: i == 0,
                 }
             })

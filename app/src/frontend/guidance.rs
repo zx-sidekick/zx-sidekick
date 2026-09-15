@@ -31,8 +31,6 @@ pub struct Hole {
     /// the hole is open, its placeholder once filled.
     pub graphic: [u8; 32],
     pub open: bool,
-    /// The colour of an item that fills it, 0 to 7, as drawn in its room.
-    pub colour: u8,
     /// Whether that piece is being carried.
     pub carried: bool,
 }

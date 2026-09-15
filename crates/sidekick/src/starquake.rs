@@ -138,7 +138,7 @@ pub mod at {
     /// then the graphic of the piece that fills it; a filled hole holds its
     /// own number.
     pub const CORE_SLOTS: u16 = 0xD2DE;
-    /// The 45 items, four bytes each: column and colour, row with the room's
+    /// The 45 items, four bytes each: column (and colour), row with the room's
     /// top bit, the room's low byte, graphic.
     pub const ITEMS: u16 = 0x94E8;
     pub const ITEM_COUNT: usize = 45;
@@ -308,11 +308,6 @@ impl Item {
     pub fn column(&self) -> u8 {
         self.0[0] & 0x1F
     }
-    /// The ink colour it is drawn in, 0 to 7; it is drawn bright.
-    #[must_use]
-    pub fn colour(&self) -> u8 {
-        self.0[0] >> 5
-    }
 }
 
 /// The items and the core's holes, from the machine's memory.
@@ -467,12 +462,9 @@ mod tests {
     }
 
     #[test]
-    fn an_item_s_column_and_colour_share_its_first_byte() {
+    fn an_item_s_column_is_in_its_first_byte() {
         let i = Item([0x95, 19, 16, 33]);
-        assert_eq!(
-            (i.column(), i.colour(), i.row(), i.graphic()),
-            (21, 4, 19, 33)
-        );
+        assert_eq!((i.column(), i.row(), i.graphic()), (21, 19, 33));
     }
 
     #[test]

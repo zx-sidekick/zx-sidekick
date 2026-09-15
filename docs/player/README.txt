@@ -93,9 +93,9 @@ from 0 (none) to 5, each adding to the ones below.
                        teleporters you have seen.
   Level 3              The missing core pieces marked on the map, in
                        rooms you have visited or not, and the core's
-                       nine holes beside it: the pieces still needed in
-                       their own colours, the ones delivered dimmed, and
-                       a piece you carry outlined.
+                       nine holes beside it: the pieces still needed,
+                       the ones delivered dimmed, and a piece you carry
+                       outlined.
   Levels 4 and 5       Still to be built, and training mode too.
 
   Esc, or Select       Open the guidance picker. The game waits while
