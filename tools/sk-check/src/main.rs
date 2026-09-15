@@ -707,22 +707,26 @@ fn items_check(dir: &Path) -> bool {
 }
 
 /// The high-score table (#47): as the tape ships it, the STARQUAKES names;
-/// and a table written into memory is the one a game's score is ranked
-/// against, the new entry named and in before the CORE OF HEROES screen,
+/// and a table written into memory once the tape is loaded, as the app
+/// does, is the one a game's score is ranked against, the new entry named and in before the CORE OF HEROES screen,
 /// which is where the app keeps it.
 fn heroes_check(dir: &Path) -> bool {
     use sidekick::starquake::{
         HighScore, at, end_game_hold, high_scores, routine, write_high_scores,
     };
-    let mut play = machine(dir);
-    play.watch = vec![routine::MAIN_LOOP];
-    let mut script = Script(0xBEEF);
-    for frame in 0..600 {
-        script.apply(&mut play, frame.min(399));
-        if play.run_frame().contains(&routine::MAIN_LOOP) {
-            break;
+    let loaded = machine(dir);
+    let into_play = |mut m: sidekick::Machine| {
+        m.watch = vec![routine::MAIN_LOOP];
+        let mut script = Script(0xBEEF);
+        for frame in 0..600 {
+            script.apply(&mut m, frame.min(399));
+            if m.run_frame().contains(&routine::MAIN_LOOP) {
+                break;
+            }
         }
-    }
+        m
+    };
+    let play = into_play(loaded.clone());
     let names: Vec<u8> = high_scores(&play.zx.mem[..])
         .map(|t| t.iter().flat_map(|e| e.name).collect())
         .unwrap_or_default();
@@ -782,9 +786,10 @@ fn heroes_check(dir: &Path) -> bool {
         }
     });
     let ranks = score.as_slice() > b"000005".as_slice();
-    let mut m = play.clone();
+    // Written as the app does, once the tape is loaded, before the title.
+    let mut m = loaded.clone();
     write_high_scores(&mut m.zx.mem[..], &written);
-    let landed = end(m).is_some_and(|(table, s, same)| {
+    let landed = end(into_play(m)).is_some_and(|(table, s, same)| {
         s == score
             && table[..3] == written[..3]
             && table[3].score == score

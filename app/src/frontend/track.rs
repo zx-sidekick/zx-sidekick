@@ -28,8 +28,9 @@ pub enum Scene {
 
 /// The routines whose arrival tells the tracker something: which scene the
 /// program is in, a new game, and a teleporter booth entered.
-pub const WATCH: [u16; 6] = [
+pub const WATCH: [u16; 7] = [
     routine::MENU,
+    routine::HEROES,
     routine::MAIN_LOOP,
     routine::GAME_OVER,
     routine::NEW_GAME,

@@ -10,6 +10,7 @@ mod notice;
 mod overlay;
 mod panel;
 mod prompt;
+mod scores;
 pub mod tape;
 mod text;
 mod track;
@@ -20,7 +21,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use sidekick::starquake::{ENTRY_PC, ENTRY_SP, end_game_hold};
+use sidekick::starquake::{
+    ENTRY_PC, ENTRY_SP, end_game_hold, high_scores, routine, write_high_scores,
+};
 use sidekick::{Input, Machine};
 
 /// How long a Spectrum frame lasts, from the clock it is derived from
@@ -168,6 +171,25 @@ impl Runner {
             }
         }
         machine.watch = track::WATCH.to_vec();
+        // The high scores kept between runs (#47), put into the game's
+        // memory before its first frame. A file that cannot be read is
+        // left alone.
+        let scores_file = scores::path();
+        let text = scores_file
+            .as_ref()
+            .and_then(|p| match std::fs::read_to_string(p) {
+                Ok(text) => Some(text),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(_) => Some(String::new()),
+            });
+        let shipped = high_scores(&machine.zx.mem[..]).ok_or("no room for the high scores")?;
+        let mut keeper = scores::Keeper::new(text.as_deref(), shipped);
+        write_high_scores(&mut machine.zx.mem[..], &keeper.kept.entries);
+        self.shared
+            .guidance
+            .lock()
+            .unwrap()
+            .set_high_scores(keeper.kept);
         let mut tracker = track::Tracker::default();
         tracker.graph = graph;
         let mut freeze = freeze::Freeze::default();
@@ -223,12 +245,33 @@ impl Runner {
             pause = machine.pause_pressed;
             {
                 let mut guidance = self.shared.guidance.lock().unwrap();
-                for hit in hits {
+                for &hit in &hits {
                     if let Some(scene) = tracker.follow(&machine.zx.mem[..], hit, &mut guidance) {
                         *self.shared.scene.lock().unwrap() = scene;
                     }
                 }
                 tracker.publish(&machine.zx.mem[..], &mut guidance);
+                // The CORE OF HEROES screen after a game over shows the table
+                // final: kept, with this game's guidance (#47).
+                if hits.contains(&routine::HEROES)
+                    && tracker.scene == track::Scene::GameOver
+                    && let Some(table) = high_scores(&machine.zx.mem[..])
+                {
+                    if let Some(kept) = keeper.heroes(&table, guidance.record())
+                        && let Some(path) = &scores_file
+                        && let Err(e) = scores::save(path, &kept)
+                    {
+                        eprintln!("{e}");
+                    }
+                    guidance.set_high_scores(keeper.kept);
+                }
+                // After a game with training, its table is put back.
+                if hits.contains(&routine::MENU)
+                    && let Some(table) = keeper.menu()
+                {
+                    write_high_scores(&mut machine.zx.mem[..], &table);
+                    guidance.set_high_scores(keeper.kept);
+                }
             }
             if tracker.scene != track::Scene::Play {
                 machine.hold = None;

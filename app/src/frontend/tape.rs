@@ -76,6 +76,12 @@ pub fn folders() -> Vec<PathBuf> {
     out
 }
 
+/// This program's folder in the data dir, where the located tape and the
+/// high scores are kept.
+pub fn app_dir() -> Option<PathBuf> {
+    data_dir().map(|d| d.join(APP))
+}
+
 /// Where this system keeps application data a user installed themselves.
 ///
 /// On Linux and the other unices it is the XDG Base Directory Specification:

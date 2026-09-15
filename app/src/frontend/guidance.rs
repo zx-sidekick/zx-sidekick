@@ -128,6 +128,9 @@ pub struct Guidance {
     /// The route to the core while a piece it needs is carried (#44);
     /// `None` otherwise or when there is none.
     core_route: Option<Vec<Step>>,
+    /// The high-score table kept between runs, with each entry's guidance
+    /// (#47); `None` until the tape is loaded.
+    high_scores: Option<super::scores::Kept>,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -285,6 +288,23 @@ impl Guidance {
     pub fn set_core_route(&mut self, route: Option<Vec<Step>>) {
         if self.core_route != route {
             self.core_route = route;
+            self.version += 1;
+        }
+    }
+
+    /// The high-score table kept between runs, with each entry's guidance.
+    #[expect(
+        dead_code,
+        reason = "the panel lists it once the mockup is approved (#47)"
+    )]
+    pub fn high_scores(&self) -> Option<&super::scores::Kept> {
+        self.high_scores.as_ref()
+    }
+
+    /// Takes the kept high-score table, if it has changed.
+    pub fn set_high_scores(&mut self, kept: super::scores::Kept) {
+        if self.high_scores != Some(kept) {
+            self.high_scores = Some(kept);
             self.version += 1;
         }
     }
