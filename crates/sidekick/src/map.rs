@@ -99,6 +99,42 @@ impl Parts {
         Parts(parts)
     }
 
+    /// Joins the parts on either side of a door's tile, four cells by three
+    /// from its cell at screen (`row`, `col`): what a door does when it
+    /// opens, moving Blob 48 pixels past the tile rather than through its
+    /// cells. So on each side the nearest place Blob fits within six cells
+    /// counts, and whatever lies between two doors' tiles, the second
+    /// tile included, does not keep the sides apart.
+    fn join_across(&mut self, row: u8, col: u8) {
+        const REACH: u8 = 6;
+        let rows = row.saturating_sub(1)..row + 3;
+        // Blob's top-left cell beside the tile: two cells to its left, so
+        // his right cell touches it, or just past its right side; then
+        // further out.
+        let left = (0..REACH).map(|d| col.wrapping_sub(2 + d));
+        let right = (0..REACH).map(|d| col + 4 + d);
+        let mut parts: Vec<u8> = Vec::new();
+        for side in [left.collect::<Vec<u8>>(), right.collect()] {
+            let nearest = side
+                .into_iter()
+                .find_map(|c| rows.clone().map(|r| self.at(r, c)).find(|&p| p != 0));
+            if let Some(p) = nearest
+                && !parts.contains(&p)
+            {
+                parts.push(p);
+            }
+        }
+        if let Some((&first, rest)) = parts.split_first() {
+            for line in &mut self.0 {
+                for cell in line.iter_mut() {
+                    if rest.contains(cell) {
+                        *cell = first;
+                    }
+                }
+            }
+        }
+    }
+
     /// The part of the room Blob is in with his top-left cell at screen
     /// (`row`, `col`), or 0 where he does not fit.
     pub fn at(&self, row: u8, col: u8) -> u8 {
@@ -139,17 +175,17 @@ impl Room {
     pub fn read(attr: impl Fn(u8, u8) -> u8, markers: &[(u8, u8, u8)]) -> Room {
         let cell = |&(x, y, _): &(u8, u8, u8)| marker_cell(x, y);
         let passage = markers.iter().find(|m| m.2 == PASSAGE).map(cell);
-        // A door's tile is four cells by three, from its marker's cell.
-        let doors: Vec<(u8, u8)> = markers.iter().filter(|m| m.2 == DOOR).map(cell).collect();
-        let in_door = |row: u8, col: u8| {
-            doors
-                .iter()
-                .any(|&(r, c)| (r..r + 3).contains(&row) && (c..c + 4).contains(&col))
-        };
+        // A door's tile is four cells by three, from its marker's cell; open,
+        // it joins the parts on either side of it.
+        let shut = Parts::find(|row, col| free(attr(row, col)));
+        let mut open = shut.clone();
+        for (r, c) in markers.iter().filter(|m| m.2 == DOOR).map(cell) {
+            open.join_across(r, c);
+        }
         Room {
             openings: scan(|row, col| free(attr(row, col))),
-            shut: Parts::find(|row, col| free(attr(row, col))),
-            open: Parts::find(|row, col| free(attr(row, col)) || in_door(row, col)),
+            shut,
+            open,
             passage,
         }
     }
@@ -626,6 +662,29 @@ mod tests {
         let walls = walls_of(&lines);
         assert_eq!(walls.len(), 2);
         assert!(walls.iter().all(|w| w.door));
+    }
+
+    /// Room 210: two doors either side of a solid pillar four cells wide,
+    /// their own cells free as the game draws them. A door moves Blob 48
+    /// pixels past it, so the divide is a door, pillar or not.
+    #[test]
+    fn two_doors_with_solid_cells_between_them_still_make_a_door() {
+        let mut lines = open_both_sides();
+        for line in &mut lines {
+            line.replace_range(14..18, "####");
+        }
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        let grid = room(&refs);
+        // Doors at cells (13, 12) and (13, 18), as markers (x, y, kind 0):
+        // `marker_cell(96, 87)` is (13, 12).
+        assert_eq!(marker_cell(96, 87), (13, 12));
+        let r = Room::read(
+            |row, col| if grid(row, col) { 0x47 } else { 0x07 },
+            &[(96, 87, DOOR), (144, 87, DOOR)],
+        );
+        let walls: Vec<Wall> = openings(&[r], 999)[0].walls.into_iter().flatten().collect();
+        assert_eq!(walls.len(), 2, "{walls:?}");
+        assert!(walls.iter().all(|w| w.door), "{walls:?}");
     }
 
     #[test]
