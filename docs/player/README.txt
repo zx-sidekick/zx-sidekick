@@ -140,6 +140,11 @@ from 0 (none) to 5, each adding to the ones below.
                        is as large as your screen allows.
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.
+  Tab, or Y on a       At levels 4 and 5, switch the route to a missing
+  gamepad              piece between the three nearest, and from the
+                       third back to the nearest. It goes back to the
+                       nearest by itself when the piece is picked up or
+                       is no longer one of the three nearest.
   Up and down          Choose a row.
   Left and right       Change the guidance level or training mode.
   Enter, or A          OK: keep what you changed. End this game and

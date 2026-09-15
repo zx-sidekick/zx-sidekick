@@ -346,7 +346,8 @@ impl App {
         }
     }
 
-    /// The keys the guidance picker takes. Esc opens it and goes back; while
+    /// The keys the guidance panel takes. Esc opens the picker and goes back,
+    /// and Tab switches the piece route; while
     /// it is open the arrows and Enter work it, and it has the keyboard to
     /// itself, so nothing typed into it reaches the game. Returns whether the
     /// key was the picker's.
@@ -356,6 +357,8 @@ impl App {
         match code {
             KeyCode::Escape if open => guidance.back(),
             KeyCode::Escape => guidance.open(),
+            // Tab, no key of the Spectrum's, switches the piece route (#51).
+            KeyCode::Tab if !open => guidance.switch_piece(),
             _ if !open => return false,
             KeyCode::ArrowUp => guidance.focus_up(),
             KeyCode::ArrowDown => guidance.focus_down(),
