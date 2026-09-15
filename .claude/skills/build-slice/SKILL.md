@@ -81,8 +81,8 @@ left for the maintainer (a settings change, a manual step) counts as open: a
 **Review is the bottleneck**: the maintainer reviews alone, so the body is a
 guide to reviewing, not a defence.
 
-0. **No attribution line on a PR body or a commit message** — the maintainer
-   asked for those to stay clean. Issues and comments carry it; these do not.
+0. **The PR body opens with the 🤖 "Pull request by Claude" attribution line**
+   (CLAUDE.md), like every issue and comment; commit messages carry none.
 1. **`## Where to look`**: the two or three judgement calls the maintainer
    might disagree with, each naming its file. None? Say so in one line.
 2. `---`, then *Mechanically verified — skip unless curious.* and ONE short

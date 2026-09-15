@@ -62,12 +62,11 @@ found and let the maintainer confirm the shape first.
   **tweak** small enough to need no plan. Never build a `Your input` or
   `Your sign-off` ticket.
 - **Skip anything labelled `hold`** entirely: no comment, no build, no merge.
-- **Every issue and comment you post opens with the 🤖 attribution line**
-  (CLAUDE.md), posted with `--body-file`. The monitor tells your comments from
-  the maintainer's by that prefix, so an unmarked comment reads as their
-  answer. **Commit messages and PR bodies carry no such line** — the
-  maintainer asked for those to stay clean, and nothing reads them for
-  provenance.
+- **Every issue, comment and PR description you post opens with the 🤖
+  attribution line** (CLAUDE.md), posted with `--body-file`. The monitor
+  tells your comments from the maintainer's by that prefix, so an unmarked
+  comment reads as their answer. **Commit messages carry no such line**: the
+  squash-merge commit is the maintainer's own.
 - **At most ONE build per pass** (see the cap).
 - **Sweep for closed issues not in `Done`.** `Item closed → Done` is a GitHub
   automation, and when it breaks nothing announces it:
