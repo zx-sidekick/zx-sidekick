@@ -8,7 +8,7 @@
 //! What each level shows is its own ticket's (#3); level 1's teleporter
 //! codes are carried here from the game thread to the panel (#4).
 
-use sidekick::map::{Openings, RoomSet};
+use sidekick::map::{Openings, RoomSet, Step};
 use sidekick::starquake::SeenTeleporter;
 
 /// The number of rooms on the planet.
@@ -105,6 +105,9 @@ pub struct Guidance {
     /// The core's nine holes, in the game being played or just ended; empty
     /// on the title screen.
     core: Vec<Hole>,
+    /// The route to the nearest target over known connections, for level 4
+    /// (#9); `None` when there is none.
+    route: Option<Vec<Step>>,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -234,6 +237,19 @@ impl Guidance {
         }
     }
 
+    /// The route to the nearest target, or `None` when none is known.
+    pub fn route(&self) -> Option<&[Step]> {
+        self.route.as_deref()
+    }
+
+    /// Takes the route, if it has changed.
+    pub fn set_route(&mut self, route: Option<Vec<Step>>) {
+        if self.route != route {
+            self.route = route;
+            self.version += 1;
+        }
+    }
+
     /// The core's nine holes, or none outside a game.
     pub fn core(&self) -> &[Hole] {
         &self.core
@@ -260,6 +276,7 @@ impl Guidance {
             self.room = None;
             self.pieces = empty;
             self.core.clear();
+            self.route = None;
             self.version += 1;
         }
     }
