@@ -11,8 +11,9 @@ Steps, in order, ticked as they land. Each ends with the gate green, a commit, a
 7. [x] **The joystick in every control method** (#11). The arrows with Left Control, and a gamepad, pressed for the game as whatever its chosen control method listens for, from its own key tables, at the moment its play-time key reader runs; Start presses its pause key, and Start or fire starts a game from the title screen (#19). `sk-check keys` proves it in all five methods.
 8. [x] **The guidance framework** (#25, part of #3). The panel beside the picture, drawn at the window's resolution in a second pass; the picker for the level and training mode, End this game and Exit; the note of how much help a game had beside the game-over screens. `sk-check facts` checks the entry points it follows and End this game. Pausing, with Start or the game's pause key, freezes the emulation, and the machine keeps the pause key from the game.
 
+9. [x] **The fork's features in use** (#75). `Zx` derives `Clone`, and `Zx::step` takes an interrupt as a step of its own, so the interrupt is answered at its vector like any call: the trap at `0x0038` with its time given back, the bus recording opcode fetches, and the ROM check's copy before every step are gone. The `JR $` at the three entries stay as safety stops. Every check came out the same, and no faster.
+
 ## Later
 
-- Adopt the fork's features: a derived `Clone` for `Zx`, and `Z80::step` for the interrupt, removing the trap at `0x0038` and its time given back, `fetched_from`, and the ROM check's copy before every step. The `JR $` at `0x15F2` and `0x30A9` stay as safety stops, and every check must come out the same.
 - Release builds for Linux, Windows and macOS: `release.yml` is ready (#1); tagging a version happens only when asked.
 - Hand checks by the maintainer: the tape prompt and sound.
