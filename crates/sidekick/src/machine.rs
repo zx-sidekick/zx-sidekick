@@ -91,9 +91,9 @@ pub struct Training {
     pub full: bool,
     /// The lives left never fall, and the panel's digit with them.
     pub lives: bool,
-    /// Touching an enemy costs no energy: the push it gives the counter is
-    /// taken back, so only time takes energy. The kinds of enemy that kill
-    /// outright are not touched by this: they never read energy.
+    /// No harm from enemies: the push a touch gives the drain counter is
+    /// taken back, and the kinds that kill outright are held at arm's
+    /// length, since their touch never reads energy at all.
     pub unharmed: bool,
     /// The spikes and zappers do nothing: every marker of the deadly kind
     /// in the room is blanked while this is on, so walking into one costs
@@ -135,6 +135,15 @@ impl Training {
         }
     }
 
+    /// What has to be set before a frame runs, rather than put back after
+    /// it: a touch is decided inside the frame, so an enemy that kills on
+    /// touch has to be out of reach before the frame starts.
+    pub fn arm(self, z: &mut Zx) {
+        if self.unharmed {
+            hold_off_deadly(z);
+        }
+    }
+
     /// Puts back what the switches in force hold still, after a frame.
     pub fn hold(self, z: &mut Zx, before: Held) {
         if !self.any() {
@@ -170,6 +179,61 @@ impl Training {
         }
         if self.dangers {
             blank_dangers(z);
+        }
+    }
+}
+
+/// Keeps every enemy that kills on touch far enough from Blob that it
+/// cannot reach him before the next frame: the touch is tested inside the
+/// frame, several times, so nothing put back afterwards would help (#8).
+/// The nearest such enemy is pushed out along whichever axis is the shorter
+/// move, which keeps it where it was in the other one.
+fn hold_off_deadly(z: &mut Zx) {
+    use starquake::{ENEMY_STEP, SLOT, SLOT_GRAPHIC, SLOT_X, SLOT_Y, SLOTS};
+    let slot = |n: usize| usize::from(starquake::at::ENTITIES) + n * SLOT;
+    let blob = slot(0);
+    let (bx, by) = (z.mem[blob + SLOT_X], z.mem[blob + SLOT_Y]);
+    // Far enough that a frame's worth of moving cannot close the gap, with
+    // a frame's worth again to spare.
+    let clear_x = starquake::TOUCH_X + 2 * ENEMY_STEP;
+    let clear_y = starquake::TOUCH_Y + 2 * ENEMY_STEP;
+    for n in 1..SLOTS {
+        let e = slot(n);
+        // Whatever its state: one still appearing turns deadly partway
+        // through a frame, too late for anything decided at the start of it.
+        let graphic = z.mem[e + SLOT_GRAPHIC + 1];
+        if graphic == 0 || graphic >= starquake::HARMLESS_GRAPHICS {
+            continue;
+        }
+        let (ex, ey) = (z.mem[e + SLOT_X], z.mem[e + SLOT_Y]);
+        let (dx, dy) = (ex.abs_diff(bx), ey.abs_diff(by));
+        if dx >= clear_x || dy >= clear_y {
+            continue;
+        }
+        // Out of reach the near way first, and on the side it came from,
+        // but never off the room: beside a wall the only way out is the
+        // other side, or the other axis.
+        let away = |from: u8, want: u8, towards: bool| {
+            let to = if towards {
+                u16::from(from) + u16::from(want)
+            } else {
+                u16::from(from).wrapping_sub(u16::from(want))
+            };
+            (to <= 0xFF).then_some(to as u8)
+        };
+        let ways = [
+            (SLOT_X, bx, clear_x, ex >= bx, clear_x - dx),
+            (SLOT_X, bx, clear_x, ex < bx, clear_x - dx),
+            (SLOT_Y, by, clear_y, ey >= by, clear_y - dy),
+            (SLOT_Y, by, clear_y, ey < by, clear_y - dy),
+        ];
+        let mut order: Vec<_> = ways.into_iter().enumerate().collect();
+        order.sort_by_key(|&(i, (_, _, _, _, cost))| (cost, i));
+        for (_, (axis, from, want, towards, _)) in order {
+            if let Some(to) = away(from, want, towards) {
+                z.mem[e + axis] = to;
+                break;
+            }
         }
     }
 }
@@ -404,6 +468,7 @@ impl Machine {
         // What training mode holds still is read before the frame and put
         // back after it, so the game runs its own way in between (#8).
         let before = training.read(&self.zx);
+        training.arm(&mut self.zx);
         let start_game = start || joystick & JOY_FIRE != 0;
         let Machine {
             zx,
@@ -569,6 +634,49 @@ mod tests {
         z.mem[usize::from(starquake::at::DRAIN)] = 40;
         training.hold(&mut z, before);
         assert_eq!(at(&z, starquake::at::DRAIN), 10, "nothing drains energy");
+    }
+
+    #[test]
+    fn no_harm_holds_an_enemy_that_kills_out_of_reach() {
+        let mut z = watched(10);
+        let blob = usize::from(starquake::at::ENTITIES);
+        let enemy = blob + starquake::SLOT;
+        let put = |z: &mut Zx, at: usize, x: u8, y: u8, graphic: u8| {
+            z.mem[at + starquake::SLOT_X] = x;
+            z.mem[at + starquake::SLOT_Y] = y;
+            z.mem[at + starquake::SLOT_GRAPHIC + 1] = graphic;
+            z.mem[at + starquake::SLOT_STATE] = starquake::SLOT_UP;
+        };
+        put(&mut z, blob, 120, 80, 0xB4);
+        // One that only drains is left exactly where it is.
+        put(&mut z, enemy, 121, 80, 0xC0);
+        let training = Training {
+            unharmed: true,
+            ..Training::default()
+        };
+        training.arm(&mut z);
+        assert_eq!(z.mem[enemy + starquake::SLOT_X], 121, "a draining one");
+
+        // One that kills is moved out of reach on one axis or the other.
+        put(&mut z, enemy, 121, 80, 0xAF);
+        training.arm(&mut z);
+        let out = |z: &Zx, bx: u8, by: u8| {
+            let dx = z.mem[enemy + starquake::SLOT_X].abs_diff(bx);
+            let dy = z.mem[enemy + starquake::SLOT_Y].abs_diff(by);
+            dx >= starquake::TOUCH_X + starquake::ENEMY_STEP
+                || dy >= starquake::TOUCH_Y + starquake::ENEMY_STEP
+        };
+        assert!(out(&z, 120, 80), "a frame of moving could still reach Blob");
+
+        // Against the right-hand wall, where the way out is to the left.
+        put(&mut z, blob, 250, 80, 0xB4);
+        put(&mut z, enemy, 225, 100, 0xAF);
+        training.arm(&mut z);
+        assert!(out(&z, 250, 80), "held off beside the wall too");
+        assert!(
+            z.mem[enemy + starquake::SLOT_X] <= 250,
+            "and pushed inwards, not off the room"
+        );
     }
 
     #[test]

@@ -276,6 +276,30 @@ pub const DRAIN_DROP: u8 = 0x78;
 /// The marker a teleporter booth's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;
 
+/// The six entity slots are 32 bytes each: the position at offsets 5 and 6,
+/// the graphic's address at 7, and the state at 0x15, which is 1 while the
+/// thing is up and about (#8).
+pub const SLOT: usize = 32;
+pub const SLOTS: usize = 6;
+pub const SLOT_X: usize = 5;
+pub const SLOT_Y: usize = 6;
+pub const SLOT_GRAPHIC: usize = 7;
+pub const SLOT_STATE: usize = 0x15;
+pub const SLOT_UP: u8 = 1;
+
+/// An enemy whose graphic lies at or above this page only drains energy on
+/// touch; one below it kills Blob outright, whatever his energy (#8).
+pub const HARMLESS_GRAPHICS: u8 = 0xB4;
+
+/// How near an enemy has to be for its touch to count: within this many
+/// pixels across and down of Blob (#8).
+pub const TOUCH_X: u8 = 14;
+pub const TOUCH_Y: u8 = 11;
+
+/// The furthest an enemy moves in one frame, four sub-steps of at most two
+/// pixels: what a frame can close before the next look at it (#8).
+pub const ENEMY_STEP: u8 = 8;
+
 /// The marker a spike or a zapper leaves in its room: touching it is an
 /// outright death, which no amount of energy survives (#8).
 pub const DANGER_MARKER: u8 = 0x06;
