@@ -968,10 +968,9 @@ impl Panel {
         };
         let actions_h: f32 = actions.iter().map(|&r| action_h(r) + 4.0).sum::<f32>() - 4.0;
         // Where the switches end, and with them the rule above the actions:
-        // the heading, a row each, and the line saying what the focused one
-        // does, which is always kept.
-        let rows = SWITCHES.len() as f32;
-        let rule = 250.0 + SWITCH_HEAD + rows * SWITCH_PITCH + SWITCH_SAYS + 6.0;
+        // the heading, the four rows, and the line saying what the focused
+        // one does, which is always kept.
+        let rule = 250.0 + SWITCH_HEAD + 4.0 * SWITCH_PITCH + SWITCH_SAYS + 6.0;
         let (w, h) = (520.0, rule + 8.0 + actions_h + 12.0 + 52.0);
         let x = (WINDOW_W - w) / 2.0;
         let y = (WINDOW_H - h) / 2.0;
@@ -1057,7 +1056,7 @@ impl Panel {
             &[span(ADDS[level as usize], 13.0, Weight::Regular, HINT_KEY)],
         );
 
-        // Training mode: a row for each switch (#8).
+        // Training mode: four switches, a row each (#8).
         let mut top = y + 250.0;
         self.spaced(canvas, rx + 14.0, top, "TRAINING");
         top += SWITCH_HEAD;
@@ -2245,7 +2244,7 @@ mod tests {
                 {
                     let mut g = picker;
                     g.set_playing(true);
-                    for _ in 0..=SWITCHES.len() {
+                    for _ in 0..5 {
                         g.focus_down();
                     }
                     g.enter();

@@ -712,10 +712,7 @@ fn items_check(dir: &Path) -> bool {
 /// play the game would have had.
 fn training_check(dir: &Path, frames: u64) -> bool {
     use sidekick::machine::Training;
-    use sidekick::starquake::{
-        DANGER_MARKER, ENEMY_SLOTS, FORCE_FIELD_COUNT, FORCE_FIELD_REC, FORCE_FIELDS,
-        HARMLESS_GRAPHICS, SLOT, SLOT_GRAPHIC, SLOT_X, SLOT_Y, at, routine,
-    };
+    use sidekick::starquake::{at, routine};
     // How long the game takes to set energy up once play starts; before
     // that the byte still holds what the loader left.
     const SETTLED: u64 = 200;
@@ -784,158 +781,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     let time_holds = time_low[0] > plain_low[0];
     let lives_hold = lives_low[3] >= start[3] && plain_low[3] < start[3];
     let nothing_drains = both_low[0] >= both_start[0];
-    // The spikes and the zappers: stand Blob on each room's deadly marker,
-    // with the switch off and on. The game rebuilds the markers on entering
-    // a room, so the switch has to keep blanking them.
-    let mut spikes = Vec::new();
-    for room in [49u16, 50, 55, 56, 64, 79] {
-        let died = |dangers: bool| {
-            let mut m = base.clone();
-            m.training = Training {
-                dangers,
-                ..Training::default()
-            };
-            m.zx.write16(at::ROOM, room);
-            m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
-            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
-                return None;
-            }
-            // Where the room's spike or zapper is, read before a frame runs:
-            // the game rebuilds the table whenever a room is entered.
-            let end = m.zx.read16(at::MARKERS_END).max(at::MARKERS);
-            let spot = (at::MARKERS..end)
-                .step_by(3)
-                .map(usize::from)
-                .find(|&a| m.zx.mem[a + 2] == DANGER_MARKER)?;
-            let (x, y) = (m.zx.mem[spot], m.zx.mem[spot + 1]);
-            m.zx.t = 0;
-            m.zx.set_interrupts(true);
-            m.watch = vec![routine::DEATH];
-            // Held on the spot while the room draws and then plays.
-            for _ in 0..240 {
-                m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
-                m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
-                m.zx.mem[usize::from(at::ENERGY)] = 127;
-                if m.run_frame().contains(&routine::DEATH) {
-                    return Some(true);
-                }
-            }
-            Some(false)
-        };
-        if let (Some(off), Some(on)) = (died(false), died(true)) {
-            spikes.push((room, off, on));
-        }
-    }
-    // The zappers: stand Blob in a force field's strip, with the switch off
-    // and on.
-    let mut fields = Vec::new();
-    for room in 0..64u16 {
-        let killed = |dangers: bool| {
-            let mut m = base.clone();
-            m.training = Training {
-                dangers,
-                time: true,
-                ..Training::default()
-            };
-            m.zx.write16(at::ROOM, room);
-            m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
-            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
-                return None;
-            }
-            let rec = (0..FORCE_FIELD_COUNT)
-                .map(|i| usize::from(FORCE_FIELDS) + i * FORCE_FIELD_REC)
-                .find(|&a| m.zx.mem[a] != 0 && m.zx.mem[a + 1] != 0)?;
-            // Where the game looks for Blob against that field.
-            let x = m.zx.mem[rec].rotate_left(3);
-            let top = 0x1Au8
-                .wrapping_sub(m.zx.mem[rec + 1])
-                .rotate_left(3)
-                .wrapping_sub(2);
-            m.zx.t = 0;
-            m.zx.set_interrupts(true);
-            m.watch = vec![routine::DEATH];
-            for _ in 0..120 {
-                m.zx.mem[usize::from(at::ENTITIES) + SLOT_X] = x;
-                m.zx.mem[usize::from(at::ENTITIES) + SLOT_Y] = top.wrapping_sub(8);
-                if m.run_frame().contains(&routine::DEATH) {
-                    return Some(true);
-                }
-            }
-            Some(false)
-        };
-        if let Some(off) = killed(false)
-            && off
-            && let Some(on) = killed(true)
-        {
-            fields.push((room, on));
-        }
-        if fields.len() >= 6 {
-            break;
-        }
-    }
-    let fields_held = fields.iter().filter(|&&(_, on)| !on).count();
-    let fields_hold = !fields.is_empty() && fields_held == fields.len();
-    // The things a room raises that kill on touch, the nails and the ones
-    // that come after Blob: stand him on one, with the switch off and on.
-    let mut things = Vec::new();
-    for room in 0..64u16 {
-        let killed = |unharmed: bool| {
-            let mut m = base.clone();
-            m.training = Training {
-                unharmed,
-                // The zappers and the patches are held off in both runs, so
-                // that the only thing that differs is the enemies.
-                dangers: true,
-                time: true,
-                ..Training::default()
-            };
-            m.zx.write16(at::ROOM, room);
-            m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
-            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
-                return None;
-            }
-            m.zx.t = 0;
-            m.zx.set_interrupts(true);
-            m.watch = vec![routine::DEATH];
-            let mut met = false;
-            for _ in 0..300 {
-                let deadly = ENEMY_SLOTS
-                    .map(|n| usize::from(at::ENTITIES) + n * SLOT)
-                    .find(|&e| {
-                        let hi = m.zx.mem[e + SLOT_GRAPHIC + 1];
-                        hi != 0 && hi < HARMLESS_GRAPHICS
-                    });
-                if let Some(e) = deadly {
-                    met = true;
-                    let b = usize::from(at::ENTITIES);
-                    m.zx.mem[b + SLOT_X] = m.zx.mem[e + SLOT_X];
-                    m.zx.mem[b + SLOT_Y] = m.zx.mem[e + SLOT_Y];
-                }
-                if m.run_frame().contains(&routine::DEATH) {
-                    return Some((met, true));
-                }
-            }
-            Some((met, false))
-        };
-        if let Some((met, off)) = killed(false)
-            && met
-            && off
-            && let Some((_, on)) = killed(true)
-        {
-            things.push((room, on));
-        }
-        if things.len() >= 10 {
-            break;
-        }
-    }
-    let things_held = things.iter().filter(|&&(_, on)| !on).count();
-    let things_hold = !things.is_empty() && things_held == things.len();
-    let spikes_kill = spikes.iter().filter(|&&(_, off, _)| off).count();
-    let spikes_held = spikes.iter().filter(|&&(_, _, on)| !on).count();
-    let dangers_hold =
-        !spikes.is_empty() && spikes_kill == spikes.len() && spikes_held == spikes.len();
-    let good =
-        plain_drains && full_holds && time_holds && lives_hold && nothing_drains && dangers_hold;
+    let good = plain_drains && full_holds && time_holds && lives_hold && nothing_drains;
     println!(
         "  training over {frames} frames: with none, energy fell to {} of {}; full bars ended at {} and {} of {} and {}; time standing still left energy at {} or better; endless lives never went below {} where a plain run fell to {} {}",
         plain_low[0],
@@ -952,26 +798,6 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     println!(
         "  time standing still and no harm together: energy never below {} of {}",
         both_low[0], both_start[0]
-    );
-    println!(
-        "  standing on a thing that kills on touch kills in {} of {} rooms, and with no harm from enemies in {} {}",
-        things.len(),
-        things.len(),
-        things.len() - things_held,
-        if things_hold { "ok" } else { "FAILED" }
-    );
-    println!(
-        "  standing on a deadly patch kills in {spikes_kill} of {} rooms, and with no harm from zappers in {} {}",
-        spikes.len(),
-        spikes.len() - spikes_held,
-        if dangers_hold { "ok" } else { "FAILED" }
-    );
-    println!(
-        "  standing in a zapper kills in {} of {} rooms, and with no harm from zappers in {} {}",
-        fields.len(),
-        fields.len(),
-        fields.len() - fields_held,
-        if fields_hold { "ok" } else { "FAILED" }
     );
     println!(
         "  with every switch off the play ends as the game left it: energy {}, platforms {}, gun {}, lives {}",

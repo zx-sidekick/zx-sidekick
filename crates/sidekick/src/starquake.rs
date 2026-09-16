@@ -276,53 +276,6 @@ pub const DRAIN_DROP: u8 = 0x78;
 /// The marker a teleporter booth's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;
 
-/// The entity slots are 32 bytes each: slot 0 is Blob, 1 to 4 the things
-/// the room raises, and 5 his own shot, which is not one of them (#8).
-pub const SLOT: usize = 32;
-pub const ENEMY_SLOTS: std::ops::Range<usize> = 1..5;
-pub const SLOT_GRAPHIC: usize = 7;
-
-/// The graphic the game gives a slot with nothing in it: a thing wearing it
-/// is drawn as nothing, and its touch only drains (#8).
-pub const BLANK_GRAPHIC: u16 = 0xDF40;
-
-/// A thing whose graphic lies at or above this page only drains energy on
-/// touch; one below it kills Blob outright, whatever his energy (#8).
-pub const HARMLESS_GRAPHICS: u8 = 0xB4;
-
-/// How near a thing has to be for its touch to count, and the room to leave
-/// for the moving either of them does within a frame (#8).
-pub const TOUCH_X: u8 = 14;
-pub const TOUCH_Y: u8 = 11;
-pub const TOUCH_STEP: u8 = 8;
-
-/// Blob's place in his entity slot: the pixels from the left, and from the
-/// bottom (#8).
-pub const SLOT_X: usize = 5;
-pub const SLOT_Y: usize = 6;
-
-/// The room's force fields, the zappers: up to four records of eight bytes,
-/// the column first and the row second. The game reads them until a column
-/// of zero, and draws and flickers each one whose row is not zero, so a
-/// record with both cleared is a zapper that is not there (#8).
-pub const FORCE_FIELDS: u16 = 0x9635;
-pub const FORCE_FIELD_REC: usize = 8;
-pub const FORCE_FIELD_COUNT: usize = 4;
-
-/// How near across Blob has to be for a force field to be looked at, and
-/// the room to leave for his own moving within a frame (#8).
-pub const FIELD_REACH: u8 = 0x0E;
-pub const BLOB_STEP: u8 = 8;
-
-/// The marker a spike leaves in its room: touching it is an outright
-/// death, which no amount of energy survives. A zapper is not one of
-/// these: it is a force field, in the table above (#8).
-pub const DANGER_MARKER: u8 = 0x06;
-
-/// What the game leaves on a marker it has spent, such as a bonus picked
-/// up: nothing happens on touching it (#8).
-pub const SPENT_MARKER: u8 = 0x05;
-
 /// The marker a security door's tile leaves in its room.
 pub const DOOR_MARKER: u8 = 0x00;
 
