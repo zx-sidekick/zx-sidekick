@@ -75,7 +75,11 @@ impl Tracker {
                     mem[usize::from(at::ROOM)],
                     mem[usize::from(at::ROOM) + 1],
                 ]);
+                // Only a code of letters: the table can be read while the
+                // game is rewriting it, and the panel draws the game's own
+                // font, which starts at the space (#49).
                 if let Some(code) = teleporter_code(mem, room)
+                    && code.iter().all(|b| (0x20..0x7F).contains(b))
                     && !self.seen.iter().any(|t| t.code == code)
                 {
                     self.seen.push(SeenTeleporter { room, code });
@@ -412,6 +416,21 @@ mod tests {
         t.follow(&mem, routine::MENU, &mut g);
         t.publish(&mem, &mut g);
         assert_eq!(g.explored(), 0);
+    }
+
+    #[test]
+    fn a_teleporter_code_of_anything_but_letters_is_not_kept() {
+        let mut t = Tracker::default();
+        let mut g = Guidance::default();
+        let mut mem = memory(0, b"AB\x00DE", 0);
+        t.follow(&mem, routine::TELEPORT_BOOTH, &mut g);
+        assert!(
+            g.teleporters().is_empty(),
+            "a byte the font has no letter for"
+        );
+        mem = memory(0, b"ABCDE", 0);
+        t.follow(&mem, routine::TELEPORT_BOOTH, &mut g);
+        assert_eq!(g.teleporters().len(), 1);
     }
 
     #[test]
