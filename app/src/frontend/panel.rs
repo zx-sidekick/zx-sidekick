@@ -173,22 +173,31 @@ impl Panel {
                     &[span(&explored, 12.0, Weight::Regular, LABEL)],
                 );
                 let map_w = col_right - col_w - 16.0 - left;
-                let pitch = (map_w / f32::from(COLS)).floor().min(18.0);
-                let mut top = 74.0;
-                // The core as a row above the map (#49, decision 8).
-                if level >= 3 && !guidance.core().is_empty() {
-                    let tile = 16.0 * px + 2.0;
-                    self.core_row(canvas, guidance, left, top, pitch * f32::from(COLS), tile);
-                    top += tile + 12.0;
-                }
-                let bottom = WINDOW_H - 24.0 - if level >= 4 { 58.0 } else { 0.0 };
+                let top = 74.0;
+                // Under the map: the legend's chips, then the core's nine
+                // holes as a square of three by three (#49), then the line
+                // saying which code to select.
+                let tile = 16.0 * px + 2.0;
+                let core = if level >= 3 && !guidance.core().is_empty() {
+                    3.0 * tile + 2.0 * 4.0 + 12.0
+                } else {
+                    0.0
+                };
+                let under = if level >= 4 { 29.0 + core + 29.0 } else { core };
+                let bottom = WINDOW_H - 24.0 - under;
                 let map_bottom = self.map(canvas, guidance, level >= 3, top, bottom, map_w);
                 // The legend as the two chips, with no words (#49, decision 9).
+                let mut under = map_bottom + 12.0;
                 if level >= 4 {
-                    self.route_legend(canvas, guidance, map_bottom + 12.0);
-                    if guidance.room().is_some() {
-                        self.route_line(canvas, guidance, map_bottom + 58.0, &jump);
-                    }
+                    self.route_legend(canvas, under);
+                    under += 29.0;
+                }
+                if level >= 3 && !guidance.core().is_empty() {
+                    self.core_grid(canvas, guidance, left, under, tile);
+                    under += 3.0 * tile + 2.0 * 4.0 + 12.0;
+                }
+                if level >= 4 && guidance.room().is_some() {
+                    self.route_line(canvas, guidance, under + 21.0, &jump);
                 }
             }
             let lines = match level {
@@ -513,28 +522,28 @@ impl Panel {
         (canvas.scale * 1.5).floor().max(1.0) / canvas.scale
     }
 
-    /// Level 3 (#7, #49): the core's nine holes in a row `w` wide above the
-    /// map, each its own graphic from the game, in white while it is still
-    /// wanted and dimmed once delivered, outlined while it is carried.
-    fn core_row(
+    /// Level 3 (#7, #49): the core's nine holes as a square of three by
+    /// three under the map, in the order the core holds them, each its own
+    /// graphic from the game, in white while it is still wanted and dimmed
+    /// once delivered, outlined while it is carried.
+    fn core_grid(
         &mut self,
         canvas: &mut Canvas,
         guidance: &Guidance,
         left: f32,
         top: f32,
-        w: f32,
         tile: f32,
     ) {
         let px = Self::code_pixel(canvas);
-        let step = (w - tile) / 8.0;
         for (i, hole) in guidance.core().iter().enumerate() {
-            let x = left + i as f32 * step;
-            canvas.round_rect(x, top, tile, tile, 3.0, TILE);
+            let x = left + (i % 3) as f32 * (tile + 4.0);
+            let y = top + (i / 3) as f32 * (tile + 4.0);
+            canvas.round_rect(x, y, tile, tile, 3.0, TILE);
             if hole.carried {
-                canvas.outline(x, top, tile, tile, 3.0, 2.0, None, HERE);
+                canvas.outline(x, y, tile, tile, 3.0, 2.0, None, HERE);
             }
             let colour = if hole.open { HERE } else { DELIVERED };
-            cells(canvas, &hole.graphic, x + 1.0, top + 1.0, px, colour);
+            cells(canvas, &hole.graphic, x + 1.0, y + 1.0, px, colour);
         }
     }
 
@@ -657,31 +666,18 @@ impl Panel {
     }
 
     /// Level 4 (#44, #49): the two routes' chips under the map, with no
-    /// words: "item" for the route to the nearest missing piece, and which
-    /// of the nearest it leads to (#51), then "core".
-    fn route_legend(&mut self, canvas: &mut Canvas, guidance: &Guidance, y: f32) {
+    /// words: "item" for the route to the nearest missing piece, "core"
+    /// for the one to the core.
+    fn route_legend(&mut self, canvas: &mut Canvas, y: f32) {
         let x = PICTURE_W + 24.0;
         let word = |text| [span(text, 11.0, Weight::SemiBold, PANEL)];
         let mut at = x;
-        for (i, (text, colour)) in [(PIECE_WORD, PIECE), (CORE_WORD, ROUTE)]
-            .into_iter()
-            .enumerate()
-        {
+        for (text, colour) in [(PIECE_WORD, PIECE), (CORE_WORD, ROUTE)] {
             let w = self.fonts.measure(&word(text)) + 10.0;
             canvas.round_rect(at, y, w, 17.0, 3.0, colour);
             self.fonts
                 .text(Some(canvas), at + 5.0, y + 1.0, None, 1.0, &word(text));
             at += w + 6.0;
-            // Which of the nearest missing pieces the route leads to (#51),
-            // beside the chip it belongs to; nothing while there is one.
-            let (which, count) = guidance.piece_choice();
-            if i == 0 && count > 1 {
-                let tail = format!("{which} of {count}");
-                let spans = [span(&tail, 12.0, Weight::SemiBold, BRIGHT)];
-                self.fonts
-                    .text(Some(canvas), at, y + 1.0, None, 1.0, &spans);
-                at += self.fonts.measure(&spans) + 14.0;
-            }
         }
     }
 
