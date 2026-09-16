@@ -330,6 +330,8 @@ fn holes(mem: &[u8], core: &[u8; 9], items: &[Item]) -> Vec<Hole> {
 
 #[cfg(test)]
 mod tests {
+    use sidekick::machine::Training;
+
     use super::*;
     use crate::frontend::guidance::{Record, Setting};
 
@@ -784,7 +786,10 @@ mod tests {
         let mut t = Tracker::default();
         let mut g = Guidance::default();
         g.set_level(3);
-        g.set_training(true);
+        g.set_training(Training {
+            time: true,
+            ..Training::default()
+        });
         g.set_level(1);
         t.follow(&[], routine::MENU, &mut g);
         assert!(!g.rows().contains(&Setting::EndGame), "nothing to end yet");
@@ -793,7 +798,10 @@ mod tests {
             g.record(),
             Record {
                 highest: 1,
-                training: true
+                training: Training {
+                    time: true,
+                    ..Training::default()
+                }
             },
             "what is in use as the game starts"
         );

@@ -8,6 +8,7 @@
 //! What each level shows is its own ticket's (#3); level 1's teleporter
 //! codes are carried here from the game thread to the panel (#4).
 
+use sidekick::machine::Training;
 use sidekick::map::{Openings, RoomSet, Step};
 use sidekick::starquake::SeenTeleporter;
 
@@ -64,7 +65,7 @@ pub struct Hole {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Record {
     pub highest: u8,
-    pub training: bool,
+    pub training: Training,
 }
 
 /// The rows of the picker, top to bottom: two settings, then two actions.
@@ -72,9 +73,77 @@ pub struct Record {
 pub enum Setting {
     #[default]
     Level,
-    Training,
+    /// One of training mode's four switches (#8), in the order they show.
+    Time,
+    Full,
+    Lives,
+    Unharmed,
     EndGame,
     Exit,
+}
+
+/// Training mode's switches as the picker names them: the row, its label,
+/// and what it does (#8).
+pub const SWITCHES: [(Setting, &str, &str); 4] = [
+    (
+        Setting::Time,
+        "Time stands still",
+        "Energy stops draining as time passes.",
+    ),
+    (
+        Setting::Full,
+        "Full gun and platforms",
+        "The gun and the platform bars stay full.",
+    ),
+    (
+        Setting::Lives,
+        "Endless lives",
+        "Losing a life does not cost one.",
+    ),
+    (
+        Setting::Unharmed,
+        "No harm from enemies",
+        "Touching an enemy costs no energy.",
+    ),
+];
+
+/// The switch a picker row stands for, if it is one.
+fn switch(setting: Setting, of: &mut Training) -> Option<&mut bool> {
+    match setting {
+        Setting::Time => Some(&mut of.time),
+        Setting::Full => Some(&mut of.full),
+        Setting::Lives => Some(&mut of.lives),
+        Setting::Unharmed => Some(&mut of.unharmed),
+        _ => None,
+    }
+}
+
+/// Every switch either of them holds.
+fn merged(a: Training, b: Training) -> Training {
+    Training {
+        time: a.time || b.time,
+        full: a.full || b.full,
+        lives: a.lives || b.lives,
+        unharmed: a.unharmed || b.unharmed,
+    }
+}
+
+/// Whether `on` turns on anything `was` did not.
+fn newly_on(on: Training, was: Training) -> bool {
+    (on.time && !was.time)
+        || (on.full && !was.full)
+        || (on.lives && !was.lives)
+        || (on.unharmed && !was.unharmed)
+}
+
+/// Every switch `on` holds, by the picker's names.
+#[must_use]
+pub fn switches_on(on: Training) -> Vec<&'static str> {
+    SWITCHES
+        .into_iter()
+        .filter(|&(row, _, _)| switch(row, &mut { on }).copied().unwrap_or(false))
+        .map(|(_, label, _)| label)
+        .collect()
 }
 
 /// The answers to "This will show on your score".
@@ -96,12 +165,12 @@ pub enum Action {
 #[derive(Clone, Debug, Default)]
 pub struct Guidance {
     level: u8,
-    training: bool,
+    training: Training,
     record: Record,
     picker: bool,
     /// The level and training mode the picker's steppers show, which take
     /// effect only when kept with Enter or A.
-    picked: (u8, bool),
+    picked: (u8, Training),
     /// "This will show on your score", asked when leaving the picker would
     /// add to the record, and which answer is highlighted.
     asking: Option<Choice>,
@@ -168,7 +237,7 @@ impl Guidance {
     }
 
     /// Whether training mode is in effect.
-    pub fn training(&self) -> bool {
+    pub fn training(&self) -> Training {
         self.training
     }
 
@@ -193,7 +262,7 @@ impl Guidance {
     }
 
     /// The level and training mode chosen in the picker, not yet in effect.
-    pub fn picked(&self) -> (u8, bool) {
+    pub fn picked(&self) -> (u8, Training) {
         self.picked
     }
 
@@ -207,7 +276,7 @@ impl Guidance {
     /// the first time. Lowering either never does.
     pub fn raises_record(&self) -> bool {
         let (level, training) = self.picked;
-        level > self.record.highest || (training && !self.record.training)
+        level > self.record.highest || newly_on(training, self.record.training)
     }
 
     /// The teleporters seen this game.
@@ -443,7 +512,8 @@ impl Guidance {
 
     /// The rows the picker shows: ending a game only while one is played.
     pub fn rows(&self) -> Vec<Setting> {
-        let mut rows = vec![Setting::Level, Setting::Training];
+        let mut rows = vec![Setting::Level];
+        rows.extend(SWITCHES.map(|(row, _, _)| row));
         if self.playing {
             rows.push(Setting::EndGame);
         }
@@ -510,7 +580,7 @@ impl Guidance {
         self.asking = None;
         self.armed = None;
         self.record.highest = self.record.highest.max(self.level);
-        self.record.training |= self.training;
+        self.record.training = merged(self.record.training, self.training);
         self.version += 1;
     }
 
@@ -529,12 +599,13 @@ impl Guidance {
             return;
         }
         let action = match self.focus {
-            Setting::Level | Setting::Training => {
+            Setting::EndGame => Action::EndGame,
+            Setting::Exit => Action::Exit,
+            // A setting: keep what is chosen and leave the picker.
+            _ => {
                 self.leave();
                 return;
             }
-            Setting::EndGame => Action::EndGame,
-            Setting::Exit => Action::Exit,
         };
         if self.armed == Some(self.focus) {
             self.requested = Some(action);
@@ -592,8 +663,12 @@ impl Guidance {
         match (self.focus, up) {
             (Setting::Level, true) => self.picked.0 = (self.picked.0 + 1).min(max),
             (Setting::Level, false) => self.picked.0 = self.picked.0.saturating_sub(1),
-            (Setting::Training, on) => self.picked.1 = on,
             (Setting::EndGame | Setting::Exit, _) => return,
+            // A switch: right turns it on, left turns it off (#8).
+            (row, on) => match switch(row, &mut self.picked.1) {
+                Some(it) => *it = on,
+                None => return,
+            },
         }
         self.version += 1;
     }
@@ -609,9 +684,9 @@ impl Guidance {
     /// Puts training mode into effect or out of it and records it. For
     /// tests, which start from a setting without going through the picker.
     #[cfg(test)]
-    pub fn set_training(&mut self, on: bool) {
+    pub fn set_training(&mut self, on: Training) {
         self.training = on;
-        self.record.training |= on;
+        self.record.training = merged(self.record.training, on);
         self.version += 1;
     }
 
@@ -631,11 +706,20 @@ impl Guidance {
 mod tests {
     use super::*;
 
+    /// One training switch on, the rest off.
+    fn only(row: Setting) -> Training {
+        let mut it = Training::default();
+        if let Some(b) = switch(row, &mut it) {
+            *b = true;
+        }
+        it
+    }
+
     #[test]
     fn starts_with_no_help() {
         let g = Guidance::default();
         assert_eq!(g.level(), 0);
-        assert!(!g.training());
+        assert_eq!(g.training(), Training::default());
         assert_eq!(g.record(), Record::default());
         assert!(!g.picker_open());
     }
@@ -646,9 +730,9 @@ mod tests {
         g.set_level(3);
         g.set_level(1);
         assert_eq!(g.record().highest, 3);
-        g.set_training(true);
-        g.set_training(false);
-        assert!(g.record().training);
+        g.set_training(only(Setting::Time));
+        g.set_training(Training::default());
+        assert!(g.record().training.time);
     }
 
     #[test]
@@ -660,13 +744,17 @@ mod tests {
         g.change(false);
         g.focus_down();
         g.change(true);
-        assert_eq!(g.picked(), (1, true), "chosen in the picker");
-        assert_eq!((g.level(), g.training()), (3, false), "not in effect yet");
+        assert_eq!(g.picked(), (1, only(Setting::Time)), "chosen in the picker");
+        assert_eq!(
+            (g.level(), g.training()),
+            (3, Training::default()),
+            "not in effect yet"
+        );
         g.enter();
         assert_eq!(g.asking(), Some(Choice::Undo), "training mode would show");
         g.change(false);
         g.enter();
-        assert_eq!((g.level(), g.training()), (1, true), "kept");
+        assert_eq!((g.level(), g.training()), (1, only(Setting::Time)), "kept");
     }
 
     #[test]
@@ -690,7 +778,7 @@ mod tests {
             g.record(),
             Record {
                 highest: 1,
-                training: false
+                training: Training::default()
             }
         );
     }
@@ -743,8 +831,8 @@ mod tests {
         g.change(false);
         assert_eq!(g.asking(), Some(Choice::Use));
         g.enter();
-        assert!(g.training());
-        assert!(g.record().training);
+        assert_eq!(g.training(), only(Setting::Time));
+        assert!(g.record().training.time);
     }
 
     #[test]
@@ -770,12 +858,16 @@ mod tests {
         g.change(true);
         g.back();
         assert!(!g.picker_open(), "no question on the way out");
-        assert_eq!((g.level(), g.training()), (2, false), "put back");
+        assert_eq!(
+            (g.level(), g.training()),
+            (2, Training::default()),
+            "put back"
+        );
         assert_eq!(
             g.record(),
             Record {
                 highest: 2,
-                training: false
+                training: Training::default()
             }
         );
         g.open();
@@ -790,8 +882,9 @@ mod tests {
         g.set_playing(true);
         g.open();
         g.change(true);
-        g.focus_down();
-        g.focus_down();
+        for _ in 0..5 {
+            g.focus_down();
+        }
         g.enter();
         g.enter();
         assert!(g.take(Action::EndGame));
@@ -816,8 +909,9 @@ mod tests {
         let mut g = Guidance::default();
         g.set_playing(true);
         g.open();
-        g.focus_down();
-        g.focus_down();
+        for _ in 0..5 {
+            g.focus_down();
+        }
         assert_eq!(g.focus(), Setting::EndGame);
         g.enter();
         assert_eq!(g.armed(), Some(Setting::EndGame));
@@ -858,13 +952,26 @@ mod tests {
     #[test]
     fn ending_a_game_is_offered_only_while_playing() {
         let mut g = Guidance::default();
-        assert_eq!(g.rows(), [Setting::Level, Setting::Training, Setting::Exit]);
+        assert_eq!(
+            g.rows(),
+            [
+                Setting::Level,
+                Setting::Time,
+                Setting::Full,
+                Setting::Lives,
+                Setting::Unharmed,
+                Setting::Exit
+            ]
+        );
         g.set_playing(true);
         assert_eq!(
             g.rows(),
             [
                 Setting::Level,
-                Setting::Training,
+                Setting::Time,
+                Setting::Full,
+                Setting::Lives,
+                Setting::Unharmed,
                 Setting::EndGame,
                 Setting::Exit
             ]
@@ -948,16 +1055,16 @@ mod tests {
     fn a_new_game_starts_its_record_from_what_is_in_use() {
         let mut g = Guidance::default();
         g.set_level(4);
-        g.set_training(true);
+        g.set_training(only(Setting::Lives));
         g.set_level(2);
-        g.set_training(false);
+        g.set_training(Training::default());
         g.new_game();
         assert_eq!(g.level(), 2, "the chosen level is kept");
         assert_eq!(
             g.record(),
             Record {
                 highest: 2,
-                training: false
+                training: Training::default()
             }
         );
     }

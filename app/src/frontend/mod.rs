@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use sidekick::machine::Training;
 use sidekick::starquake::{
     ENTRY_PC, ENTRY_SP, end_game_hold, high_scores, routine, write_high_scores,
 };
@@ -241,6 +242,12 @@ impl Runner {
                 self.next_frame = Instant::now();
                 continue;
             }
+            // Training mode holds things still only while a game is played;
+            // anywhere else the machine writes nothing into the game (#8).
+            machine.training = match tracker.scene {
+                track::Scene::Play => self.shared.guidance.lock().unwrap().training(),
+                _ => Training::default(),
+            };
             machine.zx.keys = input.keys;
             machine.zx.kempston = 0;
             // The keyboard's joystick and the pad together; the machine
