@@ -104,8 +104,8 @@ pub const SWITCHES: [(Setting, &str, &str); 5] = [
     ),
     (
         Setting::Unharmed,
-        "No harm from enemies",
-        "Touching one costs nothing; the deadly kinds keep their distance.",
+        "Enemies drain no energy",
+        "Touching an enemy costs none. The deadly kinds still kill.",
     ),
     (
         Setting::Dangers,

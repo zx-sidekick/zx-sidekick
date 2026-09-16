@@ -152,10 +152,10 @@ from 0 (none) to 5, each adding to the ones below.
                                                 run down
                          Endless lives          losing a life does not
                                                 cost one
-                         No harm from enemies   touching one costs no
-                                                energy, and the kinds
-                                                that kill on touch keep
-                                                their distance
+                         Enemies drain no       touching one costs no
+                         energy                 energy; the kinds that
+                                                kill outright still
+                                                kill
                          Spikes and zappers     walking into one does
                          are harmless           nothing; they are back
                                                 when you next enter the

@@ -712,10 +712,7 @@ fn items_check(dir: &Path) -> bool {
 /// play the game would have had.
 fn training_check(dir: &Path, frames: u64) -> bool {
     use sidekick::machine::Training;
-    use sidekick::starquake::{
-        DANGER_MARKER, HARMLESS_GRAPHICS, SLOT, SLOT_GRAPHIC, SLOT_STATE, SLOT_UP, SLOT_X, SLOT_Y,
-        SLOTS, at, routine,
-    };
+    use sidekick::starquake::{DANGER_MARKER, at, routine};
     // How long the game takes to set energy up once play starts; before
     // that the byte still holds what the loader left.
     const SETTLED: u64 = 200;
@@ -826,60 +823,6 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             spikes.push((room, off, on));
         }
     }
-    // The enemies that kill on touch: stand Blob on one, with the switch off
-    // and on. The touch is decided inside a frame, so the switch has to keep
-    // them out of reach before it runs.
-    let mut deadly = Vec::new();
-    for room in 0..160u16 {
-        let killed = |unharmed: bool| {
-            let mut m = base.clone();
-            m.training = Training {
-                unharmed,
-                time: true,
-                ..Training::default()
-            };
-            m.zx.write16(at::ROOM, room);
-            m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
-            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
-                return None;
-            }
-            m.zx.t = 0;
-            m.zx.set_interrupts(true);
-            m.watch = vec![routine::DEATH];
-            let mut met = false;
-            for _ in 0..300 {
-                // The slot of an enemy that is about and kills on touch.
-                let up = (1..SLOTS)
-                    .map(|n| usize::from(at::ENTITIES) + n * SLOT)
-                    .find(|&e| {
-                        let hi = m.zx.mem[e + SLOT_GRAPHIC + 1];
-                        m.zx.mem[e + SLOT_STATE] == SLOT_UP && hi != 0 && hi < HARMLESS_GRAPHICS
-                    });
-                if let Some(e) = up {
-                    met = true;
-                    let b = usize::from(at::ENTITIES);
-                    m.zx.mem[b + SLOT_X] = m.zx.mem[e + SLOT_X];
-                    m.zx.mem[b + SLOT_Y] = m.zx.mem[e + SLOT_Y];
-                }
-                if m.run_frame().contains(&routine::DEATH) {
-                    return Some((met, true));
-                }
-            }
-            Some((met, false))
-        };
-        if let Some((met, off)) = killed(false)
-            && met
-            && off
-            && let Some((_, on)) = killed(true)
-        {
-            deadly.push((room, on));
-        }
-        if deadly.len() >= 20 {
-            break;
-        }
-    }
-    let deadly_held = deadly.iter().filter(|&&(_, on)| !on).count();
-    let deadly_hold = !deadly.is_empty() && deadly_held == deadly.len();
     let spikes_kill = spikes.iter().filter(|&&(_, off, _)| off).count();
     let spikes_held = spikes.iter().filter(|&&(_, _, on)| !on).count();
     let dangers_hold =
@@ -902,13 +845,6 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     println!(
         "  time standing still and no harm together: energy never below {} of {}",
         both_low[0], both_start[0]
-    );
-    println!(
-        "  standing on an enemy that kills on touch kills in {} of {} rooms, and with no harm from enemies in {} {}",
-        deadly.len(),
-        deadly.len(),
-        deadly.len() - deadly_held,
-        if deadly_hold { "ok" } else { "FAILED" }
     );
     println!(
         "  standing on a spike or a zapper kills in {spikes_kill} of {} rooms, and with the switch on in {} {}",
