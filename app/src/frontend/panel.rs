@@ -191,27 +191,12 @@ impl Panel {
                 let mut under = map_bottom + 12.0;
                 if level >= 4 {
                     self.route_legend(canvas, under);
-                    // Which of the nearest missing pieces the route leads to
-                    // (#51), under the map at its right, away from the chips
-                    // (@starquake, 2026-09-16); nothing while there is one.
-                    let (which, count) = guidance.piece_choice();
-                    if count > 1 {
-                        let text = format!("{which} of {count}");
-                        let spans = [span(&text, 12.0, Weight::SemiBold, BRIGHT)];
-                        let w = self.fonts.measure(&spans);
-                        self.fonts.text(
-                            Some(canvas),
-                            map_right - w,
-                            under + 1.0,
-                            None,
-                            1.0,
-                            &spans,
-                        );
-                    }
                     under += 29.0;
                 }
                 if level >= 3 && !guidance.core().is_empty() {
-                    self.core_grid(canvas, guidance, left, under, tile);
+                    // At the map's right edge, under it (@starquake, 2026-09-16).
+                    let wide = 3.0 * tile + 2.0 * 4.0;
+                    self.core_grid(canvas, guidance, map_right - wide, under, tile);
                     under += 3.0 * tile + 2.0 * 4.0 + 12.0;
                 }
                 if level >= 4 && guidance.room().is_some() {
@@ -541,7 +526,7 @@ impl Panel {
     }
 
     /// Level 3 (#7, #49): the core's nine holes as a square of three by
-    /// three under the map, in the order the core holds them, each its own
+    /// three under the map at its right, in the order the core holds them, each its own
     /// graphic from the game, in white while it is still wanted and dimmed
     /// once delivered, outlined while it is carried.
     fn core_grid(
