@@ -162,7 +162,7 @@ pub mod at {
     pub const LIVES: u16 = 0xD2CC;
     pub const LIVES_DIGIT: u16 = 0xD442;
     /// Blob's energy, 127 as play starts, falling by 4 whenever the drain
-    /// counter reaches [`DRAIN_DROP`] (#8).
+    /// counter reaches [`super::DRAIN_DROP`] (#8).
     pub const ENERGY: u16 = 0xD2CD;
     /// How full the platform bar and the gun bar are: one falls as Blob
     /// lays platforms, the other by one a shot (#8).

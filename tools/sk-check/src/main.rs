@@ -779,11 +779,11 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     let plain_drains = plain_low[0] < start[0];
     let full_holds = full_end[1] >= full_start[1] && full_end[2] >= full_start[2];
     let time_holds = time_low[0] > plain_low[0];
-    let lives_hold = lives_low[3] >= start[3];
+    let lives_hold = lives_low[3] >= start[3] && plain_low[3] < start[3];
     let nothing_drains = both_low[0] >= both_start[0];
     let good = plain_drains && full_holds && time_holds && lives_hold && nothing_drains;
     println!(
-        "  training over {frames} frames: with none, energy fell to {} of {}; full bars ended at {} and {} of {} and {}; time standing still left energy at {} or better; endless lives never went below {} {}",
+        "  training over {frames} frames: with none, energy fell to {} of {}; full bars ended at {} and {} of {} and {}; time standing still left energy at {} or better; endless lives never went below {} where a plain run fell to {} {}",
         plain_low[0],
         start[0],
         full_end[1],
@@ -792,6 +792,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         full_start[2],
         time_low[0],
         lives_low[3],
+        plain_low[3],
         if good { "ok" } else { "FAILED" }
     );
     println!(

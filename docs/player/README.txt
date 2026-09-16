@@ -38,8 +38,9 @@ place for application data:
 
 The high-score table is kept in the same folder, in high-scores.txt,
 with the guidance each game on it was played with. A game played with
-training mode is not kept. Delete the file to start again from the
-table the tape came with; a file that cannot be read is left alone.
+any training switch is not kept. Delete the file to start again from
+the table the tape came with; a file that cannot be read is left
+alone.
 
 It also finds the tape, or the zip, if you put it in the same folder as
 the program, named starquake.tap or STARQUAK.TAP in any case. You can
@@ -127,10 +128,11 @@ from 0 (none) to 5, each adding to the ones below.
                        the ones delivered dimmed, and a piece you carry
                        outlined.
   Level 4              Two routes over the ways you have walked: to the
-                       nearest missing piece in pink, and to the core in
-                       orange while you carry a piece it needs. Each is a
-                       line on the map and an arrow in the border the
-                       way to leave the room, marked "item" or "core",
+                       nearest missing piece in pink, and to the core
+                       in orange while you carry a piece it needs. Each
+                       is a line on the map and an arrow in the
+                       border the way to leave the room, marked "item"
+                       or "core",
                        with a legend under the map; and the code to
                        select when a teleporter is next.
   Level 5              The same two routes through the whole map,
@@ -139,7 +141,19 @@ from 0 (none) to 5, each adding to the ones below.
                        side of the room it lies in. It assumes you can
                        fly everywhere, that doors and tubes work, and
                        that lifts only go up: getting the items and
-                       the battery for that is up to you. Training mode is still to be built.
+                       the battery for that is up to you.
+
+  Training             Four switches of their own, all off until you
+                       turn them on:
+                         Time stands still      energy drains only
+                                                when something touches
+                                                you
+                         Full gun and platforms those two bars never
+                                                run down
+                         Endless lives          losing a life does not
+                                                cost one
+                         No harm from enemies   touching an enemy costs
+                                                no energy
 
   F11                  Leave fullscreen, or go back to it. The game
                        starts fullscreen; the window it leaves you with
@@ -152,14 +166,16 @@ from 0 (none) to 5, each adding to the ones below.
                        nearest by itself when the piece is picked up or
                        is no longer one of the three nearest.
   Up and down          Choose a row.
-  Left and right       Change the guidance level or training mode.
+  Left and right       Change the guidance level, or turn a training
+                       switch off or on.
   Enter, or A          OK: keep what you changed. End this game and
                        Exit Starquake need a second press.
   Esc, B or Select     Cancel: leave the picker as it was when it
                        opened.
 
-Raising the level, or turning training mode on, shows on that game's
-score, so the picker asks first. When a game is over the panel says how
+Raising the level, or turning a training switch on, shows on that
+game's score, so the picker asks first, and the score names each switch
+you used. When a game is over the panel says how
 much help it had. Nothing is saved: every start is at level 0.
 
 
