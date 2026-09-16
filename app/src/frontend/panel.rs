@@ -855,10 +855,10 @@ impl Panel {
             let y = 156.0 + i as f32 * 44.0;
             let mine = guidance.this_game() == Some(i);
             if mine {
-                canvas.round_rect(left - 10.0, y - 6.0, width + 20.0, 40.0, 6.0, SELECTED);
+                canvas.round_rect(left - 10.0, y - 1.0, width + 20.0, 40.0, 6.0, SELECTED);
                 canvas.outline(
                     left - 10.0,
-                    y - 6.0,
+                    y - 1.0,
                     width + 20.0,
                     40.0,
                     6.0,
@@ -915,7 +915,7 @@ impl Panel {
                 let tag = [span("THIS GAME", 10.0, Weight::SemiBold, ACCENT)];
                 let w = self.fonts.measure(&tag);
                 self.fonts
-                    .text(Some(canvas), left + width - w, y + 2.0, None, 1.0, &tag);
+                    .text(Some(canvas), left + width - w, y + 12.0, None, 1.0, &tag);
             }
         }
         // A game with training is not kept, so it is in no row above.
