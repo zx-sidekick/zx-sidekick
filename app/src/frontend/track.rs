@@ -5,7 +5,7 @@
 
 use sidekick::map::{Graph, Known, Place, RoomSet, Step};
 use sidekick::starquake::{
-    CORE_ROOM, Item, SeenTeleporter, at, entry, graphic, hole, items_and_core, missing_piece_rooms,
+    CORE_ROOM, Item, SeenTeleporter, at, entry, graphic, hole, items_and_core, missing_pieces,
     routine, teleporter_code,
 };
 
@@ -124,7 +124,7 @@ impl Tracker {
                 let unvisited = RoomSet(mem[start..start + 64].try_into().expect("64 bytes"));
                 guidance.set_unvisited(&unvisited);
                 let (items, core) = items_and_core(mem);
-                let pieces = missing_piece_rooms(&core, &items);
+                let pieces = missing_pieces(&core, &items);
                 guidance.set_core(holes(mem, &core, &items));
                 let here = u16::from_le_bytes([mem[room], mem[room + 1]]);
                 let booths: Vec<u16> = self.seen.iter().map(|t| t.room).collect();
@@ -138,7 +138,11 @@ impl Tracker {
                     routes(&self.known, whole, here, &booths, &pieces, guidance.core());
                 guidance.set_route(piece);
                 guidance.set_core_route(core);
-                guidance.set_pieces(&pieces);
+                let mut rooms = RoomSet::default();
+                for item in &pieces {
+                    rooms.set(item.room(), true);
+                }
+                guidance.set_pieces(&rooms);
             }
             Scene::GameOver => guidance.set_room(None),
             Scene::Loading | Scene::Menu => guidance.forget_map(),
@@ -146,28 +150,48 @@ impl Tracker {
     }
 }
 
-/// The two routes from `here` (#44): to the nearest room holding a missing
-/// piece, and to the core room while a piece it needs is carried (#44,
+/// The two routes from `here` (#44): to the nearest missing piece of
+/// `pieces`, and to the core room while a piece it needs is carried (#44,
 /// decision 5), `None` otherwise or when there is no way. Over the
-/// connections `known`, or with `whole`, over the whole map from that place
-/// (#10). A teleport between two of `booths` counts as one step.
+/// connections `known`, to a piece's room, or with `whole`, over the whole
+/// map from that place (#10), to the part of the room a piece is in once
+/// its room has been entered and it has a spot (#50). A teleport between
+/// two of `booths` counts as one step.
 fn routes(
     known: &Known,
     whole: Option<(&Graph, Place)>,
     here: u16,
     booths: &[u16],
-    pieces: &RoomSet,
+    pieces: &[Item],
     core: &[Hole],
 ) -> (Option<Vec<Step>>, Option<Vec<Step>>) {
-    let search = |targets: &RoomSet| match whole {
-        Some((graph, place)) => graph.route(place, booths, targets),
-        None => known.route(here, booths, targets, CORE_ROOM),
+    let search = |rooms: &RoomSet, places: &[Place]| match whole {
+        Some((graph, place)) => graph.route(place, booths, rooms, places),
+        None => known.route(here, booths, rooms, CORE_ROOM),
     };
-    let piece = search(pieces);
+    let mut rooms = RoomSet::default();
+    let mut places = Vec::new();
+    for item in pieces {
+        // Row 0 is a piece whose room has not been entered yet: no spot.
+        let spot = whole
+            .filter(|_| item.row() != 0)
+            .map(|(graph, _)| {
+                (
+                    item.room(),
+                    graph.part_at(item.room(), item.row(), item.column()),
+                )
+            })
+            .filter(|&(_, part)| part != 0);
+        match spot {
+            Some(place) => places.push(place),
+            None => rooms.set(item.room(), true),
+        }
+    }
+    let piece = search(&rooms, &places);
     let core = core.iter().any(|h| h.carried).then(|| {
         let mut room = RoomSet::default();
         room.set(CORE_ROOM, true);
-        search(&room)
+        search(&room, &[])
     });
     (piece, core.flatten())
 }
@@ -311,14 +335,24 @@ mod tests {
         );
     }
 
+    /// A missing piece in `room` at the screen spot (`row`, `col`); row 0
+    /// before its room has been entered.
+    fn piece_in(room: u16, row: u8, col: u8) -> Item {
+        Item([
+            col,
+            ((room >> 8) as u8).rotate_right(1) | row,
+            room as u8,
+            30,
+        ])
+    }
+
     #[test]
     fn the_core_route_shows_only_while_a_piece_it_needs_is_carried() {
         // Walked from 197: left to a piece in 196, right to 198 beside the core.
         let mut known = Known::default();
         known.walked(197, 196);
         known.walked(197, 198);
-        let mut pieces = RoomSet::default();
-        pieces.set(196, true);
+        let pieces = [piece_in(196, 12, 5)];
         let hole = |carried| Hole {
             graphic: [0; 32],
             open: true,
@@ -337,8 +371,7 @@ mod tests {
         let one_carried = routes(&known, None, 197, &[], &pieces, &[hole(false), hole(true)]);
         assert_eq!(one_carried, (piece, core.clone()), "both routes");
 
-        let mut far = RoomSet::default();
-        far.set(100, true);
+        let far = [piece_in(100, 12, 5)];
         let no_way = routes(&known, None, 197, &[], &far, &[hole(true)]);
         assert_eq!(
             no_way,
@@ -347,26 +380,63 @@ mod tests {
         );
     }
 
-    #[test]
-    fn level_5_routes_through_the_whole_map() {
-        // Rooms 0 and 1 open to each other on screen rows 12 and 13, every
-        // other room closed; nothing walked.
-        let room = |open_left: bool, open_right: bool| {
+    /// Rooms 0 and 1 open to each other on screen rows 12 and 13, every
+    /// other room closed; with `split`, a wall down room 1's middle.
+    fn two_rooms(split: bool) -> Graph {
+        let room = |open_left: bool, open_right: bool, wall: bool| {
             sidekick::map::Room::read(
                 |row, col| {
                     let edge = row == 6 || row == 23 || col == 0 || col == 31;
                     let gap = (12..14).contains(&row)
                         && ((col == 0 && open_left) || (col == 31 && open_right));
-                    if edge && !gap { 0x07 } else { 0x47 }
+                    if (edge && !gap) || (wall && (15..17).contains(&col)) {
+                        0x07
+                    } else {
+                        0x47
+                    }
                 },
                 &[],
             )
         };
-        let mut rooms = vec![room(false, true), room(true, false)];
-        rooms.extend((2..512).map(|_| room(false, false)));
-        let graph = Graph::new(&rooms, CORE_ROOM);
-        let mut pieces = RoomSet::default();
-        pieces.set(1, true);
+        let mut rooms = vec![room(false, true, false), room(true, false, split)];
+        rooms.extend((2..512).map(|_| room(false, false, false)));
+        Graph::new(&rooms, CORE_ROOM)
+    }
+
+    #[test]
+    fn level_5_aims_at_the_part_a_piece_is_in_once_its_spot_is_known() {
+        // Room 1's right half can't be reached from room 0.
+        let graph = two_rooms(true);
+        let place = graph.place(0, 64, 63);
+        let route = |piece| {
+            routes(
+                &Known::default(),
+                Some((&graph, place)),
+                0,
+                &[],
+                &[piece],
+                &[],
+            )
+            .0
+        };
+        let step = Some(vec![Step {
+            room: 1,
+            teleport: false,
+        }]);
+        assert_eq!(route(piece_in(1, 0, 0)), step, "not placed yet: its room");
+        assert_eq!(route(piece_in(1, 12, 5)), step, "placed in the left half");
+        assert_eq!(
+            route(piece_in(1, 12, 25)),
+            None,
+            "placed in the half cut off"
+        );
+    }
+
+    #[test]
+    fn level_5_routes_through_the_whole_map() {
+        // Nothing walked.
+        let graph = two_rooms(false);
+        let pieces = [piece_in(1, 0, 0)];
         let place = graph.place(0, 64, 63);
         assert_eq!(place, (0, 1), "Blob in room 0's one part");
         let (piece, _) = routes(

@@ -370,6 +370,17 @@ pub fn hole(index: usize, slot: u8) -> (u8, bool) {
 /// twos, and the other one is not needed while you have one.
 #[must_use]
 pub fn missing_piece_rooms(core_slots: &[u8; 9], items: &[Item]) -> crate::map::RoomSet {
+    let mut rooms = crate::map::RoomSet::default();
+    for item in missing_pieces(core_slots, items) {
+        rooms.set(item.room(), true);
+    }
+    rooms
+}
+
+/// The items [`missing_piece_rooms`] marks the rooms of, for a route to
+/// the spot one is at once it is placed (#50).
+#[must_use]
+pub fn missing_pieces(core_slots: &[u8; 9], items: &[Item]) -> Vec<Item> {
     let carried = |item: &Item| (1..=5).contains(&item.row());
     let wanted = |graphic: u8| {
         core_slots
@@ -377,14 +388,14 @@ pub fn missing_piece_rooms(core_slots: &[u8; 9], items: &[Item]) -> crate::map::
             .any(|&slot| slot & 0x80 != 0 && slot & 0x7F == graphic)
             && !items.iter().any(|i| carried(i) && i.graphic() == graphic)
     };
-    let mut rooms = crate::map::RoomSet::default();
-    for item in items {
-        let delivered = item.room() == CORE_ROOM && item.row() == 0x0A;
-        if wanted(item.graphic()) && !carried(item) && !delivered {
-            rooms.set(item.room(), true);
-        }
-    }
-    rooms
+    items
+        .iter()
+        .copied()
+        .filter(|item| {
+            let delivered = item.room() == CORE_ROOM && item.row() == 0x0A;
+            wanted(item.graphic()) && !carried(item) && !delivered
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -415,6 +426,7 @@ mod tests {
             item(41, 12, 0x01), // wanted by no open hole
             item(42, 12, 0x0F), // not a core piece at all
         ];
+        assert_eq!(missing_pieces(&slots, &items), items[..2]);
         let rooms = missing_piece_rooms(&slots, &items);
         assert!(rooms.contains(300) && rooms.contains(40));
         assert!(!rooms.contains(41) && !rooms.contains(42));
@@ -431,6 +443,7 @@ mod tests {
             item(51, 2, 0x0A),           // in the inventory
             item(52, 5, 0x0B),           // last inventory slot
         ];
+        assert_eq!(missing_pieces(&slots, &items), []);
         assert_eq!(missing_piece_rooms(&slots, &items), RoomSet::default());
     }
 

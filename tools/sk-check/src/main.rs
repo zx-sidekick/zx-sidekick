@@ -644,13 +644,31 @@ fn pieces_check(dir: &Path) -> bool {
     let marked = missing_piece_rooms(&core, &items);
     let rooms: Vec<u16> = (0..512).filter(|&r| marked.contains(r)).collect();
     let open_holes = core.iter().filter(|&&slot| slot & 0x80 != 0).count();
-    let mut placed = 0;
+    let (mut placed, mut in_part) = (0, 0);
     for &room in &rooms {
         let mut m = base.clone();
         m.zx.write16(at::ROOM, room);
         m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
         if room == CORE_ROOM || !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
             continue;
+        }
+        // Once placed, a piece's spot lies in a part of its room, where a
+        // level 5 route ends (#50).
+        let map_room = sidekick::starquake::read_room(&mut base.clone(), room);
+        let spots_in_parts = items_and_core(&m.zx.mem[..])
+            .0
+            .iter()
+            .filter(|i| {
+                i.room() == room
+                    && core
+                        .iter()
+                        .any(|&s| s & 0x80 != 0 && s & 0x7F == i.graphic())
+            })
+            .all(|i| i.row() != 0 && map_room.open.at(i.row(), i.column()) != 0);
+        if spots_in_parts {
+            in_part += 1;
+        } else {
+            println!("  room {room}: a wanted piece's spot is in no part of the room");
         }
         let z = &m.zx;
         let end = z.read16(at::MARKERS_END).max(at::MARKERS);
@@ -674,9 +692,9 @@ fn pieces_check(dir: &Path) -> bool {
             println!("  room {room} is marked, but no wanted piece was placed in it");
         }
     }
-    let good = !rooms.is_empty() && placed == rooms.len();
+    let good = !rooms.is_empty() && placed == rooms.len() && in_part == rooms.len();
     println!(
-        "  the missing pieces: {} rooms marked for {open_holes} open holes, a wanted piece placed in {placed} of them {}",
+        "  the missing pieces: {} rooms marked for {open_holes} open holes, a wanted piece placed in {placed} of them, its spot in a part of the room in {in_part} {}",
         rooms.len(),
         if good { "ok" } else { "FAILED" }
     );
