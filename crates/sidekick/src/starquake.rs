@@ -295,6 +295,68 @@ pub fn door_code(mem: &[u8]) -> Option<[u8; 3]> {
     (code[2] == 3).then(|| [code[3], code[5], code[7]])
 }
 
+/// Every room with a security door in it, and the spot of its door marker,
+/// found by having the game build each room on a copy (#66). The rooms are
+/// the tape's own and do not change from game to game, so this is read once.
+#[must_use]
+pub fn door_rooms(machine: &crate::Machine) -> Vec<(u16, (u8, u8))> {
+    let mut found = Vec::new();
+    for room in 0..512u16 {
+        let mut m = machine.clone();
+        read_room(&mut m, room);
+        let z = &m.zx;
+        let end = z.read16(at::MARKERS_END).max(at::MARKERS);
+        if let Some(a) = (at::MARKERS..end)
+            .step_by(3)
+            .find(|&a| z.mem[usize::from(a) + 2] == DOOR_MARKER)
+        {
+            let a = usize::from(a);
+            found.push((room, (z.mem[a], z.mem[a + 1])));
+        }
+    }
+    found
+}
+
+/// The code a security door asks for this game, read by walking Blob into
+/// the door on a copy of the machine, which is the only way its screen is
+/// reached (#66). `spot` is the door marker's, from [`door_rooms`].
+#[must_use]
+pub fn read_door_code(machine: &crate::Machine, room: u16, spot: (u8, u8)) -> Option<[u8; 3]> {
+    let mut entered = machine.clone();
+    entered.zx.write16(at::ROOM, room);
+    entered.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+    if !entered.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+        return None;
+    }
+    entered.zx.t = 0;
+    entered.zx.set_interrupts(true);
+    let (x, y) = spot;
+    // Into the door from one side or the other, whichever reaches it.
+    [1u8, 2].into_iter().find_map(|input| {
+        let mut m = entered.clone();
+        m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
+        m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
+        m.watch = vec![routine::DOOR_SCREEN, routine::ENTER_ROOM];
+        let mut called = false;
+        for _ in 0..600 {
+            m.zx.release_all_keys();
+            m.zx.kempston = if called { 0 } else { input };
+            for hit in m.run_frame() {
+                if hit == routine::DOOR_SCREEN {
+                    called = true;
+                } else if called {
+                    // Back in the room: the screen has left its code behind.
+                    return door_code(&m.zx.mem[..]);
+                }
+            }
+            if !called && m.zx.mem[usize::from(at::ENTITIES) + 5].abs_diff(x) > 8 {
+                return None;
+            }
+        }
+        None
+    })
+}
+
 /// A teleporter whose booth has been entered: the room it is in and its
 /// code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -348,6 +410,23 @@ pub fn teleporter_code(mem: &[u8], room: u16) -> Option<[u8; 5]> {
         let (code, here) = (entry.get(..5)?, entry.get(5..7)?);
         (u16::from_le_bytes([here[0], here[1]]) == room).then(|| code.try_into().ok())?
     })
+}
+
+/// Every teleporter on the planet, from the same table, whether or not its
+/// booth has been entered: level 6 tells them all (#66).
+#[must_use]
+pub fn all_teleporters(mem: &[u8]) -> Vec<SeenTeleporter> {
+    (0..at::TELEPORTER_COUNT)
+        .filter_map(|i| {
+            let entry = mem.get(usize::from(at::TELEPORTER_NAMES) + i * 7..)?;
+            let (code, here) = (entry.get(..5)?, entry.get(5..7)?);
+            let room = u16::from_le_bytes([here[0], here[1]]);
+            Some(SeenTeleporter {
+                room,
+                code: code.try_into().ok()?,
+            })
+        })
+        .collect()
 }
 
 /// The keys that abandon a game in play when held together, the game's own

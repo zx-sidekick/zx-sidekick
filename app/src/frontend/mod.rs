@@ -150,6 +150,9 @@ impl Runner {
         // once, by having the game draw each room on a copy of the machine.
         // It takes about a third of a second, before the loading picture.
         let rooms = sidekick::starquake::all_rooms(&machine);
+        // Which rooms hold a security door, for level 6's codes (#66): the
+        // tape's own, so read once here rather than at every new game.
+        let doors = sidekick::starquake::door_rooms(&machine);
         let graph = sidekick::map::Graph::new(&rooms, sidekick::starquake::CORE_ROOM);
         let openings = sidekick::map::openings(&rooms, sidekick::starquake::CORE_ROOM);
         self.shared.guidance.lock().unwrap().set_openings(openings);
@@ -277,6 +280,36 @@ impl Runner {
                         eprintln!("{e}");
                     }
                     guidance.set_high_scores(keeper.kept, keeper.this_game);
+                }
+                // Level 6 tells every code, shown or not (#66). A new game
+                // makes new door codes, so they are read again on a copy of
+                // the machine, on a thread of its own: it takes about a
+                // third of a second, and the game plays on meanwhile.
+                if hits.contains(&routine::NEW_GAME) {
+                    guidance.forget_all_codes();
+                    let copy = machine.clone();
+                    let doors = doors.clone();
+                    let shared = Arc::clone(&self.shared);
+                    std::thread::spawn(move || {
+                        let teleporters = sidekick::starquake::all_teleporters(&copy.zx.mem[..]);
+                        let codes: Vec<guidance::DoorCode> = doors
+                            .iter()
+                            .filter_map(|&(room, spot)| {
+                                let chips = sidekick::starquake::read_door_code(&copy, room, spot)?;
+                                Some(guidance::DoorCode {
+                                    room,
+                                    chips,
+                                    graphics: chips
+                                        .map(|g| sidekick::starquake::graphic(&copy.zx.mem[..], g)),
+                                })
+                            })
+                            .collect();
+                        shared
+                            .guidance
+                            .lock()
+                            .unwrap()
+                            .set_all_codes(&teleporters, &codes);
+                    });
                 }
                 // After a game with training, its table is put back.
                 if hits.contains(&routine::MENU)

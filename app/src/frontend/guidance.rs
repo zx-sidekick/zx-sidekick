@@ -195,6 +195,11 @@ pub struct Guidance {
     /// The game's font, read from memory once play starts, for drawing
     /// codes in its letters (#49); empty until then.
     font: Vec<u8>,
+    /// Every teleporter and every security door's code, whether or not it
+    /// has been shown: level 6 tells them all, read once a game has started
+    /// (#66). Empty until then.
+    all_teleporters: Vec<SeenTeleporter>,
+    all_door_codes: Vec<DoorCode>,
     /// Every room's openings, for the map (#5). Empty until they are read.
     openings: Vec<Openings>,
     /// The rooms visited in the game being played, or just ended; empty on
@@ -208,11 +213,6 @@ pub struct Guidance {
     /// The items found and left lying in a room visited, for level 2
     /// (#36), each with what it does.
     items: Vec<Found>,
-    /// The rooms that will place a Cheops pyramid, and those that will
-    /// place a pack of some kind, both fixed for the game and told at
-    /// level 6 (#66). A room holds one or the other, or neither.
-    pyramids: RoomSet,
-    packs: RoomSet,
     /// The core's nine holes, in the game being played or just ended; empty
     /// on the title screen.
     core: Vec<Hole>,
@@ -301,9 +301,40 @@ impl Guidance {
         }
     }
 
-    /// The door codes seen this game.
+    /// The door codes seen this game. The panel goes through
+    /// [`Guidance::codes_at`], which knows about level 6 (#66).
+    #[cfg(test)]
     pub fn door_codes(&self) -> &[DoorCode] {
         &self.door_codes
+    }
+
+    /// The codes the panel shows at `level`: the ones you have been shown,
+    /// or at level 6 every one there is, once they have been read (#66).
+    pub fn codes_at(&self, level: u8) -> (&[SeenTeleporter], &[DoorCode]) {
+        if level >= 6 && !self.all_teleporters.is_empty() {
+            (&self.all_teleporters, &self.all_door_codes)
+        } else {
+            (&self.teleporters, &self.door_codes)
+        }
+    }
+
+    /// Takes every code there is, read on a copy of the machine once a game
+    /// has started (#66).
+    pub fn set_all_codes(&mut self, teleporters: &[SeenTeleporter], doors: &[DoorCode]) {
+        if self.all_teleporters != teleporters || self.all_door_codes != doors {
+            self.all_teleporters = teleporters.to_vec();
+            self.all_door_codes = doors.to_vec();
+            self.version += 1;
+        }
+    }
+
+    /// A new game's codes are not this game's: forgotten until read again.
+    pub fn forget_all_codes(&mut self) {
+        if !self.all_teleporters.is_empty() || !self.all_door_codes.is_empty() {
+            self.all_teleporters.clear();
+            self.all_door_codes.clear();
+            self.version += 1;
+        }
     }
 
     /// The game's font, 96 letters of eight bytes from the space, once read.
@@ -401,25 +432,6 @@ impl Guidance {
             self.pieces = rooms.clone();
             self.version += 1;
         }
-    }
-
-    /// What each room will place, read once at a new game (#66). Nothing
-    /// reads the game for these yet: the mockup sets them by hand.
-    #[cfg_attr(not(test), expect(dead_code, reason = "level 6's reader is next"))]
-    pub fn set_bonuses(&mut self, pyramids: &RoomSet, packs: &RoomSet) {
-        if self.pyramids != *pyramids || self.packs != *packs {
-            self.pyramids = pyramids.clone();
-            self.packs = packs.clone();
-            self.version += 1;
-        }
-    }
-
-    pub fn pyramid(&self, room: u16) -> bool {
-        self.pyramids.contains(room)
-    }
-
-    pub fn pack(&self, room: u16) -> bool {
-        self.packs.contains(room)
     }
 
     /// The route to the nearest missing piece, or `None` when none is known.

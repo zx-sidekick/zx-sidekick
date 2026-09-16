@@ -57,12 +57,6 @@ const ITEM_DOOR: Rgb = [0x9b, 0x8a, 0xf0];
 const ITEM_PAD: Rgb = [0xf5, 0xd0, 0x4b];
 const ITEM_TRADE: Rgb = [0xe6, 0xea, 0xf2];
 const ITEM_EDGE: Rgb = [0x00, 0x00, 0x00];
-/// What a room will place, told at level 6 (#66): a pyramid stands out,
-/// since there are eleven of them and each is a trade; a pack is a pip in
-/// the corner, since half the planet has one.
-const PYRAMID: Rgb = [0xd8, 0xb4, 0x6a];
-const PACK: Rgb = [0x4a, 0x5a, 0x7a];
-
 const PIECE_ROOM: Rgb = [0x15, 0x1a, 0x26];
 const PIECE_ROOM_LINE: Rgb = [0x6b, 0x75, 0x94];
 const TILE: Rgb = [0x1b, 0x1f, 0x29];
@@ -178,7 +172,7 @@ impl Panel {
             let col_w = tiles.max(self.spaced_width("TELEPORTERS"));
             let col_right = WINDOW_W - 24.0;
             if level >= 1 {
-                self.codes_column(canvas, col_right, 54.0, guidance, &jump);
+                self.codes_column(canvas, col_right, 54.0, guidance, level, &jump);
             }
             // The core's nine slots show from level 1, whether or not the
             // map is up (#66, decision 5): under the map when there is one,
@@ -488,28 +482,6 @@ impl Panel {
             let (cx, cy) = (x + pitch / 2.0, y + pitch / 2.0);
             canvas.round_rect(cx - r, cy - r, 2.0 * r, 2.0 * r, r, PIECE);
         }
-        // Level 6 (#66): what each room will place, under the items so
-        // nothing lying in a room is hidden by it.
-        if whole {
-            for room in 0..rooms {
-                let (x, y) = at(room);
-                if guidance.pyramid(room) {
-                    let r = 4.0 * unit;
-                    let (cx, cy) = (x + pitch / 2.0, y + pitch - 4.0 * unit);
-                    canvas.triangle([(cx - r, cy), (cx, cy - 2.0 * r), (cx + r, cy)], PYRAMID);
-                } else if guidance.pack(room) {
-                    let pip = 3.0 * unit;
-                    canvas.round_rect(
-                        x + pitch - pip - 2.0 * unit,
-                        y + pitch - pip - 2.0 * unit,
-                        pip,
-                        pip,
-                        pip / 2.0,
-                        PACK,
-                    );
-                }
-            }
-        }
         // Level 2 (#36): every item found, drawn with the game's own
         // graphic at one screen pixel a game pixel, in the colour of what
         // it does, with a pixel of black around it so it stands off the
@@ -661,11 +633,13 @@ impl Panel {
         right: f32,
         top: f32,
         guidance: &Guidance,
+        level: u8,
         jumps: &[Jump],
     ) {
         let px = Self::code_pixel(canvas);
         let mut y = top;
-        let doors = guidance.door_codes();
+        // The ones you have been shown, or every one there is at level 6.
+        let (seen, doors) = guidance.codes_at(level);
         if !doors.is_empty() {
             self.spaced_right(canvas, right, y, "DOORS");
             y += 22.0;
@@ -683,7 +657,6 @@ impl Panel {
         }
         self.spaced_right(canvas, right, y, "TELEPORTERS");
         y += 22.0;
-        let seen = guidance.teleporters();
         if seen.is_empty() {
             let spans = [span("None yet", 12.0, Weight::Regular, QUIET)];
             let w = self.fonts.measure(&spans);
@@ -2230,17 +2203,6 @@ mod tests {
                         })
                         .collect();
                     g.set_teleporters(&seen);
-                    // Eleven rooms hold a pyramid and about half hold a
-                    // pack, both fixed for the game.
-                    let (mut pyramids, mut packs) = (RoomSet::default(), RoomSet::default());
-                    for room in 0..COLS * ROWS {
-                        if room % 47 == 5 {
-                            pyramids.set(room, true);
-                        } else if (room * 7 + room / COLS) % 5 < 2 {
-                            packs.set(room, true);
-                        }
-                    }
-                    g.set_bonuses(&pyramids, &packs);
                     g
                 },
                 Scene::Play,
