@@ -22,9 +22,10 @@ locally.
   exit code, never on grepped output.**
 - `cargo run --release -p sk-check -- entry "$SK_ASSETS"`,
   `… -- rom "$SK_ASSETS" 6000`, `… -- keys "$SK_ASSETS"`,
-  `… -- facts "$SK_ASSETS"` and `… -- map "$SK_ASSETS" 60` run the checks
-  against the game on their own (`keys` and `map` need only the tape;
-  `facts` walks into the teleporter booths only with the ROM).
+  `… -- facts "$SK_ASSETS"`, `… -- training "$SK_ASSETS" 900` and
+  `… -- map "$SK_ASSETS" 60` run the checks against the game on their own
+  (`keys`, `training` and `map` need only the tape; `facts` walks into the
+  teleporter booths only with the ROM).
 - `cargo run --release -p sk-lab --bin planet -- "$SK_ASSETS"` draws the whole
   planet with every room's openings into `assets/planet.png`; the other
   `sk-lab` tools (`tools/sk-lab/README.md`) probe rooms and run the level 5
@@ -58,8 +59,10 @@ locally.
   the fork was pinned), `sk-check keys` must find the joystick reaching the
   game and the pause key taken from it in all five control methods, and
   `sk-check facts` must find the entry points the guidance panel follows and
-  End this game ending a game. A change that moves any of them is a deliberate, called-out
-  decision, never a check adjusted to make it pass.
+  End this game ending a game, and `sk-check training` must find each training
+  switch holding what it promises and leaving the rest alone, with nothing
+  written when they are all off. A change that moves any of them is a
+  deliberate, called-out decision, never a check adjusted to make it pass.
 - **The processor is not self-certified.** It is checked in our bus against
   the Fuse corpus: 1,329 of 1,335 cases exact, the 6 undocumented-flag cases
   listed by name, and bus activity 1,335 of 1,335. The gate and CI require

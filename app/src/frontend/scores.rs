@@ -150,8 +150,8 @@ impl Keeper {
         // Where the tables first differ is the entry this game put in.
         self.this_game = (0..at::HIGH_SCORE_COUNT)
             .find(|&i| now[i] != self.kept.entries[i])
-            .filter(|_| !record.training);
-        if record.training {
+            .filter(|_| !record.training.any());
+        if record.training.any() {
             if now != &self.kept.entries {
                 self.restore = Some(self.kept.entries);
             }
@@ -193,6 +193,7 @@ pub fn save(path: &Path, kept: &Kept) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sidekick::machine::Training;
 
     fn entry(name: &[u8; 3], score: &[u8; 6], percent: u8) -> HighScore {
         HighScore {
@@ -262,14 +263,17 @@ mod tests {
         let now = with(&keeper.kept, 0, entry(b"SQK", b"200000", 50));
         let training = Record {
             highest: 2,
-            training: true,
+            training: Training {
+                time: true,
+                ..Training::default()
+            },
         };
         assert_eq!(keeper.heroes(&now, training), None);
         assert_eq!(keeper.menu(), Some(kept().entries));
         assert_eq!(keeper.menu(), None, "once");
         let played = Record {
             highest: 2,
-            training: false,
+            training: Training::default(),
         };
         let saved = keeper.heroes(&now, played).expect("a change to save");
         assert_eq!(saved.levels[0], Some(2));
@@ -296,7 +300,7 @@ mod tests {
         let now = with(&k, 0, entry(b"SQK", b"200000", 50));
         let played = Record {
             highest: 1,
-            training: false,
+            training: Training::default(),
         };
         assert_eq!(keeper.heroes(&now, played), None, "never written over");
         assert_eq!(keeper.kept.levels[0], Some(1), "but kept for the panel");

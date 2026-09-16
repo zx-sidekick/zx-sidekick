@@ -157,6 +157,21 @@ pub mod at {
     /// then the graphic of the piece that fills it; a filled hole holds its
     /// own number.
     pub const CORE_SLOTS: u16 = 0xD2DE;
+    /// The lives left, 3 at a new game and one fewer each death, and the
+    /// digit the panel prints for it, as text (#8).
+    pub const LIVES: u16 = 0xD2CC;
+    pub const LIVES_DIGIT: u16 = 0xD442;
+    /// Blob's energy, 127 as play starts, falling by 4 whenever the drain
+    /// counter reaches [`super::DRAIN_DROP`] (#8).
+    pub const ENERGY: u16 = 0xD2CD;
+    /// How full the platform bar and the gun bar are: one falls as Blob
+    /// lays platforms, the other by one a shot (#8).
+    pub const PLATFORMS: u16 = 0xD2CE;
+    pub const GUN: u16 = 0xD2CF;
+    /// The drain counter in Blob's slot (offset `0x18`): it rises by one a
+    /// frame, and touching an enemy pushes it on, so energy falls far
+    /// faster on contact than by time alone (#8).
+    pub const DRAIN: u16 = 0xDD30;
     /// The 45 items, four bytes each: column (and colour), row with the room's
     /// top bit, the room's low byte, graphic.
     pub const ITEMS: u16 = 0x94E8;
@@ -254,6 +269,9 @@ pub fn all_rooms(machine: &crate::Machine) -> Vec<crate::map::Room> {
         .map(|room| read_room(&mut machine.clone(), room))
         .collect()
 }
+
+/// What the drain counter reaches before energy falls by four (#8).
+pub const DRAIN_DROP: u8 = 0x78;
 
 /// The marker a teleporter booth's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;

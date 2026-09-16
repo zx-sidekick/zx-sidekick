@@ -7,7 +7,7 @@
 //! the rule on #3: a keyboard key is a squarish badge, a pad button a round
 //! one, and a direction a bare arrow.
 
-use super::guidance::{Choice, Guidance, LEVELS, Setting};
+use super::guidance::{Choice, Guidance, LEVELS, SWITCHES, Setting, is_on, switches_on};
 use super::notice;
 use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
@@ -68,6 +68,13 @@ const DELIVERED: Rgb = [0x3a, 0x3f, 0x4b];
 /// The core column (#7): its tiles' size and pitch, and how many layout
 /// units a pixel of a piece's graphic is.
 const CODE_FILL: Rgb = [0x14, 0x25, 0x2a];
+
+/// A training switch's row in the picker: the heading above them, the pitch
+/// from one row to the next, and the line under them all saying what the
+/// focused one does (#8).
+const SWITCH_HEAD: f32 = 14.0;
+const SWITCH_PITCH: f32 = 34.0;
+const SWITCH_SAYS: f32 = 18.0;
 
 /// What each level adds, for the picker. The levels are built in their own
 /// tickets (#3); until then they say so.
@@ -831,7 +838,8 @@ impl Panel {
         } else {
             y += 12.0;
         }
-        if record.training {
+        let used = switches_on(record.training);
+        if !used.is_empty() {
             canvas.round_rect(left, y + 5.0, 8.0, 8.0, 4.0, TRAINING);
             self.fonts.text(
                 Some(canvas),
@@ -839,13 +847,18 @@ impl Panel {
                 y,
                 None,
                 1.0,
-                &[span(
-                    "Training mode was used",
-                    13.0,
-                    Weight::Regular,
-                    BRIGHT,
-                )],
+                &[span("Training", 13.0, Weight::Regular, BRIGHT)],
             );
+            for (i, label) in used.iter().enumerate() {
+                self.fonts.text(
+                    Some(canvas),
+                    left + 18.0,
+                    y + 20.0 + i as f32 * 18.0,
+                    None,
+                    1.0,
+                    &[span(label, 12.0, Weight::Regular, SOFT)],
+                );
+            }
         }
         // The table kept between runs, with the guidance each game had (#47).
         let Some(kept) = guidance.high_scores() else {
@@ -921,7 +934,7 @@ impl Panel {
             }
         }
         // A game with training is not kept, so it is in no row above.
-        let note = if record.training {
+        let note = if record.training.any() {
             "This game is not kept: training mode was used."
         } else {
             "Games played with training mode are not kept."
@@ -938,8 +951,9 @@ impl Panel {
 
     fn picker(&mut self, canvas: &mut Canvas, guidance: &Guidance) {
         canvas.shade(0.0, 0.0, WINDOW_W, WINDOW_H, DIM, 184);
-        // Two settings, then the actions, each taller while it waits for its
-        // second press.
+        let focus = guidance.focus();
+        // The level, the training switches, then the actions, each taller
+        // while it waits for its second press.
         let actions: Vec<Setting> = guidance
             .rows()
             .into_iter()
@@ -953,7 +967,11 @@ impl Panel {
             }
         };
         let actions_h: f32 = actions.iter().map(|&r| action_h(r) + 4.0).sum::<f32>() - 4.0;
-        let (w, h) = (520.0, 372.0 + 8.0 + actions_h + 12.0 + 52.0);
+        // Where the switches end, and with them the rule above the actions:
+        // the heading, the four rows, and the line saying what the focused
+        // one does, which is always kept.
+        let rule = 250.0 + SWITCH_HEAD + 4.0 * SWITCH_PITCH + SWITCH_SAYS + 6.0;
+        let (w, h) = (520.0, rule + 8.0 + actions_h + 12.0 + 52.0);
         let x = (WINDOW_W - w) / 2.0;
         let y = (WINDOW_H - h) / 2.0;
         canvas.round_rect(x, y, w, h, 12.0, palette::LINE);
@@ -978,7 +996,6 @@ impl Panel {
             &paused,
         );
 
-        let focus = guidance.focus();
         let (level, training) = guidance.picked();
 
         // The guidance level: a number and a name, the notches, and what it adds.
@@ -1039,45 +1056,72 @@ impl Panel {
             &[span(ADDS[level as usize], 13.0, Weight::Regular, HINT_KEY)],
         );
 
-        // Training mode: off or on.
-        let top = y + 250.0;
-        let focused = focus == Setting::Training;
-        self.setting_box(canvas, rx, top, rw, 106.0, focused, "TRAINING MODE");
-        self.arrows(canvas, rx, rw, top + 50.0, focused, training, !training);
-        let mid = rx + rw / 2.0;
-        for (label, chosen, cx, fill, text) in [
-            ("Off", !training, mid - 29.0, SWITCH_OFF, BRIGHT),
-            ("On", training, mid + 29.0, SWITCH_ON, ON_TEXT),
-        ] {
-            let spans = [span(
-                label,
-                15.0,
-                Weight::SemiBold,
-                if chosen { text } else { PAUSED },
-            )];
-            let tw = self.fonts.measure(&spans);
-            if chosen {
-                canvas.round_rect(cx - tw / 2.0 - 14.0, top + 36.0, tw + 28.0, 28.0, 6.0, fill);
+        // Training mode: four switches, a row each (#8).
+        let mut top = y + 250.0;
+        self.spaced(canvas, rx + 14.0, top, "TRAINING");
+        top += SWITCH_HEAD;
+        let mut says = None;
+        for (row, label, does) in SWITCHES {
+            let focused = focus == row;
+            let on = is_on(row, training);
+            let rh = SWITCH_PITCH - 4.0;
+            if focused {
+                canvas.round_rect(rx, top, rw, rh, 8.0, ACCENT);
+                canvas.round_rect(rx + 2.0, top + 2.0, rw - 4.0, rh - 4.0, 6.0, SELECTED);
             }
-            self.fonts
-                .text(Some(canvas), cx - tw / 2.0, top + 41.0, None, 1.0, &spans);
+            self.fonts.text(
+                Some(canvas),
+                rx + 14.0,
+                top + 7.0,
+                None,
+                1.0,
+                &[span(
+                    label,
+                    14.0,
+                    Weight::SemiBold,
+                    if focused { TITLE } else { VALUE_DIM },
+                )],
+            );
+            // Off and On at the row's right, the one in force filled.
+            let mut bx = rx + rw - 14.0;
+            for (text, chosen, fill, ink) in [
+                ("On", on, SWITCH_ON, ON_TEXT),
+                ("Off", !on, SWITCH_OFF, BRIGHT),
+            ] {
+                let spans = [span(
+                    text,
+                    13.0,
+                    Weight::SemiBold,
+                    if chosen { ink } else { PAUSED },
+                )];
+                let tw = self.fonts.measure(&spans);
+                bx -= tw + 20.0;
+                if chosen {
+                    canvas.round_rect(bx - 8.0, top + 5.0, tw + 16.0, 20.0, 5.0, fill);
+                }
+                self.fonts
+                    .text(Some(canvas), bx, top + 8.0, None, 1.0, &spans);
+            }
+            if focused {
+                says = Some(does);
+            }
+            top += SWITCH_PITCH;
         }
-        self.centred_in(
-            canvas,
-            rx,
-            rw,
-            top + 76.0,
-            &[span(
-                "Not built yet: energy will stop draining.",
-                13.0,
-                Weight::Regular,
-                HINT_KEY,
-            )],
-        );
+        // What the focused switch does, on a line of its own kept under them
+        // all, so choosing a row never moves the rest.
+        if let Some(does) = says {
+            self.centred_in(
+                canvas,
+                rx,
+                rw,
+                top + 2.0,
+                &[span(does, 12.0, Weight::Regular, HINT_KEY)],
+            );
+        }
 
         // The actions: pressed once, a row turns red and asks again.
-        let mut ay = y + 380.0;
-        canvas.round_rect(x + 1.0, y + 372.0, w - 2.0, 1.0, 0.0, RULE);
+        let mut ay = y + rule + 8.0;
+        canvas.round_rect(x + 1.0, y + rule, w - 2.0, 1.0, 0.0, RULE);
         for &row in &actions {
             let rh = action_h(row);
             let (label, again) = match row {
@@ -1158,19 +1202,26 @@ impl Panel {
                 LEVELS[level as usize]
             ));
         }
-        if training != was_training {
-            changes.push(format!(
-                "Training mode {} \u{2192} {}",
-                on_off(was_training),
-                on_off(training)
-            ));
+        for (row, label, _) in SWITCHES {
+            let (was, now) = (is_on(row, was_training), is_on(row, training));
+            if was != now {
+                changes.push(format!("{label} {} \u{2192} {}", on_off(was), on_off(now)));
+            }
         }
         let mut shows = Vec::new();
         if level > record.highest {
             shows.push(format!("guidance up to level {level}"));
         }
-        if training && !record.training {
-            shows.push("that training mode was used".to_string());
+        let newly: Vec<&str> = SWITCHES
+            .into_iter()
+            .filter(|&(row, _, _)| is_on(row, training) && !is_on(row, record.training))
+            .map(|(_, label, _)| label)
+            .collect();
+        if !newly.is_empty() {
+            shows.push(format!(
+                "that training mode was used ({})",
+                newly.join(", ")
+            ));
         }
         let later = match shows.len() {
             1 if level > record.highest => "turn it down",
@@ -1490,6 +1541,7 @@ fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sidekick::machine::Training;
     use sidekick::map::{Divides, Openings, RoomSet};
     use sidekick::starquake::SeenTeleporter;
 
@@ -1995,7 +2047,10 @@ mod tests {
         picker.open();
         let mut record = Guidance::default();
         record.set_level(3);
-        record.set_training(true);
+        record.set_training(Training {
+            time: true,
+            ..Training::default()
+        });
         let cases = [
             ("level0", Guidance::default(), Scene::Play, false),
             (
@@ -2176,6 +2231,9 @@ mod tests {
                     let mut g = picker.clone();
                     g.focus_down();
                     g.change(true);
+                    g.focus_down();
+                    g.focus_down();
+                    g.change(true);
                     g
                 },
                 Scene::Play,
@@ -2186,8 +2244,9 @@ mod tests {
                 {
                     let mut g = picker;
                     g.set_playing(true);
-                    g.focus_down();
-                    g.focus_down();
+                    for _ in 0..5 {
+                        g.focus_down();
+                    }
                     g.enter();
                     g
                 },

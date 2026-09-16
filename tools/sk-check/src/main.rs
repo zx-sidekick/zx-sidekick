@@ -706,6 +706,106 @@ fn items_check(dir: &Path) -> bool {
     good
 }
 
+/// Training mode's switches (#8), each turned on alone over the same
+/// scripted play: what it holds still, and what it leaves to the game.
+/// With every switch off the machine writes nothing, and the play is the
+/// play the game would have had.
+fn training_check(dir: &Path, frames: u64) -> bool {
+    use sidekick::machine::Training;
+    use sidekick::starquake::{at, routine};
+    // How long the game takes to set energy up once play starts; before
+    // that the byte still holds what the loader left.
+    const SETTLED: u64 = 200;
+    let mut base = machine(dir);
+    base.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut base, frame.min(399));
+        if base.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    base.watch.clear();
+    // The same wandering play under each switch, from the same start.
+    let run = |training: Training| {
+        let mut m = base.clone();
+        m.training = training;
+        let mut script = Script(0x51DE);
+        let mut lowest = [255u8; 4];
+        // The game sets energy up in its first frames, so what it is once
+        // play has settled is the number to measure from.
+        let mut settled = [0u8; 4];
+        for frame in 0..frames {
+            script.apply(&mut m, 400 + frame);
+            m.run_frame();
+            let z = &m.zx;
+            if frame == SETTLED {
+                settled =
+                    [at::ENERGY, at::PLATFORMS, at::GUN, at::LIVES].map(|a| z.mem[usize::from(a)]);
+                lowest = settled;
+            }
+            for (i, a) in [at::ENERGY, at::PLATFORMS, at::GUN, at::LIVES]
+                .into_iter()
+                .enumerate()
+            {
+                lowest[i] = lowest[i].min(z.mem[usize::from(a)]);
+            }
+        }
+        let z = &m.zx;
+        (
+            lowest,
+            [
+                z.mem[usize::from(at::ENERGY)],
+                z.mem[usize::from(at::PLATFORMS)],
+                z.mem[usize::from(at::GUN)],
+                z.mem[usize::from(at::LIVES)],
+            ],
+            settled,
+        )
+    };
+    let off = Training::default();
+    let (plain_low, plain_end, start) = run(off);
+    let (_, full_end, full_start) = run(Training { full: true, ..off });
+    let (time_low, _, _) = run(Training { time: true, ..off });
+    let (lives_low, _, _) = run(Training { lives: true, ..off });
+    // Time standing still and no harm from things together: nothing takes
+    // energy at all.
+    let (both_low, _, both_start) = run(Training {
+        time: true,
+        unharmed: true,
+        ..off
+    });
+    // Off changes nothing; on holds what its switch names.
+    let plain_drains = plain_low[0] < start[0];
+    let full_holds = full_end[1] >= full_start[1] && full_end[2] >= full_start[2];
+    let time_holds = time_low[0] > plain_low[0];
+    let lives_hold = lives_low[3] >= start[3] && plain_low[3] < start[3];
+    let nothing_drains = both_low[0] >= both_start[0];
+    let good = plain_drains && full_holds && time_holds && lives_hold && nothing_drains;
+    println!(
+        "  training over {frames} frames: with none, energy fell to {} of {}; full bars ended at {} and {} of {} and {}; time standing still left energy at {} or better; endless lives never went below {} where a plain run fell to {} {}",
+        plain_low[0],
+        start[0],
+        full_end[1],
+        full_end[2],
+        full_start[1],
+        full_start[2],
+        time_low[0],
+        lives_low[3],
+        plain_low[3],
+        if good { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  time standing still and no harm together: energy never below {} of {}",
+        both_low[0], both_start[0]
+    );
+    println!(
+        "  with every switch off the play ends as the game left it: energy {}, platforms {}, gun {}, lives {}",
+        plain_end[0], plain_end[1], plain_end[2], plain_end[3]
+    );
+    good
+}
+
 /// The high-score table (#47): as the tape ships it, the STARQUAKES names;
 /// and a table written into memory once the tape is loaded, as the app
 /// does, is the one a game's score is ranked against, the new entry named and in before the CORE OF HEROES screen,
@@ -1711,6 +1811,10 @@ fn main() {
         Some("entry") => std::process::exit(i32::from(!entry_check(&dir))),
         Some("keys") => std::process::exit(i32::from(!keys_check(&dir))),
         Some("facts") => std::process::exit(i32::from(!facts_check(&dir))),
+        Some("training") => {
+            let frames = args.get(2).and_then(|f| f.parse().ok()).unwrap_or(1200);
+            std::process::exit(i32::from(!training_check(&dir, frames)));
+        }
         Some("map") => {
             let walks = args.get(2).and_then(|f| f.parse().ok()).unwrap_or(120);
             std::process::exit(i32::from(!map_check(&dir, walks)));
