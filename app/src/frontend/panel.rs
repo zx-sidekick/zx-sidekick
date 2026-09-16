@@ -1801,10 +1801,37 @@ mod tests {
     /// Level 4 with every code a game can show (#49): eight door codes,
     /// the codes `sk-check facts` reads on one game, and fifteen
     /// teleporters. Their chips come from the tape, so it needs `SQ_TAPE`.
-    fn doors_seen() -> Guidance {
+    fn doors_seen(level: u8) -> Guidance {
         let mut g = Guidance::default();
-        g.set_level(4);
+        g.set_level(level);
         explore(&mut g, 3);
+        // At level 5, everything the panel can hold at once: the core's
+        // holes, the missing pieces, the items found, both routes and the
+        // choice among the nearest (#49, to see the whole panel).
+        if level >= 5 {
+            let here = g.room().expect("a room");
+            let mut pieces = RoomSet::default();
+            for (col, row) in [(12, 13), (2, 24), (6, 8), (13, 29), (10, 4), (9, 21)] {
+                pieces.set(row * COLS + col, true);
+            }
+            g.set_pieces(&pieces);
+            g.set_core(made_up_core());
+            g.set_piece_choice(Some(here), (2, 3));
+            let step = |room: u16| Step {
+                room,
+                teleport: false,
+            };
+            g.set_route(Some(vec![
+                step(here + 1),
+                step(here + 2),
+                step(here + 2 + COLS),
+            ]));
+            g.set_core_route(Some(vec![
+                step(here - 1),
+                step(here - 2),
+                step(here - 2 - COLS),
+            ]));
+        }
         let letters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         let seen: Vec<SeenTeleporter> = (0..15u16)
             .map(|i| SeenTeleporter {
@@ -2198,7 +2225,8 @@ mod tests {
                 Scene::Play,
                 false,
             ),
-            ("doors", doors_seen(), Scene::Play, false),
+            ("doors", doors_seen(4), Scene::Play, false),
+            ("everything", doors_seen(5), Scene::Play, false),
             ("score", record, Scene::GameOver, false),
             ("heroes", heroes(), Scene::GameOver, false),
             ("score-none", Guidance::default(), Scene::GameOver, false),
