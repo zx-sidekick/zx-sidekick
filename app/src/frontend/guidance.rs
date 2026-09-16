@@ -16,13 +16,14 @@ use sidekick::starquake::SeenTeleporter;
 const ROOMS: usize = (sidekick::map::COLS * sidekick::map::ROWS) as usize;
 
 /// The levels, each including the ones before it (#3).
-pub const LEVELS: [&str; 6] = [
+pub const LEVELS: [&str; 7] = [
     "Off",
-    "Teleporter codes",
-    "Map",
-    "Missing pieces",
-    "Arrow, known routes",
-    "Arrow, whole map",
+    "Codes and the core",
+    "The map you have walked",
+    "What you have seen",
+    "What you have not",
+    "Routes",
+    "Everything",
 ];
 
 /// An item found: one lying in a room that has been visited, with what it
@@ -37,6 +38,9 @@ pub struct Found {
     /// The game's own graphic for it, 32 bytes, as the core column reads
     /// them.
     pub graphic: [u8; 32],
+    /// Whether it has been seen lying in a room walked through, which is
+    /// level 3's half of the map's marks; the rest are level 4's (#66).
+    pub seen: bool,
 }
 
 /// A security door whose screen has shown its code this game (#49): the
@@ -191,6 +195,14 @@ pub struct Guidance {
     /// The game's font, read from memory once play starts, for drawing
     /// codes in its letters (#49); empty until then.
     font: Vec<u8>,
+    /// Every teleporter and every security door's code, whether or not it
+    /// has been shown: level 6 tells them all, read once a game has started
+    /// (#66). Empty until then.
+    all_teleporters: Vec<SeenTeleporter>,
+    all_door_codes: Vec<DoorCode>,
+    /// Which game those codes are being read for: a reading that finishes
+    /// after another game has started is dropped rather than shown (#66).
+    game: u64,
     /// Every room's openings, for the map (#5). Empty until they are read.
     openings: Vec<Openings>,
     /// The rooms visited in the game being played, or just ended; empty on
@@ -292,9 +304,48 @@ impl Guidance {
         }
     }
 
-    /// The door codes seen this game.
+    /// The door codes seen this game. The panel goes through
+    /// [`Guidance::codes_at`], which knows about level 6 (#66).
+    #[cfg(test)]
     pub fn door_codes(&self) -> &[DoorCode] {
         &self.door_codes
+    }
+
+    /// The codes the panel shows at `level`: the ones you have been shown,
+    /// or at level 6 every one there is, once they have been read (#66).
+    pub fn codes_at(&self, level: u8) -> (&[SeenTeleporter], &[DoorCode]) {
+        if level >= 6 && !self.all_teleporters.is_empty() {
+            (&self.all_teleporters, &self.all_door_codes)
+        } else {
+            (&self.teleporters, &self.door_codes)
+        }
+    }
+
+    /// Takes every code there is, read on a copy of the machine once a game
+    /// has started (#66).
+    pub fn set_all_codes(&mut self, teleporters: &[SeenTeleporter], doors: &[DoorCode]) {
+        if self.all_teleporters != teleporters || self.all_door_codes != doors {
+            self.all_teleporters = teleporters.to_vec();
+            self.all_door_codes = doors.to_vec();
+            self.version += 1;
+        }
+    }
+
+    /// A new game's codes are not this game's: forgotten until read again.
+    /// Returns which game the reading that follows is for.
+    pub fn forget_all_codes(&mut self) -> u64 {
+        self.game = self.game.wrapping_add(1);
+        if !self.all_teleporters.is_empty() || !self.all_door_codes.is_empty() {
+            self.all_teleporters.clear();
+            self.all_door_codes.clear();
+            self.version += 1;
+        }
+        self.game
+    }
+
+    /// The game the codes are being read for.
+    pub fn game(&self) -> u64 {
+        self.game
     }
 
     /// The game's font, 96 letters of eight bytes from the space, once read.
@@ -896,7 +947,7 @@ mod tests {
         for _ in 0..10 {
             g.change(true);
         }
-        assert_eq!(g.picked().0, 5);
+        assert_eq!(g.picked().0, LEVELS.len() as u8 - 1);
     }
 
     #[test]
