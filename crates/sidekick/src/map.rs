@@ -258,6 +258,9 @@ pub struct Room {
     /// part its teleporter booth is in.
     pub passage_part: u8,
     pub booth_part: u8,
+    /// The spot of its security door's marker, as the game keeps it (x, y),
+    /// if it has one: where Blob is stood to walk into the door (#80).
+    pub door: Option<(u8, u8)>,
 }
 
 /// The character cell of a marker's position (the way the game's tiles place them).
@@ -354,6 +357,10 @@ impl Room {
             .iter()
             .find(|m| m.2 == BOOTH)
             .map_or(0, |m| part_at_marker(cell(m)));
+        let door = markers
+            .iter()
+            .find(|m| m.2 == DOOR)
+            .map(|&(x, y, _)| (x, y));
         Room {
             openings: scan(|row, col| free(attr(row, col))),
             shut,
@@ -365,6 +372,7 @@ impl Room {
             lift,
             passage_part,
             booth_part,
+            door,
         }
     }
 }
@@ -1031,13 +1039,14 @@ mod tests {
             |row, col| if grid(row, col) { 0x47 } else { 0x07 },
             &[(96, 87, DOOR), (144, 87, DOOR)],
         );
-        let d = openings(&[r], 999)[0].divides;
+        let d = openings(std::slice::from_ref(&r), 999)[0].divides;
         let drawn = draw_divides(&d);
         assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
         assert!(
             drawn.iter().all(|l| !l.contains('#')),
             "a door's wall, nothing plain: {drawn:?}"
         );
+        assert_eq!(r.door, Some((96, 87)), "the first door marker's spot (#80)");
     }
 
     /// Room 190: a teleporter pad, one cell wide and three tall, closing the
@@ -1088,6 +1097,7 @@ mod tests {
             lift: [0; 18],
             passage_part: 0,
             booth_part: 0,
+            door: None,
         };
         openings(&[r], 999)[0].divides
     }
