@@ -381,13 +381,6 @@ impl Guidance {
     }
 
     /// Which of how many nearest missing pieces the route leads to, 1-based.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the panel no longer says which (@starquake, 2026-09-16); the tracker still keeps it"
-        )
-    )]
     pub fn piece_choice(&self) -> (u8, u8) {
         self.piece_choice
     }

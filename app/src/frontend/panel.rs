@@ -185,11 +185,29 @@ impl Panel {
                 };
                 let under = if level >= 4 { 29.0 + core + 29.0 } else { core };
                 let bottom = WINDOW_H - 24.0 - under;
-                let map_bottom = self.map(canvas, guidance, level >= 3, top, bottom, map_w);
+                let (map_bottom, map_right) =
+                    self.map(canvas, guidance, level >= 3, top, bottom, map_w);
                 // The legend as the two chips, with no words (#49, decision 9).
                 let mut under = map_bottom + 12.0;
                 if level >= 4 {
                     self.route_legend(canvas, under);
+                    // Which of the nearest missing pieces the route leads to
+                    // (#51), under the map at its right, away from the chips
+                    // (@starquake, 2026-09-16); nothing while there is one.
+                    let (which, count) = guidance.piece_choice();
+                    if count > 1 {
+                        let text = format!("{which} of {count}");
+                        let spans = [span(&text, 12.0, Weight::SemiBold, BRIGHT)];
+                        let w = self.fonts.measure(&spans);
+                        self.fonts.text(
+                            Some(canvas),
+                            map_right - w,
+                            under + 1.0,
+                            None,
+                            1.0,
+                            &spans,
+                        );
+                    }
                     under += 29.0;
                 }
                 if level >= 3 && !guidance.core().is_empty() {
@@ -269,7 +287,7 @@ impl Panel {
         top: f32,
         bottom: f32,
         width: f32,
-    ) -> f32 {
+    ) -> (f32, f32) {
         let (cols, rows) = (f32::from(COLS), f32::from(ROWS));
         // 18 units a room as in the mockup, smaller when the height or the
         // width the codes' column leaves (#49) does not run to it.
@@ -509,7 +527,7 @@ impl Panel {
                 FLOOR,
             );
         }
-        top + rows * pitch
+        (top + rows * pitch, x0 + cols * pitch)
     }
 
     /// Level 4 (#44): what the two route colours mean, under the map at
