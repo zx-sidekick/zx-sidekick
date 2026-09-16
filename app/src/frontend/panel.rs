@@ -133,21 +133,17 @@ impl Panel {
         if scene == Scene::GameOver {
             self.score_note(canvas, left, guidance);
         } else {
+            // The level in the corner opposite the label, on one line, so
+            // everything below starts higher (@starquake, 2026-09-16).
             self.spaced(canvas, left, 26.0, "GUIDANCE");
             let level = guidance.level();
             let title = if level == 0 {
-                "Off".to_string()
+                "OFF".to_string()
             } else {
-                format!("Level {level} \u{b7} {}", LEVELS[level as usize])
+                format!("LEVEL {level}")
             };
-            self.fonts.text(
-                Some(canvas),
-                left,
-                44.0,
-                Some(width - 48.0),
-                1.0,
-                &[span(&title, 13.0, Weight::SemiBold, BRIGHT)],
-            );
+            let title_x = WINDOW_W - 24.0 - self.spaced_width(&title);
+            self.spaced_colour(canvas, title_x, 26.0, &title, 11.0, BRIGHT);
             // Level 4 (#9, #44): the first teleport on each route has its
             // chip outlined in that route's colour.
             let jump = if level >= 4 {
@@ -164,21 +160,21 @@ impl Panel {
             let col_w = tiles.max(self.spaced_width("TELEPORTERS"));
             let col_right = WINDOW_W - 24.0;
             if level >= 1 {
-                self.codes_column(canvas, col_right, 72.0, guidance, &jump);
+                self.codes_column(canvas, col_right, 54.0, guidance, &jump);
             }
             if level >= 2 {
                 let explored = format!("explored {} of {} rooms", guidance.explored(), COLS * ROWS);
                 self.fonts.text(
                     Some(canvas),
                     left,
-                    72.0,
+                    50.0,
                     None,
                     1.0,
                     &[span(&explored, 12.0, Weight::Regular, LABEL)],
                 );
                 let map_w = col_right - col_w - 16.0 - left;
                 let pitch = (map_w / f32::from(COLS)).floor().min(18.0);
-                let mut top = 96.0;
+                let mut top = 74.0;
                 // The core as a row above the map (#49, decision 8).
                 if level >= 3 && !guidance.core().is_empty() {
                     let tile = 16.0 * px + 2.0;
@@ -1588,7 +1584,9 @@ mod tests {
         let px = 1.5;
         let col_w = ((3.0f32 * 16.0 * px + 4.0).max(5.0 * 8.0 * px) + 6.0).max(92.5);
         let map_w = WINDOW_H.mul_add(0.0, WINDOW_W - 24.0) - col_w - 16.0 - left;
-        let top = 96.0;
+        // The level's line is one line now (#49), and the core's row is
+        // only there when the game has holes to show.
+        let top = 74.0;
         let bottom = WINDOW_H - 24.0 - if level >= 4 { 58.0 } else { 0.0 };
         let pitch = ((bottom - top) / f32::from(ROWS))
             .min(map_w / f32::from(COLS))
