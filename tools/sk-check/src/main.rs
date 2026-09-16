@@ -626,6 +626,86 @@ fn ends_the_game(m: &Machine) -> Option<(u64, u64)> {
     None
 }
 
+/// The items out on the planet (#36): each is of a kind the map has an
+/// icon for, and the game places a pickup for it when its room is entered.
+fn items_check(dir: &Path) -> bool {
+    use sidekick::starquake::{CORE_ROOM, Kind, at, items_and_core, kind, routine};
+    let mut base = machine(dir);
+    base.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut base, frame.min(399));
+        if base.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    base.watch.clear();
+    let (items, core) = items_and_core(&base.zx.mem[..]);
+    // A graphic the core wants is one of its own pieces, which level 3
+    // already marks; every other item on the planet has a kind.
+    let piece = |graphic: u8| core.iter().any(|&slot| slot & 0x7F == graphic);
+    let out: Vec<(usize, sidekick::starquake::Item)> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, i)| i.room() != CORE_ROOM)
+        .map(|(n, i)| (n, *i))
+        .collect();
+    let mut counts = std::collections::BTreeMap::new();
+    let mut unknown = Vec::new();
+    for (_, item) in &out {
+        let k = kind(item.graphic());
+        // A core piece trades like any other object; the map tells them
+        // apart by what the core wants this game.
+        let name = if k == Kind::Trade && piece(item.graphic()) {
+            "Piece".to_string()
+        } else {
+            format!("{k:?}")
+        };
+        if k == Kind::Pack {
+            unknown.push(item.graphic());
+        }
+        *counts.entry(name).or_insert(0) += 1;
+    }
+    // Entering an item's room places a pickup whose marker names it.
+    let mut placed = 0;
+    for (n, item) in &out {
+        let mut m = base.clone();
+        m.zx.write16(at::ROOM, item.room());
+        m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+        if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+            continue;
+        }
+        let z = &m.zx;
+        let end = z.read16(at::MARKERS_END).max(at::MARKERS);
+        // A pickup's marker kind is 0x14 plus its item's number.
+        if (at::MARKERS..end)
+            .step_by(3)
+            .any(|a| usize::from(z.mem[usize::from(a) + 2].wrapping_sub(0x14)) == *n)
+        {
+            placed += 1;
+        } else {
+            println!("  no pickup for item {n} in room {}", item.room());
+        }
+    }
+    let good = unknown.is_empty() && placed == out.len() && !out.is_empty();
+    let verdict = if good {
+        "ok".to_string()
+    } else {
+        format!("FAILED (packs in the item table: {unknown:?})")
+    };
+    println!(
+        "  the items on the planet: {} of them, {}; a pickup placed for {placed} {}",
+        out.len(),
+        counts
+            .iter()
+            .map(|(k, n)| format!("{n} {k}"))
+            .collect::<Vec<_>>()
+            .join(", "),
+        verdict
+    );
+    good
+}
+
 /// Starts a game and, for every room marked as holding a missing core piece,
 /// has the game enter that room and checks it placed a pickup whose item is
 /// one the core still wants.
@@ -1089,6 +1169,7 @@ fn facts_check(dir: &Path) -> bool {
     ok &= visited_check(dir);
     ok &= pieces_check(dir);
     ok &= graphics_check(dir);
+    ok &= items_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }
