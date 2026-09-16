@@ -712,7 +712,11 @@ fn items_check(dir: &Path) -> bool {
 /// play the game would have had.
 fn training_check(dir: &Path, frames: u64) -> bool {
     use sidekick::machine::Training;
-    use sidekick::starquake::{at, routine};
+    use sidekick::starquake::{
+        DANGER_MARKER, ENEMY_SLOTS, FORCE_FIELD_COUNT, FORCE_FIELD_REC, FORCE_FIELDS,
+        HARMLESS_GRAPHICS, ITEM_MARKER, SLOT, SLOT_GRAPHIC, SLOT_X, SLOT_Y, at, decide,
+        items_and_core, routine,
+    };
     // How long the game takes to set energy up once play starts; before
     // that the byte still holds what the loader left.
     const SETTLED: u64 = 200;
@@ -781,7 +785,204 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     let time_holds = time_low[0] > plain_low[0];
     let lives_hold = lives_low[3] >= start[3] && plain_low[3] < start[3];
     let nothing_drains = both_low[0] >= both_start[0];
-    let good = plain_drains && full_holds && time_holds && lives_hold && nothing_drains;
+    // The outright deaths (#68). Each case enters a room on a copy, stands
+    // Blob on what kills there and watches for the death routine, with no
+    // harm from enemies off and on; time stands still in both runs so the
+    // energy death cannot be what ends them. A room is chosen for one case
+    // only when it holds none of the other two dangers, so that what kills
+    // with the switch off is the danger under test.
+    let enter = |room: u16, unharmed: bool| {
+        let mut m = base.clone();
+        m.training = Training {
+            unharmed,
+            time: true,
+            ..Training::default()
+        };
+        m.zx.write16(at::ROOM, room);
+        m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+        if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+            return None;
+        }
+        m.zx.t = 0;
+        m.zx.set_interrupts(true);
+        m.watch = vec![routine::DEATH];
+        Some(m)
+    };
+    let patch_at = |m: &Machine| {
+        let end = m.zx.read16(at::MARKERS_END).max(at::MARKERS);
+        (at::MARKERS..end)
+            .step_by(3)
+            .map(usize::from)
+            .find(|&a| m.zx.mem[a + 2] == DANGER_MARKER)
+            .map(|a| (m.zx.mem[a], m.zx.mem[a + 1]))
+    };
+    let field_at = |m: &Machine| {
+        (0..FORCE_FIELD_COUNT)
+            .map(|i| usize::from(FORCE_FIELDS) + i * FORCE_FIELD_REC)
+            .find(|&a| m.zx.mem[a] != 0 && m.zx.mem[a + 1] != 0)
+            .map(|rec| {
+                // Where the game looks for Blob against that field.
+                let x = m.zx.mem[rec].rotate_left(3);
+                let top = 0x1Au8
+                    .wrapping_sub(m.zx.mem[rec + 1])
+                    .rotate_left(3)
+                    .wrapping_sub(2);
+                (x, top.wrapping_sub(8))
+            })
+    };
+    let stand = |m: &mut Machine, (x, y): (u8, u8)| {
+        m.zx.mem[usize::from(at::ENTITIES) + SLOT_X] = x;
+        m.zx.mem[usize::from(at::ENTITIES) + SLOT_Y] = y;
+    };
+    // The things a room raises that kill on touch, the nails and the ones
+    // that come after Blob: stand him on one as soon as it is up.
+    let mut things = Vec::new();
+    for room in 0..128u16 {
+        let killed = |unharmed: bool| {
+            let mut m = enter(room, unharmed)?;
+            if patch_at(&m).is_some() || field_at(&m).is_some() {
+                return None;
+            }
+            let mut met = false;
+            for _ in 0..300 {
+                let deadly = ENEMY_SLOTS
+                    .map(|n| usize::from(at::ENTITIES) + n * SLOT)
+                    .find(|&e| {
+                        let hi = m.zx.mem[e + SLOT_GRAPHIC + 1];
+                        hi != 0 && hi < HARMLESS_GRAPHICS
+                    });
+                if let Some(e) = deadly {
+                    met = true;
+                    let spot = (m.zx.mem[e + SLOT_X], m.zx.mem[e + SLOT_Y]);
+                    stand(&mut m, spot);
+                }
+                if m.run_frame().contains(&routine::DEATH) {
+                    return Some((met, true));
+                }
+            }
+            Some((met, false))
+        };
+        if let Some((true, true)) = killed(false)
+            && let Some((_, on)) = killed(true)
+        {
+            things.push((room, on));
+        }
+        if things.len() >= 10 {
+            break;
+        }
+    }
+    let things_held = things.iter().filter(|&&(_, on)| !on).count();
+    let things_hold = things.len() == 10 && things_held == things.len();
+    // The deadly patches: stand him on the marker.
+    let mut patches = Vec::new();
+    for room in 0..128u16 {
+        let killed = |unharmed: bool| {
+            let mut m = enter(room, unharmed)?;
+            let spot = patch_at(&m)?;
+            if field_at(&m).is_some() {
+                return None;
+            }
+            for _ in 0..240 {
+                stand(&mut m, spot);
+                if m.run_frame().contains(&routine::DEATH) {
+                    return Some(true);
+                }
+            }
+            Some(false)
+        };
+        if let Some(true) = killed(false)
+            && let Some(on) = killed(true)
+        {
+            patches.push((room, on));
+        }
+        if patches.len() >= 6 {
+            break;
+        }
+    }
+    let patches_held = patches.iter().filter(|&&(_, on)| !on).count();
+    let patches_hold = patches.len() == 6 && patches_held == patches.len();
+    // The zappers: stand him in a force field's strip.
+    let mut fields = Vec::new();
+    for room in 0..128u16 {
+        let killed = |unharmed: bool| {
+            let mut m = enter(room, unharmed)?;
+            let spot = field_at(&m)?;
+            if patch_at(&m).is_some() {
+                return None;
+            }
+            for _ in 0..120 {
+                stand(&mut m, spot);
+                if m.run_frame().contains(&routine::DEATH) {
+                    return Some(true);
+                }
+            }
+            Some(false)
+        };
+        if let Some(true) = killed(false)
+            && let Some(on) = killed(true)
+        {
+            fields.push((room, on));
+        }
+        if fields.len() >= 6 {
+            break;
+        }
+    }
+    let fields_held = fields.iter().filter(|&&(_, on)| !on).count();
+    let fields_hold = fields.len() == 6 && fields_held == fields.len();
+    // The marker compare the switch steers is reached for every marker
+    // Blob touches, so with the switch on an item must still be picked up
+    // (#68, found playing): stand him on the first item placed in a room
+    // and hold Up, in six rooms.
+    let mut pickups = Vec::new();
+    for room in 0..128u16 {
+        let picked = |m: &mut Machine| {
+            let end = m.zx.read16(at::MARKERS_END).max(at::MARKERS);
+            let (x, y, kind) = (at::MARKERS..end)
+                .step_by(3)
+                .map(usize::from)
+                .map(|a| (m.zx.mem[a], m.zx.mem[a + 1], m.zx.mem[a + 2]))
+                .find(|&(_, _, k)| k >= ITEM_MARKER)?;
+            let index = usize::from(kind - ITEM_MARKER);
+            let carried = |m: &Machine| {
+                let (items, _) = items_and_core(&m.zx.mem[..]);
+                (1..=5).contains(&items[index].row())
+            };
+            if carried(m) {
+                return None;
+            }
+            for _ in 0..30 {
+                stand(m, (x, y));
+                m.joystick = JOY_UP;
+                m.run_frame();
+            }
+            Some(carried(m))
+        };
+        if let Some(mut m) = enter(room, true)
+            && let Some(on) = picked(&mut m)
+        {
+            pickups.push((room, on));
+        }
+        if pickups.len() >= 6 {
+            break;
+        }
+    }
+    let pickups_hold = pickups.len() == 6 && pickups.iter().all(|&(_, on)| on);
+    // And the three instructions the switch steers are where the facts say.
+    let at_hand =
+        |a: u16, bytes: &[u8]| &base.zx.mem[usize::from(a)..usize::from(a) + bytes.len()] == bytes;
+    let decides = at_hand(decide::ENEMY_KILL.0, &decide::ENEMY_KILL.1)
+        && at_hand(decide::PATCH_KILL.0, &decide::PATCH_KILL.1)
+        && at_hand(decide::FIELD_KILL.0, &decide::FIELD_KILL.1);
+    let good = plain_drains
+        && full_holds
+        && time_holds
+        && lives_hold
+        && nothing_drains
+        && things_hold
+        && patches_hold
+        && fields_hold
+        && pickups_hold
+        && decides;
     println!(
         "  training over {frames} frames: with none, energy fell to {} of {}; full bars ended at {} and {} of {} and {}; time standing still left energy at {} or better; endless lives never went below {} where a plain run fell to {} {}",
         plain_low[0],
@@ -802,6 +1003,48 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     println!(
         "  with every switch off the play ends as the game left it: energy {}, platforms {}, gun {}, lives {}",
         plain_end[0], plain_end[1], plain_end[2], plain_end[3]
+    );
+    let rooms = |cases: &[(u16, bool)]| {
+        cases
+            .iter()
+            .map(|(room, _)| room.to_string())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    println!(
+        "  standing on a thing that kills on touch kills in {} of {} rooms ({}), and with no harm from enemies in {} {}",
+        things.len(),
+        things.len(),
+        rooms(&things),
+        things.len() - things_held,
+        if things_hold { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  standing on a deadly patch kills in {} of {} rooms ({}), and with no harm from enemies in {} {}",
+        patches.len(),
+        patches.len(),
+        rooms(&patches),
+        patches.len() - patches_held,
+        if patches_hold { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  standing in a zapper kills in {} of {} rooms ({}), and with no harm from enemies in {} {}",
+        fields.len(),
+        fields.len(),
+        rooms(&fields),
+        fields.len() - fields_held,
+        if fields_hold { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  with no harm from enemies on, standing on an item and pushing Up picks it up in {} of {} rooms ({}) {}",
+        pickups.iter().filter(|&&(_, on)| on).count(),
+        pickups.len(),
+        rooms(&pickups),
+        if pickups_hold { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  the three instructions the switch steers are on the tape as recorded {}",
+        if decides { "ok" } else { "FAILED" }
     );
     good
 }

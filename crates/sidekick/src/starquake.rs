@@ -279,6 +279,68 @@ pub const BOOTH_MARKER: u8 = 0x0D;
 /// The marker a security door's tile leaves in its room.
 pub const DOOR_MARKER: u8 = 0x00;
 
+/// The marker a deadly patch leaves in its room: touching it is an outright
+/// death, whatever Blob's energy (#68).
+pub const DANGER_MARKER: u8 = 0x06;
+
+/// The kind the game itself leaves on a marker it has spent, such as a bonus
+/// picked up: no arm of its touch code matches it, so touching one does
+/// nothing (#68).
+pub const SPENT_MARKER: u8 = 0x05;
+
+/// The marker an item placed in a room leaves: this plus the item's index
+/// in the table at [`at::ITEMS`]. Standing on it and pushing Up picks the
+/// item up (#68).
+pub const ITEM_MARKER: u8 = 0x14;
+
+/// A thing whose graphic lies at or above this page only drains energy on
+/// touch; one below it kills Blob outright, whatever his energy (#68).
+pub const HARMLESS_GRAPHICS: u8 = 0xB4;
+
+/// The entity slots at [`at::ENTITIES`] are 32 bytes each: slot 0 is Blob,
+/// 1 to 4 the things the room raises, and 5 his own shot, which is not one
+/// of them (#8). In a slot, the pixels from the left and from the bottom,
+/// and the graphic's address.
+pub const SLOT: usize = 32;
+pub const ENEMY_SLOTS: std::ops::Range<usize> = 1..5;
+pub const SLOT_X: usize = 5;
+pub const SLOT_Y: usize = 6;
+pub const SLOT_GRAPHIC: usize = 7;
+
+/// A zapper is a force field: four records of eight bytes, the column first
+/// and the row second, and a column of zero ends the table (#8).
+pub const FORCE_FIELDS: u16 = 0x9635;
+pub const FORCE_FIELD_REC: usize = 8;
+pub const FORCE_FIELD_COUNT: usize = 4;
+
+/// Where the game decides each outright death, read from the tape (#68).
+/// Each is one instruction whose outcome hangs on a register, and no harm
+/// from enemies steers the register as the instruction is reached and
+/// writes nothing: every sprite is drawn and erased from the bytes the game
+/// keeps, so nothing drawn is left behind. Each constant is the address and
+/// the instruction's bytes there, which `sk-check training` checks.
+pub mod decide {
+    /// `CP B4` in the enemy-touch test at `0xA305`, run for each thing in
+    /// the room against Blob: `LD A,(IX+8)` loads the thing's graphic page,
+    /// and below the harmless page the game gives Blob the killer's graphic
+    /// and colour and jumps to [`super::routine::DEATH`]. With A raised to
+    /// the page, the compare takes the harmless path at `0xA345`, which
+    /// pushes the drain counter on by ten as any touch does.
+    pub const ENEMY_KILL: (u16, [u8; 2]) = (0xA327, [0xFE, 0xB4]);
+    /// `CP 06` in the chain that acts on a marker Blob touches, reached with
+    /// A holding the marker's kind: a match pops the chain's stack and jumps
+    /// to [`super::routine::DEATH`] with the reason that restarts him where
+    /// he entered. With A set to the spent kind, no arm of the chain matches
+    /// and the next marker is looked at.
+    pub const PATCH_KILL: (u16, [u8; 2]) = (0xCE77, [0xFE, 0x06]);
+    /// `CALL NZ,C350` in the main loop's force-field check: after `XOR A;
+    /// CP (HL)` on a field Blob stands in, the call is made unless the
+    /// record's sixth byte is zero, with A = 0 as the reason. With the zero
+    /// flag set as the call is reached, it is not made, and `OR A` next
+    /// sets the flags afresh from A.
+    pub const FIELD_KILL: (u16, [u8; 3]) = (0xA56A, [0xC4, 0x50, 0xC3]);
+}
+
 /// The game's font from `mem` (the machine's whole 64K): 96 letters of
 /// eight bytes each, from the space. `None` when `mem` is too short.
 #[must_use]

@@ -2374,6 +2374,20 @@ mod tests {
                 false,
             ),
             (
+                // No harm from enemies focused, for its description's fit (#68).
+                "picker-unharmed",
+                {
+                    let mut g = picker.clone();
+                    for _ in 0..4 {
+                        g.focus_down();
+                    }
+                    g.change(true);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
+            (
                 "picker-end-armed",
                 {
                     let mut g = picker;

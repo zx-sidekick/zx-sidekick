@@ -157,8 +157,9 @@ from 0 (none) to 5, each adding to the ones below.
                                                 run down
                          Endless lives          losing a life does not
                                                 cost one
-                         No harm from enemies   touching an enemy costs
-                                                no energy
+                         No harm from enemies   enemies, deadly patches
+                                                and zappers cost no
+                                                energy and cannot kill
 
   F11                  Leave fullscreen, or go back to it. The game
                        starts fullscreen; the window it leaves you with
