@@ -286,7 +286,7 @@ impl Runner {
                 // the machine, on a thread of its own: it takes about a
                 // third of a second, and the game plays on meanwhile.
                 if hits.contains(&routine::NEW_GAME) {
-                    guidance.forget_all_codes();
+                    let reading = guidance.forget_all_codes();
                     let copy = machine.clone();
                     let doors = doors.clone();
                     let shared = Arc::clone(&self.shared);
@@ -304,11 +304,10 @@ impl Runner {
                                 })
                             })
                             .collect();
-                        shared
-                            .guidance
-                            .lock()
-                            .unwrap()
-                            .set_all_codes(&teleporters, &codes);
+                        let mut guidance = shared.guidance.lock().unwrap();
+                        if guidance.game() == reading {
+                            guidance.set_all_codes(&teleporters, &codes);
+                        }
                     });
                 }
                 // After a game with training, its table is put back.
