@@ -30,6 +30,12 @@ pub const LEVELS: [&str; 6] = [
 pub struct Found {
     pub room: u16,
     pub kind: sidekick::starquake::Kind,
+    /// Whether the core wants it: drawn in the piece's colour, and its
+    /// room's dot left out, since the item itself says more (#36).
+    pub piece: bool,
+    /// The game's own graphic for it, 32 bytes, as the core column reads
+    /// them.
+    pub graphic: [u8; 32],
 }
 
 /// One of the core's nine holes as the column draws it (#7).
@@ -245,7 +251,6 @@ impl Guidance {
     /// Takes the rooms holding a core piece still needed, if they have
     /// changed.
     /// The items found, each in the room it lies in (#36).
-    #[expect(dead_code, reason = "the map draws them in the next commit of #36")]
     pub fn items(&self) -> &[Found] {
         &self.items
     }

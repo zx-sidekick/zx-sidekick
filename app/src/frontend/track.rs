@@ -126,7 +126,7 @@ impl Tracker {
                 let (items, core) = items_and_core(mem);
                 let pieces = missing_pieces(&core, &items);
                 guidance.set_core(holes(mem, &core, &items));
-                let found = found(&items, &core, &unvisited);
+                let found = found(mem, &items, &core, &unvisited);
                 let here = u16::from_le_bytes([mem[room], mem[room + 1]]);
                 let booths: Vec<u16> = self.seen.iter().map(|t| t.room).collect();
                 // Level 5 routes over the whole map from the place Blob is in
@@ -198,11 +198,11 @@ fn routes(
     (piece, core.flatten())
 }
 
-/// The items found, for the map's icons (#36): those lying in a room that
-/// has been visited, outside the core room, not being carried. A core
-/// piece is left out, since level 3 already marks its room: which
-/// graphics those are is the game's own choice, kept in `core`.
-fn found(items: &[Item], core: &[u8; 9], unvisited: &RoomSet) -> Vec<Found> {
+/// The items found, for the map's graphics (#36): those lying in a room
+/// that has been visited, outside the core room, not being carried, each
+/// with its own graphic and whether the core wants it, which is the
+/// game's own choice each game, kept in `core`.
+fn found(mem: &[u8], items: &[Item], core: &[u8; 9], unvisited: &RoomSet) -> Vec<Found> {
     items
         .iter()
         .filter(|item| {
@@ -211,10 +211,13 @@ fn found(items: &[Item], core: &[u8; 9], unvisited: &RoomSet) -> Vec<Found> {
                 && !(1..=5).contains(&item.row())
                 && !unvisited.contains(item.room())
         })
-        .filter(|item| !core.iter().any(|&slot| slot & 0x7F == item.graphic()))
         .map(|item| Found {
             room: item.room(),
             kind: kind(item.graphic()),
+            piece: core
+                .iter()
+                .any(|&slot| slot & 0x80 != 0 && slot & 0x7F == item.graphic()),
+            graphic: graphic(mem, item.graphic()),
         })
         .collect()
 }
@@ -507,15 +510,21 @@ mod tests {
             item(500, 12, 15),       // in a room not visited
             item(CORE_ROOM, 12, 15), // parked in the core
         ];
-        let found = found(&items, &core, &unvisited);
+        let mem = vec![0u8; 0x10000];
+        let found = found(&mem, &items, &core, &unvisited);
         assert_eq!(
-            found.iter().map(|f| (f.room, f.kind)).collect::<Vec<_>>(),
+            found
+                .iter()
+                .map(|f| (f.room, f.kind, f.piece))
+                .collect::<Vec<_>>(),
             [
-                (40, Kind::DoorCard),
-                (41, Kind::PadKey),
-                (42, Kind::Trade),
-                (43, Kind::Chip(b'0')),
-            ]
+                (40, Kind::DoorCard, false),
+                (41, Kind::PadKey, false),
+                (42, Kind::Trade, false),
+                (43, Kind::Chip(b'0'), false),
+                (44, Kind::Trade, true),
+            ],
+            "the core's own piece comes too, marked as one"
         );
     }
 

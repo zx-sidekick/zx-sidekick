@@ -13,7 +13,7 @@ use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
 use super::track::Scene;
 use sidekick::map::{COLS, ROWS, Step};
-use sidekick::starquake::SeenTeleporter;
+use sidekick::starquake::{Kind, SeenTeleporter};
 
 const PANEL: Rgb = [0x0f, 0x11, 0x17];
 const RULE: Rgb = [0x22, 0x26, 0x2f];
@@ -48,6 +48,11 @@ const MAP_DOT: Rgb = [0x17, 0x1a, 0x22];
 const WALL: Rgb = [0x9a, 0xaa, 0xd0];
 const HERE: Rgb = [0xe8, 0xec, 0xf4];
 const PIECE: Rgb = [0xf0, 0x7a, 0xb0];
+/// The items found on the map (#36): the colour says what each one does.
+const ITEM_DOOR: Rgb = [0x9b, 0x8a, 0xf0];
+const ITEM_PAD: Rgb = [0xf5, 0xd0, 0x4b];
+const ITEM_TRADE: Rgb = [0xe6, 0xea, 0xf2];
+const ITEM_EDGE: Rgb = [0x00, 0x00, 0x00];
 const PIECE_ROOM: Rgb = [0x15, 0x1a, 0x26];
 const PIECE_ROOM_LINE: Rgb = [0x6b, 0x75, 0x94];
 const TILE: Rgb = [0x1b, 0x1f, 0x29];
@@ -385,11 +390,68 @@ impl Panel {
             canvas.round_rect(x + inner, y + inner, size(inner), size(inner), unit, FLOOR);
         }
         // Over the room Blob is in, so a piece there still shows.
-        for room in (0..rooms).filter(|&r| pieces && guidance.piece(r)) {
+        // A piece whose room has been seen is drawn as itself below, so
+        // the dot is for the rooms still unseen (#36).
+        let itself = |room: u16| guidance.items().iter().any(|f| f.room == room && f.piece);
+        for room in (0..rooms).filter(|&r| pieces && guidance.piece(r) && !itself(r)) {
             let (x, y) = at(room);
             let r = 4.5 * unit;
             let (cx, cy) = (x + pitch / 2.0, y + pitch / 2.0);
             canvas.round_rect(cx - r, cy - r, 2.0 * r, 2.0 * r, r, PIECE);
+        }
+        // Level 2 (#36): every item found, drawn with the game's own
+        // graphic at one screen pixel a game pixel, in the colour of what
+        // it does, with a pixel of black around it so it stands off the
+        // floor and off a route running beneath.
+        let px = 1.0 / canvas.scale;
+        for found in guidance.items() {
+            let (x, y) = at(found.room);
+            let colour = if found.piece {
+                PIECE
+            } else {
+                match found.kind {
+                    Kind::PadKey => ITEM_PAD,
+                    Kind::Trade => ITEM_TRADE,
+                    _ => ITEM_DOOR,
+                }
+            };
+            let size = 16.0 * px;
+            let (ix, iy) = (x + (pitch - size) / 2.0, y + (pitch - size) / 2.0);
+            let lit = |row: i32, col: i32| {
+                if !(0..16).contains(&row) || !(0..16).contains(&col) {
+                    return false;
+                }
+                let (row, col) = (row as usize, col as usize);
+                let (a, b) = if row < 8 {
+                    (row, 8 + row)
+                } else {
+                    (16 + row - 8, 24 + row - 8)
+                };
+                let byte = if col < 8 {
+                    found.graphic[a]
+                } else {
+                    found.graphic[b]
+                };
+                byte & (0x80 >> (col % 8)) != 0
+            };
+            // The black first, a pixel outside the graphic's own box so an
+            // edge touching it is outlined too, then the graphic over it.
+            for edge in [true, false] {
+                for row in -1..=16i32 {
+                    for col in -1..=16i32 {
+                        let here = lit(row, col);
+                        let draw = if edge {
+                            !here && (-1..=1).any(|dr| (-1..=1).any(|dc| lit(row + dr, col + dc)))
+                        } else {
+                            here
+                        };
+                        if draw {
+                            let ink = if edge { ITEM_EDGE } else { colour };
+                            canvas.cell(ix + col as f32 * px, iy + row as f32 * px, px, ink);
+                        }
+                    }
+                }
+            }
         }
         // The core's end of its route, ringed in the route's colour (#44):
         // the map marks no core room otherwise.
