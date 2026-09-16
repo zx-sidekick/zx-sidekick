@@ -248,27 +248,19 @@ pub fn press(z: &mut Zx, joystick: u8) {
 }
 
 /// `JR $`: an instruction that jumps to itself. With no ROM, one sits at each
-/// ROM routine ZX Sidekick answers, so the processor stops there instead of
-/// running into empty memory; see [`answer`].
+/// ROM routine ZX Sidekick answers, as a safety stop: the program counter is
+/// answered before any instruction there runs, by [`answer`], so these run
+/// only if an answer were ever missed, and then the processor stops there
+/// instead of running into empty memory.
 const JUMP_TO_ITSELF: [u8; 2] = [0x18, 0xFE];
 
-/// The time `JR $` takes, and its one opcode fetch.
-const JUMP_T: u32 = 12;
-
-/// Answers a ROM routine at the program counter, with no ROM present.
-///
-/// An interrupt vectors to 0x0038 and runs the instruction there in the same
-/// step, so it arrives having run the `JR $` placed there: that jump's time
-/// and fetch are given back first, as the ROM's routine would have begun
-/// straight away.
+/// Answers a ROM routine at the program counter, with no ROM present. The
+/// interrupt is a step of its own ([`Zx::step`]), so it arrives here at
+/// its vector with none of the handler run, like a call arrives at a
+/// routine.
 fn answer(z: &mut Zx) -> bool {
     if z.rom_loaded {
         return false;
-    }
-    if z.fetched_from() == Some(rom::MASK_INT) && z.pc() == rom::MASK_INT {
-        z.t -= JUMP_T;
-        let r = z.r();
-        z.set_r((r & 0x80) | (r.wrapping_sub(1) & 0x7F));
     }
     rom::answer(z)
 }
@@ -314,7 +306,6 @@ impl Machine {
         for at in [rom::MASK_INT, rom::PRINT_A_2, rom::HL_HL_X_DE] {
             zx.mem[usize::from(at)..usize::from(at) + 2].copy_from_slice(&JUMP_TO_ITSELF);
         }
-        zx.traps = vec![rom::MASK_INT];
         Machine {
             zx,
             watch: Vec::new(),
@@ -348,7 +339,6 @@ impl Machine {
         let n = rom.len().min(0x4000);
         m.zx.mem[..n].copy_from_slice(&rom[..n]);
         m.zx.rom_loaded = true;
-        m.zx.traps.clear();
         m
     }
 
@@ -1116,7 +1106,7 @@ mod tests {
     }
 
     #[test]
-    fn a_machine_from_a_tape_starts_where_it_is_told_with_the_traps_in_place() {
+    fn a_machine_from_a_tape_starts_where_it_is_told_with_the_safety_stops_in_place() {
         let m = Machine::from_tape(&tape(0x8000, &[0xAB, 0xCD]), 0x8000, 0x7FF0).unwrap();
         let z = &m.zx;
         assert_eq!((z.pc(), z.sp()), (0x8000, 0x7FF0));
@@ -1127,7 +1117,6 @@ mod tests {
                 &JUMP_TO_ITSELF
             );
         }
-        assert_eq!(z.traps, [rom::MASK_INT]);
         assert!(!z.iff1());
         assert_eq!(z.iy(), crate::starquake::ENTRY_IY);
         assert!(!z.rom_loaded);
@@ -1144,26 +1133,33 @@ mod tests {
         let mut m = Machine::blank(0x8000, 0x7000);
         m.zx.set_interrupts(true);
         let r = m.zx.r();
-        m.zx.step();
-        assert_eq!(m.zx.pc(), rom::MASK_INT, "the jump at 0x0038 ran");
+        assert_eq!(m.zx.step(), zx_spectrum::Step::Interrupt);
+        assert_eq!(m.zx.pc(), rom::MASK_INT, "at the vector, none of it run");
         assert!(answer(&mut m.zx));
         let z = &m.zx;
         assert_eq!(z.pc(), 0x8000, "back where it was interrupted");
         assert_eq!(z.sp(), 0x7000);
         assert_eq!(z.read16(rom::FRAMES), 1);
         assert!(z.iff1());
-        // Taking the interrupt (13), then MASK-INT itself, with the jump's
-        // time and fetch given back.
+        // Taking the interrupt (13 T-states and a fetch), then MASK-INT
+        // itself.
         assert_eq!(z.t, 13 + rom::MASK_INT_T);
         assert_eq!(z.r(), (r + 1 + 10) & 0x7F);
+        assert_eq!(
+            &z.mem[usize::from(rom::MASK_INT)..usize::from(rom::MASK_INT) + 2],
+            &JUMP_TO_ITSELF,
+            "the safety stop was never run"
+        );
     }
 
     #[test]
-    fn a_trap_reached_without_an_interrupt_is_answered_without_a_refund() {
+    fn the_vector_reached_by_a_jump_is_answered_the_same_way() {
+        // As `RST 38` reaches it: no interrupt was taken, so only MASK-INT
+        // itself is charged.
         let mut m = Machine::blank(rom::MASK_INT, 0x7000);
         m.zx.push(0x8000);
         assert!(answer(&mut m.zx));
-        assert_eq!(m.zx.t, rom::MASK_INT_T);
+        assert_eq!((m.zx.pc(), m.zx.t), (0x8000, rom::MASK_INT_T));
     }
 
     #[test]
@@ -1185,11 +1181,10 @@ mod tests {
         let m = Machine::blank(rom::MASK_INT, 0x7000).with_rom(&rom);
         let mut z = m.zx;
         assert!(z.rom_loaded);
-        assert!(z.traps.is_empty());
         assert_eq!(
             z.mem[usize::from(rom::MASK_INT)],
             0,
-            "the ROM replaced the trap"
+            "the ROM replaced the safety stop"
         );
         assert!(!answer(&mut z));
     }

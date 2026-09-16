@@ -17,6 +17,7 @@ use zx_core::timing::contention;
 
 pub use keys::Key;
 pub use rustzx_z80;
+pub use rustzx_z80::Step;
 pub use zx_core::timing::FRAME_T;
 
 /// Flag bits of F.
@@ -56,10 +57,6 @@ pub struct Bus {
     /// Each change of the speaker level, with the T-state it happened at,
     /// since whoever plays the sound last took them.
     pub speaker: Vec<(u32, bool)>,
-    /// Addresses whose opcode fetch is recorded in `fetched`: see
-    /// [`Zx::fetched_from`].
-    pub traps: Vec<u16>,
-    fetched: Option<u16>,
     /// What a port read returns instead of the ULA and joystick, if set: for
     /// testing the processor on its own.
     pub port_in: Option<fn(u16) -> u8>,
@@ -83,9 +80,6 @@ impl Z80Bus for Bus {
     }
 
     fn wait_mreq(&mut self, addr: u16, clk: usize) {
-        if clk == 4 && self.traps.contains(&addr) {
-            self.fetched = Some(addr);
-        }
         if let Some(events) = &mut self.events {
             events.push((self.t, addr));
         }
@@ -165,27 +159,13 @@ impl Z80Bus for Bus {
 }
 
 /// The machine: the processor and its bus. It dereferences to the bus, so
-/// `z.mem`, `z.keys` and the rest read as they did.
+/// `z.mem`, `z.keys` and the rest read as they did. A clone is an
+/// independent machine: the processor derives `Clone` in our fork of
+/// `rustzx-z80`.
+#[derive(Clone)]
 pub struct Zx {
     cpu: Z80,
     pub bus: Bus,
-}
-
-// The processor holds only numbers and flags, so copying its bytes is a copy
-// of it. `rustzx-z80` does not derive `Clone`; this checks the premise stays
-// true of any version this builds against.
-const _: () = assert!(!std::mem::needs_drop::<Z80>());
-
-impl Clone for Zx {
-    fn clone(&self) -> Zx {
-        Zx {
-            // SAFETY: `Z80` has no drop glue (asserted above) and holds no
-            // references or heap data, so a bitwise copy is an independent
-            // value, as `Copy` would make it.
-            cpu: unsafe { std::ptr::read(&raw const self.cpu) },
-            bus: self.bus.clone(),
-        }
-    }
 }
 
 impl Deref for Zx {
@@ -237,8 +217,6 @@ impl Zx {
                 border: snap.border,
                 ear: false,
                 speaker: Vec::new(),
-                traps: Vec::new(),
-                fetched: None,
                 port_in: None,
                 events: None,
                 interrupts: true,
@@ -377,16 +355,12 @@ impl Zx {
         v
     }
 
-    /// If the last instruction was fetched from one of [`Bus::traps`], that
-    /// address, once: an interrupt runs the instruction at its vector in the
-    /// same step as taking it, and a trap placed there needs to tell.
-    pub fn fetched_from(&mut self) -> Option<u16> {
-        self.bus.fetched.take()
-    }
-
-    /// Runs one instruction, taking the interrupt first if it is due.
-    pub fn step(&mut self) {
-        self.cpu.emulate(&mut self.bus);
+    /// Takes the interrupt if it is due, as a step of its own, or else runs
+    /// one instruction, and says which. After an interrupt the program
+    /// counter is at its handler with none of it run, so a caller can act
+    /// there before the next step.
+    pub fn step(&mut self) -> Step {
+        self.cpu.step(&mut self.bus)
     }
 
     /// Runs one 50 Hz frame. `hook` is asked before each instruction, and

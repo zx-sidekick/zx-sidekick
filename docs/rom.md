@@ -21,7 +21,7 @@ Everything else that ran in the ROM (KEY-SCAN, KEYBOARD, PRINT-OUT, PO-CHAR, CL-
 
 ## Decision: answer the three calls (implemented)
 
-A `JR $` (a jump to itself) sits at each of the three entries in the otherwise empty bottom 16K, which ignores writes as a ROM does. When the program counter reaches one, `sidekick::rom` does what the routine does to memory and registers, charges the time it takes, and returns. No ROM file is in the repository or needed on the player's machine. It reproduces the *behaviour* of three Sinclair ROM routines, the way emulators' tape traps do, and copies no ROM code or data.
+When the program counter reaches one of the three entries in the otherwise empty bottom 16K, which ignores writes as a ROM does, `sidekick::rom` does what the routine does to memory and registers, charges the time it takes, and returns. The interrupt is taken as a step of its own (`Zx::step`, from our fork of `rustzx-z80`), so it arrives at `0x0038` with none of the handler run, like a call arrives at a routine. A `JR $` (a jump to itself) sits at each entry as a safety stop: it runs only if an answer were ever missed, and then holds the processor there rather than letting it run into empty memory. No ROM file is in the repository or needed on the player's machine. It reproduces the *behaviour* of three Sinclair ROM routines, the way emulators' tape traps do, and copies no ROM code or data.
 
 - **The interrupt** counts `FRAMES` and enables interrupts. The keyboard state the ROM also keeps (`KSTATE`, `LAST_K`, bit 5 of `FLAGS`) is not kept: Starquake reads the keyboard ports itself.
 - **The multiply** runs the same shift-and-add, sixteen rounds, so HL, A, the flags and the time come out as the ROM's do.

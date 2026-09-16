@@ -103,7 +103,6 @@ fn rom_check(dir: &Path, frames: u64) -> bool {
     use sidekick::rom::{HL_HL_X_DE, MASK_INT, PRINT_A_2};
     let rom = read(dir, "48.rom");
     let mut real = machine(dir).with_rom(&rom);
-    real.zx.traps = vec![MASK_INT];
     let mut script = Script(0xBEEF);
     // Per routine: calls checked, and the T-states each way.
     let mut stats = [(0u64, 0u64, 0u64); 4];
@@ -119,25 +118,25 @@ fn rom_check(dir: &Path, frames: u64) -> bool {
                 real.zx.frame += 1;
                 continue;
             }
-            // The processor takes the interrupt and runs the routine's first
-            // instruction in one step, so an interrupt is caught by keeping
-            // the state from before a step that might take one, and noticing
-            // afterwards that it did.
-            let mut entry = None;
+            // An interrupt is a step of its own: after it the program
+            // counter is at the handler with none of it run, the return
+            // address pushed, interrupts off and its own time spent, which
+            // is where both ways start from, as they do at a call.
+            let mut t_int = 0;
             if real.zx.t < zx_spectrum::INT_LEN && real.zx.iff1() {
-                let before = real.clone();
-                real.zx.step();
-                if real.zx.fetched_from() != Some(MASK_INT) {
+                let t0 = real.zx.t;
+                if real.zx.step() != zx_spectrum::Step::Interrupt {
                     continue;
                 }
-                entry = Some(before);
+                t_int = u64::from(real.zx.t - t0);
             } else if ![PRINT_A_2, HL_HL_X_DE].contains(&real.zx.pc()) {
                 real.zx.step();
                 continue;
             }
-            let which = match (&entry, real.zx.pc()) {
-                (Some(_), _) => 0,
-                (None, PRINT_A_2) => 1,
+            let interrupt = t_int != 0;
+            let which = match (interrupt, real.zx.pc()) {
+                (true, _) => 0,
+                (false, PRINT_A_2) => 1,
                 _ => 2,
             };
             // A glyph drawn, as against a control code or its operand.
@@ -145,21 +144,13 @@ fn rom_check(dir: &Path, frames: u64) -> bool {
                 let z = &real.zx;
                 z.read16(z.read16(0x5C51)) == 0x09F4
             };
-            // Where the routine returns to, and the stack once it has.
-            let (sp, ret) = match &entry {
-                // An interrupt taken on a HALT returns past it.
-                Some(before) => (
-                    before.zx.sp().wrapping_sub(2),
-                    before.zx.pc().wrapping_add(u16::from(before.zx.halted())),
-                ),
-                None => (real.zx.sp(), real.zx.read16(real.zx.sp())),
-            };
+            // Where the routine returns to, and the stack once it has: for
+            // the interrupt too, since the processor pushed the return
+            // address (past a HALT, if it was on one) in taking it.
+            let (sp, ret) = (real.zx.sp(), real.zx.read16(real.zx.sp()));
             // The ROM's way: step until the routine has returned.
             let mut by_rom = real.clone();
-            let mut t_rom = match &entry {
-                Some(before) => u64::from(real.zx.t - before.zx.t),
-                None => 0,
-            };
+            let mut t_rom = t_int;
             // Frames go on while it runs, as they would on the machine, so an
             // interrupt can land inside the routine; such a call is not
             // compared, since the answer is not interrupted.
@@ -172,9 +163,9 @@ fn rom_check(dir: &Path, frames: u64) -> bool {
                     t_rom += u64::from(zx_spectrum::FRAME_T);
                 }
                 let before = by_rom.zx.t;
-                by_rom.zx.step();
+                let step = by_rom.zx.step();
                 t_rom += u64::from(by_rom.zx.t - before);
-                if by_rom.zx.fetched_from() == Some(MASK_INT) {
+                if step == zx_spectrum::Step::Interrupt {
                     // The machine carries on from inside the interrupt.
                     interrupted = true;
                     break;
@@ -196,20 +187,8 @@ fn rom_check(dir: &Path, frames: u64) -> bool {
                 real = by_rom;
                 continue;
             }
-            // ZX Sidekick's way: for the interrupt, from before it was taken,
-            // taking it as the processor does (the return address pushed,
-            // interrupts off, 13 T-states and an opcode fetch) and answering.
-            let mut by_answer = match &entry {
-                Some(before) => {
-                    let mut m = before.clone();
-                    m.zx.push(ret);
-                    m.zx.set_pc(MASK_INT);
-                    m.zx.set_interrupts(false);
-                    m.zx.spend(13, 1);
-                    m
-                }
-                None => real.clone(),
-            };
+            // ZX Sidekick's way: from the same state, answering.
+            let mut by_answer = real.clone();
             if which == 1 {
                 let out = |z: &zx_spectrum::Zx| z.read16(z.read16(0x5C51));
                 recent.push_back((real.zx.a(), out(&real.zx), real.zx.read16(0x5C0E)));
@@ -219,9 +198,10 @@ fn rom_check(dir: &Path, frames: u64) -> bool {
             }
             let temps = |z: &zx_spectrum::Zx| (z.mem[0x5C8F], z.mem[0x5C90], z.mem[0x5C91]);
             let temps_before = temps(&real.zx);
-            let before = entry.as_ref().map_or(by_answer.zx.t, |e| e.zx.t);
+            // Timed from before the interrupt was taken, as the ROM's way is.
+            let before = u64::from(by_answer.zx.t) - t_int;
             assert!(sidekick::rom::answer(&mut by_answer.zx));
-            let t_answer = u64::from(by_answer.zx.t - before);
+            let t_answer = u64::from(by_answer.zx.t) - before;
             let (a, b) = (&by_answer.zx, &by_rom.zx);
             let low = a.sp().min(b.sp());
             let mem: Vec<usize> = (0x4000..0x10000)
