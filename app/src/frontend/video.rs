@@ -307,10 +307,17 @@ impl App {
             screen.3
         };
         let clip = p.context().scaling_renderer.clip_rect();
-        let guidance = self.shared.guidance.lock().unwrap().clone();
         let scene = *self.shared.scene.lock().unwrap();
-        let key = (guidance.version(), scene, paused, (clip.2, clip.3));
-        if self.drawn != Some(key)
+        // The overlay is redrawn only when what it shows has changed, so the
+        // guidance is copied out from under its lock only then (#82): a
+        // copy is every room's openings, the items, the routes and the
+        // codes, too much to take fifty times a second for nothing.
+        let guidance = {
+            let shared = self.shared.guidance.lock().unwrap();
+            let key = (shared.version(), scene, paused, (clip.2, clip.3));
+            (self.drawn != Some(key)).then(|| (key, shared.clone()))
+        };
+        if let Some((key, guidance)) = guidance
             && let Some(overlay) = &mut self.overlay
         {
             let scale = clip.2 as f32 / overlay::WIDTH;
