@@ -12,7 +12,7 @@ use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Window, WindowId};
+use winit::window::{Fullscreen, Window, WindowId};
 
 use super::Shared;
 use super::overlay::{self, Overlay};
@@ -124,16 +124,42 @@ struct App {
     drawn: Option<(u64, Scene, bool, (u32, u32))>,
 }
 
+/// The whole scale a window fits at on a screen `width` by `height`
+/// logical pixels (#57): the largest whose window fits with room for the
+/// window's own frame and the taskbar or dock, and never less than one.
+fn windowed_scale(width: f64, height: f64) -> f64 {
+    let (room_w, room_h) = (width * 0.98, height - 96.0);
+    let fit = (room_w / WINDOW_W as f64).min(room_h / FULL_H as f64);
+    fit.floor().max(1.0)
+}
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
         }
+        // The game starts fullscreen (#57), since the picture is scaled by
+        // a whole number and a screen's work area rarely has room for the
+        // next step up: at 1920 × 1080 a window can only reach three
+        // screen pixels a Spectrum pixel, where fullscreen reaches four.
+        // The size below is the one leaving fullscreen falls back to.
+        let scale = event_loop
+            .primary_monitor()
+            .or_else(|| event_loop.available_monitors().next())
+            .map_or(SCALE, |monitor| {
+                let factor = monitor.scale_factor();
+                let size = monitor.size();
+                windowed_scale(
+                    f64::from(size.width) / factor,
+                    f64::from(size.height) / factor,
+                )
+            });
         let attrs = Window::default_attributes()
             .with_title("ZX Sidekick · Starquake")
+            .with_fullscreen(Some(Fullscreen::Borderless(None)))
             .with_inner_size(LogicalSize::new(
-                WINDOW_W as f64 * SCALE,
-                FULL_H as f64 * SCALE,
+                WINDOW_W as f64 * scale,
+                FULL_H as f64 * scale,
             ))
             .with_min_inner_size(LogicalSize::new(WINDOW_W as f64, FULL_H as f64));
         let window = match event_loop.create_window(attrs) {
@@ -184,6 +210,10 @@ impl ApplicationHandler for App {
                 if let PhysicalKey::Code(code) = event.physical_key
                     && !event.repeat
                 {
+                    if event.state == ElementState::Pressed && code == KeyCode::F11 {
+                        self.toggle_fullscreen();
+                        return;
+                    }
                     if event.state == ElementState::Pressed && self.picker_key(code) {
                         return;
                     }
@@ -300,6 +330,19 @@ impl App {
         if let Err(e) = rendered {
             self.error = Some(e.to_string());
             event_loop.exit();
+        }
+    }
+
+    /// F11 leaves fullscreen, or goes back to it (#57). The window falls
+    /// back to the size it was created at, which is the largest whole
+    /// scale that fits the screen.
+    fn toggle_fullscreen(&mut self) {
+        if let Some(window) = &self.window {
+            let to = match window.fullscreen() {
+                Some(_) => None,
+                None => Some(Fullscreen::Borderless(None)),
+            };
+            window.set_fullscreen(to);
         }
     }
 
@@ -467,6 +510,21 @@ pub fn run(shared: Arc<Shared>, prompt: Option<Prompt>, launch: Launcher) -> Res
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_window_opens_at_the_largest_whole_scale_that_fits() {
+        // The window is 456 by 256 Spectrum pixels a scale.
+        assert_eq!(
+            windowed_scale(1920.0, 1080.0),
+            3.0,
+            "1024 tall does not fit under the chrome"
+        );
+        assert_eq!(windowed_scale(2560.0, 1440.0), 5.0);
+        assert_eq!(windowed_scale(3840.0, 2160.0), 8.0);
+        assert_eq!(windowed_scale(1366.0, 768.0), 2.0);
+        assert_eq!(windowed_scale(1600.0, 900.0), 3.0);
+        assert_eq!(windowed_scale(640.0, 480.0), 1.0, "never less than one");
+    }
+
     use super::*;
 
     fn screen(bitmap: u8, attr: u8) -> Vec<u8> {
