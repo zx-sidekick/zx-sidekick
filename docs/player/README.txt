@@ -90,7 +90,26 @@ from 0 (none) to 5, each adding to the ones below.
   Level 2              A map of the rooms you have visited: every edge
                        open or closed, walls inside a room (dashed where
                        a security door or a teleporter pad divides it),
-                       your room, and the teleporters you have seen.
+                       your room, the teleporters you have seen, and the
+                       items you have found lying in a room, each drawn
+                       as what it does:
+
+                         a disc with 0, 1, 2, 4 or 8
+                                     a chip, which answers that number
+                                     in a door's or a pyramid's code
+                         a disc with ?
+                                     a chip that answers any one number,
+                                     and is used up doing it
+                         a card      opens any door and any pyramid, and
+                                     is never used up
+                         a key       switches the teleporter pads in the
+                                     room you carry it into
+                         a ring      a pyramid takes it in exchange for
+                                     one of the core's missing pieces
+
+                       A core piece shows as a pink dot from level 3
+                       instead. What you carry is not drawn: it is with
+                       you.
   Level 3              The missing core pieces marked on the map, in
                        rooms you have visited or not, and the core's
                        nine holes beside it: the pieces still needed,
