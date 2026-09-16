@@ -55,10 +55,10 @@ locally.
 - **The checks against the game are the contract.** `sk-check entry` must find
   the loader returning where the game is started, `sk-check rom` must find
   every compared ROM call answered as the real ROM does (20,326 of 20,326 when
-  the fork was pinned), `sk-check keys` must find the joystick reaching
-  the game and the pause key taken from it in all five control methods, and `sk-check facts` must
-  find the entry points the guidance panel follows and End this game ending
-  a game. A change that moves any of them is a deliberate, called-out
+  the fork was pinned), `sk-check keys` must find the joystick reaching the
+  game and the pause key taken from it in all five control methods, and
+  `sk-check facts` must find the entry points the guidance panel follows and
+  End this game ending a game. A change that moves any of them is a deliberate, called-out
   decision, never a check adjusted to make it pass.
 - **The processor is not self-certified.** It is checked in our bus against
   the Fuse corpus: 1,329 of 1,335 cases exact, the 6 undocumented-flag cases
@@ -107,14 +107,27 @@ answer given in chat is written back into the issue body before acting on it.
 - **Approval** of a spec or plan is the maintainer dragging the card on, or a
   `go` / `approved` comment. Never proceed from plan to build without it.
 - **A card dragged to `Spec` means "your call"**: first decide whether it needs
-  a spec at all, and say so on the ticket. A bug or tweak goes on to `Build`.
+  a spec at all, and say so on the ticket. With no design question left it goes
+  on to `Plan`; a bug or tweak needing no plan goes on to `Build`.
+- **A card dragged to `Build` is the go**, even when its plan is missing or
+  names another project's code: the plan is written into the body before the
+  first commit, and built, with no sign-off round (#27).
 - **The `Backlog` column's order is the priority.** Nothing leaves `Backlog`
   without the maintainer; "pick up the next one" means its top card.
 - **Merging needs the `ready to merge` label** on the PR, re-read from the API
   at the moment of merging. Claude never adds it and never merges without it.
 - **A position in the flow is a Status; a property of a ticket is a label**:
-  `ready to merge`, `hold` (skip entirely), `needs: spec` / `needs: build`
-  (the route, set when filing, with the reason in the body).
+  `ready to merge`, `hold` (skip entirely), and, **only while a ticket waits in
+  `Backlog`**, its route: `needs: spec` (a design question to settle) or
+  `needs: build` (none left), with the routing reason in the body. The route
+  says where the card goes when it is picked up. **A card in a lane carries no
+  route label**: the lane already says where it stands, so the label comes off
+  in the same step as the move out of `Backlog` (@starquake, 2026-09-15). A
+  parent carries none either.
+- **A ticket ported from a sibling repository goes in the lane its content puts
+  it in**: open questions to `Your input`, a settled spec with a plan to
+  `Your sign-off` and one without to `Plan`, a parent to `Backlog` with no
+  label.
 - **The body is the living spec; the comments are append-only history.** When
   a question is answered it moves into _Decisions_ and is deleted from _Open
   questions_. Every state change gets a NEW `> 🤖 **Next steps**` comment;
@@ -129,19 +142,22 @@ answer given in chat is written back into the issue body before acting on it.
 - **Nothing becomes public without asking**: the repository, the board, a
   release or a tag.
 
-### Attribution: comments yes, commits and PR bodies no
+### Attribution: issues, comments and PR descriptions yes, commits no
 
 `gh` acts as @starquake, so an unmarked Claude comment reads as the
 maintainer's own answer — and the board monitor tells them apart by exactly
-that prefix. So **every issue and comment Claude posts** opens with one of
-these lines, posted via `--body-file`:
+that prefix. So **every issue, comment and pull request description Claude
+posts** opens with one of these lines, posted via `--body-file`:
 
 - `> 🤖 **Issue by Claude** (AI pair-programmer working with @starquake) — posted through @starquake's account.`
 - `> 🤖 **Comment by Claude** (AI pair-programmer working with @starquake) — posted through @starquake's account.`
+- `> 🤖 **Pull request by Claude** (AI pair-programmer working with @starquake) — posted through @starquake's account.`
 
-**Commit messages and pull request descriptions carry no attribution line**, by
-the maintainer's standing instruction. Nothing reads those for provenance, so
-nothing is lost.
+The line on a pull request says what happens: Claude opens it, the maintainer
+reviews and merges it, and takes accountability for what is merged
+(@starquake, 2026-09-15; every earlier PR got the line the same day).
+**Commit messages carry no attribution line**: the squash-merge commit on
+`main` is the maintainer's own, signed with their key.
 
 The procedure behind each step lives in the skills: `work-the-board` (and its
 `/board` alias), `design-slice`, `mockup`, `build-slice`, `merge-pr`,

@@ -4,7 +4,7 @@ description: >
   Use whenever an approved ticket gets built: "build #NN", "go ahead and
   implement it", "execute the plan", "resume #NN", a ticket moved to `Build`
   on the board, or a `go` / `approved` comment on a `Your sign-off` ticket.
-  Also for bugs and tweaks routed `needs: build`. Executes the plan task by
+  Also for bugs and tweaks small enough to need no plan. Executes the plan task by
   task on ONE PR: branch, failing tests first, the check gate green per commit,
   CI watched after every push, then the ticket moves to `Your review`. Merging
   stays gated on the `ready to merge` label. Trigger even if the user doesn't
@@ -12,9 +12,17 @@ description: >
 ---
 
 You execute an approved plan from a ticket, task by task, on one PR.
-Precondition: the issue's *Plan* exists and the maintainer has approved it (or
-it's a bug/tweak routed `needs: build`). If not, stop and route to
-`design-slice`: never invent a plan mid-build.
+Precondition: the maintainer has authorised the build: approved the *Plan*
+(a `go` / `approved` comment), or moved the card to `Build`; or it is a bug or
+tweak small enough to need no plan. Without that, stop and route to
+`design-slice`.
+
+**A card the maintainer moved to `Build` is the go even when the plan does not
+fit**: missing, or naming code this repository doesn't have (a ticket ported
+from a sibling project). Write the plan into the body before the first commit,
+say so in a comment, and build it; don't send it back for sign-off (#27, as
+#25 was built). What you would still never do is invent a plan mid-build on a
+ticket nobody moved: that one goes back to `Plan`.
 
 ## Setup
 
@@ -35,8 +43,8 @@ it's a bug/tweak routed `needs: build`). If not, stop and route to
    right reason. A test that can never run (skipped, unreachable) is worse than
    none: check it actually ran.
 2. Implement. Keep the invariants (CLAUDE.md): no game or ROM data is ever
-   committed, no game logic is translated (`GOAL.md`), and `sk-check entry`
-   and `rom` and the Fuse corpus still come out as they did. A result that
+   committed, no game logic is translated (`GOAL.md`), and `sk-check entry`,
+   `rom`, `keys` and `facts` and the Fuse corpus still come out as they did. A result that
    moves is a deliberate, called-out decision, never a check adjusted to pass.
 3. **Gate on the exit code, never on grepped output:**
 
@@ -73,8 +81,8 @@ left for the maintainer (a settings change, a manual step) counts as open: a
 **Review is the bottleneck**: the maintainer reviews alone, so the body is a
 guide to reviewing, not a defence.
 
-0. **No attribution line on a PR body or a commit message** — the maintainer
-   asked for those to stay clean. Issues and comments carry it; these do not.
+0. **The PR body opens with the 🤖 "Pull request by Claude" attribution line**
+   (CLAUDE.md), like every issue and comment; commit messages carry none.
 1. **`## Where to look`**: the two or three judgement calls the maintainer
    might disagree with, each naming its file. None? Say so in one line.
 2. `---`, then *Mechanically verified — skip unless curious.* and ONE short
@@ -103,8 +111,8 @@ The gates prove it compiles, lints and passes its tests. They cannot see:
   the thing built; what crosses between threads; what a key or button still
   held does when a screen changes under it.
 - **Tests** that assert the decisions, not the current implementation.
-- **Fidelity**: whether anything could move `sk-check entry` or `rom`, or
-  the Fuse corpus; and whether anything strays from `GOAL.md`'s hard rules
+- **Fidelity**: whether anything could move `sk-check entry`, `rom`, `keys`
+  or `facts`, or the Fuse corpus; and whether anything strays from `GOAL.md`'s hard rules
   (game data, translated game logic, the ROM).
 
 **Sort each finding into one of two kinds** (starquake-recompiled#74):
@@ -175,6 +183,6 @@ the maintainer's replies are part of the review.
   open (starquake-recompiled#84). A PR for
   a sub-issue says `Closes` only for that sub-issue, never for its parent.
 - Move the card to **`Your review`** (NOT `Your sign-off`, which is the
-  pre-build gate) and post a Next-steps comment: *Next: review the PR and add
+  pre-build gate), and post a Next-steps comment: *Next: review the PR and add
   `ready to merge`.* List any task still open after the merge in that comment,
   with whose it is.

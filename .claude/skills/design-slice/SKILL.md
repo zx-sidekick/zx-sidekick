@@ -25,8 +25,10 @@ maintainer's.
 - **First, choose the route.** A card in `Spec` means "your call, go", not
   "write a spec": decide how much process it needs, and say so on the ticket
   with the reason (starquake-recompiled#26).
-  - **A bug or tweak**, with no design question: comment *"Routing: straight to
-    Build — …"*, move it to `Build`, and hand it to `build-slice`. No spec.
+  - **A bug or tweak** small enough to need no plan: comment *"Routing: straight
+    to Build — …"*, move it to `Build`, and hand it to `build-slice`. No spec.
+  - **No design question left, but work that wants a plan**: move it to
+    `Plan` and write the plan (#27). No spec.
   - **A small decision**: a short spec with its answer block; the plan is a few
     lines in the same body once it's answered.
   - **A feature**: the full route below.
@@ -61,8 +63,8 @@ maintainer's.
 - **Goal**: what ships, plus the one-line reason.
 - **Decisions**: numbered, each with its why. Anything unsettled is a question
   TO the maintainer. Never decide design direction yourself.
-- **Fidelity**: say whether the change can move `sk-check entry` or `rom`,
-  or the Fuse corpus result. If it can, the ticket says why that is right
+- **Fidelity**: say whether the change can move `sk-check entry`, `rom`,
+  `keys` or `facts`, or the Fuse corpus result. If it can, the ticket says why that is right
   before the work starts — a check is never adjusted to make a change pass.
   Say whether it keeps to `GOAL.md`'s hard rules (no game or ROM data, no
   translated game logic), and whether it needs the tape or ROM, which CI has
@@ -73,7 +75,7 @@ maintainer's.
   ~~~
   ```
   # keep your pick, delete the rest
-  Q1 Start on the gamepad presses: the game's pause key (rec) / Space
+  Q1 the notice dims: the picture only (rec) / the whole window
   Q2 the setting lives in: the tape prompt (rec) / a command-line flag
   notes =
   ```
@@ -97,12 +99,16 @@ maintainer's.
   (`mockup` skill) and embed it in the *Mockup* section. Approving the
   screenshot is part of the spec OK.
 - **Hand off**: posting the block moves the ticket to `Your input` in the same
-  step. Nothing open? Skip straight to the plan.
+  step. Nothing open? Skip straight to the plan. A card in a lane carries no
+  `needs:` label; drop one if it still has it.
 
 ## Step 3: settle, then plan
 
-Fill the plan only once the decisions are settled, and set `Plan` while you
-write it. Tasks go in landing order, each one green commit
+Fill the plan only once the decisions are settled (#27). Set `Plan` while you
+write it. A plan already
+in the body, ported from another project or drafted earlier, is checked
+against this repository rather than rewritten: fix what names code that isn't
+here, or say in the Next-steps comment what the build will map. Tasks go in landing order, each one green commit
 (`scripts/check.sh`); failing tests first where practical; the last
 task updates `README.md` / `CLAUDE.md` if anything they say changed.
 
