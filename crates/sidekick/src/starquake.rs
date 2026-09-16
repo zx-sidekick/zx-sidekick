@@ -331,30 +331,35 @@ pub fn read_door_code(machine: &crate::Machine, room: u16, spot: (u8, u8)) -> Op
     entered.zx.t = 0;
     entered.zx.set_interrupts(true);
     let (x, y) = spot;
-    // Into the door from one side or the other, whichever reaches it.
-    [1u8, 2].into_iter().find_map(|input| {
-        let mut m = entered.clone();
-        m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
-        m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
-        m.watch = vec![routine::DOOR_SCREEN, routine::ENTER_ROOM];
-        let mut called = false;
-        for _ in 0..600 {
-            m.zx.release_all_keys();
-            m.zx.kempston = if called { 0 } else { input };
-            for hit in m.run_frame() {
-                if hit == routine::DOOR_SCREEN {
-                    called = true;
-                } else if called {
-                    // Back in the room: the screen has left its code behind.
-                    return door_code(&m.zx.mem[..]);
+    // Into the door from one side or the other, whichever reaches it. The
+    // joystick goes through the machine, which presses whatever the control
+    // method the player chose listens for: writing the Kempston port would
+    // reach the game only in one of the five.
+    [crate::machine::JOY_RIGHT, crate::machine::JOY_LEFT]
+        .into_iter()
+        .find_map(|input| {
+            let mut m = entered.clone();
+            m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
+            m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
+            m.watch = vec![routine::DOOR_SCREEN, routine::ENTER_ROOM];
+            let mut called = false;
+            for _ in 0..600 {
+                m.zx.release_all_keys();
+                m.joystick = if called { 0 } else { input };
+                for hit in m.run_frame() {
+                    if hit == routine::DOOR_SCREEN {
+                        called = true;
+                    } else if called {
+                        // Back in the room: the screen left its code behind.
+                        return door_code(&m.zx.mem[..]);
+                    }
+                }
+                if !called && m.zx.mem[usize::from(at::ENTITIES) + 5].abs_diff(x) > 8 {
+                    return None;
                 }
             }
-            if !called && m.zx.mem[usize::from(at::ENTITIES) + 5].abs_diff(x) > 8 {
-                return None;
-            }
-        }
-        None
-    })
+            None
+        })
 }
 
 /// A teleporter whose booth has been entered: the room it is in and its

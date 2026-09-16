@@ -199,6 +199,9 @@ impl Runner {
         let mut freeze = freeze::Freeze::default();
         // Whether the game's pause key was pressed in the last frame.
         let mut pause = false;
+        // Whether level 6's codes are waiting to be read, once the new game
+        // they belong to is actually being played (#66).
+        let mut reading_due = false;
         while !self.shared.quit.load(Ordering::Relaxed) {
             let mut pad = self.pad.poll();
             if pad.north {
@@ -286,7 +289,15 @@ impl Runner {
                 // the machine, on a thread of its own: it takes about a
                 // third of a second, and the game plays on meanwhile.
                 if hits.contains(&routine::NEW_GAME) {
-                    let reading = guidance.forget_all_codes();
+                    guidance.forget_all_codes();
+                    // Not yet: the new game's seed, which its door codes are
+                    // made from, is not written until play is under way, and
+                    // a reading taken here gives the last game's codes.
+                    reading_due = true;
+                }
+                if reading_due && tracker.scene == track::Scene::Play {
+                    reading_due = false;
+                    let reading = guidance.game();
                     let copy = machine.clone();
                     let doors = doors.clone();
                     let shared = Arc::clone(&self.shared);
