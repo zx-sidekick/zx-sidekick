@@ -96,15 +96,19 @@ from 0 (none) to 5, each adding to the ones below.
                        letters: under TELEPORTERS, the code of every
                        booth you have entered; under DOORS, the three
                        chips each security door asked you for, once its
-                       screen has shown them to you. A door's code stays
-                       hidden until you have seen it, and both are
+                       screen has shown them to you. With them, the
+                       core's nine slots as a square of three by three:
+                       what each still wants, what is delivered, and
+                       what you are carrying. A door's code stays
+                       hidden until you have seen it, and the codes are
                        forgotten when a new game starts.
-  Level 2              A map of the rooms you have visited: every edge
-                       open or closed, walls inside a room (dashed where
-                       a security door or a teleporter pad divides it),
-                       your room, the teleporters you have seen, and the
-                       items you have found lying in a room, each drawn
-                       as what it does:
+  Level 2              A map of the rooms you have walked through:
+                       every edge open or closed, walls inside a room
+                       (dashed where a security door or a teleporter
+                       pad divides it), your room, and the teleporters
+                       you have seen.
+  Level 3              What you have seen lying in those rooms, each
+                       drawn as what it does:
 
                          a disc with 0, 1, 2, 4 or 8
                                      a chip, which answers that number
@@ -119,29 +123,30 @@ from 0 (none) to 5, each adding to the ones below.
                          a ring      a pyramid takes it in exchange for
                                      one of the core's missing pieces
 
-                       A core piece shows as a pink dot from level 3
-                       instead. What you carry is not drawn: it is with
+                       A piece the core still wants is drawn as itself,
+                       in pink. What you carry is not drawn: it is with
                        you.
-  Level 3              The missing core pieces marked on the map, in
-                       rooms you have visited or not, and the core's
-                       nine holes beside it: the pieces still needed,
-                       the ones delivered dimmed, and a piece you carry
-                       outlined.
-  Level 4              Two routes over the ways you have walked: to the
-                       nearest missing piece in pink, and to the core
-                       in orange while you carry a piece it needs. Each
-                       is a line on the map and an arrow in the
-                       border the way to leave the room, marked "item"
-                       or "core",
-                       with a legend under the map; and the code to
-                       select when a teleporter is next.
-  Level 5              The same two routes through the whole map,
-                       dashed through rooms you have not visited, and
-                       once you have been in a piece's room, to the
-                       side of the room it lies in. It assumes you can
-                       fly everywhere, that doors and tubes work, and
-                       that lifts only go up: getting the items and
-                       the battery for that is up to you.
+  Level 4              The same for the rooms you have never walked
+                       through. The game puts every item out at the
+                       start of a game, so it knows where they all are;
+                       this tells you, ringed to say you have not been
+                       there yourself.
+  Level 5              A route to a missing piece, and one to the core
+                       while you carry a piece it needs. Each is a line
+                       on the map and an arrow in the border the way to
+                       leave the room, marked "item" or "core", with a
+                       legend under the map; and the code to select
+                       when a teleporter is next. The routes run over
+                       the whole map, dashed through rooms you have not
+                       visited, and once you have been in a piece's
+                       room, to the side of the room it lies in. They
+                       assume you can fly everywhere, that doors and
+                       tubes work, and that lifts only go up: getting
+                       the items and the battery for that is up to you.
+  Level 6              Everything the program knows: every teleporter
+                       and door code whether you have been shown it or
+                       not, and the whole planet's map, the rooms you
+                       have never entered drawn dimmer.
 
   Training             Four switches of their own, all off until you
                        turn them on:
@@ -160,7 +165,7 @@ from 0 (none) to 5, each adding to the ones below.
                        is as large as your screen allows.
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.
-  Tab, or Y on a       At levels 4 and 5, switch the route to a missing
+  Tab, or Y on a       At levels 5 and 6, switch the route to a missing
   gamepad              piece between the three nearest, and from the
                        third back to the nearest. It goes back to the
                        nearest by itself when the piece is picked up or
