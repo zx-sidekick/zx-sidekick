@@ -37,11 +37,14 @@ pub struct Pad {
     pub south: bool,
     /// The right face button (B on an Xbox pad): the picker's back.
     pub east: bool,
+    /// The top face button (Y on an Xbox pad): switches the piece route
+    /// between the nearest missing pieces (#51).
+    pub north: bool,
 }
 
 /// What the picker's buttons were at the last poll and are now, in the
-/// order Select, up, down, left, right, A, B.
-type Held = [bool; 7];
+/// order Select, up, down, left, right, A, B, and Y.
+type Held = [bool; 8];
 
 /// Sets the picker's presses in `pad`: the buttons down `now` that were not
 /// at the last poll, `was`.
@@ -54,6 +57,7 @@ fn presses(pad: &mut Pad, now: Held, was: Held) {
     pad.right = pressed(4);
     pad.south = pressed(5);
     pad.east = pressed(6);
+    pad.north = pressed(7);
 }
 
 pub struct Gamepad {
@@ -67,13 +71,13 @@ impl Gamepad {
         match gilrs::Gilrs::new() {
             Ok(gilrs) => Gamepad {
                 gilrs: Some(gilrs),
-                was: [false; 7],
+                was: [false; 8],
             },
             Err(e) => {
                 eprintln!("no gamepad support: {e}");
                 Gamepad {
                     gilrs: None,
-                    was: [false; 7],
+                    was: [false; 8],
                 }
             }
         }
@@ -89,7 +93,7 @@ impl Gamepad {
         while gilrs.next_event().is_some() {}
 
         let mut pad = Pad::default();
-        let mut now = [false; 7];
+        let mut now = [false; 8];
         for (_id, gamepad) in gilrs.gamepads() {
             use gilrs::{Axis, Button};
             let pressed = |b| gamepad.is_pressed(b);
@@ -127,6 +131,7 @@ impl Gamepad {
             now[4] |= pressed(Button::DPadRight) || x > DEADZONE;
             now[5] |= pressed(Button::South);
             now[6] |= pressed(Button::East);
+            now[7] |= pressed(Button::North);
         }
         presses(&mut pad, now, self.was);
         self.was = now;
@@ -141,13 +146,18 @@ mod tests {
     #[test]
     fn a_button_held_down_is_one_press() {
         let mut pad = Pad::default();
-        let select_and_up = [true, true, false, false, false, false, false];
-        presses(&mut pad, select_and_up, [false; 7]);
+        let select_and_up = [true, true, false, false, false, false, false, false];
+        presses(&mut pad, select_and_up, [false; 8]);
         assert!(pad.select && pad.up && !pad.down && !pad.south);
         presses(&mut pad, select_and_up, select_and_up);
         assert!(!pad.select && !pad.up, "still down is not pressed again");
-        let b = [false, false, false, false, false, false, true];
+        let b = [false, false, false, false, false, false, true, false];
         presses(&mut pad, b, select_and_up);
         assert!(pad.east && !pad.select);
+        let y = [false, false, false, false, false, false, false, true];
+        presses(&mut pad, y, b);
+        assert!(pad.north && !pad.east, "Y switches the piece route");
+        presses(&mut pad, y, y);
+        assert!(!pad.north, "a held Y is one switch");
     }
 }

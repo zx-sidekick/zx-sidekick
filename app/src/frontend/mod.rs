@@ -197,6 +197,12 @@ impl Runner {
         let mut pause = false;
         while !self.shared.quit.load(Ordering::Relaxed) {
             let mut pad = self.pad.poll();
+            if pad.north {
+                let mut guidance = self.shared.guidance.lock().unwrap();
+                if !guidance.picker_open() {
+                    guidance.switch_piece();
+                }
+            }
             if pad.select {
                 let mut guidance = self.shared.guidance.lock().unwrap();
                 if !guidance.picker_open() {
