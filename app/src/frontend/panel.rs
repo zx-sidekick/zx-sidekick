@@ -13,7 +13,7 @@ use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
 use super::track::Scene;
 use sidekick::map::{COLS, ROWS, Step};
-use sidekick::starquake::{Kind, SeenTeleporter};
+use sidekick::starquake::Kind;
 
 const PANEL: Rgb = [0x0f, 0x11, 0x17];
 const RULE: Rgb = [0x22, 0x26, 0x2f];
@@ -63,14 +63,10 @@ const CORE_WORD: &str = "core";
 /// How far apart the two border arrows stand when they leave the same way.
 const ARROW_APART: f32 = 22.0;
 /// The room the routes' legend takes under the map (#44).
-const LEGEND_H: f32 = 52.0;
 const DELIVERED: Rgb = [0x3a, 0x3f, 0x4b];
 
 /// The core column (#7): its tiles' size and pitch, and how many layout
 /// units a pixel of a piece's graphic is.
-const TILE_W: f32 = 40.0;
-const TILE_PITCH: f32 = 46.0;
-const PIECE_PIXEL: f32 = 2.25;
 const CODE_FILL: Rgb = [0x14, 0x25, 0x2a];
 
 /// What each level adds, for the picker. The levels are built in their own
@@ -97,6 +93,26 @@ const HINT_H: f32 = 22.0;
 
 pub struct Panel {
     fonts: Fonts,
+}
+
+/// One of the game's 2 × 2 graphics, 32 bytes as [`sidekick::starquake::graphic`]
+/// reads them, drawn from (`x`, `y`) at `px` units a pixel (#7, #49).
+fn cells(canvas: &mut Canvas, graphic: &[u8; 32], x: f32, y: f32, px: f32, colour: Rgb) {
+    for (cell, (cy, cx)) in [(0, 0), (0, 8), (8, 0), (8, 8)].into_iter().enumerate() {
+        for row in 0..8 {
+            let byte = graphic[cell * 8 + row];
+            for bit in 0..8 {
+                if byte & (0x80 >> bit) != 0 {
+                    canvas.cell(
+                        x + (cx + bit) as f32 * px,
+                        y + (cy + row) as f32 * px,
+                        px,
+                        colour,
+                    );
+                }
+            }
+        }
+    }
 }
 
 impl Panel {
@@ -129,12 +145,9 @@ impl Panel {
                 left,
                 44.0,
                 Some(width - 48.0),
-                1.2,
-                &[span(&title, 19.0, Weight::SemiBold, BRIGHT)],
+                1.0,
+                &[span(&title, 13.0, Weight::SemiBold, BRIGHT)],
             );
-            let esc_w = self.fonts.key_width(HINT_H, "Esc");
-            self.fonts
-                .key_badge(canvas, WINDOW_W - 24.0 - esc_w, 24.0, HINT_H, "Esc");
             // Level 4 (#9, #44): the first teleport on each route has its
             // chip outlined in that route's colour.
             let jump = if level >= 4 {
@@ -142,13 +155,16 @@ impl Panel {
             } else {
                 Vec::new()
             };
-            let below = if level >= 1 {
-                self.teleporters(canvas, left, width - 48.0, guidance.teleporters(), &jump)
-            } else {
-                WINDOW_H
-            };
-            if level >= 4 && guidance.room().is_some() {
-                self.route_line(canvas, guidance, below, &jump);
+            // The codes in a column at the panel's right, so the map keeps
+            // its size however many there are (#49, decision 8).
+            let px = Self::code_pixel(canvas);
+            let tiles = (3.0 * 16.0 * px + 4.0).max(5.0 * 8.0 * px) + 6.0;
+            // Never narrower than its headings, which are right-aligned to
+            // the panel's margin and would otherwise reach over the map.
+            let col_w = tiles.max(self.spaced_width("TELEPORTERS"));
+            let col_right = WINDOW_W - 24.0;
+            if level >= 1 {
+                self.codes_column(canvas, col_right, 72.0, guidance, &jump);
             }
             if level >= 2 {
                 let explored = format!("explored {} of {} rooms", guidance.explored(), COLS * ROWS);
@@ -160,19 +176,23 @@ impl Panel {
                     1.0,
                     &[span(&explored, 12.0, Weight::Regular, LABEL)],
                 );
-                // Level 4 (#44): the two routes' legend under the map.
-                let legend = match level {
-                    0..=3 => 0.0,
-                    4 => LEGEND_H,
-                    _ => LEGEND_H + 22.0,
-                };
-                let map_bottom =
-                    self.map(canvas, guidance, level >= 3, 96.0, below - 16.0 - legend);
-                if level >= 4 {
-                    self.route_legend(canvas, guidance, map_bottom + 14.0);
-                }
+                let map_w = col_right - col_w - 16.0 - left;
+                let pitch = (map_w / f32::from(COLS)).floor().min(18.0);
+                let mut top = 96.0;
+                // The core as a row above the map (#49, decision 8).
                 if level >= 3 && !guidance.core().is_empty() {
-                    self.core(canvas, guidance, 72.0, 96.0);
+                    let tile = 16.0 * px + 2.0;
+                    self.core_row(canvas, guidance, left, top, pitch * f32::from(COLS), tile);
+                    top += tile + 12.0;
+                }
+                let bottom = WINDOW_H - 24.0 - if level >= 4 { 58.0 } else { 0.0 };
+                let map_bottom = self.map(canvas, guidance, level >= 3, top, bottom, map_w);
+                // The legend as the two chips, with no words (#49, decision 9).
+                if level >= 4 {
+                    self.route_legend(canvas, guidance, map_bottom + 12.0);
+                    if guidance.room().is_some() {
+                        self.route_line(canvas, guidance, map_bottom + 58.0, &jump);
+                    }
                 }
             }
             let lines = match level {
@@ -243,19 +263,20 @@ impl Panel {
         pieces: bool,
         top: f32,
         bottom: f32,
+        width: f32,
     ) -> f32 {
         let (cols, rows) = (f32::from(COLS), f32::from(ROWS));
-        // 18 pixels a room as in the mockup, smaller when the teleporter codes
-        // take more than one row.
-        let pitch = ((bottom - top) / rows).floor().min(18.0);
+        // 18 units a room as in the mockup, smaller when the height or the
+        // width the codes' column leaves (#49) does not run to it.
+        let pitch = ((bottom - top) / rows)
+            .min(width / cols)
+            .floor()
+            .clamp(1.0, 18.0);
         let unit = pitch / 18.0;
-        // Centred at level 2; from level 3 at the panel's left margin, with
-        // the core column beside it (#7).
-        let x0 = if pieces {
-            PICTURE_W + 24.0
-        } else {
-            (PICTURE_W + (WINDOW_W - PICTURE_W - pitch * cols) / 2.0).floor()
-        };
+        // The map sits at the panel's left margin, with the codes' column
+        // to its right (#49).
+        let _ = pieces;
+        let x0 = PICTURE_W + 24.0;
         let rooms = COLS * ROWS;
         let at = |room: u16| {
             (
@@ -489,66 +510,174 @@ impl Panel {
     /// Level 4 (#44): what the two route colours mean, under the map at
     /// `y`: each route's word in a chip of its colour, then what it leads to.
     /// The core's line is dimmed while no piece it needs is carried.
+    /// How many layout units a Spectrum pixel of a code is (#49): half a
+    /// pixel of the game's picture, rounded down to whole screen pixels so
+    /// every one is the same size. The picture is 3 units a pixel.
+    fn code_pixel(canvas: &Canvas) -> f32 {
+        (canvas.scale * 1.5).floor().max(1.0) / canvas.scale
+    }
+
+    /// Level 3 (#7, #49): the core's nine holes in a row `w` wide above the
+    /// map, each its own graphic from the game, in white while it is still
+    /// wanted and dimmed once delivered, outlined while it is carried.
+    fn core_row(
+        &mut self,
+        canvas: &mut Canvas,
+        guidance: &Guidance,
+        left: f32,
+        top: f32,
+        w: f32,
+        tile: f32,
+    ) {
+        let px = Self::code_pixel(canvas);
+        let step = (w - tile) / 8.0;
+        for (i, hole) in guidance.core().iter().enumerate() {
+            let x = left + i as f32 * step;
+            canvas.round_rect(x, top, tile, tile, 3.0, TILE);
+            if hole.carried {
+                canvas.outline(x, top, tile, tile, 3.0, 2.0, None, HERE);
+            }
+            let colour = if hole.open { HERE } else { DELIVERED };
+            cells(canvas, &hole.graphic, x + 1.0, top + 1.0, px, colour);
+        }
+    }
+
+    /// How wide a spaced label is (#49), so the codes' column is never
+    /// narrower than its own headings.
+    fn spaced_width(&mut self, label: &str) -> f32 {
+        label
+            .chars()
+            .map(|c| self.fonts.advance(c, 11.0, Weight::SemiBold) + 11.0 * 0.14)
+            .sum::<f32>()
+            - 11.0 * 0.14
+    }
+
+    /// A spaced label ending at `right`, for the codes' column (#49).
+    fn spaced_right(&mut self, canvas: &mut Canvas, right: f32, y: f32, label: &str) {
+        let width = self.spaced_width(label);
+        self.spaced(canvas, right - width, y, label);
+    }
+
+    /// Level 1 (#4, #49): the codes seen this game in a column at the
+    /// panel's right, one to a line: each door's three chips under DOORS,
+    /// then the teleporters' codes in the game's own letters under
+    /// TELEPORTERS, the next one on a route outlined in its colour.
+    fn codes_column(
+        &mut self,
+        canvas: &mut Canvas,
+        right: f32,
+        top: f32,
+        guidance: &Guidance,
+        jumps: &[Jump],
+    ) {
+        let px = Self::code_pixel(canvas);
+        let mut y = top;
+        let doors = guidance.door_codes();
+        if !doors.is_empty() {
+            self.spaced_right(canvas, right, y, "DOORS");
+            y += 22.0;
+            let (tile_w, tile_h) = (3.0 * 16.0 * px + 4.0 + 6.0, 16.0 * px + 6.0);
+            for code in doors {
+                let x = right - tile_w;
+                canvas.round_rect(x, y, tile_w, tile_h, 4.0, CODE_FILL);
+                for (k, graphic) in code.graphics.iter().enumerate() {
+                    let cx = x + 3.0 + k as f32 * (16.0 * px + 2.0);
+                    cells(canvas, graphic, cx, y + 3.0, px, CODE);
+                }
+                y += tile_h + 3.0;
+            }
+            y += 10.0;
+        }
+        self.spaced_right(canvas, right, y, "TELEPORTERS");
+        y += 22.0;
+        let seen = guidance.teleporters();
+        if seen.is_empty() {
+            let spans = [span("None yet", 12.0, Weight::Regular, QUIET)];
+            let w = self.fonts.measure(&spans);
+            self.fonts
+                .text(Some(canvas), right - w, y, None, 1.0, &spans);
+            return;
+        }
+        let (tile_w, tile_h) = (5.0 * 8.0 * px + 6.0, 8.0 * px + 6.0);
+        for teleporter in seen {
+            let x = right - tile_w;
+            canvas.round_rect(x, y, tile_w, tile_h, 4.0, CODE_FILL);
+            // The route's outline on the chip, the other route's around it
+            // when both jump from the same booth (#46).
+            for (i, jump) in jumps
+                .iter()
+                .filter(|j| j.code == teleporter.code)
+                .enumerate()
+            {
+                let out = i as f32 * 4.0;
+                canvas.outline(
+                    x - out,
+                    y - out,
+                    tile_w + 2.0 * out,
+                    tile_h + 2.0 * out,
+                    4.0 + out,
+                    2.0,
+                    None,
+                    jump.colour,
+                );
+            }
+            match guidance.font() {
+                // The game's own letters (#49, decision 5).
+                Some(font) => {
+                    for (k, letter) in teleporter.code.iter().enumerate() {
+                        let glyph = &font[(*letter as usize - 0x20) * 8..][..8];
+                        for (row, byte) in glyph.iter().enumerate() {
+                            for bit in 0..8 {
+                                if byte & (0x80 >> bit) != 0 {
+                                    canvas.cell(
+                                        x + 3.0 + (k * 8 + bit) as f32 * px,
+                                        y + 3.0 + row as f32 * px,
+                                        px,
+                                        CODE,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                // Until they are read, the window's own font.
+                None => {
+                    let text = String::from_utf8_lossy(&teleporter.code).into_owned();
+                    let spans = [span(&text, 12.0, Weight::SemiBold, CODE)];
+                    self.fonts
+                        .text(Some(canvas), x + 3.0, y + 1.0, None, 1.0, &spans);
+                }
+            }
+            y += tile_h + 3.0;
+        }
+    }
+
+    /// Level 4 (#44, #49): the two routes' chips under the map, with no
+    /// words: "item" for the route to the nearest missing piece, and which
+    /// of the nearest it leads to (#51), then "core".
     fn route_legend(&mut self, canvas: &mut Canvas, guidance: &Guidance, y: f32) {
         let x = PICTURE_W + 24.0;
-        let lines = [
-            (PIECE_WORD, PIECE, "To the nearest missing piece", true),
-            (
-                CORE_WORD,
-                ROUTE,
-                "To the core, while you carry a piece it needs",
-                guidance.core_route().is_some(),
-            ),
-        ];
         let word = |text| [span(text, 11.0, Weight::SemiBold, PANEL)];
-        let chip_w = lines
-            .iter()
-            .map(|l| self.fonts.measure(&word(l.0)))
-            .fold(0.0, f32::max)
-            + 10.0;
-        for (i, (text, colour, meaning, lit)) in lines.into_iter().enumerate() {
-            let y = y + i as f32 * 22.0;
-            let w = self.fonts.measure(&word(text));
-            canvas.round_rect(x, y - 9.0, chip_w, 17.0, 3.0, colour);
-            self.fonts.text(
-                Some(canvas),
-                x + (chip_w - w) / 2.0,
-                y - 8.0,
-                None,
-                1.0,
-                &word(text),
-            );
-            let tone = if lit { SOFT } else { QUIET };
-            // Which of the nearest missing pieces the route leads to (#51);
-            // nothing while there is only one to go to.
-            let (which, count) = guidance.piece_choice();
-            let tail = format!(", {which} of {count}");
-            let spans = [
-                span(meaning, 12.0, Weight::Regular, tone),
-                span(&tail, 12.0, Weight::SemiBold, BRIGHT),
-            ];
-            let shown = if i == 0 && count > 1 { 2 } else { 1 };
-            self.fonts.text(
-                Some(canvas),
-                x + chip_w + 10.0,
-                y - 8.0,
-                None,
-                1.0,
-                &spans[..shown],
-            );
-        }
-        // Level 5 (#10): what a dashed line means.
-        if guidance.level() >= 5 {
-            let y = y + 2.0 * 22.0;
-            stroke(canvas, (x, y), (x + chip_w, y), 3.0, Some(4.0), SOFT);
-            let spans = [span(
-                "Dashed through rooms you have not visited",
-                12.0,
-                Weight::Regular,
-                SOFT,
-            )];
+        let mut at = x;
+        for (i, (text, colour)) in [(PIECE_WORD, PIECE), (CORE_WORD, ROUTE)]
+            .into_iter()
+            .enumerate()
+        {
+            let w = self.fonts.measure(&word(text)) + 10.0;
+            canvas.round_rect(at, y, w, 17.0, 3.0, colour);
             self.fonts
-                .text(Some(canvas), x + chip_w + 10.0, y - 8.0, None, 1.0, &spans);
+                .text(Some(canvas), at + 5.0, y + 1.0, None, 1.0, &word(text));
+            at += w + 6.0;
+            // Which of the nearest missing pieces the route leads to (#51),
+            // beside the chip it belongs to; nothing while there is one.
+            let (which, count) = guidance.piece_choice();
+            if i == 0 && count > 1 {
+                let tail = format!("{which} of {count}");
+                let spans = [span(&tail, 12.0, Weight::SemiBold, BRIGHT)];
+                self.fonts
+                    .text(Some(canvas), at, y + 1.0, None, 1.0, &spans);
+                at += self.fonts.measure(&spans) + 14.0;
+            }
         }
     }
 
@@ -615,53 +744,13 @@ impl Panel {
         );
     }
 
-    /// Level 3 (#7): the core's nine holes in a column at the panel's right
-    /// margin, its label on the `label_y` line and its first tile level with
-    /// the map's top at `top`. An open hole shows its piece in white,
-    /// outlined in white while it is carried; a filled one shows its
-    /// placeholder, dimmed, as the core room does.
-    fn core(&mut self, canvas: &mut Canvas, guidance: &Guidance, label_y: f32, top: f32) {
-        let x = WINDOW_W - 24.0 - TILE_W;
-        let label = "CORE";
-        let width: f32 = label
-            .chars()
-            .map(|c| self.fonts.advance(c, 11.0, Weight::SemiBold) + 11.0 * 0.14)
-            .sum::<f32>()
-            - 11.0 * 0.14;
-        self.spaced(canvas, x + (TILE_W - width) / 2.0, label_y + 1.0, label);
-        for (i, hole) in guidance.core().iter().enumerate() {
-            let y = top + i as f32 * TILE_PITCH;
-            canvas.round_rect(x, y, TILE_W, TILE_W, 4.0, TILE);
-            if hole.carried {
-                canvas.outline(x, y, TILE_W, TILE_W, 4.0, 2.0, None, HERE);
-            }
-            let colour = if hole.open { HERE } else { DELIVERED };
-            let inset = (TILE_W - 16.0 * PIECE_PIXEL) / 2.0;
-            for (cell, (cy, cx)) in [(0, 0), (0, 8), (8, 0), (8, 8)].into_iter().enumerate() {
-                for row in 0..8 {
-                    let byte = hole.graphic[cell * 8 + row];
-                    for bit in 0..8 {
-                        if byte & (0x80 >> bit) != 0 {
-                            canvas.cell(
-                                x + inset + (cx + bit) as f32 * PIECE_PIXEL,
-                                y + inset + (cy + row) as f32 * PIECE_PIXEL,
-                                PIECE_PIXEL,
-                                colour,
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// Level 4 (#9): a line above the teleporter codes, between them and the
-    /// map: which code to select when the next step is a teleport, or that
-    /// no route is known.
+    /// Level 4 (#9): a line under the map's legend, which code to select
+    /// when the next step of a route is a teleport. Nothing when no route
+    /// leads anywhere: the missing line says that (#49, decision 7).
     fn route_line(
         &mut self,
         canvas: &mut Canvas,
-        guidance: &Guidance,
+        _guidance: &Guidance,
         label_y: f32,
         jumps: &[Jump],
     ) {
@@ -682,14 +771,6 @@ impl Panel {
                 (b, c.colour),
                 (" for the core".into(), SOFT),
             ],
-            _ if guidance.route().is_none() => {
-                let text = if guidance.level() >= 5 {
-                    "No route to a missing piece yet"
-                } else {
-                    "No known route to a missing piece"
-                };
-                vec![(text.into(), QUIET)]
-            }
             _ => return,
         };
         let spans: Vec<Span> = texts
@@ -704,98 +785,6 @@ impl Panel {
             1.0,
             &spans,
         );
-    }
-
-    /// Level 1 (#4): the codes of the teleporters seen this game, as chips
-    /// along the panel's bottom edge, in the order their booths were
-    /// entered, or a line saying none are seen yet. Returns where the block
-    /// starts, which anything above it must stop short of.
-    fn teleporters(
-        &mut self,
-        canvas: &mut Canvas,
-        left: f32,
-        width: f32,
-        seen: &[SeenTeleporter],
-        highlight: &[Jump],
-    ) -> f32 {
-        let (chip_h, gap) = (26.0, 8.0);
-        // Lay the chips out in rows first, so the block can sit on the
-        // panel's bottom edge however many rows there are.
-        let mut rows: Vec<Vec<(String, f32)>> = vec![Vec::new()];
-        let mut used = 0.0;
-        for teleporter in seen {
-            let text = String::from_utf8_lossy(&teleporter.code).into_owned();
-            let w = self
-                .fonts
-                .measure(&[span(&text, 14.0, Weight::SemiBold, CODE)])
-                + 16.0;
-            if used + w > width && !rows[rows.len() - 1].is_empty() {
-                rows.push(Vec::new());
-                used = 0.0;
-            }
-            used += w + gap;
-            rows.last_mut().unwrap().push((text, w));
-        }
-        let lines = if seen.is_empty() {
-            1.0
-        } else {
-            rows.len() as f32
-        };
-        let top = WINDOW_H - 24.0 - lines * (chip_h + gap) + gap - 22.0;
-        self.spaced(canvas, left, top, "TELEPORTERS SEEN");
-        if seen.is_empty() {
-            self.fonts.text(
-                Some(canvas),
-                left,
-                top + 24.0,
-                Some(width),
-                1.0,
-                &[span(
-                    "None yet: a code shows once you enter its booth.",
-                    13.0,
-                    Weight::Regular,
-                    QUIET,
-                )],
-            );
-            return top;
-        }
-        let mut y = top + 22.0;
-        for row in rows {
-            let mut x = left;
-            for (text, w) in row {
-                canvas.round_rect(x, y, w, chip_h, 4.0, CODE_FILL);
-                // The piece route's outline on the chip, the core route's
-                // around it when both use the same one.
-                for (i, j) in highlight
-                    .iter()
-                    .filter(|j| String::from_utf8_lossy(&j.code) == text)
-                    .enumerate()
-                {
-                    let out = i as f32 * 4.0;
-                    canvas.outline(
-                        x - out,
-                        y - out,
-                        w + 2.0 * out,
-                        chip_h + 2.0 * out,
-                        4.0 + out,
-                        2.0,
-                        None,
-                        j.colour,
-                    );
-                }
-                self.fonts.text(
-                    Some(canvas),
-                    x + 8.0,
-                    y + 5.0,
-                    None,
-                    1.0,
-                    &[span(&text, 14.0, Weight::SemiBold, CODE)],
-                );
-                x += w + gap;
-            }
-            y += chip_h + gap;
-        }
-        top
     }
 
     fn score_note(&mut self, canvas: &mut Canvas, left: f32, guidance: &Guidance) {
@@ -1499,6 +1488,7 @@ fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
 mod tests {
     use super::*;
     use sidekick::map::{Divides, Openings, RoomSet};
+    use sidekick::starquake::SeenTeleporter;
 
     /// Draws the overlay in `guidance`'s state over a stand-in picture, at
     /// twice the layout's size, as 0xRRGGBB pixels.
@@ -1582,6 +1572,31 @@ mod tests {
             .count()
     }
 
+    /// Where a room sits on the map at `level`, and the map's pitch, by the
+    /// same arithmetic `draw` uses (#49: the codes' column takes the right).
+    fn map_at(level: u8) -> (impl Fn(u16) -> (f32, f32), f32) {
+        let left = PICTURE_W + 24.0;
+        // A code's pixel at the tests' scale of 2, and the column's width.
+        let px = 1.5;
+        let col_w = ((3.0f32 * 16.0 * px + 4.0).max(5.0 * 8.0 * px) + 6.0).max(92.5);
+        let map_w = WINDOW_H.mul_add(0.0, WINDOW_W - 24.0) - col_w - 16.0 - left;
+        let top = 96.0;
+        let bottom = WINDOW_H - 24.0 - if level >= 4 { 58.0 } else { 0.0 };
+        let pitch = ((bottom - top) / f32::from(ROWS))
+            .min(map_w / f32::from(COLS))
+            .floor()
+            .clamp(1.0, 18.0);
+        (
+            move |room: u16| {
+                (
+                    left + f32::from(room % COLS) * pitch,
+                    top + f32::from(room / COLS) * pitch,
+                )
+            },
+            pitch,
+        )
+    }
+
     #[test]
     fn a_step_both_routes_take_shows_both_colours() {
         // Blob in 200; both routes go right to 201, then apart.
@@ -1591,15 +1606,7 @@ mod tests {
             &[(201, false), (217, false)],
         );
         let (pixels, w, _) = render(&g, Scene::Play, false);
-        // The map's pitch and origin at level 4, as `map` works them out.
-        let below = WINDOW_H - 24.0 - 22.0 - 22.0 - 16.0 - LEGEND_H;
-        let pitch = ((below - 96.0) / f32::from(ROWS)).floor().min(18.0);
-        let at = |room: u16| {
-            (
-                PICTURE_W + 24.0 + f32::from(room % COLS) * pitch,
-                96.0 + f32::from(room / COLS) * pitch,
-            )
-        };
+        let (at, pitch) = map_at(4);
         let (x, y) = at(200);
         let between = (x + pitch * 0.7, y, pitch * 0.6, pitch);
         assert!(
@@ -1720,7 +1727,8 @@ mod tests {
             code: *b"AAAAA",
         }]);
         let (pixels, w, _) = render(&g, Scene::Play, false);
-        let chips = (PICTURE_W + 10.0, WINDOW_H - 60.0, 140.0, 50.0);
+        // The codes' column, down the panel's right (#49).
+        let chips = (WINDOW_W - 130.0, 60.0, 130.0, WINDOW_H - 60.0);
         assert!(
             count(&pixels, w, chips, PIECE) > 0,
             "the piece route's outline"
@@ -1766,6 +1774,56 @@ mod tests {
             levels: std::array::from_fn(|i| rows[i].3),
         };
         g.set_high_scores(kept, Some(5));
+        g
+    }
+
+    /// Level 4 with every code a game can show (#49): eight door codes,
+    /// the codes `sk-check facts` reads on one game, and fifteen
+    /// teleporters. Their chips come from the tape, so it needs `SQ_TAPE`.
+    fn doors_seen() -> Guidance {
+        let mut g = Guidance::default();
+        g.set_level(4);
+        explore(&mut g, 3);
+        let letters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let seen: Vec<SeenTeleporter> = (0..15u16)
+            .map(|i| SeenTeleporter {
+                room: i * 30,
+                code: std::array::from_fn(|k| {
+                    letters[(usize::from(i) * 5 + k * 3) % letters.len()]
+                }),
+            })
+            .collect();
+        g.set_teleporters(&seen);
+        let Some(tape) = std::env::var_os("SQ_TAPE") else {
+            return g;
+        };
+        let bytes = std::fs::read(tape).expect("the tape");
+        let m = sidekick::Machine::from_tape(
+            &bytes,
+            sidekick::starquake::ENTRY_PC,
+            sidekick::starquake::ENTRY_SP,
+        )
+        .expect("a machine");
+        let graphic = |n: u8| sidekick::starquake::graphic(&m.zx.mem[..], n);
+        let rooms: [(u16, [u8; 3]); 8] = [
+            (176, [11, 12, 11]),
+            (187, [10, 11, 12]),
+            (200, [13, 12, 13]),
+            (210, [11, 12, 11]),
+            (265, [12, 11, 9]),
+            (352, [12, 11, 12]),
+            (362, [12, 11, 12]),
+            (429, [10, 9, 10]),
+        ];
+        let codes: Vec<crate::frontend::guidance::DoorCode> = rooms
+            .into_iter()
+            .map(|(room, chips)| crate::frontend::guidance::DoorCode {
+                room,
+                chips,
+                graphics: chips.map(graphic),
+            })
+            .collect();
+        g.set_door_codes(&codes);
         g
     }
 
@@ -1871,6 +1929,20 @@ mod tests {
             return;
         };
         let out = std::path::PathBuf::from(out);
+        // With a tape to hand, the codes are drawn in the game's own
+        // letters, as the panel draws them in play (#49).
+        let font = std::env::var_os("SQ_TAPE").map(|tape| {
+            let bytes = std::fs::read(tape).expect("the tape");
+            let m = sidekick::Machine::from_tape(
+                &bytes,
+                sidekick::starquake::ENTRY_PC,
+                sidekick::starquake::ENTRY_SP,
+            )
+            .expect("a machine");
+            sidekick::starquake::font(&m.zx.mem[..])
+                .expect("the font")
+                .to_vec()
+        });
         let mut picker = Guidance::default();
         picker.set_level(3);
         picker.open();
@@ -2105,11 +2177,15 @@ mod tests {
                 Scene::Play,
                 false,
             ),
+            ("doors", doors_seen(), Scene::Play, false),
             ("score", record, Scene::GameOver, false),
             ("heroes", heroes(), Scene::GameOver, false),
             ("score-none", Guidance::default(), Scene::GameOver, false),
         ];
-        for (name, guidance, scene, paused) in cases {
+        for (name, mut guidance, scene, paused) in cases {
+            if let Some(font) = &font {
+                guidance.set_font(font);
+            }
             let (rgb, w, h) = render(&guidance, scene, paused);
             std::fs::write(
                 out.join(format!("panel-{name}.png")),

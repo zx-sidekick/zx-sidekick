@@ -224,25 +224,11 @@ impl Guidance {
     }
 
     /// The door codes seen this game.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the panel draws them once the mockup is approved (#49)"
-        )
-    )]
     pub fn door_codes(&self) -> &[DoorCode] {
         &self.door_codes
     }
 
     /// The game's font, 96 letters of eight bytes from the space, once read.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the panel draws codes in it once the mockup is approved (#49)"
-        )
-    )]
     pub fn font(&self) -> Option<&[u8]> {
         (!self.font.is_empty()).then_some(&self.font[..])
     }
