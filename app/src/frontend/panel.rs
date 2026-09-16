@@ -201,8 +201,7 @@ impl Panel {
                     core_h
                 };
                 let bottom = WINDOW_H - 24.0 - under;
-                let (map_bottom, map_right) =
-                    self.map(canvas, guidance, level >= 3, top, bottom, map_w);
+                let (map_bottom, map_right) = self.map(canvas, guidance, level, top, bottom, map_w);
                 // The legend as the two chips, with no words (#49, decision 9).
                 let mut under = map_bottom + 12.0;
                 if level >= 5 {
@@ -288,7 +287,7 @@ impl Panel {
         &mut self,
         canvas: &mut Canvas,
         guidance: &Guidance,
-        pieces: bool,
+        level: u8,
         top: f32,
         bottom: f32,
         width: f32,
@@ -302,8 +301,15 @@ impl Panel {
             .clamp(1.0, 18.0);
         let unit = pitch / 18.0;
         // The map sits at the panel's left margin, with the codes' column
-        // to its right (#49).
-        let _ = pieces;
+        // to its right (#49). What is lying in a room walked through shows
+        // from level 3, and what is lying anywhere else from level 4 (#66).
+        let seen_marks = level >= 3;
+        let all_marks = level >= 4;
+        // A room never walked through that holds something worth marking:
+        // a piece the core still wants, or any other item lying in it.
+        let holds = |g: &Guidance, room: u16| {
+            g.piece(room) || g.items().iter().any(|f| f.room == room && !f.seen)
+        };
         let x0 = PICTURE_W + 24.0;
         let rooms = COLS * ROWS;
         let at = |room: u16| {
@@ -317,7 +323,7 @@ impl Panel {
             let (x, y) = at(room);
             if guidance.visited(room) {
                 canvas.round_rect(x, y, pitch, pitch, 0.0, FLOOR);
-            } else if pieces && guidance.piece(room) {
+            } else if all_marks && holds(guidance, room) {
                 let (inset, size) = (2.5 * unit, pitch - 5.0 * unit);
                 let (x, y) = (x + inset, y + inset);
                 canvas.round_rect(x, y, size, size, 2.0 * unit, PIECE_ROOM);
@@ -441,8 +447,22 @@ impl Panel {
         // Over the room Blob is in, so a piece there still shows.
         // A piece whose room has been seen is drawn as itself below, so
         // the dot is for the rooms still unseen (#36).
-        let itself = |room: u16| guidance.items().iter().any(|f| f.room == room && f.piece);
-        for room in (0..rooms).filter(|&r| pieces && guidance.piece(r) && !itself(r)) {
+        let itself = |room: u16| {
+            guidance
+                .items()
+                .iter()
+                .any(|f| f.room == room && f.piece && (f.seen || all_marks))
+        };
+        let marked = |room: u16| {
+            guidance.piece(room)
+                && !itself(room)
+                && if guidance.visited(room) {
+                    seen_marks
+                } else {
+                    all_marks
+                }
+        };
+        for room in (0..rooms).filter(|&r| marked(r)) {
             let (x, y) = at(room);
             let r = 4.5 * unit;
             let (cx, cy) = (x + pitch / 2.0, y + pitch / 2.0);
@@ -459,6 +479,9 @@ impl Panel {
         let steps = (room / 16.0).floor().clamp(1.0, 4.0);
         let px = steps / canvas.scale;
         for found in guidance.items() {
+            if !(if found.seen { seen_marks } else { all_marks }) {
+                continue;
+            }
             let (x, y) = at(found.room);
             let colour = if found.piece {
                 PIECE
@@ -1900,6 +1923,46 @@ mod tests {
 
     /// Nine made-up holes, not the game's graphics: simple shapes, three
     /// filled, one carried.
+    /// A few items out on the planet: some lying in rooms walked through,
+    /// which level 3 marks, and some in rooms never entered, which level 4
+    /// adds (#66).
+    fn made_up_items(g: &Guidance) -> Vec<crate::frontend::guidance::Found> {
+        use sidekick::starquake::Kind;
+        let here = g.room().unwrap_or(0);
+        let shape = |i: u8| {
+            let mut graphic = [0u8; 32];
+            for (k, b) in graphic.iter_mut().enumerate() {
+                let row = (k % 8) as u8;
+                *b = match (i + k as u8 / 8) % 3 {
+                    0 => 0xFF >> row,
+                    1 => 0x3C | (0x81 * u8::from(row.is_multiple_of(2))),
+                    _ => 0x81 << (row % 4),
+                };
+            }
+            graphic
+        };
+        [
+            (here + 2, Kind::DoorCard, false, true),
+            (here + COLS, Kind::PadKey, false, true),
+            (here - 1, Kind::Trade, true, true),
+            (7 * COLS + 4, Kind::Chip(b'2'), false, false),
+            (19 * COLS + 11, Kind::Trade, true, false),
+            (26 * COLS + 6, Kind::PadKey, false, false),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(
+            |(i, (room, kind, piece, seen))| crate::frontend::guidance::Found {
+                room,
+                kind,
+                piece,
+                graphic: shape(i as u8),
+                seen,
+            },
+        )
+        .collect()
+    }
+
     fn made_up_core() -> Vec<crate::frontend::guidance::Hole> {
         (0..9u8)
             .map(|i| {
@@ -2086,6 +2149,28 @@ mod tests {
                     pieces.set(g.room().unwrap(), true);
                     g.set_pieces(&pieces);
                     g.set_core(made_up_core());
+                    let items = made_up_items(&g);
+                    g.set_items(&items);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
+            (
+                // Level 4 adds what is lying in rooms never walked through.
+                "level4-unseen",
+                {
+                    let mut g = Guidance::default();
+                    g.set_level(4);
+                    explore(&mut g, 3);
+                    let mut pieces = RoomSet::default();
+                    for (col, row) in [(12, 13), (2, 24), (6, 8), (13, 29), (10, 4), (9, 21)] {
+                        pieces.set(row * COLS + col, true);
+                    }
+                    g.set_pieces(&pieces);
+                    g.set_core(made_up_core());
+                    let items = made_up_items(&g);
+                    g.set_items(&items);
                     g
                 },
                 Scene::Play,

@@ -38,6 +38,9 @@ pub struct Found {
     /// The game's own graphic for it, 32 bytes, as the core column reads
     /// them.
     pub graphic: [u8; 32],
+    /// Whether it has been seen lying in a room walked through, which is
+    /// level 3's half of the map's marks; the rest are level 4's (#66).
+    pub seen: bool,
 }
 
 /// A security door whose screen has shown its code this game (#49): the

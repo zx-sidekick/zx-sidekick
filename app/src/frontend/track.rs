@@ -276,12 +276,12 @@ fn routes(
 fn found(mem: &[u8], items: &[Item], core: &[u8; 9], unvisited: &RoomSet) -> Vec<Found> {
     items
         .iter()
-        .filter(|item| {
-            item.room() != CORE_ROOM
-                && item.row() != 0
-                && !(1..=5).contains(&item.row())
-                && !unvisited.contains(item.room())
-        })
+        // A row of 1 to 5 is carried, and the core's own room is not a
+        // place an item lies. Everything else is out on the planet, whether
+        // or not its room has been walked through: the game knows where
+        // each one is from the moment a game starts, which is what level 4
+        // tells and level 3 does not (#66).
+        .filter(|item| item.room() != CORE_ROOM && !(1..=5).contains(&item.row()))
         .map(|item| Found {
             room: item.room(),
             kind: kind(item.graphic()),
@@ -289,6 +289,7 @@ fn found(mem: &[u8], items: &[Item], core: &[u8; 9], unvisited: &RoomSet) -> Vec
                 .iter()
                 .any(|&slot| slot & 0x80 != 0 && slot & 0x7F == item.graphic()),
             graphic: graphic(mem, item.graphic()),
+            seen: item.row() != 0 && !unvisited.contains(item.room()),
         })
         .collect()
 }
@@ -710,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    fn the_items_found_are_those_lying_in_a_room_visited() {
+    fn the_items_are_every_one_out_on_the_planet_marked_seen_or_not() {
         use sidekick::starquake::Kind;
         // The core wants graphic 30; every room visited but 500.
         let core = [0x80 | 30; 9];
@@ -740,16 +741,20 @@ mod tests {
         assert_eq!(
             found
                 .iter()
-                .map(|f| (f.room, f.kind, f.piece))
+                .map(|f| (f.room, f.kind, f.piece, f.seen))
                 .collect::<Vec<_>>(),
             [
-                (40, Kind::DoorCard, false),
-                (41, Kind::PadKey, false),
-                (42, Kind::Trade, false),
-                (43, Kind::Chip(b'0'), false),
-                (44, Kind::Trade, true),
+                (40, Kind::DoorCard, false, true),
+                (41, Kind::PadKey, false, true),
+                (42, Kind::Trade, false, true),
+                (43, Kind::Chip(b'0'), false, true),
+                (44, Kind::Trade, true, true),
+                // Level 4's half: where the game has put them, which it
+                // knows from the start, in rooms never walked through (#66).
+                (46, Kind::DoorCard, false, false),
+                (500, Kind::DoorCard, false, false),
             ],
-            "the core's own piece comes too, marked as one"
+            "the core's own piece comes too, marked as one; what is carried does not"
         );
     }
 
