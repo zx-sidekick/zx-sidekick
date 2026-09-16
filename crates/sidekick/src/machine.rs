@@ -75,6 +75,94 @@ pub struct Machine {
     pub pause_pressed: bool,
     /// Whether the pause key was down at the last pause read.
     pause_was_down: bool,
+    /// Training mode's switches (#8): what the machine holds still for the
+    /// player. Each puts back, after a frame, something the game took.
+    pub training: Training,
+}
+
+/// Training mode's four switches (#8). Each is off by default, and with
+/// all of them off the machine writes nothing into the game.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Training {
+    /// Time stands still: the drain counter's one-a-frame rise is undone,
+    /// so energy falls only on contact with something.
+    pub time: bool,
+    /// The gun and the platforms stay full, however many are used.
+    pub full: bool,
+    /// The lives left never fall, and the panel's digit with them.
+    pub lives: bool,
+    /// Touching a thing costs no energy: the counter is held below the
+    /// drop, so only time takes it.
+    pub unharmed: bool,
+}
+
+/// What training mode read before a frame, to put back after it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Held {
+    drain: u8,
+    platforms: u8,
+    gun: u8,
+    lives: u8,
+    digit: u8,
+}
+
+impl Training {
+    /// Whether any switch is on: with none, nothing is read or written.
+    #[must_use]
+    pub fn any(self) -> bool {
+        self.time || self.full || self.lives || self.unharmed
+    }
+
+    /// What the switches in force need to know before a frame.
+    #[must_use]
+    pub fn read(self, z: &Zx) -> Held {
+        if !self.any() {
+            return Held::default();
+        }
+        let at = |a: u16| z.mem[usize::from(a)];
+        Held {
+            drain: at(starquake::at::DRAIN),
+            platforms: at(starquake::at::PLATFORMS),
+            gun: at(starquake::at::GUN),
+            lives: at(starquake::at::LIVES),
+            digit: at(starquake::at::LIVES_DIGIT),
+        }
+    }
+
+    /// Puts back what the switches in force hold still, after a frame.
+    pub fn hold(self, z: &mut Zx, before: Held) {
+        if !self.any() {
+            return;
+        }
+        let at = |z: &Zx, a: u16| z.mem[usize::from(a)];
+        let put = |z: &mut Zx, a: u16, v: u8| z.mem[usize::from(a)] = v;
+        // The counter rises by one a frame; anything more is contact,
+        // which still counts.
+        if self.time && at(z, starquake::at::DRAIN) == before.drain.wrapping_add(1) {
+            {
+                put(z, starquake::at::DRAIN, before.drain);
+            }
+        }
+        if self.unharmed {
+            // Contact pushes the counter on by more than a frame's worth:
+            // hold it to what time alone would have made of it.
+            let now = at(z, starquake::at::DRAIN);
+            let by_time = before.drain.wrapping_add(1);
+            if now != by_time && now != before.drain {
+                put(z, starquake::at::DRAIN, by_time);
+            }
+        }
+        if self.full {
+            let platforms = before.platforms.max(at(z, starquake::at::PLATFORMS));
+            let gun = before.gun.max(at(z, starquake::at::GUN));
+            put(z, starquake::at::PLATFORMS, platforms);
+            put(z, starquake::at::GUN, gun);
+        }
+        if self.lives && at(z, starquake::at::LIVES) < before.lives {
+            put(z, starquake::at::LIVES, before.lives);
+            put(z, starquake::at::LIVES_DIGIT, before.digit);
+        }
+    }
 }
 
 /// The key the game pauses with in play: Space in the Kempston method,
@@ -199,6 +287,7 @@ impl Machine {
             start: false,
             pause_pressed: false,
             pause_was_down: false,
+            training: Training::default(),
         }
     }
 
@@ -286,6 +375,10 @@ impl Machine {
     /// instruction, for checks that follow what the game does.
     pub fn run_frame_observing(&mut self, mut see: impl FnMut(&Zx)) -> Vec<u16> {
         let (joystick, start) = (self.joystick, self.start);
+        let training = self.training;
+        // What training mode holds still is read before the frame and put
+        // back after it, so the game runs its own way in between (#8).
+        let before = training.read(&self.zx);
         let start_game = start || joystick & JOY_FIRE != 0;
         let Machine {
             zx,
@@ -349,6 +442,7 @@ impl Machine {
         if hold.is_none() {
             *holding = false;
         }
+        training.hold(&mut self.zx, before);
         hits
     }
 }
@@ -356,6 +450,124 @@ impl Machine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A machine's memory with what training mode watches set to `v`.
+    fn watched(v: u8) -> Zx {
+        let mut z = Machine::from_ram(vec![0; 0xC000], 0, 0).zx;
+        for a in [
+            starquake::at::DRAIN,
+            starquake::at::PLATFORMS,
+            starquake::at::GUN,
+            starquake::at::LIVES,
+            starquake::at::LIVES_DIGIT,
+        ] {
+            z.mem[usize::from(a)] = v;
+        }
+        z
+    }
+
+    fn at(z: &Zx, a: u16) -> u8 {
+        z.mem[usize::from(a)]
+    }
+
+    #[test]
+    fn with_every_switch_off_training_writes_nothing() {
+        let mut z = watched(10);
+        let training = Training::default();
+        let before = training.read(&z);
+        assert_eq!(before, Held::default(), "and reads nothing");
+        z.mem[usize::from(starquake::at::LIVES)] = 0;
+        training.hold(&mut z, before);
+        assert_eq!(
+            at(&z, starquake::at::LIVES),
+            0,
+            "the game's own doing stands"
+        );
+    }
+
+    #[test]
+    fn time_standing_still_undoes_the_frame_s_own_drain() {
+        let mut z = watched(10);
+        let training = Training {
+            time: true,
+            ..Training::default()
+        };
+        let before = training.read(&z);
+        // A frame's own rise: one.
+        z.mem[usize::from(starquake::at::DRAIN)] = 11;
+        training.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::DRAIN), 10, "time does not drain");
+        // Contact pushes it further, and that still counts.
+        z.mem[usize::from(starquake::at::DRAIN)] = 40;
+        training.hold(&mut z, before);
+        assert_eq!(
+            at(&z, starquake::at::DRAIN),
+            40,
+            "but touching a thing does"
+        );
+    }
+
+    #[test]
+    fn being_unharmed_leaves_only_what_time_took() {
+        let mut z = watched(10);
+        let training = Training {
+            unharmed: true,
+            ..Training::default()
+        };
+        let before = training.read(&z);
+        z.mem[usize::from(starquake::at::DRAIN)] = 40;
+        training.hold(&mut z, before);
+        assert_eq!(
+            at(&z, starquake::at::DRAIN),
+            11,
+            "as if only a frame had passed"
+        );
+        z.mem[usize::from(starquake::at::DRAIN)] = 11;
+        training.hold(&mut z, before);
+        assert_eq!(
+            at(&z, starquake::at::DRAIN),
+            11,
+            "a plain frame is left alone"
+        );
+    }
+
+    #[test]
+    fn a_full_gun_and_platforms_never_fall() {
+        let mut z = watched(10);
+        let training = Training {
+            full: true,
+            ..Training::default()
+        };
+        let before = training.read(&z);
+        z.mem[usize::from(starquake::at::PLATFORMS)] = 4;
+        z.mem[usize::from(starquake::at::GUN)] = 0;
+        training.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::PLATFORMS), 10);
+        assert_eq!(at(&z, starquake::at::GUN), 10);
+        // A pack that fills them further is kept.
+        z.mem[usize::from(starquake::at::GUN)] = 30;
+        training.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::GUN), 30, "picked up, not put back");
+    }
+
+    #[test]
+    fn endless_lives_puts_back_the_count_and_its_digit() {
+        let mut z = watched(3);
+        let training = Training {
+            lives: true,
+            ..Training::default()
+        };
+        let before = training.read(&z);
+        z.mem[usize::from(starquake::at::LIVES)] = 2;
+        z.mem[usize::from(starquake::at::LIVES_DIGIT)] = b'2';
+        training.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::LIVES), 3);
+        assert_eq!(at(&z, starquake::at::LIVES_DIGIT), 3, "the digit with it");
+        // A life won is not taken away.
+        z.mem[usize::from(starquake::at::LIVES)] = 4;
+        training.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::LIVES), 4);
+    }
 
     /// A tape with one code block of `data` at `start`.
     fn tape(start: u16, data: &[u8]) -> Vec<u8> {
