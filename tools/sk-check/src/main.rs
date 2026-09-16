@@ -712,7 +712,7 @@ fn items_check(dir: &Path) -> bool {
 /// play the game would have had.
 fn training_check(dir: &Path, frames: u64) -> bool {
     use sidekick::machine::Training;
-    use sidekick::starquake::{at, routine};
+    use sidekick::starquake::{DANGER_MARKER, at, routine};
     // How long the game takes to set energy up once play starts; before
     // that the byte still holds what the loader left.
     const SETTLED: u64 = 200;
@@ -781,7 +781,54 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     let time_holds = time_low[0] > plain_low[0];
     let lives_hold = lives_low[3] >= start[3] && plain_low[3] < start[3];
     let nothing_drains = both_low[0] >= both_start[0];
-    let good = plain_drains && full_holds && time_holds && lives_hold && nothing_drains;
+    // The spikes and the zappers: stand Blob on each room's deadly marker,
+    // with the switch off and on. The game rebuilds the markers on entering
+    // a room, so the switch has to keep blanking them.
+    let mut spikes = Vec::new();
+    for room in [49u16, 50, 55, 56, 64, 79] {
+        let died = |dangers: bool| {
+            let mut m = base.clone();
+            m.training = Training {
+                dangers,
+                ..Training::default()
+            };
+            m.zx.write16(at::ROOM, room);
+            m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+                return None;
+            }
+            // Where the room's spike or zapper is, read before a frame runs:
+            // the game rebuilds the table whenever a room is entered.
+            let end = m.zx.read16(at::MARKERS_END).max(at::MARKERS);
+            let spot = (at::MARKERS..end)
+                .step_by(3)
+                .map(usize::from)
+                .find(|&a| m.zx.mem[a + 2] == DANGER_MARKER)?;
+            let (x, y) = (m.zx.mem[spot], m.zx.mem[spot + 1]);
+            m.zx.t = 0;
+            m.zx.set_interrupts(true);
+            m.watch = vec![routine::DEATH];
+            // Held on the spot while the room draws and then plays.
+            for _ in 0..240 {
+                m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
+                m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
+                m.zx.mem[usize::from(at::ENERGY)] = 127;
+                if m.run_frame().contains(&routine::DEATH) {
+                    return Some(true);
+                }
+            }
+            Some(false)
+        };
+        if let (Some(off), Some(on)) = (died(false), died(true)) {
+            spikes.push((room, off, on));
+        }
+    }
+    let spikes_kill = spikes.iter().filter(|&&(_, off, _)| off).count();
+    let spikes_held = spikes.iter().filter(|&&(_, _, on)| !on).count();
+    let dangers_hold =
+        !spikes.is_empty() && spikes_kill == spikes.len() && spikes_held == spikes.len();
+    let good =
+        plain_drains && full_holds && time_holds && lives_hold && nothing_drains && dangers_hold;
     println!(
         "  training over {frames} frames: with none, energy fell to {} of {}; full bars ended at {} and {} of {} and {}; time standing still left energy at {} or better; endless lives never went below {} where a plain run fell to {} {}",
         plain_low[0],
@@ -798,6 +845,12 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     println!(
         "  time standing still and no harm together: energy never below {} of {}",
         both_low[0], both_start[0]
+    );
+    println!(
+        "  standing on a spike or a zapper kills in {spikes_kill} of {} rooms, and with the switch on in {} {}",
+        spikes.len(),
+        spikes.len() - spikes_held,
+        if dangers_hold { "ok" } else { "FAILED" }
     );
     println!(
         "  with every switch off the play ends as the game left it: energy {}, platforms {}, gun {}, lives {}",

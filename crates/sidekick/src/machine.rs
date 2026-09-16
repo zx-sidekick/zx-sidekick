@@ -92,8 +92,14 @@ pub struct Training {
     /// The lives left never fall, and the panel's digit with them.
     pub lives: bool,
     /// Touching an enemy costs no energy: the push it gives the counter is
-    /// taken back, so only time takes energy.
+    /// taken back, so only time takes energy. The kinds of enemy that kill
+    /// outright are not touched by this: they never read energy.
     pub unharmed: bool,
+    /// The spikes and zappers do nothing: every marker of the deadly kind
+    /// in the room is blanked while this is on, so walking into one costs
+    /// nothing. They come back the next time the room is entered with it
+    /// off, since the game rebuilds the table then.
+    pub dangers: bool,
 }
 
 /// What training mode read before a frame, to put back after it.
@@ -110,7 +116,7 @@ impl Training {
     /// Whether any switch is on: with none, nothing is read or written.
     #[must_use]
     pub fn any(self) -> bool {
-        self.time || self.full || self.lives || self.unharmed
+        self.time || self.full || self.lives || self.unharmed || self.dangers
     }
 
     /// What the switches in force need to know before a frame.
@@ -161,6 +167,25 @@ impl Training {
         if self.lives && at(z, starquake::at::LIVES) < before.lives {
             put(z, starquake::at::LIVES, before.lives);
             put(z, starquake::at::LIVES_DIGIT, before.digit);
+        }
+        if self.dangers {
+            blank_dangers(z);
+        }
+    }
+}
+
+/// Blanks the room's deadly markers, the spikes and the zappers, by writing
+/// the kind the game itself leaves on a marker it has spent (#8). The table
+/// is rebuilt whenever a room is entered, so this is written after every
+/// frame and nothing is changed for good.
+fn blank_dangers(z: &mut Zx) {
+    let end = z
+        .read16(starquake::at::MARKERS_END)
+        .max(starquake::at::MARKERS);
+    for a in (starquake::at::MARKERS..end).step_by(3) {
+        let kind = usize::from(a) + 2;
+        if z.mem[kind] == starquake::DANGER_MARKER {
+            z.mem[kind] = starquake::SPENT_MARKER;
         }
     }
 }
@@ -544,6 +569,41 @@ mod tests {
         z.mem[usize::from(starquake::at::DRAIN)] = 40;
         training.hold(&mut z, before);
         assert_eq!(at(&z, starquake::at::DRAIN), 10, "nothing drains energy");
+    }
+
+    #[test]
+    fn the_dangers_switch_blanks_the_deadly_markers() {
+        let mut z = watched(10);
+        // Three markers in the room: a spike, a booth, another spike.
+        let table = usize::from(starquake::at::MARKERS);
+        for (i, kind) in [
+            starquake::DANGER_MARKER,
+            starquake::BOOTH_MARKER,
+            starquake::DANGER_MARKER,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            z.mem[table + i * 3] = 8;
+            z.mem[table + i * 3 + 1] = 8;
+            z.mem[table + i * 3 + 2] = kind;
+        }
+        z.write16(starquake::at::MARKERS_END, starquake::at::MARKERS + 9);
+        let training = Training {
+            dangers: true,
+            ..Training::default()
+        };
+        let before = training.read(&z);
+        training.hold(&mut z, before);
+        assert_eq!(
+            [z.mem[table + 2], z.mem[table + 5], z.mem[table + 8]],
+            [
+                starquake::SPENT_MARKER,
+                starquake::BOOTH_MARKER,
+                starquake::SPENT_MARKER
+            ],
+            "the spikes are spent, the booth is left alone"
+        );
     }
 
     #[test]

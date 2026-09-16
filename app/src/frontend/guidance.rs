@@ -69,7 +69,7 @@ pub struct Record {
 }
 
 /// The rows of the picker, top to bottom: the guidance level, training
-/// mode's four switches (#8), then the actions.
+/// mode's switches (#8), then the actions.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Setting {
     #[default]
@@ -79,13 +79,14 @@ pub enum Setting {
     Full,
     Lives,
     Unharmed,
+    Dangers,
     EndGame,
     Exit,
 }
 
 /// Training mode's switches as the picker names them: the row, its label,
 /// and what it does (#8).
-pub const SWITCHES: [(Setting, &str, &str); 4] = [
+pub const SWITCHES: [(Setting, &str, &str); 5] = [
     (
         Setting::Time,
         "Time stands still",
@@ -103,8 +104,13 @@ pub const SWITCHES: [(Setting, &str, &str); 4] = [
     ),
     (
         Setting::Unharmed,
-        "No harm from enemies",
-        "Touching an enemy costs no energy.",
+        "Enemies drain no energy",
+        "Touching an enemy costs none. The deadly kinds still kill.",
+    ),
+    (
+        Setting::Dangers,
+        "Spikes and zappers are harmless",
+        "Walking into one does nothing.",
     ),
 ];
 
@@ -115,6 +121,7 @@ fn switch(setting: Setting, of: &mut Training) -> Option<&mut bool> {
         Setting::Full => Some(&mut of.full),
         Setting::Lives => Some(&mut of.lives),
         Setting::Unharmed => Some(&mut of.unharmed),
+        Setting::Dangers => Some(&mut of.dangers),
         _ => None,
     }
 }
@@ -126,6 +133,7 @@ fn merged(a: Training, b: Training) -> Training {
         full: a.full || b.full,
         lives: a.lives || b.lives,
         unharmed: a.unharmed || b.unharmed,
+        dangers: a.dangers || b.dangers,
     }
 }
 
@@ -135,6 +143,7 @@ fn newly_on(on: Training, was: Training) -> bool {
         || (on.full && !was.full)
         || (on.lives && !was.lives)
         || (on.unharmed && !was.unharmed)
+        || (on.dangers && !was.dangers)
 }
 
 /// Whether one switch is on.
@@ -889,7 +898,7 @@ mod tests {
         g.set_playing(true);
         g.open();
         g.change(true);
-        for _ in 0..5 {
+        for _ in 0..=SWITCHES.len() {
             g.focus_down();
         }
         g.enter();
@@ -916,7 +925,7 @@ mod tests {
         let mut g = Guidance::default();
         g.set_playing(true);
         g.open();
-        for _ in 0..5 {
+        for _ in 0..=SWITCHES.len() {
             g.focus_down();
         }
         assert_eq!(g.focus(), Setting::EndGame);
@@ -932,7 +941,7 @@ mod tests {
     fn moving_away_cancels_a_first_press() {
         let mut g = Guidance::default();
         g.open();
-        for _ in 0..5 {
+        for _ in 0..=SWITCHES.len() {
             g.focus_down();
         }
         assert_eq!(g.focus(), Setting::Exit);
@@ -948,7 +957,7 @@ mod tests {
         let mut g = Guidance::default();
         g.set_playing(true);
         g.open();
-        for _ in 0..5 {
+        for _ in 0..=SWITCHES.len() {
             g.focus_down();
         }
         g.close();
@@ -967,6 +976,7 @@ mod tests {
                 Setting::Full,
                 Setting::Lives,
                 Setting::Unharmed,
+                Setting::Dangers,
                 Setting::Exit
             ]
         );
@@ -979,6 +989,7 @@ mod tests {
                 Setting::Full,
                 Setting::Lives,
                 Setting::Unharmed,
+                Setting::Dangers,
                 Setting::EndGame,
                 Setting::Exit
             ]

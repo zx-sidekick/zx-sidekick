@@ -143,7 +143,7 @@ from 0 (none) to 5, each adding to the ones below.
                        that lifts only go up: getting the items and
                        the battery for that is up to you.
 
-  Training             Four switches of their own, all off until you
+  Training             Five switches of their own, all off until you
                        turn them on:
                          Time stands still      energy drains only
                                                 when something touches
@@ -152,8 +152,14 @@ from 0 (none) to 5, each adding to the ones below.
                                                 run down
                          Endless lives          losing a life does not
                                                 cost one
-                         No harm from enemies   touching an enemy costs
-                                                no energy
+                         Enemies drain no       touching one costs no
+                         energy                 energy; the kinds that
+                                                kill outright still
+                                                kill
+                         Spikes and zappers     walking into one does
+                         are harmless           nothing; they are back
+                                                when you next enter the
+                                                room with it off
 
   F11                  Leave fullscreen, or go back to it. The game
                        starts fullscreen; the window it leaves you with

@@ -276,6 +276,14 @@ pub const DRAIN_DROP: u8 = 0x78;
 /// The marker a teleporter booth's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;
 
+/// The marker a spike or a zapper leaves in its room: touching it is an
+/// outright death, which no amount of energy survives (#8).
+pub const DANGER_MARKER: u8 = 0x06;
+
+/// What the game leaves on a marker it has spent, such as a bonus picked
+/// up: nothing happens on touching it (#8).
+pub const SPENT_MARKER: u8 = 0x05;
+
 /// The marker a security door's tile leaves in its room.
 pub const DOOR_MARKER: u8 = 0x00;
 
