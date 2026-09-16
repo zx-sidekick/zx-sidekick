@@ -34,6 +34,12 @@ opt-level = 3
 opt-level = 3
 
 # Clippy's default set, plus the pedantic lints that earn their keep here.
+# No unsafe code anywhere (#77): the processor is our fork's, the bus and
+# everything above it is safe Rust, and the one Win32 call there was went
+# through a safe crate.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
 [workspace.lints.clippy]
 missing_panics_doc = "warn"
 missing_errors_doc = "warn"

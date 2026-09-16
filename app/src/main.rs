@@ -23,32 +23,20 @@ use std::path::PathBuf;
 /// Reports a fatal startup problem somewhere it can actually be seen, and
 /// gives up.
 ///
-/// On Windows a release build has no console, so `eprintln!` goes nowhere
-/// when the program is started by double-clicking it — which is exactly how
-/// somebody who has just unpacked the archive will start it, and exactly
-/// when they are most likely to have forgotten the tape. A message box is
-/// the only place that sentence can land. Everywhere else, stderr is right.
+/// Started from a file manager, which is exactly how somebody who has just
+/// unpacked the archive will start it, and exactly when they are most likely
+/// to have forgotten the tape, the program has no console for `eprintln!`
+/// to reach: on Windows a release build has none at all, and on macOS and
+/// Linux there is none to look at. So the message goes to stderr and into a
+/// message box, through the same dialog crate the screen that asks for the
+/// tape uses (#77).
 fn fatal(message: &str) -> ! {
     eprintln!("{message}");
-    #[cfg(all(windows, not(debug_assertions)))]
-    {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
-        fn wide(s: &str) -> Vec<u16> {
-            s.encode_utf16().chain(std::iter::once(0)).collect()
-        }
-        let (text, title) = (wide(message), wide("ZX Sidekick"));
-        // SAFETY: both strings are NUL-terminated and outlive the call, and
-        // a null window handle is what MessageBoxW wants for an owner-less
-        // box.
-        unsafe {
-            MessageBoxW(
-                std::ptr::null_mut(),
-                text.as_ptr(),
-                title.as_ptr(),
-                MB_OK | MB_ICONERROR,
-            );
-        }
-    }
+    rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Error)
+        .set_title("ZX Sidekick")
+        .set_description(message)
+        .show();
     std::process::exit(1)
 }
 
