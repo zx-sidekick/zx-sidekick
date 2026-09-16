@@ -91,8 +91,8 @@ pub struct Training {
     pub full: bool,
     /// The lives left never fall, and the panel's digit with them.
     pub lives: bool,
-    /// Touching a thing costs no energy: the counter is held below the
-    /// drop, so only time takes it.
+    /// Touching an enemy costs no energy: the push it gives the counter is
+    /// taken back, so only time takes energy.
     pub unharmed: bool,
 }
 
@@ -136,21 +136,21 @@ impl Training {
         }
         let at = |z: &Zx, a: u16| z.mem[usize::from(a)];
         let put = |z: &mut Zx, a: u16, v: u8| z.mem[usize::from(a)] = v;
-        // The counter rises by one a frame; anything more is contact,
-        // which still counts.
-        if self.time && at(z, starquake::at::DRAIN) == before.drain.wrapping_add(1) {
-            {
-                put(z, starquake::at::DRAIN, before.drain);
-            }
+        // The drain counter rises by one a frame, and contact pushes it on
+        // further. No harm from enemies undoes the push, time standing still
+        // undoes the rise, and with both on neither is left, so the two
+        // together hold energy where it was.
+        let now = at(z, starquake::at::DRAIN);
+        let by_time = before.drain.wrapping_add(1);
+        let mut held = now;
+        if self.unharmed && held != by_time && held != before.drain {
+            held = by_time;
         }
-        if self.unharmed {
-            // Contact pushes the counter on by more than a frame's worth:
-            // hold it to what time alone would have made of it.
-            let now = at(z, starquake::at::DRAIN);
-            let by_time = before.drain.wrapping_add(1);
-            if now != by_time && now != before.drain {
-                put(z, starquake::at::DRAIN, by_time);
-            }
+        if self.time && held == by_time {
+            held = before.drain;
+        }
+        if held != now {
+            put(z, starquake::at::DRAIN, held);
         }
         if self.full {
             let platforms = before.platforms.max(at(z, starquake::at::PLATFORMS));
@@ -503,7 +503,7 @@ mod tests {
         assert_eq!(
             at(&z, starquake::at::DRAIN),
             40,
-            "but touching a thing does"
+            "but touching an enemy does"
         );
     }
 
@@ -529,6 +529,21 @@ mod tests {
             11,
             "a plain frame is left alone"
         );
+    }
+
+    #[test]
+    fn time_and_no_harm_together_leave_the_counter_where_it_was() {
+        let mut z = watched(10);
+        let training = Training {
+            time: true,
+            unharmed: true,
+            ..Training::default()
+        };
+        let before = training.read(&z);
+        // Contact on top of the frame's own rise: both are taken back.
+        z.mem[usize::from(starquake::at::DRAIN)] = 40;
+        training.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::DRAIN), 10, "nothing drains energy");
     }
 
     #[test]

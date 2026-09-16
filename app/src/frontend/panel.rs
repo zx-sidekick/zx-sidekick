@@ -7,7 +7,7 @@
 //! the rule on #3: a keyboard key is a squarish badge, a pad button a round
 //! one, and a direction a bare arrow.
 
-use super::guidance::{Choice, Guidance, LEVELS, SWITCHES, Setting, switches_on};
+use super::guidance::{Choice, Guidance, LEVELS, SWITCHES, Setting, is_on, switches_on};
 use super::notice;
 use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
@@ -968,7 +968,8 @@ impl Panel {
         };
         let actions_h: f32 = actions.iter().map(|&r| action_h(r) + 4.0).sum::<f32>() - 4.0;
         // Where the switches end, and with them the rule above the actions:
-        // the focused switch is a line taller, for what it does.
+        // the heading, the four rows, and the line saying what the focused
+        // one does, which is always kept.
         let rule = 250.0 + SWITCH_HEAD + 4.0 * SWITCH_PITCH + SWITCH_SAYS + 6.0;
         let (w, h) = (520.0, rule + 8.0 + actions_h + 12.0 + 52.0);
         let x = (WINDOW_W - w) / 2.0;
@@ -1062,7 +1063,7 @@ impl Panel {
         let mut says = None;
         for (row, label, does) in SWITCHES {
             let focused = focus == row;
-            let on = switches_on(training).contains(&label);
+            let on = is_on(row, training);
             let rh = SWITCH_PITCH - 4.0;
             if focused {
                 canvas.round_rect(rx, top, rw, rh, 8.0, ACCENT);
@@ -1202,11 +1203,7 @@ impl Panel {
             ));
         }
         for (row, label, _) in SWITCHES {
-            let (was, now) = (
-                switches_on(was_training).contains(&label),
-                switches_on(training).contains(&label),
-            );
-            let _ = row;
+            let (was, now) = (is_on(row, was_training), is_on(row, training));
             if was != now {
                 changes.push(format!("{label} {} \u{2192} {}", on_off(was), on_off(now)));
             }
@@ -1215,9 +1212,10 @@ impl Panel {
         if level > record.highest {
             shows.push(format!("guidance up to level {level}"));
         }
-        let newly: Vec<&str> = switches_on(training)
+        let newly: Vec<&str> = SWITCHES
             .into_iter()
-            .filter(|l| !switches_on(record.training).contains(l))
+            .filter(|&(row, _, _)| is_on(row, training) && !is_on(row, record.training))
+            .map(|(_, label, _)| label)
             .collect();
         if !newly.is_empty() {
             shows.push(format!(

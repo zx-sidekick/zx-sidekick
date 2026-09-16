@@ -68,7 +68,8 @@ pub struct Record {
     pub training: Training,
 }
 
-/// The rows of the picker, top to bottom: two settings, then two actions.
+/// The rows of the picker, top to bottom: the guidance level, training
+/// mode's four switches (#8), then the actions.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Setting {
     #[default]
@@ -136,12 +137,18 @@ fn newly_on(on: Training, was: Training) -> bool {
         || (on.unharmed && !was.unharmed)
 }
 
+/// Whether one switch is on.
+#[must_use]
+pub fn is_on(row: Setting, on: Training) -> bool {
+    switch(row, &mut { on }).copied().unwrap_or(false)
+}
+
 /// Every switch `on` holds, by the picker's names.
 #[must_use]
 pub fn switches_on(on: Training) -> Vec<&'static str> {
     SWITCHES
         .into_iter()
-        .filter(|&(row, _, _)| switch(row, &mut { on }).copied().unwrap_or(false))
+        .filter(|&(row, _, _)| is_on(row, on))
         .map(|(_, label, _)| label)
         .collect()
 }
@@ -168,7 +175,7 @@ pub struct Guidance {
     training: Training,
     record: Record,
     picker: bool,
-    /// The level and training mode the picker's steppers show, which take
+    /// The level and the training switches the picker shows, which take
     /// effect only when kept with Enter or A.
     picked: (u8, Training),
     /// "This will show on your score", asked when leaving the picker would
