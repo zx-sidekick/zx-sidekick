@@ -625,7 +625,15 @@ impl Panel {
                 // The game's own letters (#49, decision 5).
                 Some(font) => {
                     for (k, letter) in teleporter.code.iter().enumerate() {
-                        let glyph = &font[(*letter as usize - 0x20) * 8..][..8];
+                        // The font starts at the space and holds 96 letters;
+                        // a code the game has not filled in yet holds bytes
+                        // outside that, and they draw as nothing.
+                        let Some(glyph) = usize::from(*letter)
+                            .checked_sub(0x20)
+                            .and_then(|i| font.get(i * 8..i * 8 + 8))
+                        else {
+                            continue;
+                        };
                         for (row, byte) in glyph.iter().enumerate() {
                             for bit in 0..8 {
                                 if byte & (0x80 >> bit) != 0 {
@@ -1717,6 +1725,21 @@ mod tests {
         let mut g = routed(200, &[(201, false)], &[]);
         seen(&mut g);
         assert!(jumps(&g).is_empty(), "no teleport, nothing named");
+    }
+
+    #[test]
+    fn a_code_the_game_has_not_filled_in_draws_nothing() {
+        // The game leaves zero bytes in a code until it names it, and the
+        // font starts at the space: they must not be looked up (#49).
+        let mut g = Guidance::default();
+        g.set_level(1);
+        g.set_font(&[0xFF; 96 * 8]);
+        g.set_teleporters(&[SeenTeleporter {
+            room: 0,
+            code: [0, 0x1F, b'A', 0x7F, 0xFF],
+        }]);
+        let (pixels, w, h) = render(&g, Scene::Play, false);
+        assert_eq!(pixels.len(), w * h, "it drew without panicking");
     }
 
     #[test]
