@@ -36,6 +36,11 @@ place for application data:
   macOS     ~/Library/Application Support/zx-sidekick-starquake/
   Windows   %APPDATA%\zx-sidekick-starquake\
 
+The high-score table is kept in the same folder, in high-scores.txt,
+with the guidance each game on it was played with. A game played with
+training mode is not kept. Delete the file to start again from the
+table the tape came with; a file that cannot be read is left alone.
+
 It also finds the tape, or the zip, if you put it in the same folder as
 the program, named starquake.tap or STARQUAK.TAP in any case. You can
 name it on the command line as well.

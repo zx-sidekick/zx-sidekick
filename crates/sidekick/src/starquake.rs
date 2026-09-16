@@ -95,6 +95,10 @@ pub mod routine {
     /// The end of a game: the scores, entering initials, the high-score
     /// table.
     pub const GAME_OVER: u16 = 0x6730;
+    /// The CORE OF HEROES screen, showing the high-score table. The game
+    /// reaches it after a game over once the table is final: a new entry
+    /// already put in and named, or none (#47).
+    pub const HEROES: u16 = 0x654B;
     /// Setting up a new game.
     pub const NEW_GAME: u16 = 0x629D;
     /// Entering a room, up to the play loop.
@@ -146,6 +150,14 @@ pub mod at {
     /// each, from graphic 0, four 8 × 8 cells top left, top right, bottom
     /// left, bottom right.
     pub const GRAPHICS: u16 = 0x9088;
+    /// The high-score table: [`HIGH_SCORE_COUNT`] entries of ten bytes, best
+    /// first, each a three-letter name, the score as six digits of text and
+    /// the percentage of the mission done (#47).
+    pub const HIGH_SCORES: u16 = 0x64FA;
+    pub const HIGH_SCORE_COUNT: usize = 8;
+    /// The score of the game just over, as six digits of text, which the
+    /// game ranks against the table.
+    pub const FINAL_SCORE: u16 = 0x67EA;
     /// The restore list the room builder writes, and the pointer into it.
     pub const RESTORE_LIST: u16 = 0x5B20;
     pub const RESTORE_PTR: u16 = 0xEA60;
@@ -237,6 +249,42 @@ pub const BOOTH_MARKER: u8 = 0x0D;
 pub struct SeenTeleporter {
     pub room: u16,
     pub code: [u8; 5],
+}
+
+/// One entry of the high-score table, as its ten bytes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct HighScore {
+    pub name: [u8; 3],
+    pub score: [u8; 6],
+    pub percent: u8,
+}
+
+/// The high-score table in `mem` (the machine's whole 64K), best first;
+/// `None` when `mem` is too short.
+#[must_use]
+pub fn high_scores(mem: &[u8]) -> Option<[HighScore; at::HIGH_SCORE_COUNT]> {
+    let start = usize::from(at::HIGH_SCORES);
+    let bytes = mem.get(start..start + 10 * at::HIGH_SCORE_COUNT)?;
+    Some(std::array::from_fn(|i| {
+        let e = &bytes[i * 10..i * 10 + 10];
+        HighScore {
+            name: [e[0], e[1], e[2]],
+            score: std::array::from_fn(|k| e[3 + k]),
+            percent: e[9],
+        }
+    }))
+}
+
+/// Puts `table` into `mem` as the game's high-score table, which the game
+/// then ranks against and shows as its own.
+pub fn write_high_scores(mem: &mut [u8], table: &[HighScore; at::HIGH_SCORE_COUNT]) {
+    let start = usize::from(at::HIGH_SCORES);
+    for (i, entry) in table.iter().enumerate() {
+        let e = &mut mem[start + i * 10..start + i * 10 + 10];
+        e[..3].copy_from_slice(&entry.name);
+        e[3..9].copy_from_slice(&entry.score);
+        e[9] = entry.percent;
+    }
 }
 
 /// The code of the teleporter in `room`, from the game's table in `mem`
@@ -462,6 +510,27 @@ mod tests {
         assert_eq!(kind(26), Kind::Trade, "the transistor");
         assert_eq!(kind(28), Kind::Trade, "the antenna");
         assert_eq!(kind(33), Kind::Trade, "a core piece trades the same way");
+    }
+
+    #[test]
+    fn the_high_score_table_reads_back_as_written() {
+        let mut mem = vec![0u8; 0x10000];
+        let mut table = [HighScore::default(); at::HIGH_SCORE_COUNT];
+        table[0] = HighScore {
+            name: *b"STA",
+            score: *b"109825",
+            percent: 31,
+        };
+        table[7] = HighScore {
+            name: *b"KES",
+            score: *b"009875",
+            percent: 5,
+        };
+        write_high_scores(&mut mem, &table);
+        let a = usize::from(at::HIGH_SCORES);
+        assert_eq!(&mem[a..a + 10], b"STA109825\x1f");
+        assert_eq!(high_scores(&mem), Some(table));
+        assert_eq!(high_scores(&mem[..0x6500]), None, "cut short");
     }
     use crate::map::RoomSet;
 
