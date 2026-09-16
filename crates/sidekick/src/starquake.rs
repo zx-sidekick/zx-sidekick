@@ -103,6 +103,10 @@ pub mod routine {
     pub const NEW_GAME: u16 = 0x629D;
     /// Entering a room, up to the play loop.
     pub const ENTER_ROOM: u16 = 0xA426;
+    /// Where touching a security door calls [`MODAL`] for the door's screen,
+    /// which shows the door's access code (#49). Checked on the player's
+    /// tape by `sk-check facts`; a booth calls it from elsewhere.
+    pub const DOOR_SCREEN: u16 = 0xCBEA;
     /// A teleporter booth, one of the screens play hands over to. It prints
     /// the code of the teleporter Blob is standing in.
     pub const TELEPORT_BOOTH: u16 = 0xCED4;
@@ -133,6 +137,17 @@ pub mod at {
     /// held at [`MARKERS_END`], three bytes each (x, y, kind).
     pub const MARKERS: u16 = 0x96FC;
     pub const MARKERS_END: u16 = 0x96FA;
+    /// The code the last door or pyramid screen asked for: its column, row
+    /// and length, then a (graphic, matched) pair for each item. A security
+    /// door asks for three chips, the pyramid for two (#33, #49).
+    pub const CODE: u16 = 0xD5F4;
+    /// The system variable `CHARS`: 256 less than the address of the
+    /// font's space, as the ROM's printing reads it.
+    pub const CHARS: u16 = 0x5C36;
+    /// The game's own font, which `CHARS` points 256 bytes below during
+    /// play: 96 letters of 8 × 8 pixels from the space, a row to a byte
+    /// (#49).
+    pub const FONT: u16 = 0xADD4;
     /// Why the room was entered, as [`super::entry`] names the values.
     pub const ENTRY_REASON: u16 = 0xD2C4;
     /// The rooms not yet visited this game: 512 bits, most significant
@@ -242,6 +257,25 @@ pub fn all_rooms(machine: &crate::Machine) -> Vec<crate::map::Room> {
 
 /// The marker a teleporter booth's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;
+
+/// The marker a security door's tile leaves in its room.
+pub const DOOR_MARKER: u8 = 0x00;
+
+/// The game's font from `mem` (the machine's whole 64K): 96 letters of
+/// eight bytes each, from the space. `None` when `mem` is too short.
+#[must_use]
+pub fn font(mem: &[u8]) -> Option<&[u8]> {
+    mem.get(usize::from(at::FONT)..usize::from(at::FONT) + 96 * 8)
+}
+
+/// The three chips a security door's screen asked for, by graphic, from the
+/// code in `mem` (the machine's whole 64K), when the last screen was a
+/// door's: a pyramid's code, of two items, is not one.
+#[must_use]
+pub fn door_code(mem: &[u8]) -> Option<[u8; 3]> {
+    let code = mem.get(usize::from(at::CODE)..usize::from(at::CODE) + 9)?;
+    (code[2] == 3).then(|| [code[3], code[5], code[7]])
+}
 
 /// A teleporter whose booth has been entered: the room it is in and its
 /// code.
@@ -531,6 +565,27 @@ mod tests {
         assert_eq!(&mem[a..a + 10], b"STA109825\x1f");
         assert_eq!(high_scores(&mem), Some(table));
         assert_eq!(high_scores(&mem[..0x6500]), None, "cut short");
+    }
+
+    #[test]
+    fn the_font_is_96_letters_from_its_address() {
+        let mut mem = vec![0u8; 0x10000];
+        let a = usize::from(at::FONT) + (usize::from(b'A') - 0x20) * 8;
+        mem[a] = 0x3C;
+        let font = font(&mem).unwrap();
+        assert_eq!(font.len(), 768);
+        assert_eq!(font[(usize::from(b'A') - 0x20) * 8], 0x3C);
+        assert_eq!(super::font(&mem[..0xB000]), None, "cut short");
+    }
+
+    #[test]
+    fn a_door_code_is_three_chips_and_a_pyramid_code_is_none() {
+        let mut mem = vec![0u8; 0x10000];
+        let at = usize::from(at::CODE);
+        mem[at..at + 9].copy_from_slice(&[0x0B, 0x11, 3, 11, 3, 12, 3, 11, 3]);
+        assert_eq!(door_code(&mem), Some([11, 12, 11]));
+        mem[at + 2] = 2;
+        assert_eq!(door_code(&mem), None, "the pyramid asks for two");
     }
     use crate::map::RoomSet;
 

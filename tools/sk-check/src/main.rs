@@ -1226,6 +1226,117 @@ fn teleporters_check(dir: &Path) -> bool {
 
 /// The entry points the panel follows: the menu first and then play, and
 /// End this game's keys ending a game in every control method.
+/// Every security door on the tape walked into from each of its markers, on
+/// copies of the game in play: touching it calls its screen from
+/// [`DOOR_SCREEN`], the room is entered again when the screen is done, and
+/// the code the screen left is three chips, the same from every marker in
+/// the room (#49).
+///
+/// [`DOOR_SCREEN`]: sidekick::starquake::routine::DOOR_SCREEN
+fn doors_check(dir: &Path) -> bool {
+    use sidekick::starquake::{DOOR_MARKER, at, door_code, read_room, routine};
+    let base = into_play(dir, 1);
+    let mut ok = true;
+    let mut rooms = Vec::new();
+    for room in 0..512u16 {
+        let mut m = base.clone();
+        read_room(&mut m, room);
+        let z = &m.zx;
+        let end = z.read16(at::MARKERS_END).max(at::MARKERS);
+        let markers: Vec<(u8, u8)> = (at::MARKERS..end)
+            .step_by(3)
+            .filter(|&a| z.mem[usize::from(a) + 2] == DOOR_MARKER)
+            .map(|a| (z.mem[usize::from(a)], z.mem[usize::from(a) + 1]))
+            .collect();
+        if markers.is_empty() {
+            continue;
+        }
+        let mut entered = base.clone();
+        entered.zx.write16(at::ROOM, room);
+        entered.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+        if !entered.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+            ok = false;
+            continue;
+        }
+        entered.zx.t = 0;
+        entered.zx.set_interrupts(true);
+        // From each marker, walking into the door one way or the other.
+        let mut codes = Vec::new();
+        for &(x, y) in &markers {
+            let code = [1u8, 2].into_iter().find_map(|input| {
+                let mut m = entered.clone();
+                m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
+                m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
+                m.watch = vec![routine::DOOR_SCREEN, routine::ENTER_ROOM];
+                let mut called = false;
+                for _ in 0..600 {
+                    m.zx.release_all_keys();
+                    m.zx.kempston = if called { 0 } else { input };
+                    for hit in m.run_frame() {
+                        if hit == routine::DOOR_SCREEN {
+                            called = true;
+                        } else if called {
+                            return door_code(&m.zx.mem[..]);
+                        }
+                    }
+                    if !called && m.zx.mem[usize::from(at::ENTITIES) + 5].abs_diff(x) > 8 {
+                        return None;
+                    }
+                }
+                None
+            });
+            codes.push(code);
+        }
+        let chips = |c: &Option<[u8; 3]>| c.is_some_and(|c| c.iter().all(|g| (9..=13).contains(g)));
+        let good = codes.iter().all(|c| chips(c) && *c == codes[0]);
+        ok &= good;
+        rooms.push(format!(
+            "{room} {:?} from {} markers{}",
+            codes[0].unwrap_or_default(),
+            markers.len(),
+            if good { "" } else { " FAILED" }
+        ));
+    }
+    ok &= !rooms.is_empty();
+    println!(
+        "  the security doors: {} rooms, each walked into from every door marker, each screen leaving the same code of three chips: {} {}",
+        rooms.len(),
+        rooms.join(", "),
+        if ok { "ok" } else { "FAILED" }
+    );
+    ok
+}
+
+/// The font the panel draws codes in (#49): once play starts, `CHARS`
+/// points 256 bytes below the font (`at::FONT`), so the game prints with the letters
+/// there, and they are 96 letters with the space blank.
+fn font_check(dir: &Path) -> bool {
+    use sidekick::starquake::{at, font, routine};
+    let mut m = machine(dir);
+    m.watch = vec![routine::MAIN_LOOP];
+    let mut script = Script(0xBEEF);
+    for frame in 0..600 {
+        script.apply(&mut m, frame.min(399));
+        if m.run_frame().contains(&routine::MAIN_LOOP) {
+            break;
+        }
+    }
+    let chars = m.zx.read16(at::CHARS);
+    let letters = font(&m.zx.mem[..]).unwrap_or_default();
+    let good = chars.wrapping_add(256) == at::FONT
+        && letters.len() == 96 * 8
+        && letters[..8].iter().all(|&b| b == 0)
+        && letters[8 * (usize::from(b'A') - 0x20)..][..8]
+            .iter()
+            .any(|&b| b != 0);
+    println!(
+        "  the font: CHARS {chars:#06x} once play starts, the letters at {:#06x} {}",
+        chars.wrapping_add(256),
+        if good { "ok" } else { "FAILED" }
+    );
+    good
+}
+
 fn facts_check(dir: &Path) -> bool {
     use sidekick::starquake::routine;
     let mut ok = true;
@@ -1275,6 +1386,8 @@ fn facts_check(dir: &Path) -> bool {
     ok &= graphics_check(dir);
     ok &= items_check(dir);
     ok &= heroes_check(dir);
+    ok &= doors_check(dir);
+    ok &= font_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }

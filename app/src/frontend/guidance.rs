@@ -38,6 +38,16 @@ pub struct Found {
     pub graphic: [u8; 32],
 }
 
+/// A security door whose screen has shown its code this game (#49): the
+/// room, the three chips it asks for by graphic, and their graphics read
+/// from the game's memory to draw them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DoorCode {
+    pub room: u16,
+    pub chips: [u8; 3],
+    pub graphics: [[u8; 32]; 3],
+}
+
 /// One of the core's nine holes as the column draws it (#7).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hole {
@@ -106,6 +116,12 @@ pub struct Guidance {
     /// The teleporters whose booths were entered this game, in the order
     /// they were entered.
     teleporters: Vec<SeenTeleporter>,
+    /// The security doors whose codes were seen this game, in the order
+    /// their screens were opened (#49).
+    door_codes: Vec<DoorCode>,
+    /// The game's font, read from memory once play starts, for drawing
+    /// codes in its letters (#49); empty until then.
+    font: Vec<u8>,
     /// Every room's openings, for the map (#5). Empty until they are read.
     openings: Vec<Openings>,
     /// The rooms visited in the game being played, or just ended; empty on
@@ -203,6 +219,32 @@ impl Guidance {
     pub fn set_teleporters(&mut self, seen: &[SeenTeleporter]) {
         if self.teleporters != seen {
             self.teleporters = seen.to_vec();
+            self.version += 1;
+        }
+    }
+
+    /// The door codes seen this game.
+    pub fn door_codes(&self) -> &[DoorCode] {
+        &self.door_codes
+    }
+
+    /// The game's font, 96 letters of eight bytes from the space, once read.
+    pub fn font(&self) -> Option<&[u8]> {
+        (!self.font.is_empty()).then_some(&self.font[..])
+    }
+
+    /// Takes the game's font, if it has changed.
+    pub fn set_font(&mut self, font: &[u8]) {
+        if self.font != font {
+            self.font = font.to_vec();
+            self.version += 1;
+        }
+    }
+
+    /// Takes the game's list of door codes seen, if it has changed.
+    pub fn set_door_codes(&mut self, seen: &[DoorCode]) {
+        if self.door_codes != seen {
+            self.door_codes = seen.to_vec();
             self.version += 1;
         }
     }
@@ -339,6 +381,13 @@ impl Guidance {
     }
 
     /// Which of how many nearest missing pieces the route leads to, 1-based.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the panel does not say which; the tracker keeps it (@starquake, 2026-09-16)"
+        )
+    )]
     pub fn piece_choice(&self) -> (u8, u8) {
         self.piece_choice
     }

@@ -1,15 +1,15 @@
 //! Following the game from what it does: which part of the program is
 //! running, from the entry points it arrives at, passed on to the guidance
 //! panel so it knows when a game starts and ends; and the teleporter booths
-//! entered, for level 1 (#4).
+//! entered and the security door codes seen, for level 1 (#4, #49).
 
 use sidekick::map::{Graph, Known, Place, RoomSet, Step};
 use sidekick::starquake::{
-    CORE_ROOM, Item, SeenTeleporter, at, entry, graphic, hole, items_and_core, kind,
-    missing_pieces, routine, teleporter_code,
+    CORE_ROOM, Item, SeenTeleporter, at, door_code, entry, font, graphic, hole, items_and_core,
+    kind, missing_pieces, routine, teleporter_code,
 };
 
-use super::guidance::{Found, Guidance, Hole};
+use super::guidance::{DoorCode, Found, Guidance, Hole};
 
 /// Which part of the program is running, for the panel beside it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -27,8 +27,9 @@ pub enum Scene {
 }
 
 /// The routines whose arrival tells the tracker something: which scene the
-/// program is in, a new game, and a teleporter booth entered.
-pub const WATCH: [u16; 7] = [
+/// program is in, a new game, a teleporter booth entered, and a security
+/// door's screen opened.
+pub const WATCH: [u16; 8] = [
     routine::MENU,
     routine::HEROES,
     routine::MAIN_LOOP,
@@ -36,6 +37,7 @@ pub const WATCH: [u16; 7] = [
     routine::NEW_GAME,
     routine::TELEPORT_BOOTH,
     routine::ENTER_ROOM,
+    routine::DOOR_SCREEN,
 ];
 
 #[derive(Default)]
@@ -48,6 +50,11 @@ pub struct Tracker {
     /// The room last entered this game, which a walk into the next starts
     /// from.
     entered: Option<u16>,
+    /// The door codes seen this game, in the order their screens opened.
+    doors: Vec<DoorCode>,
+    /// The room whose door screen has opened, until the room is entered
+    /// again when the screen is done, which is when its code is read.
+    door_opened: Option<u16>,
     /// The planet as the map reads it, for level 5's routes (#10); empty
     /// until the program has read the rooms.
     pub graph: Graph,
@@ -57,7 +64,8 @@ impl Tracker {
     /// Takes in one watched routine the program arrived at, with the
     /// machine's memory `mem` as it arrived, and tells `guidance` when a game
     /// starts, which begins its record, whether one is being played, and
-    /// which teleporters' booths have been entered. The codes are forgotten
+    /// which teleporters' booths have been entered and which security doors'
+    /// codes have been seen. The codes are forgotten
     /// when a new game is set up and on the title screen, which shows none.
     /// Returns the new scene if it changed.
     pub fn follow(&mut self, mem: &[u8], hit: u16, guidance: &mut Guidance) -> Option<Scene> {
@@ -67,14 +75,26 @@ impl Tracker {
                     mem[usize::from(at::ROOM)],
                     mem[usize::from(at::ROOM) + 1],
                 ]);
+                // Only a code of letters: the table can be read while the
+                // game is rewriting it, and the panel draws the game's own
+                // font, which starts at the space (#49).
                 if let Some(code) = teleporter_code(mem, room)
+                    && code.iter().all(|b| (0x20..0x7F).contains(b))
                     && !self.seen.iter().any(|t| t.code == code)
                 {
                     self.seen.push(SeenTeleporter { room, code });
                 }
             }
+            routine::DOOR_SCREEN => {
+                self.door_opened = Some(u16::from_le_bytes([
+                    mem[usize::from(at::ROOM)],
+                    mem[usize::from(at::ROOM) + 1],
+                ]));
+            }
             routine::NEW_GAME | routine::MENU => {
                 self.seen.clear();
+                self.doors.clear();
+                self.door_opened = None;
                 self.known = Known::default();
                 self.entered = None;
             }
@@ -91,10 +111,22 @@ impl Tracker {
                     self.known.walked(from, room);
                 }
                 self.entered = Some(room);
+                // Back from a door's screen: its code is the one just shown.
+                if self.door_opened.take() == Some(room)
+                    && let Some(chips) = door_code(mem)
+                    && !self.doors.iter().any(|d| d.room == room)
+                {
+                    self.doors.push(DoorCode {
+                        room,
+                        chips,
+                        graphics: chips.map(|g| graphic(mem, g)),
+                    });
+                }
             }
             _ => {}
         }
         guidance.set_teleporters(&self.seen);
+        guidance.set_door_codes(&self.doors);
         let next = match hit {
             routine::MENU => Scene::Menu,
             routine::MAIN_LOOP => Scene::Play,
@@ -106,6 +138,9 @@ impl Tracker {
         }
         if next == Scene::Play {
             guidance.new_game();
+            if let Some(font) = font(mem) {
+                guidance.set_font(font);
+            }
         }
         guidance.set_playing(next == Scene::Play);
         self.scene = next;
@@ -381,6 +416,65 @@ mod tests {
         t.follow(&mem, routine::MENU, &mut g);
         t.publish(&mem, &mut g);
         assert_eq!(g.explored(), 0);
+    }
+
+    #[test]
+    fn a_teleporter_code_of_anything_but_letters_is_not_kept() {
+        let mut t = Tracker::default();
+        let mut g = Guidance::default();
+        let mut mem = memory(0, b"AB\x00DE", 0);
+        t.follow(&mem, routine::TELEPORT_BOOTH, &mut g);
+        assert!(
+            g.teleporters().is_empty(),
+            "a byte the font has no letter for"
+        );
+        mem = memory(0, b"ABCDE", 0);
+        t.follow(&mem, routine::TELEPORT_BOOTH, &mut g);
+        assert_eq!(g.teleporters().len(), 1);
+    }
+
+    #[test]
+    fn a_door_s_code_is_kept_once_its_screen_has_shown_it() {
+        let mut t = Tracker::default();
+        let mut g = Guidance::default();
+        let mut mem = memory(0, b"ABCDE", 210);
+        let code = usize::from(at::CODE);
+        mem[code..code + 9].copy_from_slice(&[0x0B, 0x11, 3, 11, 3, 12, 3, 11, 3]);
+        t.follow(&mem, routine::MAIN_LOOP, &mut g);
+        t.follow(&mem, routine::ENTER_ROOM, &mut g);
+        assert!(g.door_codes().is_empty(), "walking in shows no code");
+        t.follow(&mem, routine::DOOR_SCREEN, &mut g);
+        assert!(g.door_codes().is_empty(), "not until the screen is done");
+        t.follow(&mem, routine::ENTER_ROOM, &mut g);
+        assert_eq!(g.door_codes().len(), 1);
+        assert_eq!(
+            (g.door_codes()[0].room, g.door_codes()[0].chips),
+            (210, [11, 12, 11])
+        );
+        // Opened again: still one.
+        t.follow(&mem, routine::DOOR_SCREEN, &mut g);
+        t.follow(&mem, routine::ENTER_ROOM, &mut g);
+        assert_eq!(g.door_codes().len(), 1);
+        // The pyramid's screen leaves a code of two: not a door's.
+        let mut pyramid = memory(0, b"ABCDE", 300);
+        pyramid[code..code + 7].copy_from_slice(&[0x0F, 0x0D, 2, 26, 3, 29, 3]);
+        t.follow(&pyramid, routine::DOOR_SCREEN, &mut g);
+        t.follow(&pyramid, routine::ENTER_ROOM, &mut g);
+        assert_eq!(g.door_codes().len(), 1, "no code kept for 300");
+        t.follow(&mem, routine::NEW_GAME, &mut g);
+        assert!(g.door_codes().is_empty(), "a new game forgets them");
+    }
+
+    #[test]
+    fn the_game_s_font_is_read_once_play_starts() {
+        let mut t = Tracker::default();
+        let mut g = Guidance::default();
+        let mut mem = vec![0u8; 0x10000];
+        mem[usize::from(at::FONT)] = 0x7E;
+        t.follow(&mem, routine::MENU, &mut g);
+        assert_eq!(g.font(), None, "not on the title screen");
+        t.follow(&mem, routine::MAIN_LOOP, &mut g);
+        assert_eq!(g.font().map(|f| (f.len(), f[0])), Some((768, 0x7E)));
     }
 
     #[test]

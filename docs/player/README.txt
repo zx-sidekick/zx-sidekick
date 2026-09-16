@@ -90,8 +90,14 @@ GUIDANCE
 The panel beside the picture is for guidance: optional help, in levels
 from 0 (none) to 5, each adding to the ones below.
 
-  Level 1              The codes of the teleporters you have seen, once
-                       you have entered their booths.
+  Level 1              The codes you have been shown, in a column down
+                       the panel's right, drawn in the game's own
+                       letters: under TELEPORTERS, the code of every
+                       booth you have entered; under DOORS, the three
+                       chips each security door asked you for, once its
+                       screen has shown them to you. A door's code stays
+                       hidden until you have seen it, and both are
+                       forgotten when a new game starts.
   Level 2              A map of the rooms you have visited: every edge
                        open or closed, walls inside a room (dashed where
                        a security door or a teleporter pad divides it),
