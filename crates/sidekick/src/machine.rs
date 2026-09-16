@@ -143,14 +143,23 @@ impl Training {
         // The drain counter rises by one a frame, and contact pushes it on
         // further. No harm from enemies undoes the push, time standing still
         // undoes the rise, and with both on neither is left, so the two
-        // together hold energy where it was.
+        // together hold energy where it was. Once every so many frames the
+        // rise reaches the drop, where the game sets the counter to zero and
+        // takes energy (#73): on that frame the game's own value is zero,
+        // and time standing still leaves it there, since the energy is gone
+        // already and from zero the counter stands still again.
         let now = at(z, starquake::at::DRAIN);
-        let by_time = before.drain.wrapping_add(1);
+        let wrapped = before.drain.wrapping_add(1) >= starquake::DRAIN_DROP;
+        let by_time = if wrapped {
+            0
+        } else {
+            before.drain.wrapping_add(1)
+        };
         let mut held = now;
         if self.unharmed && held != by_time && held != before.drain {
             held = by_time;
         }
-        if self.time && held == by_time {
+        if self.time && held == by_time && !wrapped {
             held = before.drain;
         }
         if held != now {
@@ -560,6 +569,50 @@ mod tests {
             11,
             "a plain frame is left alone"
         );
+    }
+
+    #[test]
+    fn a_touch_on_the_wrap_frame_is_put_back_to_the_zero_the_game_left() {
+        // The counter before the frame is one short of the drop (#73): the
+        // game's own frame sets it to zero and takes energy, and a touch
+        // pushes it on from there.
+        let wrap = |training: Training, now: u8| {
+            let mut z = watched(starquake::DRAIN_DROP - 1);
+            let before = training.read(&z);
+            z.mem[usize::from(starquake::at::DRAIN)] = now;
+            training.hold(&mut z, before);
+            at(&z, starquake::at::DRAIN)
+        };
+        let off = Training::default();
+        let unharmed = Training {
+            unharmed: true,
+            ..off
+        };
+        let time = Training { time: true, ..off };
+        let both = Training {
+            time: true,
+            unharmed: true,
+            ..off
+        };
+        assert_eq!(
+            wrap(unharmed, 10),
+            0,
+            "the frame's own value is zero, not the drop"
+        );
+        assert_eq!(wrap(unharmed, 0), 0, "no touch: left alone");
+        assert_eq!(
+            wrap(time, 0),
+            0,
+            "a wrapped frame stays at zero rather than wrapping again"
+        );
+        assert_eq!(wrap(both, 10), 0, "both: the touch undone, the zero kept");
+        assert_eq!(wrap(both, 0), 0);
+        // And a frame short of the wrap is as before.
+        let mut z = watched(starquake::DRAIN_DROP - 2);
+        let before = both.read(&z);
+        z.mem[usize::from(starquake::at::DRAIN)] = starquake::DRAIN_DROP - 1;
+        both.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::DRAIN), starquake::DRAIN_DROP - 2);
     }
 
     #[test]
