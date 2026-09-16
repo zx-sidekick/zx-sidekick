@@ -92,7 +92,11 @@ pub struct Training {
     /// The lives left never fall, and the panel's digit with them.
     pub lives: bool,
     /// Touching an enemy costs no energy: the push it gives the counter is
-    /// taken back, so only time takes energy.
+    /// taken back, so only time takes energy. And nothing kills outright
+    /// (#68): the things that kill on touch, the deadly patches and the
+    /// zappers are steered past their kill at the instruction the game
+    /// decides each with, [`starquake::decide`], with nothing written into
+    /// the game.
     pub unharmed: bool,
 }
 
@@ -162,6 +166,24 @@ impl Training {
             put(z, starquake::at::LIVES, before.lives);
             put(z, starquake::at::LIVES_DIGIT, before.digit);
         }
+    }
+}
+
+/// Steers the game past an outright death when `pc` is where it decides one
+/// (#68, [`starquake::decide`]): the register the instruction there reads is
+/// given the value the harmless case has, and nothing is written into the
+/// game. At the enemy-touch compare A becomes the harmless page; at the
+/// marker compare A becomes the spent kind; at the force-field call the zero
+/// flag is set so the call is not made.
+fn survive(z: &mut Zx, pc: u16) {
+    use starquake::decide::{ENEMY_KILL, FIELD_KILL, PATCH_KILL};
+    if pc == ENEMY_KILL.0 {
+        z.set_a(starquake::HARMLESS_GRAPHICS);
+    } else if pc == PATCH_KILL.0 {
+        z.set_a(starquake::SPENT_MARKER);
+    } else if pc == FIELD_KILL.0 {
+        let f = z.f();
+        z.set_f(f | zx_spectrum::ZF);
     }
 }
 
@@ -429,6 +451,9 @@ impl Machine {
             }
             if joystick != 0 && pc == starquake::PLAY_INPUT {
                 press(z, joystick);
+            }
+            if training.unharmed {
+                survive(z, pc);
             }
             if start_game
                 && (pc == starquake::MENU_INPUT
@@ -878,6 +903,64 @@ mod tests {
         m.start = true;
         m.run_frame();
         assert_eq!((m.zx.keys, m.zx.kempston), ([0xFF; 8], 0));
+    }
+
+    /// Runs a frame of a small program with the pieces of `code` in place,
+    /// from `pc`, with no harm from enemies off or on, and returns the byte
+    /// the program leaves at `mark` (#68).
+    fn steered(pc: u16, code: &[(u16, &[u8])], mark: u16, unharmed: bool) -> u8 {
+        let mut m = Machine::blank(pc, 0xFF00);
+        for &(at, bytes) in code {
+            let at = usize::from(at);
+            m.zx.mem[at..at + bytes.len()].copy_from_slice(bytes);
+        }
+        m.training = Training {
+            unharmed,
+            ..Training::default()
+        };
+        m.run_frame();
+        m.zx.mem[usize::from(mark)]
+    }
+
+    #[test]
+    fn a_thing_that_kills_on_touch_is_seen_as_harmless_with_no_harm_on() {
+        let (at, cp) = starquake::decide::ENEMY_KILL;
+        // LD A,B1 (a page that kills); CP B4; JR NC,+3; LD (mark),A; JR $.
+        let code: &[(u16, &[u8])] = &[
+            (at - 2, &[0x3E, 0xB1]),
+            (at, &cp),
+            (at + 2, &[0x30, 0x03, 0x32, 0x00, 0x90, 0x18, 0xFE]),
+        ];
+        assert_eq!(steered(at - 2, code, 0x9000, false), 0xB1, "the kill path");
+        assert_eq!(steered(at - 2, code, 0x9000, true), 0, "steered past it");
+    }
+
+    #[test]
+    fn a_deadly_patch_is_seen_as_spent_with_no_harm_on() {
+        let (at, cp) = starquake::decide::PATCH_KILL;
+        // LD A,06 (the deadly kind); CP 06; JR NZ,+3; LD (mark),A; JR $.
+        let code: &[(u16, &[u8])] = &[
+            (at - 2, &[0x3E, starquake::DANGER_MARKER]),
+            (at, &cp),
+            (at + 2, &[0x20, 0x03, 0x32, 0x00, 0x90, 0x18, 0xFE]),
+        ];
+        assert_eq!(steered(at - 2, code, 0x9000, false), 0x06, "the kill path");
+        assert_eq!(steered(at - 2, code, 0x9000, true), 0, "steered past it");
+    }
+
+    #[test]
+    fn a_zapper_s_call_is_not_made_with_no_harm_on() {
+        let (at, _) = starquake::decide::FIELD_KILL;
+        // LD A,01; OR A (not zero); CALL NZ,9000; JR $. At 9000: LD
+        // (mark),A; RET. The call's own target is the death routine's
+        // address on the tape; here it is the mark's writer.
+        let code: &[(u16, &[u8])] = &[
+            (at - 3, &[0x3E, 0x01, 0xB7]),
+            (at, &[0xC4, 0x00, 0x90, 0x18, 0xFE]),
+            (0x9000, &[0x32, 0x10, 0x90, 0xC9]),
+        ];
+        assert_eq!(steered(at - 3, code, 0x9010, false), 0x01, "the kill path");
+        assert_eq!(steered(at - 3, code, 0x9010, true), 0, "steered past it");
     }
 
     #[test]
