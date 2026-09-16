@@ -189,7 +189,7 @@ impl Runner {
             .guidance
             .lock()
             .unwrap()
-            .set_high_scores(keeper.kept);
+            .set_high_scores(keeper.kept, keeper.this_game);
         let mut tracker = track::Tracker::default();
         tracker.graph = graph;
         let mut freeze = freeze::Freeze::default();
@@ -263,14 +263,14 @@ impl Runner {
                     {
                         eprintln!("{e}");
                     }
-                    guidance.set_high_scores(keeper.kept);
+                    guidance.set_high_scores(keeper.kept, keeper.this_game);
                 }
                 // After a game with training, its table is put back.
                 if hits.contains(&routine::MENU)
                     && let Some(table) = keeper.menu()
                 {
                     write_high_scores(&mut machine.zx.mem[..], &table);
-                    guidance.set_high_scores(keeper.kept);
+                    guidance.set_high_scores(keeper.kept, keeper.this_game);
                 }
             }
             if tracker.scene != track::Scene::Play {

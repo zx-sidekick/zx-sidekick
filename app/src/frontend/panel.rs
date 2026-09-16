@@ -794,7 +794,7 @@ impl Panel {
         self.fonts.text(
             Some(canvas),
             left,
-            300.0,
+            52.0,
             None,
             1.0,
             &[span("Played with", 13.0, Weight::Regular, LABEL)],
@@ -810,12 +810,12 @@ impl Panel {
         self.fonts.text(
             Some(canvas),
             left,
-            322.0,
+            70.0,
             None,
             1.0,
-            &[span(&headline, 22.0, Weight::SemiBold, BRIGHT)],
+            &[span(&headline, 13.0, Weight::SemiBold, BRIGHT)],
         );
-        let mut y = 356.0;
+        let mut y = 90.0;
         if let Some(detail) = detail {
             self.fonts.text(
                 Some(canvas),
@@ -823,14 +823,14 @@ impl Panel {
                 y,
                 None,
                 1.0,
-                &[span(detail, 14.0, Weight::Regular, SOFT)],
+                &[span(detail, 12.0, Weight::Regular, SOFT)],
             );
-            y += 40.0;
+            y += 24.0;
         } else {
-            y += 18.0;
+            y += 12.0;
         }
         if record.training {
-            canvas.round_rect(left, y + 6.0, 8.0, 8.0, 4.0, TRAINING);
+            canvas.round_rect(left, y + 5.0, 8.0, 8.0, 4.0, TRAINING);
             self.fonts.text(
                 Some(canvas),
                 left + 18.0,
@@ -839,12 +839,99 @@ impl Panel {
                 1.0,
                 &[span(
                     "Training mode was used",
-                    15.0,
+                    13.0,
                     Weight::Regular,
                     BRIGHT,
                 )],
             );
         }
+        // The table kept between runs, with the guidance each game had (#47).
+        let Some(kept) = guidance.high_scores() else {
+            return;
+        };
+        self.spaced(canvas, left, 126.0, "CORE OF HEROES");
+        let width = WINDOW_W - PICTURE_W - 48.0;
+        for (i, (entry, level)) in kept.entries.iter().zip(kept.levels).enumerate() {
+            let y = 156.0 + i as f32 * 44.0;
+            let mine = guidance.this_game() == Some(i);
+            if mine {
+                canvas.round_rect(left - 10.0, y - 6.0, width + 20.0, 40.0, 6.0, SELECTED);
+                canvas.outline(
+                    left - 10.0,
+                    y - 6.0,
+                    width + 20.0,
+                    40.0,
+                    6.0,
+                    1.5,
+                    None,
+                    ACCENT,
+                );
+            }
+            let rank = format!("{}.", i + 1);
+            let name = String::from_utf8_lossy(&entry.name).into_owned();
+            let tail = format!(
+                "{}  {}%",
+                String::from_utf8_lossy(&entry.score),
+                entry.percent
+            );
+            self.fonts.text(
+                Some(canvas),
+                left,
+                y,
+                None,
+                1.0,
+                &[span(&rank, 14.0, Weight::SemiBold, LABEL)],
+            );
+            self.fonts.text(
+                Some(canvas),
+                left + 26.0,
+                y,
+                None,
+                1.0,
+                &[span(&name, 14.0, Weight::SemiBold, BRIGHT)],
+            );
+            self.fonts.text(
+                Some(canvas),
+                left + 70.0,
+                y,
+                None,
+                1.0,
+                &[span(&tail, 14.0, Weight::Regular, SOFT)],
+            );
+            let (text, colour) = match level {
+                None => ("As the tape had it".to_string(), QUIET),
+                Some(0) => ("No guidance".to_string(), SOFT),
+                Some(l) => (format!("Level {l} \u{b7} {}", LEVELS[usize::from(l)]), SOFT),
+            };
+            self.fonts.text(
+                Some(canvas),
+                left + 26.0,
+                y + 18.0,
+                None,
+                1.0,
+                &[span(&text, 12.0, Weight::Regular, colour)],
+            );
+            if mine {
+                let tag = [span("THIS GAME", 10.0, Weight::SemiBold, ACCENT)];
+                let w = self.fonts.measure(&tag);
+                self.fonts
+                    .text(Some(canvas), left + width - w, y + 2.0, None, 1.0, &tag);
+            }
+        }
+        // A game with training is not kept, so it is in no row above.
+        let note = if record.training {
+            "This game is not kept: training mode was used."
+        } else {
+            "Games played with training mode are not kept."
+        };
+        self.fonts.text(
+            Some(canvas),
+            left,
+            156.0 + 8.0 * 44.0 + 8.0,
+            None,
+            1.0,
+            &[span(note, 12.0, Weight::Regular, QUIET)],
+        );
     }
 
     fn picker(&mut self, canvas: &mut Canvas, guidance: &Guidance) {
@@ -1641,6 +1728,37 @@ mod tests {
         assert_eq!(count(&pixels, w, chips, ROUTE), 0, "one route, one outline");
     }
 
+    /// A game just over at level 3 with the kept table beside it (#47),
+    /// this game's entry sixth: made-up names and scores.
+    fn heroes() -> Guidance {
+        use crate::frontend::scores::Kept;
+        use sidekick::starquake::HighScore;
+        type Row = (&'static [u8; 3], &'static [u8; 6], u8, Option<u8>);
+        let mut g = Guidance::default();
+        g.set_level(3);
+        g.new_game();
+        let rows: [Row; 8] = [
+            (b"STA", b"109825", 31, None),
+            (b"TAR", b"093900", 23, None),
+            (b"ARQ", b"082975", 19, None),
+            (b"BOB", b"071540", 21, Some(0)),
+            (b"RQU", b"062050", 17, None),
+            (b"SQK", b"051230", 14, Some(3)),
+            (b"JEN", b"048000", 12, Some(2)),
+            (b"QUA", b"046125", 13, None),
+        ];
+        let kept = Kept {
+            entries: std::array::from_fn(|i| HighScore {
+                name: *rows[i].0,
+                score: *rows[i].1,
+                percent: rows[i].2,
+            }),
+            levels: std::array::from_fn(|i| rows[i].3),
+        };
+        g.set_high_scores(kept, Some(5));
+        g
+    }
+
     /// Nine made-up holes, not the game's graphics: simple shapes, three
     /// filled, one carried.
     fn made_up_core() -> Vec<crate::frontend::guidance::Hole> {
@@ -1976,6 +2094,7 @@ mod tests {
                 false,
             ),
             ("score", record, Scene::GameOver, false),
+            ("heroes", heroes(), Scene::GameOver, false),
             ("score-none", Guidance::default(), Scene::GameOver, false),
         ];
         for (name, guidance, scene, paused) in cases {

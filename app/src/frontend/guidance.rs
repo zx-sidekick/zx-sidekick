@@ -131,6 +131,8 @@ pub struct Guidance {
     /// The high-score table kept between runs, with each entry's guidance
     /// (#47); `None` until the tape is loaded.
     high_scores: Option<super::scores::Kept>,
+    /// Which entry of it this game put in, for the panel to mark.
+    this_game: Option<u8>,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -293,20 +295,23 @@ impl Guidance {
     }
 
     /// The high-score table kept between runs, with each entry's guidance.
-    #[expect(
-        dead_code,
-        reason = "the panel lists it once the mockup is approved (#47)"
-    )]
     pub fn high_scores(&self) -> Option<&super::scores::Kept> {
         self.high_scores.as_ref()
     }
 
     /// Takes the kept high-score table, if it has changed.
-    pub fn set_high_scores(&mut self, kept: super::scores::Kept) {
-        if self.high_scores != Some(kept) {
+    pub fn set_high_scores(&mut self, kept: super::scores::Kept, this_game: Option<usize>) {
+        let this_game = this_game.and_then(|i| u8::try_from(i).ok());
+        if self.high_scores != Some(kept) || self.this_game != this_game {
             self.high_scores = Some(kept);
+            self.this_game = this_game;
             self.version += 1;
         }
+    }
+
+    /// Which entry of the table this game put in, if any (#47).
+    pub fn this_game(&self) -> Option<usize> {
+        self.this_game.map(usize::from)
     }
 
     /// Takes the route to the nearest missing piece, if it has changed.

@@ -120,6 +120,8 @@ impl Kept {
 #[derive(Debug)]
 pub struct Keeper {
     pub kept: Kept,
+    /// Which entry this game put in, for the panel to mark (#47).
+    pub this_game: Option<usize>,
     /// Whether the file may be written: not when one is there that could
     /// not be read, which is left alone.
     writable: bool,
@@ -135,6 +137,7 @@ impl Keeper {
         let read = file.map(Kept::parse);
         Keeper {
             kept: read.flatten().unwrap_or_else(|| Kept::from_tape(shipped)),
+            this_game: None,
             writable: !matches!(read, Some(None)),
             restore: None,
         }
@@ -144,6 +147,10 @@ impl Keeper {
     /// `record`: the table to save when it changed, `None` otherwise. A game
     /// with training changes nothing, and its table is put back at the menu.
     pub fn heroes(&mut self, now: &Table, record: Record) -> Option<Kept> {
+        // Where the tables first differ is the entry this game put in.
+        self.this_game = (0..at::HIGH_SCORE_COUNT)
+            .find(|&i| now[i] != self.kept.entries[i])
+            .filter(|_| !record.training);
         if record.training {
             if now != &self.kept.entries {
                 self.restore = Some(self.kept.entries);
