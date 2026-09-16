@@ -713,8 +713,8 @@ fn items_check(dir: &Path) -> bool {
 fn training_check(dir: &Path, frames: u64) -> bool {
     use sidekick::machine::Training;
     use sidekick::starquake::{
-        DANGER_MARKER, FORCE_FIELD_COUNT, FORCE_FIELD_REC, FORCE_FIELDS, SLOT_X, SLOT_Y, at,
-        routine,
+        DANGER_MARKER, ENEMY_SLOTS, FORCE_FIELD_COUNT, FORCE_FIELD_REC, FORCE_FIELDS,
+        HARMLESS_GRAPHICS, SLOT, SLOT_GRAPHIC, SLOT_X, SLOT_Y, at, routine,
     };
     // How long the game takes to set energy up once play starts; before
     // that the byte still holds what the loader left.
@@ -875,6 +875,61 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     }
     let fields_held = fields.iter().filter(|&&(_, on)| !on).count();
     let fields_hold = !fields.is_empty() && fields_held == fields.len();
+    // The things a room raises that kill on touch, the nails and the ones
+    // that come after Blob: stand him on one, with the switch off and on.
+    let mut things = Vec::new();
+    for room in 0..64u16 {
+        let killed = |unharmed: bool| {
+            let mut m = base.clone();
+            m.training = Training {
+                unharmed,
+                // The zappers and the patches are held off in both runs, so
+                // that the only thing that differs is the enemies.
+                dangers: true,
+                time: true,
+                ..Training::default()
+            };
+            m.zx.write16(at::ROOM, room);
+            m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+                return None;
+            }
+            m.zx.t = 0;
+            m.zx.set_interrupts(true);
+            m.watch = vec![routine::DEATH];
+            let mut met = false;
+            for _ in 0..300 {
+                let deadly = ENEMY_SLOTS
+                    .map(|n| usize::from(at::ENTITIES) + n * SLOT)
+                    .find(|&e| {
+                        let hi = m.zx.mem[e + SLOT_GRAPHIC + 1];
+                        hi != 0 && hi < HARMLESS_GRAPHICS
+                    });
+                if let Some(e) = deadly {
+                    met = true;
+                    let b = usize::from(at::ENTITIES);
+                    m.zx.mem[b + SLOT_X] = m.zx.mem[e + SLOT_X];
+                    m.zx.mem[b + SLOT_Y] = m.zx.mem[e + SLOT_Y];
+                }
+                if m.run_frame().contains(&routine::DEATH) {
+                    return Some((met, true));
+                }
+            }
+            Some((met, false))
+        };
+        if let Some((met, off)) = killed(false)
+            && met
+            && off
+            && let Some((_, on)) = killed(true)
+        {
+            things.push((room, on));
+        }
+        if things.len() >= 10 {
+            break;
+        }
+    }
+    let things_held = things.iter().filter(|&&(_, on)| !on).count();
+    let things_hold = !things.is_empty() && things_held == things.len();
     let spikes_kill = spikes.iter().filter(|&&(_, off, _)| off).count();
     let spikes_held = spikes.iter().filter(|&&(_, _, on)| !on).count();
     let dangers_hold =
@@ -899,13 +954,20 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         both_low[0], both_start[0]
     );
     println!(
-        "  standing on a spike kills in {spikes_kill} of {} rooms, and with the switch on in {} {}",
+        "  standing on a thing that kills on touch kills in {} of {} rooms, and with no harm from enemies in {} {}",
+        things.len(),
+        things.len(),
+        things.len() - things_held,
+        if things_hold { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  standing on a deadly patch kills in {spikes_kill} of {} rooms, and with no harm from zappers in {} {}",
         spikes.len(),
         spikes.len() - spikes_held,
         if dangers_hold { "ok" } else { "FAILED" }
     );
     println!(
-        "  standing in a zapper kills in {} of {} rooms, and with the switch on in {} {}",
+        "  standing in a zapper kills in {} of {} rooms, and with no harm from zappers in {} {}",
         fields.len(),
         fields.len(),
         fields.len() - fields_held,

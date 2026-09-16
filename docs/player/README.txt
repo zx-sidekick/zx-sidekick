@@ -152,16 +152,15 @@ from 0 (none) to 5, each adding to the ones below.
                                                 run down
                          Endless lives          losing a life does not
                                                 cost one
-                         Enemies drain no       touching one costs no
-                         energy                 energy; the kinds that
-                                                kill outright still
-                                                kill
-                         Spikes and zappers     walking into a spike
-                         are harmless           does nothing, and the
-                                                zappers are switched
-                                                off; both are back when
-                                                you next enter the room
-                                                with it off
+                         No harm from enemies   touching one costs no
+                                                energy, and the kinds
+                                                that kill on touch
+                                                cannot
+                         No harm from zappers   a zapper still flickers
+                                                where it stands but
+                                                cannot kill you, and
+                                                nor can a deadly patch
+                                                of room
 
   F11                  Leave fullscreen, or go back to it. The game
                        starts fullscreen; the window it leaves you with

@@ -95,10 +95,10 @@ pub struct Training {
     /// taken back, so only time takes energy. The kinds of enemy that kill
     /// outright are not touched by this: they never read energy.
     pub unharmed: bool,
-    /// The spikes and zappers do nothing: every marker of the deadly kind
-    /// in the room is blanked while this is on, so walking into one costs
-    /// nothing. They come back the next time the room is entered with it
-    /// off, since the game rebuilds the table then.
+    /// No harm from zappers: the room's force fields are taken out of the
+    /// game's way for the frames Blob spends in one, so a zapper is drawn
+    /// and flickers as ever but cannot kill, and every deadly patch the room
+    /// lays down is spent.
     pub dangers: bool,
 }
 
@@ -110,6 +110,13 @@ pub struct Held {
     gun: u8,
     lives: u8,
     digit: u8,
+    /// The place of each of the room's force fields, taken out of the
+    /// game's way for a frame Blob spends inside one and put straight back
+    /// (#8), so the zapper goes on being drawn and flickering.
+    fields: [(u8, u8); starquake::FORCE_FIELD_COUNT],
+    /// The graphic of each thing the room has raised, blanked for a frame
+    /// Blob spends against one that would kill him and put straight back.
+    things: [u16; 4],
 }
 
 impl Training {
@@ -126,12 +133,35 @@ impl Training {
             return Held::default();
         }
         let at = |a: u16| z.mem[usize::from(a)];
+        let field = |i: usize| {
+            let rec = usize::from(starquake::FORCE_FIELDS) + i * starquake::FORCE_FIELD_REC;
+            (z.mem[rec], z.mem[rec + 1])
+        };
         Held {
             drain: at(starquake::at::DRAIN),
             platforms: at(starquake::at::PLATFORMS),
             gun: at(starquake::at::GUN),
             lives: at(starquake::at::LIVES),
             digit: at(starquake::at::LIVES_DIGIT),
+            fields: std::array::from_fn(field),
+            things: std::array::from_fn(|i| {
+                let e = usize::from(starquake::at::ENTITIES)
+                    + (i + starquake::ENEMY_SLOTS.start) * starquake::SLOT;
+                z.read16((e as u16).wrapping_add(starquake::SLOT_GRAPHIC as u16))
+            }),
+        }
+    }
+
+    /// What has to be done before a frame runs, rather than put back after
+    /// it: a touch is decided inside the frame, so a thing that kills on
+    /// touch has to be harmless before the frame starts.
+    pub fn arm(self, z: &mut Zx) {
+        if self.dangers {
+            spend_spikes(z);
+            hide_fields(z);
+        }
+        if self.unharmed {
+            blank_deadly(z);
         }
     }
 
@@ -168,26 +198,65 @@ impl Training {
             put(z, starquake::at::LIVES, before.lives);
             put(z, starquake::at::LIVES_DIGIT, before.digit);
         }
+        if self.unharmed {
+            // Whatever was blanked for the frame is put straight back.
+            for (i, &graphic) in before.things.iter().enumerate() {
+                let e = usize::from(starquake::at::ENTITIES)
+                    + (i + starquake::ENEMY_SLOTS.start) * starquake::SLOT;
+                z.mem[e + starquake::SLOT_GRAPHIC] = graphic as u8;
+                z.mem[e + starquake::SLOT_GRAPHIC + 1] = (graphic >> 8) as u8;
+            }
+        }
         if self.dangers {
-            blank_dangers(z);
+            // The spikes stay spent for the next frame, and the zappers are
+            // put back exactly as they were.
+            spend_spikes(z);
+            for (i, &(col, row)) in before.fields.iter().enumerate() {
+                let rec = usize::from(starquake::FORCE_FIELDS) + i * starquake::FORCE_FIELD_REC;
+                z.mem[rec] = col;
+                z.mem[rec + 1] = row;
+            }
         }
     }
 }
 
-/// Takes the room's spikes and zappers out of the player's way (#8): a
-/// spike's marker is given the kind the game itself leaves on a marker it
-/// has spent, and a zapper's force-field record is cleared, which is what
-/// a room with no zapper in it looks like. Both tables are rebuilt whenever
-/// a room is entered, so this is written after every frame and nothing is
-/// changed for good.
-fn blank_dangers(z: &mut Zx) {
-    for i in 0..starquake::FORCE_FIELD_COUNT {
-        let rec = usize::from(starquake::FORCE_FIELDS) + i * starquake::FORCE_FIELD_REC;
-        // The column ends the game's look for one to touch; the row stops
-        // it being drawn and flickered.
-        z.mem[rec] = 0;
-        z.mem[rec + 1] = 0;
+/// Blanks, for one frame, any thing the room has raised that would kill
+/// Blob on touch and is near enough to do it (#8): the spiky plants that
+/// stand still and the ones that come after him alike. It wears the graphic
+/// the game gives an empty slot, which the game itself treats as harmless,
+/// so its touch only drains, and the drain is taken back with the rest.
+/// `hold` puts the real graphic back straight after, so a thing is drawn as
+/// nothing only in the frames Blob is right against it. Blob's own shot is
+/// slot 5 and is never one of these.
+fn blank_deadly(z: &mut Zx) {
+    use starquake::{
+        ENEMY_SLOTS, SLOT, SLOT_GRAPHIC, SLOT_X, SLOT_Y, TOUCH_STEP, TOUCH_X, TOUCH_Y,
+    };
+    let slot = |n: usize| usize::from(starquake::at::ENTITIES) + n * SLOT;
+    let blob = slot(0);
+    let (bx, by) = (z.mem[blob + SLOT_X], z.mem[blob + SLOT_Y]);
+    for n in ENEMY_SLOTS {
+        let e = slot(n);
+        let graphic = z.mem[e + SLOT_GRAPHIC + 1];
+        if graphic == 0 || graphic >= starquake::HARMLESS_GRAPHICS {
+            continue;
+        }
+        // Only where a frame's moving could bring the two together.
+        if z.mem[e + SLOT_X].abs_diff(bx) >= TOUCH_X + TOUCH_STEP
+            || z.mem[e + SLOT_Y].abs_diff(by) >= TOUCH_Y + TOUCH_STEP
+        {
+            continue;
+        }
+        z.mem[e + SLOT_GRAPHIC] = starquake::BLANK_GRAPHIC as u8;
+        z.mem[e + SLOT_GRAPHIC + 1] = (starquake::BLANK_GRAPHIC >> 8) as u8;
     }
+}
+
+/// Spends the room's spikes: each deadly marker is given the kind the game
+/// itself leaves on a marker it has picked up, so touching it does nothing
+/// (#8). The table is rebuilt whenever a room is entered, so this is written
+/// both before and after a frame, and nothing is changed for good.
+fn spend_spikes(z: &mut Zx) {
     let end = z
         .read16(starquake::at::MARKERS_END)
         .max(starquake::at::MARKERS);
@@ -196,6 +265,31 @@ fn blank_dangers(z: &mut Zx) {
         if z.mem[kind] == starquake::DANGER_MARKER {
             z.mem[kind] = starquake::SPENT_MARKER;
         }
+    }
+}
+
+/// Takes a zapper out of the game's way for the one frame Blob is inside it
+/// (#8). The game looks through the force fields until a column of zero, so
+/// a cleared record is a field it never reaches; `hold` puts the record back
+/// straight after, which leaves the zapper drawn and flickering as it was
+/// every frame Blob is not standing in it. Nothing else in the record makes
+/// a field harmless: each byte was tried against the game, and only the
+/// column and the row do.
+fn hide_fields(z: &mut Zx) {
+    let bx = z.mem[usize::from(starquake::at::ENTITIES) + starquake::SLOT_X];
+    for i in 0..starquake::FORCE_FIELD_COUNT {
+        let rec = usize::from(starquake::FORCE_FIELDS) + i * starquake::FORCE_FIELD_REC;
+        let col = z.mem[rec];
+        if col == 0 {
+            break;
+        }
+        // Only where the game would look at this one at all, with room for
+        // Blob's own moving during the frame.
+        if col.rotate_left(3).abs_diff(bx) >= starquake::FIELD_REACH + starquake::BLOB_STEP {
+            continue;
+        }
+        z.mem[rec] = 0;
+        z.mem[rec + 1] = 0;
     }
 }
 
@@ -413,6 +507,7 @@ impl Machine {
         // What training mode holds still is read before the frame and put
         // back after it, so the game runs its own way in between (#8).
         let before = training.read(&self.zx);
+        training.arm(&mut self.zx);
         let start_game = start || joystick & JOY_FIRE != 0;
         let Machine {
             zx,
@@ -614,8 +709,69 @@ mod tests {
                 starquake::BOOTH_MARKER,
                 starquake::SPENT_MARKER
             ],
-            "the spikes are spent, the booth is left alone"
+            "the deadly patches are spent, the booth is left alone"
         );
+        let field = usize::from(starquake::FORCE_FIELDS);
+        assert_eq!(
+            [z.mem[field], z.mem[field + 1]],
+            [0x0C, 0x08],
+            "the zapper is put back, so it is drawn and flickers as ever"
+        );
+        // Blob standing in it: out of the game's way for that frame only.
+        z.mem[usize::from(starquake::at::ENTITIES) + starquake::SLOT_X] = 0x0Cu8.rotate_left(3);
+        training.arm(&mut z);
+        assert_eq!(
+            [z.mem[field], z.mem[field + 1]],
+            [0, 0],
+            "while he is inside it"
+        );
+    }
+
+    #[test]
+    fn no_harm_blanks_a_thing_that_kills_only_while_it_is_against_blob() {
+        let mut z = watched(10);
+        let blob = usize::from(starquake::at::ENTITIES);
+        let thing = blob + starquake::SLOT;
+        let shot = blob + 5 * starquake::SLOT;
+        let put = |z: &mut Zx, at: usize, x: u8, y: u8, graphic: u16| {
+            z.mem[at + starquake::SLOT_X] = x;
+            z.mem[at + starquake::SLOT_Y] = y;
+            z.mem[at + starquake::SLOT_GRAPHIC] = graphic as u8;
+            z.mem[at + starquake::SLOT_GRAPHIC + 1] = (graphic >> 8) as u8;
+        };
+        let graphic = |z: &Zx, at: usize| {
+            u16::from(z.mem[at + starquake::SLOT_GRAPHIC + 1]) << 8
+                | u16::from(z.mem[at + starquake::SLOT_GRAPHIC])
+        };
+        let training = Training {
+            unharmed: true,
+            ..Training::default()
+        };
+        put(&mut z, blob, 120, 80, 0xB400);
+        // Blob's own shot is slot 5 and is never one of them.
+        put(&mut z, shot, 120, 80, 0xAFC8);
+        // One that only drains is left alone, near or not.
+        put(&mut z, thing, 121, 80, 0xC000);
+        training.arm(&mut z);
+        assert_eq!(graphic(&z, thing), 0xC000, "a draining one");
+        assert_eq!(graphic(&z, shot), 0xAFC8, "and the shot");
+
+        // One that kills, right against him: blanked for the frame only.
+        put(&mut z, thing, 121, 80, 0xAFC8);
+        let before = training.read(&z);
+        training.arm(&mut z);
+        assert_eq!(
+            graphic(&z, thing),
+            starquake::BLANK_GRAPHIC,
+            "drawn as nothing while it is against him"
+        );
+        training.hold(&mut z, before);
+        assert_eq!(graphic(&z, thing), 0xAFC8, "and itself again after");
+
+        // The same one across the room is not touched at all.
+        put(&mut z, thing, 220, 80, 0xAFC8);
+        training.arm(&mut z);
+        assert_eq!(graphic(&z, thing), 0xAFC8, "far off, left as it is");
     }
 
     #[test]
