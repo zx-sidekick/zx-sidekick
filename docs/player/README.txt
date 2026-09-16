@@ -111,6 +111,9 @@ from 0 (none) to 5, each adding to the ones below.
                        that lifts only go up: getting the items and
                        the battery for that is up to you. Training mode is still to be built.
 
+  F11                  Leave fullscreen, or go back to it. The game
+                       starts fullscreen; the window it leaves you with
+                       is as large as your screen allows.
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.
   Up and down          Choose a row.
