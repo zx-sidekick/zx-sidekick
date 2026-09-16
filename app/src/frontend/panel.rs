@@ -80,8 +80,7 @@ const SWITCH_HEAD: f32 = 14.0;
 const SWITCH_PITCH: f32 = 34.0;
 const SWITCH_SAYS: f32 = 18.0;
 
-/// What each level adds, for the picker. The levels are built in their own
-/// tickets (#3); until then they say so.
+/// What each level adds, for the picker (#3, re-cut in #69).
 const ADDS: [&str; 7] = [
     "The original game, no help.",
     "The codes you have been shown, and the core's nine slots.",
@@ -156,8 +155,8 @@ impl Panel {
             };
             let title_x = WINDOW_W - 24.0 - self.spaced_width(&title);
             self.spaced_colour(canvas, title_x, 26.0, &title, 11.0, BRIGHT);
-            // Level 4 (#9, #44): the first teleport on each route has its
-            // chip outlined in that route's colour.
+            // Level 5 (#9, #44, #69): the first teleport on each route has
+            // its chip outlined in that route's colour.
             let jump = if level >= 5 {
                 jumps(guidance)
             } else {
@@ -218,7 +217,7 @@ impl Panel {
                     under += core_h;
                 }
                 if level >= 5 && guidance.room().is_some() {
-                    self.route_line(canvas, guidance, under + 21.0, &jump);
+                    self.route_line(canvas, under + 21.0, &jump);
                 }
             } else if level >= 1 && !guidance.core().is_empty() {
                 // No map yet: the slots sit where the map's bottom right
@@ -245,9 +244,9 @@ impl Panel {
             }
         }
 
-        // Level 4 (#9, #44): an arrow in the picture's border for each route
-        // that walks out of the room next, side by side when both leave the
-        // same way.
+        // Level 5 (#9, #44, #69): an arrow in the picture's border for each
+        // route that walks out of the room next, side by side when both
+        // leave the same way.
         if scene == Scene::Play
             && guidance.level() >= 5
             && let Some(here) = guidance.room()
@@ -284,9 +283,11 @@ impl Panel {
     /// a line along each edge that has no opening, so an opening is a gap in
     /// the wall, and walls inside a divided room, dashed where a door divides
     /// it. The teleporters seen are diamonds and the room Blob is in is
-    /// marked. With `pieces` (level 3, #6), so is every room holding a core
-    /// piece still needed, and one not visited is outlined so the mark has
-    /// somewhere to sit.
+    /// marked. From level 3 (#6, #36), so is every room holding a core piece
+    /// still needed and every item found, from level 4 (#66) in the rooms
+    /// never walked through as well, one of those outlined so the mark has
+    /// somewhere to sit; level 5 (#9, #44) draws the routes and level 6
+    /// (#66) the whole planet.
     fn map(
         &mut self,
         canvas: &mut Canvas,
@@ -391,9 +392,9 @@ impl Panel {
                 }
             }
         }
-        // Level 4 (#9, #44): the routes, through the centres of the rooms
-        // walked, above the floor and walls and below the markers: to the
-        // core in orange and to the nearest piece in pink. Where both take
+        // Level 5 (#9, #44, #69): the routes, through the centres of the
+        // rooms walked, above the floor and walls and below the markers: to
+        // the core in orange and to the nearest piece in pink. Where both take
         // the same step they run side by side, thinner, so neither hides
         // the other. A teleport step jumps, so no line joins it.
         if guidance.level() >= 5
@@ -482,10 +483,10 @@ impl Panel {
             let (cx, cy) = (x + pitch / 2.0, y + pitch / 2.0);
             canvas.round_rect(cx - r, cy - r, 2.0 * r, 2.0 * r, r, PIECE);
         }
-        // Level 2 (#36): every item found, drawn with the game's own
-        // graphic at one screen pixel a game pixel, in the colour of what
-        // it does, with a pixel of black around it so it stands off the
-        // floor and off a route running beneath.
+        // Levels 3 and 4 (#36, #66): every item found, drawn with the
+        // game's own graphic at one screen pixel a game pixel, in the
+        // colour of what it does, with a pixel of black around it so it
+        // stands off the floor and off a route running beneath.
         // A game pixel is as many whole screen pixels as the room can
         // hold, leaving a little air: one at the smallest window, two or
         // three on a big screen (#36, #57).
@@ -572,9 +573,6 @@ impl Panel {
         (top + rows * pitch, x0 + cols * pitch)
     }
 
-    /// Level 4 (#44): what the two route colours mean, under the map at
-    /// `y`: each route's word in a chip of its colour, then what it leads to.
-    /// The core's line is dimmed while no piece it needs is carried.
     /// How many layout units a Spectrum pixel of a code is (#49): half a
     /// pixel of the game's picture, rounded down to whole screen pixels so
     /// every one is the same size. The picture is 3 units a pixel.
@@ -582,10 +580,11 @@ impl Panel {
         (canvas.scale * 1.5).floor().max(1.0) / canvas.scale
     }
 
-    /// Level 3 (#7, #49): the core's nine holes as a square of three by
-    /// three under the map at its right, in the order the core holds them, each its own
-    /// graphic from the game, in white while it is still wanted and dimmed
-    /// once delivered, outlined while it is carried.
+    /// Level 1 (#7, #49, #66): the core's nine holes as a square of three
+    /// by three under the map at its right, or where the map would end when
+    /// there is none, in the order the core holds them, each its own graphic
+    /// from the game, in white while it is still wanted and dimmed once
+    /// delivered, outlined while it is carried.
     fn core_grid(
         &mut self,
         canvas: &mut Canvas,
@@ -726,7 +725,7 @@ impl Panel {
         }
     }
 
-    /// Level 4 (#44, #49): the two routes' chips under the map, with no
+    /// Level 5 (#44, #49): the two routes' chips under the map, with no
     /// words: "item" for the route to the nearest missing piece, "core"
     /// for the one to the core.
     fn route_legend(&mut self, canvas: &mut Canvas, y: f32) {
@@ -805,16 +804,10 @@ impl Panel {
         );
     }
 
-    /// Level 4 (#9): a line under the map's legend, which code to select
+    /// Level 5 (#9): a line under the map's legend, which code to select
     /// when the next step of a route is a teleport. Nothing when no route
     /// leads anywhere: the missing line says that (#49, decision 7).
-    fn route_line(
-        &mut self,
-        canvas: &mut Canvas,
-        _guidance: &Guidance,
-        label_y: f32,
-        jumps: &[Jump],
-    ) {
+    fn route_line(&mut self, canvas: &mut Canvas, label_y: f32, jumps: &[Jump]) {
         let next: Vec<&Jump> = jumps.iter().filter(|j| j.next).collect();
         let code = |j: &Jump| String::from_utf8_lossy(&j.code).into_owned();
         let (a, b) = (next.first().map(|j| code(j)), next.get(1).map(|j| code(j)));
