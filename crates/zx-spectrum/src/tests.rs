@@ -236,18 +236,28 @@ fn bus_events_are_recorded_when_asked_for() {
 }
 
 #[test]
-fn an_opcode_fetch_from_a_trap_is_noted_once() {
+fn an_interrupt_is_a_step_of_its_own_with_none_of_its_handler_run() {
+    // Interrupts on, a NOP at 0x8000 and, at the vector, an instruction
+    // that would show if it ran.
     let mut z = machine(&[0x00, 0x00]);
-    z.traps = vec![0x8001];
-    z.interrupts = false;
-    z.step();
-    assert_eq!(z.fetched_from(), None);
-    z.step();
-    assert_eq!(z.fetched_from(), Some(0x8001));
-    assert_eq!(z.fetched_from(), None, "taken once");
-    // A data read of the trap's address is not a fetch.
-    z.bus.wait_mreq(0x8001, 3);
-    assert_eq!(z.fetched_from(), None);
+    z.set_interrupts(true);
+    z.low_writable = true;
+    z.mem[0x0038..0x003C].copy_from_slice(&[0x32, 0x00, 0x90, 0x00]); // LD (9000),A; NOP
+    z.set_a(0x5A);
+    let (sp, r) = (z.sp(), z.r());
+    assert_eq!(z.step(), Step::Interrupt);
+    assert_eq!(z.pc(), 0x0038, "at the handler");
+    assert_eq!(z.mem[0x9000], 0, "with none of it run");
+    assert_eq!(z.read16(z.sp()), 0x8000, "the return address pushed");
+    assert_eq!(z.sp(), sp.wrapping_sub(2));
+    assert!(!z.iff1());
+    assert_eq!(
+        (z.t, z.r()),
+        (13, (r + 1) & 0x7F),
+        "13 T-states and one fetch"
+    );
+    assert_eq!(z.step(), Step::Instruction);
+    assert_eq!(z.mem[0x9000], 0x5A, "and then it runs");
 }
 
 #[test]
