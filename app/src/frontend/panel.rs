@@ -403,7 +403,12 @@ impl Panel {
         // graphic at one screen pixel a game pixel, in the colour of what
         // it does, with a pixel of black around it so it stands off the
         // floor and off a route running beneath.
-        let px = 1.0 / canvas.scale;
+        // A game pixel is as many whole screen pixels as the room can
+        // hold, leaving a little air: one at the smallest window, two or
+        // three on a big screen (#36, #57).
+        let room = pitch * canvas.scale;
+        let steps = (room / 16.0).floor().clamp(1.0, 4.0);
+        let px = steps / canvas.scale;
         for found in guidance.items() {
             let (x, y) = at(found.room);
             let colour = if found.piece {
