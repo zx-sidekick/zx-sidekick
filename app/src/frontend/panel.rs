@@ -7,7 +7,7 @@
 //! the rule on #3: a keyboard key is a squarish badge, a pad button a round
 //! one, and a direction a bare arrow.
 
-use super::guidance::{Choice, Guidance, LEVELS, SWITCHES, Setting, is_on, switches_on};
+use super::guidance::{Guidance, LEVELS, SWITCHES, Setting, is_on, switches_on};
 use super::notice;
 use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
 use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
@@ -1180,16 +1180,17 @@ impl Panel {
             ],
         );
 
-        if let Some(choice) = guidance.asking() {
+        if guidance.asking() {
             canvas.shade(x, y, w, h, DIM, 150);
-            self.score_question(canvas, guidance, choice);
+            self.score_question(canvas, guidance);
         }
     }
 
     /// The question over the picker when leaving it would add to the score
-    /// note: exactly what changed since it opened, what the score will say,
-    /// and buttons named for what they do.
-    fn score_question(&mut self, canvas: &mut Canvas, guidance: &Guidance, choice: Choice) {
+    /// note: exactly what changed since it opened, and what the score will
+    /// say. Enter or A goes ahead, Esc, B or Select cancel (#64), so there
+    /// is nothing to choose between.
+    fn score_question(&mut self, canvas: &mut Canvas, guidance: &Guidance) {
         let (was_level, was_training) = (guidance.level(), guidance.training());
         let (level, training) = guidance.picked();
         let record = guidance.record();
@@ -1208,41 +1209,20 @@ impl Panel {
                 changes.push(format!("{label} {} \u{2192} {}", on_off(was), on_off(now)));
             }
         }
-        let mut shows = Vec::new();
-        if level > record.highest {
-            shows.push(format!("guidance up to level {level}"));
-        }
-        let newly: Vec<&str> = SWITCHES
+        // The lines above already say what changed, and the title says where
+        // it shows. All that is left to say is that it cannot be taken back
+        // (#64), and whether that is one thing or several.
+        let newly = SWITCHES
             .into_iter()
             .filter(|&(row, _, _)| is_on(row, training) && !is_on(row, record.training))
-            .map(|(_, label, _)| label)
-            .collect();
-        if !newly.is_empty() {
-            shows.push(format!(
-                "that training mode was used ({})",
-                newly.join(", ")
-            ));
+            .count()
+            + usize::from(level > record.highest);
+        let explanation = if newly > 1 {
+            "They stay on this game's score, even if you change them back."
+        } else {
+            "It stays on this game's score, even if you change it back."
         }
-        let later = match shows.len() {
-            1 if level > record.highest => "turn it down",
-            1 => "turn it off",
-            _ => "change them back",
-        };
-        let explanation = format!(
-            "This game's score will show {}. That stays, even if you {later} later.",
-            shows.join(" and ")
-        );
-        let (keep, undo) = match (level != was_level, training != was_training) {
-            (true, false) => (
-                format!("Keep level {level}"),
-                format!("Back to level {was_level}"),
-            ),
-            (false, true) => (
-                "Keep training on".to_string(),
-                "Turn training off".to_string(),
-            ),
-            _ => ("Keep both changes".to_string(), "Undo both".to_string()),
-        };
+        .to_string();
 
         let w = 440.0;
         let x = (WINDOW_W - w) / 2.0;
@@ -1256,8 +1236,9 @@ impl Panel {
             1.5,
             &[span(&explanation, 13.0, Weight::Regular, HINT_KEY)],
         );
-        let h =
-            58.0 + 22.0 * changes.len() as f32 + 10.0 + explanation_h + 20.0 + 40.0 + 20.0 + 44.0;
+        // The title, the changes, the explanation, and the hints line:
+        // no room for buttons, since Enter or A answers it (#64).
+        let h = 58.0 + 22.0 * changes.len() as f32 + 10.0 + explanation_h + 20.0 + 44.0;
         let y = (WINDOW_H - h) / 2.0;
         canvas.round_rect(x, y, w, h, 12.0, BUTTON_LINE);
         canvas.round_rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, 11.0, DIALOG);
@@ -1295,36 +1276,6 @@ impl Panel {
             1.5,
             &[span(&explanation, 13.0, Weight::Regular, HINT_KEY)],
         );
-        let by = ly + explanation_h + 20.0;
-        let bw = (inner - 12.0) / 2.0;
-        for (i, (label, this)) in [(keep.as_str(), Choice::Use), (undo.as_str(), Choice::Undo)]
-            .into_iter()
-            .enumerate()
-        {
-            let bx = x + 24.0 + i as f32 * (bw + 12.0);
-            let chosen = choice == this;
-            if chosen {
-                canvas.round_rect(bx, by, bw, 40.0, 8.0, ACCENT);
-            } else {
-                canvas.round_rect(bx, by, bw, 40.0, 8.0, BUTTON_LINE);
-                canvas.round_rect(bx + 1.0, by + 1.0, bw - 2.0, 38.0, 7.0, DIALOG);
-            }
-            let spans = [span(
-                label,
-                14.0,
-                Weight::SemiBold,
-                if chosen { DIALOG } else { VALUE_DIM },
-            )];
-            let tw = self.fonts.measure(&spans);
-            self.fonts.text(
-                Some(canvas),
-                bx + (bw - tw) / 2.0,
-                by + 12.0,
-                None,
-                1.0,
-                &spans,
-            );
-        }
         let foot = y + h - 44.0;
         canvas.round_rect(x + 1.0, foot, w - 2.0, 1.0, 0.0, RULE);
         self.hints(
@@ -1332,9 +1283,8 @@ impl Panel {
             x + 24.0,
             foot + 12.0,
             &[
-                (&[Hint::Arrows(&["\u{2190}", "\u{2192}"])], "choose"),
-                (&[Hint::Key("Enter"), Hint::Button("A")], "confirm"),
-                (&[Hint::Key("Esc"), Hint::Button("B")], "back"),
+                (&[Hint::Key("Enter"), Hint::Button("A")], "go ahead"),
+                (&[Hint::Key("Esc"), Hint::Button("B")], "cancel"),
             ],
         );
     }

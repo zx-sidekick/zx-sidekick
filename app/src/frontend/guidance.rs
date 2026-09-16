@@ -153,13 +153,6 @@ pub fn switches_on(on: Training) -> Vec<&'static str> {
         .collect()
 }
 
-/// The answers to "This will show on your score".
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Choice {
-    Use,
-    Undo,
-}
-
 /// What the picker was asked to do, once confirmed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -180,7 +173,7 @@ pub struct Guidance {
     picked: (u8, Training),
     /// "This will show on your score", asked when leaving the picker would
     /// add to the record, and which answer is highlighted.
-    asking: Option<Choice>,
+    asking: bool,
     /// The row the picker has highlighted.
     focus: Setting,
     /// An action pressed once, waiting for the second press.
@@ -273,8 +266,8 @@ impl Guidance {
         self.picked
     }
 
-    /// The question, if it is up, and the highlighted answer.
-    pub fn asking(&self) -> Option<Choice> {
+    /// Whether the question about the score is up (#64).
+    pub fn asking(&self) -> bool {
         self.asking
     }
 
@@ -544,7 +537,7 @@ impl Guidance {
     pub fn open(&mut self) {
         self.picker = true;
         self.picked = (self.level, self.training);
-        self.asking = None;
+        self.asking = false;
         self.focus = Setting::Level;
         self.armed = None;
         self.version += 1;
@@ -553,8 +546,8 @@ impl Guidance {
     /// Esc, B or Select. With the question up, back to the picker.
     /// Otherwise close it, leaving what is in effect as it was.
     pub fn back(&mut self) {
-        if self.asking.is_some() {
-            self.asking = None;
+        if self.asking {
+            self.asking = false;
             self.version += 1;
         } else {
             self.close();
@@ -565,7 +558,7 @@ impl Guidance {
     /// with Undo highlighted so a reflex press changes nothing.
     fn leave(&mut self) {
         if self.raises_record() {
-            self.asking = Some(Choice::Undo);
+            self.asking = true;
             self.armed = None;
             self.version += 1;
         } else {
@@ -584,7 +577,7 @@ impl Guidance {
     /// the way to another does not count as having used it.
     pub fn close(&mut self) {
         self.picker = false;
-        self.asking = None;
+        self.asking = false;
         self.armed = None;
         self.record.highest = self.record.highest.max(self.level);
         self.record.training = merged(self.record.training, self.training);
@@ -597,12 +590,9 @@ impl Guidance {
     /// first press asks for a second, and the second requests the action
     /// and closes the picker.
     pub fn enter(&mut self) {
-        if let Some(choice) = self.asking {
-            if choice == Choice::Use {
-                self.keep();
-            } else {
-                self.close();
-            }
+        // The question takes Enter or A for yes, and nothing else (#64).
+        if self.asking {
+            self.keep();
             return;
         }
         let action = match self.focus {
@@ -637,7 +627,7 @@ impl Guidance {
     }
 
     fn move_focus(&mut self, by: isize) {
-        if self.asking.is_some() {
+        if self.asking {
             return;
         }
         let rows = self.rows();
@@ -661,9 +651,8 @@ impl Guidance {
     /// Left and right in the picker: the highlighted setting down or up a
     /// step, in the picker only until it is kept.
     pub fn change(&mut self, up: bool) {
-        if let Some(choice) = &mut self.asking {
-            *choice = if up { Choice::Undo } else { Choice::Use };
-            self.version += 1;
+        // Nothing to move between while the question is up (#64).
+        if self.asking {
             return;
         }
         let max = LEVELS.len() as u8 - 1;
@@ -758,7 +747,7 @@ mod tests {
             "not in effect yet"
         );
         g.enter();
-        assert_eq!(g.asking(), Some(Choice::Undo), "training mode would show");
+        assert!(g.asking(), "training mode would show");
         g.change(false);
         g.enter();
         assert_eq!((g.level(), g.training()), (1, only(Setting::Time)), "kept");
@@ -816,10 +805,12 @@ mod tests {
         g.change(true);
         g.enter();
         assert!(g.picker_open());
-        assert_eq!(g.asking(), Some(Choice::Undo));
-        g.enter();
+        assert!(g.asking());
+        g.back();
+        assert!(g.picker_open(), "cancelling stays in the picker");
+        g.back();
         assert!(!g.picker_open());
-        assert_eq!(g.level(), 0, "undone");
+        assert_eq!(g.level(), 0, "not kept");
         assert_eq!(g.record(), Record::default());
     }
 
@@ -830,13 +821,10 @@ mod tests {
         g.focus_down();
         g.change(true);
         g.enter();
-        assert_eq!(
-            g.asking(),
-            Some(Choice::Undo),
-            "Enter on a setting asks too"
-        );
+        assert!(g.asking(), "Enter on a setting asks too");
         g.change(false);
-        assert_eq!(g.asking(), Some(Choice::Use));
+        g.focus_down();
+        assert!(g.asking(), "and nothing moves while it asks");
         g.enter();
         assert_eq!(g.training(), only(Setting::Time));
         assert!(g.record().training.time);
@@ -850,7 +838,7 @@ mod tests {
         g.enter();
         g.back();
         assert!(g.picker_open());
-        assert_eq!(g.asking(), None);
+        assert!(!g.asking());
         assert_eq!(g.picked().0, 1, "still chosen");
         assert_eq!(g.level(), 0, "and not in effect");
     }

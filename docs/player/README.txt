@@ -169,7 +169,10 @@ from 0 (none) to 5, each adding to the ones below.
   Left and right       Change the guidance level, or turn a training
                        switch off or on.
   Enter, or A          OK: keep what you changed. End this game and
-                       Exit Starquake need a second press.
+                       Exit Starquake need a second press. When a change
+                       would show on your score, the picker says so and
+                       waits: Enter or A goes ahead, Esc, B or Select
+                       cancel.
   Esc, B or Select     Cancel: leave the picker as it was when it
                        opened.
 
