@@ -174,11 +174,20 @@ impl Training {
     }
 }
 
-/// Blanks the room's deadly markers, the spikes and the zappers, by writing
-/// the kind the game itself leaves on a marker it has spent (#8). The table
-/// is rebuilt whenever a room is entered, so this is written after every
-/// frame and nothing is changed for good.
+/// Takes the room's spikes and zappers out of the player's way (#8): a
+/// spike's marker is given the kind the game itself leaves on a marker it
+/// has spent, and a zapper's force-field record is cleared, which is what
+/// a room with no zapper in it looks like. Both tables are rebuilt whenever
+/// a room is entered, so this is written after every frame and nothing is
+/// changed for good.
 fn blank_dangers(z: &mut Zx) {
+    for i in 0..starquake::FORCE_FIELD_COUNT {
+        let rec = usize::from(starquake::FORCE_FIELDS) + i * starquake::FORCE_FIELD_REC;
+        // The column ends the game's look for one to touch; the row stops
+        // it being drawn and flickered.
+        z.mem[rec] = 0;
+        z.mem[rec + 1] = 0;
+    }
     let end = z
         .read16(starquake::at::MARKERS_END)
         .max(starquake::at::MARKERS);
@@ -589,6 +598,9 @@ mod tests {
             z.mem[table + i * 3 + 2] = kind;
         }
         z.write16(starquake::at::MARKERS_END, starquake::at::MARKERS + 9);
+        // And a zapper standing in the room.
+        z.mem[usize::from(starquake::FORCE_FIELDS)] = 0x0C;
+        z.mem[usize::from(starquake::FORCE_FIELDS) + 1] = 0x08;
         let training = Training {
             dangers: true,
             ..Training::default()

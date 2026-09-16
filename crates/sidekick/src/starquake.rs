@@ -276,8 +276,22 @@ pub const DRAIN_DROP: u8 = 0x78;
 /// The marker a teleporter booth's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;
 
-/// The marker a spike or a zapper leaves in its room: touching it is an
-/// outright death, which no amount of energy survives (#8).
+/// Blob's place in his entity slot: the pixels from the left, and from the
+/// bottom (#8).
+pub const SLOT_X: usize = 5;
+pub const SLOT_Y: usize = 6;
+
+/// The room's force fields, the zappers: up to four records of eight bytes,
+/// the column first and the row second. The game reads them until a column
+/// of zero, and draws and flickers each one whose row is not zero, so a
+/// record with both cleared is a zapper that is not there (#8).
+pub const FORCE_FIELDS: u16 = 0x9635;
+pub const FORCE_FIELD_REC: usize = 8;
+pub const FORCE_FIELD_COUNT: usize = 4;
+
+/// The marker a spike leaves in its room: touching it is an outright
+/// death, which no amount of energy survives. A zapper is not one of
+/// these: it is a force field, in the table above (#8).
 pub const DANGER_MARKER: u8 = 0x06;
 
 /// What the game leaves on a marker it has spent, such as a bonus picked

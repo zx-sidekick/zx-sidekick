@@ -156,10 +156,12 @@ from 0 (none) to 5, each adding to the ones below.
                          energy                 energy; the kinds that
                                                 kill outright still
                                                 kill
-                         Spikes and zappers     walking into one does
-                         are harmless           nothing; they are back
-                                                when you next enter the
-                                                room with it off
+                         Spikes and zappers     walking into a spike
+                         are harmless           does nothing, and the
+                                                zappers are switched
+                                                off; both are back when
+                                                you next enter the room
+                                                with it off
 
   F11                  Leave fullscreen, or go back to it. The game
                        starts fullscreen; the window it leaves you with

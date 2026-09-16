@@ -712,7 +712,10 @@ fn items_check(dir: &Path) -> bool {
 /// play the game would have had.
 fn training_check(dir: &Path, frames: u64) -> bool {
     use sidekick::machine::Training;
-    use sidekick::starquake::{DANGER_MARKER, at, routine};
+    use sidekick::starquake::{
+        DANGER_MARKER, FORCE_FIELD_COUNT, FORCE_FIELD_REC, FORCE_FIELDS, SLOT_X, SLOT_Y, at,
+        routine,
+    };
     // How long the game takes to set energy up once play starts; before
     // that the byte still holds what the loader left.
     const SETTLED: u64 = 200;
@@ -823,6 +826,55 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             spikes.push((room, off, on));
         }
     }
+    // The zappers: stand Blob in a force field's strip, with the switch off
+    // and on.
+    let mut fields = Vec::new();
+    for room in 0..64u16 {
+        let killed = |dangers: bool| {
+            let mut m = base.clone();
+            m.training = Training {
+                dangers,
+                time: true,
+                ..Training::default()
+            };
+            m.zx.write16(at::ROOM, room);
+            m.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+            if !m.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+                return None;
+            }
+            let rec = (0..FORCE_FIELD_COUNT)
+                .map(|i| usize::from(FORCE_FIELDS) + i * FORCE_FIELD_REC)
+                .find(|&a| m.zx.mem[a] != 0 && m.zx.mem[a + 1] != 0)?;
+            // Where the game looks for Blob against that field.
+            let x = m.zx.mem[rec].rotate_left(3);
+            let top = 0x1Au8
+                .wrapping_sub(m.zx.mem[rec + 1])
+                .rotate_left(3)
+                .wrapping_sub(2);
+            m.zx.t = 0;
+            m.zx.set_interrupts(true);
+            m.watch = vec![routine::DEATH];
+            for _ in 0..120 {
+                m.zx.mem[usize::from(at::ENTITIES) + SLOT_X] = x;
+                m.zx.mem[usize::from(at::ENTITIES) + SLOT_Y] = top.wrapping_sub(8);
+                if m.run_frame().contains(&routine::DEATH) {
+                    return Some(true);
+                }
+            }
+            Some(false)
+        };
+        if let Some(off) = killed(false)
+            && off
+            && let Some(on) = killed(true)
+        {
+            fields.push((room, on));
+        }
+        if fields.len() >= 6 {
+            break;
+        }
+    }
+    let fields_held = fields.iter().filter(|&&(_, on)| !on).count();
+    let fields_hold = !fields.is_empty() && fields_held == fields.len();
     let spikes_kill = spikes.iter().filter(|&&(_, off, _)| off).count();
     let spikes_held = spikes.iter().filter(|&&(_, _, on)| !on).count();
     let dangers_hold =
@@ -847,10 +899,17 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         both_low[0], both_start[0]
     );
     println!(
-        "  standing on a spike or a zapper kills in {spikes_kill} of {} rooms, and with the switch on in {} {}",
+        "  standing on a spike kills in {spikes_kill} of {} rooms, and with the switch on in {} {}",
         spikes.len(),
         spikes.len() - spikes_held,
         if dangers_hold { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  standing in a zapper kills in {} of {} rooms, and with the switch on in {} {}",
+        fields.len(),
+        fields.len(),
+        fields.len() - fields_held,
+        if fields_hold { "ok" } else { "FAILED" }
     );
     println!(
         "  with every switch off the play ends as the game left it: energy {}, platforms {}, gun {}, lives {}",
