@@ -24,6 +24,20 @@ pub const LEVELS: [&str; 6] = [
     "Arrow, whole map",
 ];
 
+/// An item found: one lying in a room that has been visited, with what it
+/// does, which is the icon the map draws for it (#36).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Found {
+    pub room: u16,
+    pub kind: sidekick::starquake::Kind,
+    /// Whether the core wants it: drawn in the piece's colour, and its
+    /// room's dot left out, since the item itself says more (#36).
+    pub piece: bool,
+    /// The game's own graphic for it, 32 bytes, as the core column reads
+    /// them.
+    pub graphic: [u8; 32],
+}
+
 /// One of the core's nine holes as the column draws it (#7).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hole {
@@ -102,6 +116,9 @@ pub struct Guidance {
     /// The rooms holding a core piece still needed, for level 3 (#6), in
     /// the game being played or just ended.
     pieces: RoomSet,
+    /// The items found and left lying in a room visited, for level 2
+    /// (#36), each with what it does.
+    items: Vec<Found>,
     /// The core's nine holes, in the game being played or just ended; empty
     /// on the title screen.
     core: Vec<Hole>,
@@ -233,6 +250,19 @@ impl Guidance {
 
     /// Takes the rooms holding a core piece still needed, if they have
     /// changed.
+    /// The items found, each in the room it lies in (#36).
+    pub fn items(&self) -> &[Found] {
+        &self.items
+    }
+
+    /// Takes the items found, if they have changed.
+    pub fn set_items(&mut self, found: &[Found]) {
+        if self.items != found {
+            self.items = found.to_vec();
+            self.version += 1;
+        }
+    }
+
     pub fn set_pieces(&mut self, rooms: &RoomSet) {
         if self.pieces != *rooms {
             self.pieces = rooms.clone();

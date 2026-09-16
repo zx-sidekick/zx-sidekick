@@ -5,11 +5,11 @@
 
 use sidekick::map::{Graph, Known, Place, RoomSet, Step};
 use sidekick::starquake::{
-    CORE_ROOM, Item, SeenTeleporter, at, entry, graphic, hole, items_and_core, missing_pieces,
-    routine, teleporter_code,
+    CORE_ROOM, Item, SeenTeleporter, at, entry, graphic, hole, items_and_core, kind,
+    missing_pieces, routine, teleporter_code,
 };
 
-use super::guidance::{Guidance, Hole};
+use super::guidance::{Found, Guidance, Hole};
 
 /// Which part of the program is running, for the panel beside it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -126,6 +126,7 @@ impl Tracker {
                 let (items, core) = items_and_core(mem);
                 let pieces = missing_pieces(&core, &items);
                 guidance.set_core(holes(mem, &core, &items));
+                let found = found(mem, &items, &core, &unvisited);
                 let here = u16::from_le_bytes([mem[room], mem[room + 1]]);
                 let booths: Vec<u16> = self.seen.iter().map(|t| t.room).collect();
                 // Level 5 routes over the whole map from the place Blob is in
@@ -143,6 +144,7 @@ impl Tracker {
                     rooms.set(item.room(), true);
                 }
                 guidance.set_pieces(&rooms);
+                guidance.set_items(&found);
             }
             Scene::GameOver => guidance.set_room(None),
             Scene::Loading | Scene::Menu => guidance.forget_map(),
@@ -194,6 +196,30 @@ fn routes(
         search(&room, &[])
     });
     (piece, core.flatten())
+}
+
+/// The items found, for the map's graphics (#36): those lying in a room
+/// that has been visited, outside the core room, not being carried, each
+/// with its own graphic and whether the core wants it, which is the
+/// game's own choice each game, kept in `core`.
+fn found(mem: &[u8], items: &[Item], core: &[u8; 9], unvisited: &RoomSet) -> Vec<Found> {
+    items
+        .iter()
+        .filter(|item| {
+            item.room() != CORE_ROOM
+                && item.row() != 0
+                && !(1..=5).contains(&item.row())
+                && !unvisited.contains(item.room())
+        })
+        .map(|item| Found {
+            room: item.room(),
+            kind: kind(item.graphic()),
+            piece: core
+                .iter()
+                .any(|&slot| slot & 0x80 != 0 && slot & 0x7F == item.graphic()),
+            graphic: graphic(mem, item.graphic()),
+        })
+        .collect()
 }
 
 /// The core's nine holes as the column draws them: each one's graphic from
@@ -456,6 +482,50 @@ mod tests {
         );
         let (walked_only, _) = routes(&Known::default(), None, 0, &[], &pieces, &[]);
         assert_eq!(walked_only, None, "level 4 knows no way");
+    }
+
+    #[test]
+    fn the_items_found_are_those_lying_in_a_room_visited() {
+        use sidekick::starquake::Kind;
+        // The core wants graphic 30; every room visited but 500.
+        let core = [0x80 | 30; 9];
+        let mut unvisited = RoomSet::default();
+        unvisited.set(500, true);
+        let item = |room: u16, row: u8, graphic: u8| {
+            Item([
+                0,
+                ((room >> 8) as u8).rotate_right(1) | row,
+                room as u8,
+                graphic,
+            ])
+        };
+        let items = [
+            item(40, 12, 15),        // the door card, lying in a room seen
+            item(41, 12, 16),        // the pad key
+            item(42, 12, 26),        // a trade object
+            item(43, 12, 9),         // a chip
+            item(44, 12, 30),        // a core piece: level 3 marks its room
+            item(45, 3, 15),         // carried
+            item(46, 0, 15),         // its room never entered
+            item(500, 12, 15),       // in a room not visited
+            item(CORE_ROOM, 12, 15), // parked in the core
+        ];
+        let mem = vec![0u8; 0x10000];
+        let found = found(&mem, &items, &core, &unvisited);
+        assert_eq!(
+            found
+                .iter()
+                .map(|f| (f.room, f.kind, f.piece))
+                .collect::<Vec<_>>(),
+            [
+                (40, Kind::DoorCard, false),
+                (41, Kind::PadKey, false),
+                (42, Kind::Trade, false),
+                (43, Kind::Chip(b'0'), false),
+                (44, Kind::Trade, true),
+            ],
+            "the core's own piece comes too, marked as one"
+        );
     }
 
     #[test]

@@ -320,6 +320,54 @@ impl Item {
     }
 }
 
+/// What an item does, by its graphic (#36), which is what the map's icon
+/// for it says. Read from the game's own code by way of
+/// `starquake/starquake-recompiled`, which was written from the tape:
+/// the codes a security door and a Cheops pyramid ask for take five
+/// numbered chips, a wildcard that is used up and a master key that is
+/// not; the pad key switches a teleporter pad; the packs act the moment
+/// they are picked up; and a pyramid takes anything else in exchange for
+/// a core piece.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Kind {
+    /// A numbered chip, `0`, `1`, `2`, `4` or `8`: what a door's code and
+    /// a pyramid's code ask for. Used up when it answers one.
+    Chip(u8),
+    /// The chip that answers any one slot of a code, and is used up.
+    AnyChip,
+    /// The card that answers any slot of any code and is never used up,
+    /// so it opens every door and every pyramid.
+    DoorCard,
+    /// The key that switches the teleporter pads in a room, by being
+    /// carried onto one.
+    PadKey,
+    /// A pack: it acts the moment it is picked up, giving a life or
+    /// filling one of the bars. Number 25 is the Cheops pyramid itself.
+    Pack,
+    /// Anything else, a core piece included: what a Cheops pyramid takes
+    /// in exchange for a core piece.
+    Trade,
+}
+
+/// What the item with this `graphic` does. A core piece is [`Kind::Trade`]
+/// too, since a pyramid takes it the same way; the map tells the two apart
+/// by what the core wants, which is the game's own choice each game.
+#[must_use]
+pub fn kind(graphic: u8) -> Kind {
+    match graphic {
+        9 => Kind::Chip(b'0'),
+        10 => Kind::Chip(b'1'),
+        11 => Kind::Chip(b'2'),
+        12 => Kind::Chip(b'4'),
+        13 => Kind::Chip(b'8'),
+        14 => Kind::AnyChip,
+        15 => Kind::DoorCard,
+        16 => Kind::PadKey,
+        17..=25 => Kind::Pack,
+        _ => Kind::Trade,
+    }
+}
+
 /// The items and the core's holes, from the machine's memory.
 #[must_use]
 pub fn items_and_core(mem: &[u8]) -> (Vec<Item>, [u8; 9]) {
@@ -401,6 +449,20 @@ pub fn missing_pieces(core_slots: &[u8; 9], items: &[Item]) -> Vec<Item> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_kind_of_item_is_named_by_its_graphic() {
+        assert_eq!(kind(9), Kind::Chip(b'0'));
+        assert_eq!(kind(13), Kind::Chip(b'8'));
+        assert_eq!(kind(14), Kind::AnyChip);
+        assert_eq!(kind(15), Kind::DoorCard);
+        assert_eq!(kind(16), Kind::PadKey);
+        assert_eq!(kind(17), Kind::Pack);
+        assert_eq!(kind(25), Kind::Pack, "the Cheops pyramid");
+        assert_eq!(kind(26), Kind::Trade, "the transistor");
+        assert_eq!(kind(28), Kind::Trade, "the antenna");
+        assert_eq!(kind(33), Kind::Trade, "a core piece trades the same way");
+    }
     use crate::map::RoomSet;
 
     /// An item in `room` at `row`, with `graphic`.
