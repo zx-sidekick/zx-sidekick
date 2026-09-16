@@ -288,6 +288,11 @@ pub const DANGER_MARKER: u8 = 0x06;
 /// nothing (#68).
 pub const SPENT_MARKER: u8 = 0x05;
 
+/// The marker an item placed in a room leaves: this plus the item's index
+/// in the table at [`at::ITEMS`]. Standing on it and pushing Up picks the
+/// item up (#68).
+pub const ITEM_MARKER: u8 = 0x14;
+
 /// A thing whose graphic lies at or above this page only drains energy on
 /// touch; one below it kills Blob outright, whatever his energy (#68).
 pub const HARMLESS_GRAPHICS: u8 = 0xB4;

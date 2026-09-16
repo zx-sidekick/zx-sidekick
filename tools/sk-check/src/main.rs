@@ -714,7 +714,8 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     use sidekick::machine::Training;
     use sidekick::starquake::{
         DANGER_MARKER, ENEMY_SLOTS, FORCE_FIELD_COUNT, FORCE_FIELD_REC, FORCE_FIELDS,
-        HARMLESS_GRAPHICS, SLOT, SLOT_GRAPHIC, SLOT_X, SLOT_Y, at, decide, routine,
+        HARMLESS_GRAPHICS, ITEM_MARKER, SLOT, SLOT_GRAPHIC, SLOT_X, SLOT_Y, at, decide,
+        items_and_core, routine,
     };
     // How long the game takes to set energy up once play starts; before
     // that the byte still holds what the loader left.
@@ -928,6 +929,44 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     }
     let fields_held = fields.iter().filter(|&&(_, on)| !on).count();
     let fields_hold = fields.len() == 6 && fields_held == fields.len();
+    // The marker compare the switch steers is reached for every marker
+    // Blob touches, so with the switch on an item must still be picked up
+    // (#68, found playing): stand him on the first item placed in a room
+    // and hold Up, in six rooms.
+    let mut pickups = Vec::new();
+    for room in 0..128u16 {
+        let picked = |m: &mut Machine| {
+            let end = m.zx.read16(at::MARKERS_END).max(at::MARKERS);
+            let (x, y, kind) = (at::MARKERS..end)
+                .step_by(3)
+                .map(usize::from)
+                .map(|a| (m.zx.mem[a], m.zx.mem[a + 1], m.zx.mem[a + 2]))
+                .find(|&(_, _, k)| k >= ITEM_MARKER)?;
+            let index = usize::from(kind - ITEM_MARKER);
+            let carried = |m: &Machine| {
+                let (items, _) = items_and_core(&m.zx.mem[..]);
+                (1..=5).contains(&items[index].row())
+            };
+            if carried(m) {
+                return None;
+            }
+            for _ in 0..30 {
+                stand(m, (x, y));
+                m.joystick = JOY_UP;
+                m.run_frame();
+            }
+            Some(carried(m))
+        };
+        if let Some(mut m) = enter(room, true)
+            && let Some(on) = picked(&mut m)
+        {
+            pickups.push((room, on));
+        }
+        if pickups.len() >= 6 {
+            break;
+        }
+    }
+    let pickups_hold = pickups.len() == 6 && pickups.iter().all(|&(_, on)| on);
     // And the three instructions the switch steers are where the facts say.
     let at_hand =
         |a: u16, bytes: &[u8]| &base.zx.mem[usize::from(a)..usize::from(a) + bytes.len()] == bytes;
@@ -942,6 +981,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         && things_hold
         && patches_hold
         && fields_hold
+        && pickups_hold
         && decides;
     println!(
         "  training over {frames} frames: with none, energy fell to {} of {}; full bars ended at {} and {} of {} and {}; time standing still left energy at {} or better; endless lives never went below {} where a plain run fell to {} {}",
@@ -994,6 +1034,13 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         rooms(&fields),
         fields.len() - fields_held,
         if fields_hold { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  with no harm from enemies on, standing on an item and pushing Up picks it up in {} of {} rooms ({}) {}",
+        pickups.iter().filter(|&&(_, on)| on).count(),
+        pickups.len(),
+        rooms(&pickups),
+        if pickups_hold { "ok" } else { "FAILED" }
     );
     println!(
         "  the three instructions the switch steers are on the tape as recorded {}",

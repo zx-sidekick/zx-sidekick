@@ -172,15 +172,21 @@ impl Training {
 /// Steers the game past an outright death when `pc` is where it decides one
 /// (#68, [`starquake::decide`]): the register the instruction there reads is
 /// given the value the harmless case has, and nothing is written into the
-/// game. At the enemy-touch compare A becomes the harmless page; at the
-/// marker compare A becomes the spent kind; at the force-field call the zero
-/// flag is set so the call is not made.
+/// game. At the enemy-touch compare a page that kills becomes the harmless
+/// page; at the marker compare the deadly kind becomes the spent kind, and
+/// every other kind is left as it is, since the compare is reached for
+/// every marker Blob touches, an item or a pad included; at the force-field
+/// call the zero flag is set so the call is not made.
 fn survive(z: &mut Zx, pc: u16) {
     use starquake::decide::{ENEMY_KILL, FIELD_KILL, PATCH_KILL};
     if pc == ENEMY_KILL.0 {
-        z.set_a(starquake::HARMLESS_GRAPHICS);
+        if z.a() < starquake::HARMLESS_GRAPHICS {
+            z.set_a(starquake::HARMLESS_GRAPHICS);
+        }
     } else if pc == PATCH_KILL.0 {
-        z.set_a(starquake::SPENT_MARKER);
+        if z.a() == starquake::DANGER_MARKER {
+            z.set_a(starquake::SPENT_MARKER);
+        }
     } else if pc == FIELD_KILL.0 {
         let f = z.f();
         z.set_f(f | zx_spectrum::ZF);
@@ -946,6 +952,40 @@ mod tests {
         ];
         assert_eq!(steered(at - 2, code, 0x9000, false), 0x06, "the kill path");
         assert_eq!(steered(at - 2, code, 0x9000, true), 0, "steered past it");
+    }
+
+    #[test]
+    fn every_other_marker_is_left_as_it_is_with_no_harm_on() {
+        // The compare is reached for every marker Blob touches, an item
+        // (kinds from 0x14) or a hover pad (0x0C) included, and those must
+        // still be what they are (#68, found playing).
+        let (at, cp) = starquake::decide::PATCH_KILL;
+        for kind in [0x0C, 0x0D, 0x0E, 0x14, 0x20] {
+            let code: &[(u16, &[u8])] = &[
+                (at - 2, &[0x3E, kind]),
+                (at, &cp),
+                // JR NZ,+3 lands on LD (mark),A, so a kind that is not the
+                // deadly one is written as it stands.
+                (at + 2, &[0x20, 0x00, 0x32, 0x00, 0x90, 0x18, 0xFE]),
+            ];
+            assert_eq!(
+                steered(at - 2, code, 0x9000, true),
+                kind,
+                "kind {kind:#04x}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_thing_that_only_drains_keeps_its_own_page_with_no_harm_on() {
+        let (at, cp) = starquake::decide::ENEMY_KILL;
+        // LD A,B6; CP B4; LD (mark),A; JR $: the page as the compare left it.
+        let code: &[(u16, &[u8])] = &[
+            (at - 2, &[0x3E, 0xB6]),
+            (at, &cp),
+            (at + 2, &[0x32, 0x00, 0x90, 0x18, 0xFE]),
+        ];
+        assert_eq!(steered(at - 2, code, 0x9000, true), 0xB6);
     }
 
     #[test]
