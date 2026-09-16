@@ -1209,30 +1209,20 @@ impl Panel {
                 changes.push(format!("{label} {} \u{2192} {}", on_off(was), on_off(now)));
             }
         }
-        let mut shows = Vec::new();
-        if level > record.highest {
-            shows.push(format!("guidance up to level {level}"));
-        }
-        let newly: Vec<&str> = SWITCHES
+        // The lines above already say what changed, and the title says where
+        // it shows. All that is left to say is that it cannot be taken back
+        // (#64), and whether that is one thing or several.
+        let newly = SWITCHES
             .into_iter()
             .filter(|&(row, _, _)| is_on(row, training) && !is_on(row, record.training))
-            .map(|(_, label, _)| label)
-            .collect();
-        if !newly.is_empty() {
-            shows.push(format!(
-                "that training mode was used ({})",
-                newly.join(", ")
-            ));
+            .count()
+            + usize::from(level > record.highest);
+        let explanation = if newly > 1 {
+            "They stay on this game's score, even if you change them back."
+        } else {
+            "It stays on this game's score, even if you change it back."
         }
-        let later = match shows.len() {
-            1 if level > record.highest => "turn it down",
-            1 => "turn it off",
-            _ => "change them back",
-        };
-        let explanation = format!(
-            "This game's score will show {}. That stays, even if you {later} later.",
-            shows.join(" and ")
-        );
+        .to_string();
 
         let w = 440.0;
         let x = (WINDOW_W - w) / 2.0;
