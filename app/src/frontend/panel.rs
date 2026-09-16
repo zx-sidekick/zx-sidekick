@@ -518,14 +518,24 @@ impl Panel {
                 1.0,
                 &word(text),
             );
-            let spans = [span(
-                meaning,
-                12.0,
-                Weight::Regular,
-                if lit { SOFT } else { QUIET },
-            )];
-            self.fonts
-                .text(Some(canvas), x + chip_w + 10.0, y - 8.0, None, 1.0, &spans);
+            let tone = if lit { SOFT } else { QUIET };
+            // Which of the nearest missing pieces the route leads to (#51);
+            // nothing while there is only one to go to.
+            let (which, count) = guidance.piece_choice();
+            let tail = format!(", {which} of {count}");
+            let spans = [
+                span(meaning, 12.0, Weight::Regular, tone),
+                span(&tail, 12.0, Weight::SemiBold, BRIGHT),
+            ];
+            let shown = if i == 0 && count > 1 { 2 } else { 1 };
+            self.fonts.text(
+                Some(canvas),
+                x + chip_w + 10.0,
+                y - 8.0,
+                None,
+                1.0,
+                &spans[..shown],
+            );
         }
         // Level 5 (#10): what a dashed line means.
         if guidance.level() >= 5 {
@@ -1945,6 +1955,8 @@ mod tests {
                     let booths: Vec<u16> = g.teleporters().iter().map(|t| t.room).collect();
                     let route = known.route(here, &booths, &pieces, 199);
                     g.set_route(route);
+                    // Switched to the second of the three nearest (#51).
+                    g.set_piece_choice(Some(here), (2, 3));
                     // The made-up walk never reaches room 199, so a room far
                     // along it stands in for the core, as in the mockup (#44).
                     let far = (0..COLS * ROWS)
