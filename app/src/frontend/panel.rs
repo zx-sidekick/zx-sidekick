@@ -44,6 +44,10 @@ const TRAINING: Rgb = [0xf5, 0xb8, 0x4b];
 const PAUSED: Rgb = [0x5d, 0x63, 0x72];
 const CODE: Rgb = [0x7f, 0xd1, 0xc7];
 const FLOOR: Rgb = [0x22, 0x2c, 0x45];
+/// A room level 6 draws that has never been walked through: the same shape,
+/// dimmer, so where you have been still reads at a glance (#66).
+const FLOOR_UNSEEN: Rgb = [0x1a, 0x20, 0x30];
+const WALL_UNSEEN: Rgb = [0x4b, 0x53, 0x68];
 const MAP_DOT: Rgb = [0x17, 0x1a, 0x22];
 const WALL: Rgb = [0x9a, 0xaa, 0xd0];
 const HERE: Rgb = [0xe8, 0xec, 0xf4];
@@ -53,6 +57,12 @@ const ITEM_DOOR: Rgb = [0x9b, 0x8a, 0xf0];
 const ITEM_PAD: Rgb = [0xf5, 0xd0, 0x4b];
 const ITEM_TRADE: Rgb = [0xe6, 0xea, 0xf2];
 const ITEM_EDGE: Rgb = [0x00, 0x00, 0x00];
+/// What a room will place, told at level 6 (#66): a pyramid stands out,
+/// since there are eleven of them and each is a trade; a pack is a pip in
+/// the corner, since half the planet has one.
+const PYRAMID: Rgb = [0xd8, 0xb4, 0x6a];
+const PACK: Rgb = [0x4a, 0x5a, 0x7a];
+
 const PIECE_ROOM: Rgb = [0x15, 0x1a, 0x26];
 const PIECE_ROOM_LINE: Rgb = [0x6b, 0x75, 0x94];
 const TILE: Rgb = [0x1b, 0x1f, 0x29];
@@ -319,10 +329,15 @@ impl Panel {
             )
         };
 
+        // Level 6 draws the whole planet, room by room, whether or not it
+        // has been walked through (#66).
+        let whole = level >= 6;
         for room in 0..rooms {
             let (x, y) = at(room);
             if guidance.visited(room) {
                 canvas.round_rect(x, y, pitch, pitch, 0.0, FLOOR);
+            } else if whole {
+                canvas.round_rect(x, y, pitch, pitch, 0.0, FLOOR_UNSEEN);
             } else if all_marks && holds(guidance, room) {
                 let (inset, size) = (2.5 * unit, pitch - 5.0 * unit);
                 let (x, y) = (x + inset, y + inset);
@@ -337,8 +352,13 @@ impl Panel {
         }
         // Walls after all the floor, so no floor covers them.
         let (line, overhang) = (2.0, 1.0);
-        for room in (0..rooms).filter(|&r| guidance.visited(r)) {
+        for room in (0..rooms).filter(|&r| guidance.visited(r) || whole) {
             let (x, y) = at(room);
+            let wall = if guidance.visited(room) {
+                WALL
+            } else {
+                WALL_UNSEEN
+            };
             let open = guidance
                 .openings()
                 .get(room as usize)
@@ -346,16 +366,16 @@ impl Panel {
                 .unwrap_or_default();
             let long = pitch + 2.0 * overhang;
             if !open.up {
-                canvas.round_rect(x - overhang, y - overhang, long, line, 0.0, WALL);
+                canvas.round_rect(x - overhang, y - overhang, long, line, 0.0, wall);
             }
             if !open.down {
-                canvas.round_rect(x - overhang, y + pitch - overhang, long, line, 0.0, WALL);
+                canvas.round_rect(x - overhang, y + pitch - overhang, long, line, 0.0, wall);
             }
             if !open.left {
-                canvas.round_rect(x - overhang, y - overhang, line, long, 0.0, WALL);
+                canvas.round_rect(x - overhang, y - overhang, line, long, 0.0, wall);
             }
             if !open.right {
-                canvas.round_rect(x + pitch - overhang, y - overhang, line, long, 0.0, WALL);
+                canvas.round_rect(x + pitch - overhang, y - overhang, line, long, 0.0, wall);
             }
             // Walls inside, where they stand: the solid cells between two
             // openings, a door's or a pad's every other cell (#43).
@@ -372,7 +392,7 @@ impl Panel {
                         cw.max(1.0),
                         ch.max(1.0),
                         0.0,
-                        WALL,
+                        wall,
                     );
                 }
             }
@@ -467,6 +487,28 @@ impl Panel {
             let r = 4.5 * unit;
             let (cx, cy) = (x + pitch / 2.0, y + pitch / 2.0);
             canvas.round_rect(cx - r, cy - r, 2.0 * r, 2.0 * r, r, PIECE);
+        }
+        // Level 6 (#66): what each room will place, under the items so
+        // nothing lying in a room is hidden by it.
+        if whole {
+            for room in 0..rooms {
+                let (x, y) = at(room);
+                if guidance.pyramid(room) {
+                    let r = 4.0 * unit;
+                    let (cx, cy) = (x + pitch / 2.0, y + pitch - 4.0 * unit);
+                    canvas.triangle([(cx - r, cy), (cx, cy - 2.0 * r), (cx + r, cy)], PYRAMID);
+                } else if guidance.pack(room) {
+                    let pip = 3.0 * unit;
+                    canvas.round_rect(
+                        x + pitch - pip - 2.0 * unit,
+                        y + pitch - pip - 2.0 * unit,
+                        pip,
+                        pip,
+                        pip / 2.0,
+                        PACK,
+                    );
+                }
+            }
         }
         // Level 2 (#36): every item found, drawn with the game's own
         // graphic at one screen pixel a game pixel, in the colour of what
@@ -1064,9 +1106,12 @@ impl Panel {
             top + 80.0,
             &[span(LEVELS[level as usize], 17.0, Weight::SemiBold, value)],
         );
+        // One notch a level above Off, so the bar says how many there are
+        // rather than a number fixed when there were five (#66).
+        let notches = LEVELS.len() as u8 - 1;
         let (nx, nw, gap) = (rx + 16.0, rw - 32.0, 6.0);
-        let step = (nw - 4.0 * gap) / 5.0;
-        for i in 1..=5u8 {
+        let step = (nw - f32::from(notches - 1) * gap) / f32::from(notches);
+        for i in 1..=notches {
             let colour = match (i <= level, focused) {
                 (true, true) => ACCENT,
                 (true, false) => ACCENT_DIM,
@@ -2151,6 +2196,51 @@ mod tests {
                     g.set_core(made_up_core());
                     let items = made_up_items(&g);
                     g.set_items(&items);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
+            (
+                // Level 6 draws the whole planet, and every code (#66).
+                "level6",
+                {
+                    let mut g = Guidance::default();
+                    g.set_level(6);
+                    explore(&mut g, 3);
+                    let mut pieces = RoomSet::default();
+                    for (col, row) in [(12, 13), (2, 24), (6, 8), (13, 29), (10, 4), (9, 21)] {
+                        pieces.set(row * COLS + col, true);
+                    }
+                    g.set_pieces(&pieces);
+                    g.set_core(made_up_core());
+                    let items = made_up_items(&g);
+                    g.set_items(&items);
+                    // Every teleporter's code, not only the booths entered.
+                    let seen: Vec<SeenTeleporter> = (0..15u16)
+                        .map(|i| SeenTeleporter {
+                            room: i * 33 + 7,
+                            code: {
+                                let mut c = [0u8; 5];
+                                for (k, b) in c.iter_mut().enumerate() {
+                                    *b = b'A' + ((i as u8 * 5 + k as u8) % 26);
+                                }
+                                c
+                            },
+                        })
+                        .collect();
+                    g.set_teleporters(&seen);
+                    // Eleven rooms hold a pyramid and about half hold a
+                    // pack, both fixed for the game.
+                    let (mut pyramids, mut packs) = (RoomSet::default(), RoomSet::default());
+                    for room in 0..COLS * ROWS {
+                        if room % 47 == 5 {
+                            pyramids.set(room, true);
+                        } else if (room * 7 + room / COLS) % 5 < 2 {
+                            packs.set(room, true);
+                        }
+                    }
+                    g.set_bonuses(&pyramids, &packs);
                     g
                 },
                 Scene::Play,

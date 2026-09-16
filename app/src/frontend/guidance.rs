@@ -208,6 +208,11 @@ pub struct Guidance {
     /// The items found and left lying in a room visited, for level 2
     /// (#36), each with what it does.
     items: Vec<Found>,
+    /// The rooms that will place a Cheops pyramid, and those that will
+    /// place a pack of some kind, both fixed for the game and told at
+    /// level 6 (#66). A room holds one or the other, or neither.
+    pyramids: RoomSet,
+    packs: RoomSet,
     /// The core's nine holes, in the game being played or just ended; empty
     /// on the title screen.
     core: Vec<Hole>,
@@ -396,6 +401,25 @@ impl Guidance {
             self.pieces = rooms.clone();
             self.version += 1;
         }
+    }
+
+    /// What each room will place, read once at a new game (#66). Nothing
+    /// reads the game for these yet: the mockup sets them by hand.
+    #[cfg_attr(not(test), expect(dead_code, reason = "level 6's reader is next"))]
+    pub fn set_bonuses(&mut self, pyramids: &RoomSet, packs: &RoomSet) {
+        if self.pyramids != *pyramids || self.packs != *packs {
+            self.pyramids = pyramids.clone();
+            self.packs = packs.clone();
+            self.version += 1;
+        }
+    }
+
+    pub fn pyramid(&self, room: u16) -> bool {
+        self.pyramids.contains(room)
+    }
+
+    pub fn pack(&self, room: u16) -> bool {
+        self.packs.contains(room)
     }
 
     /// The route to the nearest missing piece, or `None` when none is known.
