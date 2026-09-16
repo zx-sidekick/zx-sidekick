@@ -16,13 +16,14 @@ use sidekick::starquake::SeenTeleporter;
 const ROOMS: usize = (sidekick::map::COLS * sidekick::map::ROWS) as usize;
 
 /// The levels, each including the ones before it (#3).
-pub const LEVELS: [&str; 6] = [
+pub const LEVELS: [&str; 7] = [
     "Off",
-    "Teleporter codes",
-    "Map",
-    "Missing pieces",
-    "Arrow, known routes",
-    "Arrow, whole map",
+    "Codes and the core",
+    "The map you have walked",
+    "What you have seen",
+    "What you have not",
+    "Routes",
+    "Everything",
 ];
 
 /// An item found: one lying in a room that has been visited, with what it
@@ -896,7 +897,7 @@ mod tests {
         for _ in 0..10 {
             g.change(true);
         }
-        assert_eq!(g.picked().0, 5);
+        assert_eq!(g.picked().0, LEVELS.len() as u8 - 1);
     }
 
     #[test]

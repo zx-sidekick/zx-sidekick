@@ -78,13 +78,14 @@ const SWITCH_SAYS: f32 = 18.0;
 
 /// What each level adds, for the picker. The levels are built in their own
 /// tickets (#3); until then they say so.
-const ADDS: [&str; 6] = [
+const ADDS: [&str; 7] = [
     "The original game, no help.",
-    "The codes of the teleporters you have seen.",
-    "A map of the rooms you have visited.",
-    "The missing core pieces, marked on the map.",
-    "An arrow along routes you know.",
-    "An arrow along routes through the whole map.",
+    "The codes you have been shown, and the core's nine slots.",
+    "A map of the rooms you have walked through.",
+    "What you have seen lying in them.",
+    "And what is lying in the rooms you have not.",
+    "Routes to a missing piece and to the core.",
+    "Every code, the whole planet, and what each room holds.",
 ];
 
 /// A legend entry: a key, a pad button, or arrows.
@@ -153,7 +154,7 @@ impl Panel {
             self.spaced_colour(canvas, title_x, 26.0, &title, 11.0, BRIGHT);
             // Level 4 (#9, #44): the first teleport on each route has its
             // chip outlined in that route's colour.
-            let jump = if level >= 4 {
+            let jump = if level >= 5 {
                 jumps(guidance)
             } else {
                 Vec::new()
@@ -169,6 +170,17 @@ impl Panel {
             if level >= 1 {
                 self.codes_column(canvas, col_right, 54.0, guidance, &jump);
             }
+            // The core's nine slots show from level 1, whether or not the
+            // map is up (#66, decision 5): under the map when there is one,
+            // and where the map would end when there is not.
+            let tile = 16.0 * px + 2.0;
+            let wide = 3.0 * tile + 2.0 * 4.0;
+            let map_w = col_right - col_w - 16.0 - left;
+            let core_h = if guidance.core().is_empty() {
+                0.0
+            } else {
+                wide + 12.0
+            };
             if level >= 2 {
                 let explored = format!("explored {} of {} rooms", guidance.explored(), COLS * ROWS);
                 self.fonts.text(
@@ -179,36 +191,37 @@ impl Panel {
                     1.0,
                     &[span(&explored, 12.0, Weight::Regular, LABEL)],
                 );
-                let map_w = col_right - col_w - 16.0 - left;
                 let top = 74.0;
                 // Under the map: the legend's chips, then the core's nine
                 // holes as a square of three by three (#49), then the line
                 // saying which code to select.
-                let tile = 16.0 * px + 2.0;
-                let core = if level >= 3 && !guidance.core().is_empty() {
-                    3.0 * tile + 2.0 * 4.0 + 12.0
+                let under = if level >= 5 {
+                    29.0 + core_h + 29.0
                 } else {
-                    0.0
+                    core_h
                 };
-                let under = if level >= 4 { 29.0 + core + 29.0 } else { core };
                 let bottom = WINDOW_H - 24.0 - under;
                 let (map_bottom, map_right) =
                     self.map(canvas, guidance, level >= 3, top, bottom, map_w);
                 // The legend as the two chips, with no words (#49, decision 9).
                 let mut under = map_bottom + 12.0;
-                if level >= 4 {
+                if level >= 5 {
                     self.route_legend(canvas, under);
                     under += 29.0;
                 }
-                if level >= 3 && !guidance.core().is_empty() {
+                if !guidance.core().is_empty() {
                     // At the map's right edge, under it (@starquake, 2026-09-16).
-                    let wide = 3.0 * tile + 2.0 * 4.0;
                     self.core_grid(canvas, guidance, map_right - wide, under, tile);
-                    under += 3.0 * tile + 2.0 * 4.0 + 12.0;
+                    under += core_h;
                 }
-                if level >= 4 && guidance.room().is_some() {
+                if level >= 5 && guidance.room().is_some() {
                     self.route_line(canvas, guidance, under + 21.0, &jump);
                 }
+            } else if level >= 1 && !guidance.core().is_empty() {
+                // No map yet: the slots sit where the map's bottom right
+                // would be, so they do not move when it appears (#66).
+                let right = left + map_w;
+                self.core_grid(canvas, guidance, right - wide, WINDOW_H - 24.0 - wide, tile);
             }
             let lines = match level {
                 0 => ["No guidance.", "Press Esc or Select to choose a level."],
@@ -233,7 +246,7 @@ impl Panel {
         // that walks out of the room next, side by side when both leave the
         // same way.
         if scene == Scene::Play
-            && guidance.level() >= 4
+            && guidance.level() >= 5
             && let Some(here) = guidance.room()
         {
             let leaving = |route: Option<&[Step]>| {
@@ -363,7 +376,7 @@ impl Panel {
         // core in orange and to the nearest piece in pink. Where both take
         // the same step they run side by side, thinner, so neither hides
         // the other. A teleport step jumps, so no line joins it.
-        if guidance.level() >= 4
+        if guidance.level() >= 5
             && let Some(here) = guidance.room()
         {
             let centre = |room: u16| {
@@ -496,7 +509,7 @@ impl Panel {
         }
         // The core's end of its route, ringed in the route's colour (#44):
         // the map marks no core room otherwise.
-        if guidance.level() >= 4
+        if guidance.level() >= 5
             && let Some(end) = guidance.core_route().and_then(|r| r.last())
         {
             let (x, y) = at(end.room);
@@ -1003,7 +1016,16 @@ impl Panel {
         let top = y + 56.0;
         let focused = focus == Setting::Level;
         self.setting_box(canvas, rx, top, rw, 184.0, focused, "GUIDANCE LEVEL");
-        self.arrows(canvas, rx, rw, top + 69.0, focused, level > 0, level < 5);
+        let top_level = LEVELS.len() as u8 - 1;
+        self.arrows(
+            canvas,
+            rx,
+            rw,
+            top + 69.0,
+            focused,
+            level > 0,
+            level < top_level,
+        );
         let value = if focused { TITLE } else { VALUE_DIM };
         self.centred_in(
             canvas,
@@ -1544,7 +1566,7 @@ mod tests {
     /// visited, and the given routes.
     fn routed(here: u16, piece: &[(u16, bool)], core: &[(u16, bool)]) -> Guidance {
         let mut g = Guidance::default();
-        g.set_level(4);
+        g.set_level(5);
         let open = Openings {
             left: true,
             right: true,
@@ -1588,7 +1610,7 @@ mod tests {
         // The level's line is one line now (#49), and the core's row is
         // only there when the game has holes to show.
         let top = 74.0;
-        let bottom = WINDOW_H - 24.0 - if level >= 4 { 58.0 } else { 0.0 };
+        let bottom = WINDOW_H - 24.0 - if level >= 5 { 58.0 } else { 0.0 };
         let pitch = ((bottom - top) / f32::from(ROWS))
             .min(map_w / f32::from(COLS))
             .floor()
@@ -1613,7 +1635,7 @@ mod tests {
             &[(201, false), (217, false)],
         );
         let (pixels, w, _) = render(&g, Scene::Play, false);
-        let (at, pitch) = map_at(4);
+        let (at, pitch) = map_at(5);
         let (x, y) = at(200);
         let between = (x + pitch * 0.7, y, pitch * 0.6, pitch);
         assert!(
@@ -2015,6 +2037,31 @@ mod tests {
             ),
             ("paused", Guidance::default(), Scene::Play, true),
             (
+                // Level 1 with the core's slots, which move here in #66.
+                "level1-core",
+                {
+                    let mut g = Guidance::default();
+                    g.set_level(1);
+                    g.set_core(made_up_core());
+                    let seen: Vec<SeenTeleporter> = ["ABCDE", "FGHIJ", "KLMNO"]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, code)| SeenTeleporter {
+                            room: i as u16 * 40,
+                            code: {
+                                let mut c = [0u8; 5];
+                                c.copy_from_slice(code.as_bytes());
+                                c
+                            },
+                        })
+                        .collect();
+                    g.set_teleporters(&seen);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
+            (
                 "level2",
                 {
                     let mut g = Guidance::default();
@@ -2048,7 +2095,7 @@ mod tests {
                 "level4",
                 {
                     let mut g = Guidance::default();
-                    g.set_level(4);
+                    g.set_level(5);
                     explore(&mut g, 3);
                     let mut pieces = RoomSet::default();
                     for (col, row) in [(12, 13), (2, 24), (6, 8), (13, 29), (10, 4), (9, 21)] {
