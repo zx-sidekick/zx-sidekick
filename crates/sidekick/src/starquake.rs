@@ -85,6 +85,13 @@ pub const MENU_KEY_FROM_TITLE: u16 = 0x6024;
 pub mod routine {
     /// The title screen's menu.
     pub const MENU: u16 = 0x5E81;
+    /// Where the title screen's Quit the game ends (#90): Q asks "are you
+    /// sure", Y has the game say goodbye to Olly for 255 frames, and here
+    /// it begins wiping its own memory from `0x7530` up, program and stack
+    /// included, which on a Spectrum ends in a reset. With no ROM to reset
+    /// into, arriving here is the game asking to be closed. Read from the
+    /// tape on 2026-09-17, and checked by `sk-check facts`.
+    pub const QUIT: u16 = 0x60D6;
     /// The top of the play loop, once a frame while Blob is being played.
     pub const MAIN_LOOP: u16 = 0xA523;
     /// Where the play loop hands over to a security door, a teleporter booth
