@@ -1,4 +1,5 @@
-//! Minimal SHA-1, used only to identify user-supplied snapshot and ROM files.
+//! Minimal SHA-1, used only to identify the player's own copy of a game,
+//! the tape (`sidekick::starquake::is_supported_tape`).
 
 pub fn sha1(data: &[u8]) -> [u8; 20] {
     let mut h: [u32; 5] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
