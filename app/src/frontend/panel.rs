@@ -91,6 +91,20 @@ const ADDS: [&str; 7] = [
     "Every code, the whole planet, and what each room holds.",
 ];
 
+/// Where the CORE OF HEROES heading goes beside the game-over screens
+/// (#91): a gap under the note of how much help the game had, whose
+/// Training line is at `y` with `switches` names under it, 18 apart from 20
+/// below it, and never higher than it stood before the switches could be
+/// four.
+fn heroes_top(y: f32, switches: usize) -> f32 {
+    let end = if switches == 0 {
+        y
+    } else {
+        y + 20.0 + switches as f32 * 18.0
+    };
+    (end + 14.0).max(126.0)
+}
+
 /// A legend entry: a key, a pad button, or arrows.
 #[derive(Clone, Copy)]
 enum Hint {
@@ -904,14 +918,16 @@ impl Panel {
                 );
             }
         }
-        // The table kept between runs, with the guidance each game had (#47).
+        // The table kept between runs, with the guidance each game had (#47),
+        // below whatever the note above took (#91).
         let Some(kept) = guidance.high_scores() else {
             return;
         };
-        self.spaced(canvas, left, 126.0, "CORE OF HEROES");
+        let top = heroes_top(y, used.len());
+        self.spaced(canvas, left, top, "CORE OF HEROES");
         let width = WINDOW_W - PICTURE_W - 48.0;
         for (i, (entry, level)) in kept.entries.iter().zip(kept.levels).enumerate() {
-            let y = 156.0 + i as f32 * 44.0;
+            let y = top + 30.0 + i as f32 * 44.0;
             let mine = guidance.this_game() == Some(i);
             if mine {
                 canvas.round_rect(left - 10.0, y - 1.0, width + 20.0, 40.0, 6.0, SELECTED);
@@ -986,7 +1002,7 @@ impl Panel {
         self.fonts.text(
             Some(canvas),
             left,
-            156.0 + 8.0 * 44.0 + 8.0,
+            top + 30.0 + 8.0 * 44.0 + 8.0,
             None,
             1.0,
             &[span(note, 12.0, Weight::Regular, QUIET)],
@@ -1541,6 +1557,39 @@ fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
         size,
         weight,
         colour,
+    }
+}
+
+#[cfg(test)]
+mod heroes_layout {
+    use super::*;
+
+    /// The table starts under the note's last line, however many training
+    /// switches it names, and still fits the panel's height (#91).
+    #[test]
+    fn the_table_starts_under_the_note_and_fits() {
+        for y in [102.0, 114.0] {
+            for switches in 0..=SWITCHES.len() {
+                let top = heroes_top(y, switches);
+                // The last line the note draws, and a line's height.
+                let last = if switches == 0 {
+                    y
+                } else {
+                    y + 20.0 + (switches - 1) as f32 * 18.0 + 14.0
+                };
+                assert!(
+                    top >= last,
+                    "{switches} switches from {y}: {top} under {last}"
+                );
+                assert!(top >= 126.0, "never higher than it stood");
+                // The heading, eight entries of 44, and the closing note.
+                let bottom = top + 30.0 + 8.0 * 44.0 + 8.0 + 16.0;
+                assert!(
+                    bottom <= WINDOW_H - 24.0,
+                    "{switches} switches: ends at {bottom}"
+                );
+            }
+        }
     }
 }
 
@@ -2428,6 +2477,23 @@ mod tests {
             ("everything", doors_seen(5), Scene::Play, false),
             ("score", record, Scene::GameOver, false),
             ("heroes", heroes(), Scene::GameOver, false),
+            (
+                // Every training switch used: the table below them (#91).
+                "heroes-training",
+                {
+                    let mut g = heroes();
+                    g.set_level(6);
+                    g.set_training(Training {
+                        time: true,
+                        full: true,
+                        lives: true,
+                        unharmed: true,
+                    });
+                    g
+                },
+                Scene::GameOver,
+                false,
+            ),
             ("score-none", Guidance::default(), Scene::GameOver, false),
         ];
         for (name, mut guidance, scene, paused) in cases {
