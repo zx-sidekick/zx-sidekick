@@ -66,7 +66,9 @@ const PIECE_WORD: &str = "item";
 const CORE_WORD: &str = "core";
 /// How far apart the two border arrows stand when they leave the same way.
 const ARROW_APART: f32 = 22.0;
-/// The room the routes' legend takes under the map (#44).
+/// Where the panel's block starts under its header (#99): the CORE and
+/// TELEPORTERS headings, with the core's square and the codes 22 below.
+const BLOCK_TOP: f32 = 70.0;
 const DELIVERED: Rgb = [0x3a, 0x3f, 0x4b];
 
 /// The core column (#7): its tiles' size and pitch, and how many layout
@@ -85,9 +87,9 @@ const ADDS: [&str; 7] = [
     "The original game, no help.",
     "The codes you have been shown, and the core's nine slots.",
     "A map of the rooms you have walked through.",
-    "What you have seen lying in them.",
+    "Items seen: pink core piece, lilac door, yellow pad key, white trade.",
     "And what is lying in the rooms you have not.",
-    "Routes to a missing piece and to the core.",
+    "Routes: pink to a missing piece, orange to the core.",
     "Every code, the whole planet, and what each room holds.",
 ];
 
@@ -158,8 +160,8 @@ impl Panel {
         if scene == Scene::GameOver {
             self.score_note(canvas, left, guidance);
         } else {
-            // The level in the corner opposite the label, on one line, so
-            // everything below starts higher (@starquake, 2026-09-16).
+            // The level in the corner opposite the label, with its name
+            // under it (#99).
             self.spaced(canvas, left, 26.0, "GUIDANCE");
             let level = guidance.level();
             let title = if level == 0 {
@@ -167,84 +169,72 @@ impl Panel {
             } else {
                 format!("LEVEL {level}")
             };
-            let title_x = WINDOW_W - 24.0 - self.spaced_width(&title);
+            let right = WINDOW_W - 24.0;
+            let title_x = right - self.spaced_width(&title);
             self.spaced_colour(canvas, title_x, 26.0, &title, 11.0, BRIGHT);
-            // Level 5 (#9, #44, #69): the first teleport on each route has
-            // its chip outlined in that route's colour.
-            let jump = if level >= 5 {
-                jumps(guidance)
-            } else {
-                Vec::new()
-            };
-            // The codes in a column at the panel's right, so the map keeps
-            // its size however many there are (#49, decision 8).
-            let px = Self::code_pixel(canvas);
-            let tiles = (3.0 * 16.0 * px + 4.0).max(5.0 * 8.0 * px) + 6.0;
-            // Never narrower than its headings, which are right-aligned to
-            // the panel's margin and would otherwise reach over the map.
-            let col_w = tiles.max(self.spaced_width("TELEPORTERS"));
-            let col_right = WINDOW_W - 24.0;
             if level >= 1 {
-                self.codes_column(canvas, col_right, 54.0, guidance, level, &jump);
+                let name = [span(
+                    LEVELS[usize::from(level)],
+                    12.0,
+                    Weight::Regular,
+                    SOFT,
+                )];
+                let w = self.fonts.measure(&name);
+                self.fonts
+                    .text(Some(canvas), right - w, 42.0, None, 1.0, &name);
             }
-            // The core's nine slots show from level 1, whether or not the
-            // map is up (#66, decision 5): under the map when there is one,
-            // and where the map would end when there is not.
-            let tile = 16.0 * px + 2.0;
-            let wide = 3.0 * tile + 2.0 * 4.0;
-            let map_w = col_right - col_w - 16.0 - left;
-            let core_h = if guidance.core().is_empty() {
-                0.0
-            } else {
-                wide + 12.0
-            };
-            if level >= 2 {
-                let explored = format!("explored {} of {} rooms", guidance.explored(), COLS * ROWS);
-                self.fonts.text(
-                    Some(canvas),
-                    left,
-                    50.0,
-                    None,
-                    1.0,
-                    &[span(&explored, 12.0, Weight::Regular, LABEL)],
-                );
-                let top = 74.0;
-                // Under the map: the legend's chips, then the core's nine
-                // holes as a square of three by three (#49), then the line
-                // saying which code to select.
-                let under = if level >= 5 {
-                    29.0 + core_h + 29.0
+            // Everything has one place, the same at every level it shows at
+            // (#99): the core's square at the top left, the codes in a rail
+            // at the right, the map under the square to the panel's bottom.
+            if level >= 1 {
+                // Level 5 (#9, #44, #99): the first teleport and the first
+                // door on each route have their codes outlined in its colour.
+                let marks = if level >= 5 {
+                    marks(guidance)
                 } else {
-                    core_h
+                    Vec::new()
                 };
-                let bottom = WINDOW_H - 24.0 - under;
-                let (map_bottom, map_right) = self.map(canvas, guidance, level, top, bottom, map_w);
-                // The legend as the two chips, with no words (#49, decision 9).
-                let mut under = map_bottom + 12.0;
-                if level >= 5 {
-                    self.route_legend(canvas, under);
-                    under += 29.0;
-                }
+                let rail_w = self.codes_rail(canvas, right, BLOCK_TOP, guidance, level, &marks);
+                let px = Self::code_pixel(canvas);
+                let tile = 16.0 * px + 2.0;
+                let square = 3.0 * tile + 2.0 * 4.0;
+                // No heading over nothing: the title screen has no core.
                 if !guidance.core().is_empty() {
-                    // At the map's right edge, under it (@starquake, 2026-09-16).
-                    self.core_grid(canvas, guidance, map_right - wide, under, tile);
-                    under += core_h;
+                    self.spaced(canvas, left, BLOCK_TOP, "CORE");
+                    self.core_grid(canvas, guidance, left, BLOCK_TOP + 22.0, tile);
                 }
-                if level >= 5 && guidance.room().is_some() {
-                    self.route_line(canvas, under + 21.0, &jump);
+                let foot = BLOCK_TOP + 22.0 + square;
+                if level >= 5 {
+                    // Standing on the square's bottom edge, over the map.
+                    self.route_legend(canvas, left + square + 18.0, foot - 4.0);
                 }
-            } else if level >= 1 && !guidance.core().is_empty() {
-                // No map yet: the slots sit where the map's bottom right
-                // would be, so they do not move when it appears (#66).
-                let right = left + map_w;
-                self.core_grid(canvas, guidance, right - wide, WINDOW_H - 24.0 - wide, tile);
+                let map_w = right - rail_w - 16.0 - left;
+                if level >= 2 {
+                    self.map(canvas, guidance, level, foot + 16.0, WINDOW_H - 24.0, map_w);
+                } else {
+                    let spans = [span(
+                        "The map appears at level 2.",
+                        13.0,
+                        Weight::Regular,
+                        QUIET,
+                    )];
+                    let w = self.fonts.measure(&spans);
+                    self.fonts.text(
+                        Some(canvas),
+                        left + (map_w - w) / 2.0,
+                        420.0,
+                        None,
+                        1.0,
+                        &spans,
+                    );
+                }
             }
-            let lines = match level {
-                0 => ["No guidance.", "Press Esc or Select to choose a level."],
-                1 => ["The map appears at level 2.", ""],
-                _ => ["", ""],
+            let lines: &[&str] = if level == 0 {
+                &["No guidance.", "Press Esc or Select to choose a level."]
+            } else {
+                &[]
             };
-            for (i, line) in lines.into_iter().enumerate().filter(|(_, l)| !l.is_empty()) {
+            for (i, line) in lines.iter().enumerate() {
                 let spans = [span(line, 14.0, Weight::Regular, QUIET)];
                 let w = self.fonts.measure(&spans);
                 self.fonts.text(
@@ -310,16 +300,16 @@ impl Panel {
         top: f32,
         bottom: f32,
         width: f32,
-    ) -> (f32, f32) {
+    ) {
         let (cols, rows) = (f32::from(COLS), f32::from(ROWS));
         // 18 units a room as in the mockup, smaller when the height or the
-        // width the codes' column leaves (#49) does not run to it.
+        // width the codes' rail leaves (#49) does not run to it.
         let pitch = ((bottom - top) / rows)
             .min(width / cols)
             .floor()
             .clamp(1.0, 18.0);
         let unit = pitch / 18.0;
-        // The map sits at the panel's left margin, with the codes' column
+        // The map sits at the panel's left margin, with the codes' rail
         // to its right (#49). What is lying in a room walked through shows
         // from level 3, and what is lying anywhere else from level 4 (#66).
         let seen_marks = level >= 3;
@@ -584,7 +574,6 @@ impl Panel {
                 FLOOR,
             );
         }
-        (top + rows * pitch, x0 + cols * pitch)
     }
 
     /// How many layout units a Spectrum pixel of a code is (#49): half a
@@ -594,9 +583,8 @@ impl Panel {
         (canvas.scale * 1.5).floor().max(1.0) / canvas.scale
     }
 
-    /// Level 1 (#7, #49, #66): the core's nine holes as a square of three
-    /// by three under the map at its right, or where the map would end when
-    /// there is none, in the order the core holds them, each its own graphic
+    /// Level 1 (#7, #49, #99): the core's nine holes as a square of three
+    /// by three at the panel's top left, in the order the core holds them, each its own graphic
     /// from the game, in white while it is still wanted and dimmed once
     /// delivered, outlined while it is carried.
     fn core_grid(
@@ -620,7 +608,7 @@ impl Panel {
         }
     }
 
-    /// How wide a spaced label is (#49), so the codes' column is never
+    /// How wide a spaced label is (#49), so the codes' rail is never
     /// narrower than its own headings.
     fn spaced_width(&mut self, label: &str) -> f32 {
         label
@@ -630,76 +618,50 @@ impl Panel {
             - 11.0 * 0.14
     }
 
-    /// A spaced label ending at `right`, for the codes' column (#49).
+    /// A spaced label ending at `right`, for the codes' rail (#49).
     fn spaced_right(&mut self, canvas: &mut Canvas, right: f32, y: f32, label: &str) {
         let width = self.spaced_width(label);
         self.spaced(canvas, right - width, y, label);
     }
 
-    /// Level 1 (#4, #49): the codes seen this game in a column at the
-    /// panel's right, one to a line: each door's three chips under DOORS,
-    /// then the teleporters' codes in the game's own letters under
-    /// TELEPORTERS, the next one on a route outlined in its colour.
-    fn codes_column(
+    /// Level 1 (#4, #49, #99): the codes seen this game in a rail at the
+    /// panel's right, one to a line: the teleporters' codes in the game's
+    /// own letters under TELEPORTERS, then each door's three chips under
+    /// DOORS, so finding a door never moves a teleporter's code. Both
+    /// headings stand from the start, with "None yet" under one that has
+    /// nothing. The next teleport and the next door on a route are outlined
+    /// in its colour. Returns the rail's width.
+    fn codes_rail(
         &mut self,
         canvas: &mut Canvas,
         right: f32,
         top: f32,
         guidance: &Guidance,
         level: u8,
-        jumps: &[Jump],
-    ) {
+        marks: &[Mark],
+    ) -> f32 {
         let px = Self::code_pixel(canvas);
-        let mut y = top;
+        let door_w = 3.0 * 16.0 * px + 4.0 + 6.0;
+        let (tile_w, tile_h) = (5.0 * 8.0 * px + 6.0, 8.0 * px + 6.0);
+        // Never narrower than its headings, which are right-aligned to the
+        // panel's margin and would otherwise reach over the map.
+        let width = door_w.max(tile_w).max(self.spaced_width("TELEPORTERS"));
         // The ones you have been shown, or every one there is at level 6.
         let (seen, doors) = guidance.codes_at(level);
-        if !doors.is_empty() {
-            self.spaced_right(canvas, right, y, "DOORS");
-            y += 22.0;
-            let (tile_w, tile_h) = (3.0 * 16.0 * px + 4.0 + 6.0, 16.0 * px + 6.0);
-            for code in doors {
-                let x = right - tile_w;
-                canvas.round_rect(x, y, tile_w, tile_h, 4.0, CODE_FILL);
-                for (k, graphic) in code.graphics.iter().enumerate() {
-                    let cx = x + 3.0 + k as f32 * (16.0 * px + 2.0);
-                    cells(canvas, graphic, cx, y + 3.0, px, CODE);
-                }
-                y += tile_h + 3.0;
-            }
-            y += 10.0;
-        }
+        let mut y = top;
         self.spaced_right(canvas, right, y, "TELEPORTERS");
         y += 22.0;
         if seen.is_empty() {
-            let spans = [span("None yet", 12.0, Weight::Regular, QUIET)];
-            let w = self.fonts.measure(&spans);
-            self.fonts
-                .text(Some(canvas), right - w, y, None, 1.0, &spans);
-            return;
+            self.none_yet(canvas, right, y);
+            y += 22.0;
         }
-        let (tile_w, tile_h) = (5.0 * 8.0 * px + 6.0, 8.0 * px + 6.0);
         for teleporter in seen {
             let x = right - tile_w;
             canvas.round_rect(x, y, tile_w, tile_h, 4.0, CODE_FILL);
-            // The route's outline on the chip, the other route's around it
-            // when both jump from the same booth (#46).
-            for (i, jump) in jumps
+            let on = marks
                 .iter()
-                .filter(|j| j.code == teleporter.code)
-                .enumerate()
-            {
-                let out = i as f32 * 4.0;
-                canvas.outline(
-                    x - out,
-                    y - out,
-                    tile_w + 2.0 * out,
-                    tile_h + 2.0 * out,
-                    4.0 + out,
-                    2.0,
-                    None,
-                    jump.colour,
-                );
-            }
+                .filter(|m| m.code == Code::Teleporter(teleporter.code));
+            outlines(canvas, x, y, tile_w, tile_h, on);
             match guidance.font() {
                 // The game's own letters (#49, decision 5).
                 Some(font) => {
@@ -737,21 +699,48 @@ impl Panel {
             }
             y += tile_h + 3.0;
         }
+        y += 12.0;
+        self.spaced_right(canvas, right, y, "DOORS");
+        y += 22.0;
+        if doors.is_empty() {
+            self.none_yet(canvas, right, y);
+        }
+        let door_h = 16.0 * px + 6.0;
+        for code in doors {
+            let x = right - door_w;
+            canvas.round_rect(x, y, door_w, door_h, 4.0, CODE_FILL);
+            let on = marks.iter().filter(|m| m.code == Code::Door(code.room));
+            outlines(canvas, x, y, door_w, door_h, on);
+            for (k, graphic) in code.graphics.iter().enumerate() {
+                let cx = x + 3.0 + k as f32 * (16.0 * px + 2.0);
+                cells(canvas, graphic, cx, y + 3.0, px, CODE);
+            }
+            y += door_h + 3.0;
+        }
+        width
     }
 
-    /// Level 5 (#44, #49): the two routes' chips under the map, with no
-    /// words: "item" for the route to the nearest missing piece, "core"
-    /// for the one to the core.
-    fn route_legend(&mut self, canvas: &mut Canvas, y: f32) {
-        let x = PICTURE_W + 24.0;
-        let word = |text| [span(text, 11.0, Weight::SemiBold, PANEL)];
+    /// "None yet" under a heading of the rail that has nothing to list.
+    fn none_yet(&mut self, canvas: &mut Canvas, right: f32, y: f32) {
+        let spans = [span("None yet", 12.0, Weight::Regular, QUIET)];
+        let w = self.fonts.measure(&spans);
+        self.fonts
+            .text(Some(canvas), right - w, y, None, 1.0, &spans);
+    }
+
+    /// Level 5 (#44, #99): what the two lines' colours mean, each word over
+    /// a sample of its line, from `x` with the samples' bottom at `foot`:
+    /// "Item" for the route to the nearest missing piece, "Core" for the one
+    /// to the core.
+    fn route_legend(&mut self, canvas: &mut Canvas, x: f32, foot: f32) {
         let mut at = x;
-        for (text, colour) in [(PIECE_WORD, PIECE), (CORE_WORD, ROUTE)] {
-            let w = self.fonts.measure(&word(text)) + 10.0;
-            canvas.round_rect(at, y, w, 17.0, 3.0, colour);
+        for (text, colour) in [("Item", PIECE), ("Core", ROUTE)] {
+            let spans = [span(text, 12.0, Weight::SemiBold, SOFT)];
+            let w = self.fonts.measure(&spans).max(34.0);
             self.fonts
-                .text(Some(canvas), at + 5.0, y + 1.0, None, 1.0, &word(text));
-            at += w + 6.0;
+                .text(Some(canvas), at, foot - 21.0, None, 1.0, &spans);
+            canvas.round_rect(at, foot - 3.0, w, 3.0, 0.0, colour);
+            at += w + 18.0;
         }
     }
 
@@ -812,43 +801,6 @@ impl Panel {
             Some(canvas),
             cx - text_w / 2.0,
             cy - 10.0,
-            None,
-            1.0,
-            &spans,
-        );
-    }
-
-    /// Level 5 (#9): a line under the map's legend, which code to select
-    /// when the next step of a route is a teleport. Nothing when no route
-    /// leads anywhere: the missing line says that (#49, decision 7).
-    fn route_line(&mut self, canvas: &mut Canvas, label_y: f32, jumps: &[Jump]) {
-        let next: Vec<&Jump> = jumps.iter().filter(|j| j.next).collect();
-        let code = |j: &Jump| String::from_utf8_lossy(&j.code).into_owned();
-        let (a, b) = (next.first().map(|j| code(j)), next.get(1).map(|j| code(j)));
-        let texts: Vec<(String, Rgb)> = match (next.as_slice(), a, b) {
-            ([one], Some(a), _) => vec![(format!("Select code {a}"), one.colour)],
-            ([p, _], Some(a), Some(b)) if a == b => vec![
-                ("Select code ".into(), SOFT),
-                (a, p.colour),
-                (" for the item and the core".into(), SOFT),
-            ],
-            ([p, c], Some(a), Some(b)) => vec![
-                ("Select code ".into(), SOFT),
-                (a, p.colour),
-                (" for the item, ".into(), SOFT),
-                (b, c.colour),
-                (" for the core".into(), SOFT),
-            ],
-            _ => return,
-        };
-        let spans: Vec<Span> = texts
-            .iter()
-            .map(|(t, c)| span(t, 13.0, Weight::SemiBold, *c))
-            .collect();
-        self.fonts.text(
-            Some(canvas),
-            PICTURE_W + 24.0,
-            label_y - 21.0,
             None,
             1.0,
             &spans,
@@ -1504,37 +1456,73 @@ fn stroke(
     }
 }
 
-/// The teleport a route takes, for its chip and the "Select code" line:
-/// its code, the route's colour, and whether it is the route's next step.
+/// A code in the rail: a teleporter's five letters, or a door's by its room.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Jump {
-    code: [u8; 5],
-    colour: Rgb,
-    next: bool,
+enum Code {
+    Teleporter([u8; 5]),
+    Door(u16),
 }
 
-/// The teleports the panel names (#9, #44): the piece route's first, then
-/// the core route's first, each in its route's colour; either may be
-/// missing.
-fn jumps(guidance: &Guidance) -> Vec<Jump> {
-    let first = |route: Option<&[Step]>, colour| {
-        let route = route?;
-        let step = route.iter().find(|s| s.teleport)?;
+/// A code a route needs next, outlined in the rail in the route's colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Mark {
+    code: Code,
+    colour: Rgb,
+}
+
+/// The codes the rail outlines (#9, #44, #99): the first teleport and the
+/// first security door on the piece route, then on the core route, each in
+/// its route's colour; any may be missing. A door whose screen has not been
+/// seen has no code in the rail below level 6, and so nothing to outline.
+fn marks(guidance: &Guidance) -> Vec<Mark> {
+    let teleport = |route: Option<&[Step]>| {
+        let step = route?.iter().find(|s| s.teleport)?;
         let seen = guidance
             .teleporters()
             .iter()
             .find(|t| t.room == step.room)?;
-        Some(Jump {
-            code: seen.code,
-            colour,
-            next: route.first().is_some_and(|s| s.teleport),
-        })
+        Some(Code::Teleporter(seen.code))
     };
-    let (piece, core) = (
-        first(guidance.route(), PIECE),
-        first(guidance.core_route(), ROUTE),
-    );
-    piece.into_iter().chain(core).collect()
+    let [piece_door, core_door] = guidance.route_doors();
+    [
+        (teleport(guidance.route()), PIECE),
+        (piece_door.map(Code::Door), PIECE),
+        (teleport(guidance.core_route()), ROUTE),
+        (core_door.map(Code::Door), ROUTE),
+    ]
+    .into_iter()
+    .filter_map(|(code, colour)| {
+        Some(Mark {
+            code: code?,
+            colour,
+        })
+    })
+    .collect()
+}
+
+/// A route's outline on a code's chip at (`x`, `y`), the other route's
+/// around it when both need the same one (#46).
+fn outlines<'a>(
+    canvas: &mut Canvas,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    marks: impl Iterator<Item = &'a Mark>,
+) {
+    for (i, mark) in marks.enumerate() {
+        let out = i as f32 * 4.0;
+        canvas.outline(
+            x - out,
+            y - out,
+            w + 2.0 * out,
+            h + 2.0 * out,
+            4.0 + out,
+            2.0,
+            None,
+            mark.colour,
+        );
+    }
 }
 
 /// The steps a route walks, from `here`, as pairs of rooms; teleports are
@@ -1683,17 +1671,17 @@ mod tests {
     }
 
     /// Where a room sits on the map at `level`, and the map's pitch, by the
-    /// same arithmetic `draw` uses (#49: the codes' column takes the right).
-    fn map_at(level: u8) -> (impl Fn(u16) -> (f32, f32), f32) {
+    /// same arithmetic `draw` uses (#49: the codes' rail takes the right).
+    fn map_at(_level: u8) -> (impl Fn(u16) -> (f32, f32), f32) {
         let left = PICTURE_W + 24.0;
         // A code's pixel at the tests' scale of 2, and the column's width.
         let px = 1.5;
         let col_w = ((3.0f32 * 16.0 * px + 4.0).max(5.0 * 8.0 * px) + 6.0).max(92.5);
         let map_w = WINDOW_H.mul_add(0.0, WINDOW_W - 24.0) - col_w - 16.0 - left;
-        // The level's line is one line now (#49), and the core's row is
-        // only there when the game has holes to show.
-        let top = 74.0;
-        let bottom = WINDOW_H - 24.0 - if level >= 5 { 58.0 } else { 0.0 };
+        // The map starts under the core's square at every level (#99).
+        let square = 3.0 * (16.0 * px + 2.0) + 8.0;
+        let top = BLOCK_TOP + 22.0 + square + 16.0;
+        let bottom = WINDOW_H - 24.0;
         let pitch = ((bottom - top) / f32::from(ROWS))
             .min(map_w / f32::from(COLS))
             .floor()
@@ -1800,35 +1788,59 @@ mod tests {
                 },
             ]);
         };
-        let jump = |code: &[u8; 5], colour, next| Jump {
-            code: *code,
+        let jump = |code: &[u8; 5], colour| Mark {
+            code: Code::Teleporter(*code),
             colour,
-            next,
         };
         let mut g = routed(200, &[(201, false), (300, true)], &[(400, true)]);
         seen(&mut g);
         assert_eq!(
-            jumps(&g),
-            [jump(b"AAAAA", PIECE, false), jump(b"BBBBB", ROUTE, true)],
+            marks(&g),
+            [jump(b"AAAAA", PIECE), jump(b"BBBBB", ROUTE)],
             "both routes' teleports, the piece route's first"
         );
         let mut g = routed(200, &[(300, true)], &[(300, true)]);
         seen(&mut g);
         assert_eq!(
-            jumps(&g),
-            [jump(b"AAAAA", PIECE, true), jump(b"AAAAA", ROUTE, true)],
+            marks(&g),
+            [jump(b"AAAAA", PIECE), jump(b"AAAAA", ROUTE)],
             "the same teleport for both: named twice, one outline each"
         );
         let mut g = routed(200, &[(201, false)], &[(400, true)]);
         seen(&mut g);
         assert_eq!(
-            jumps(&g),
-            [jump(b"BBBBB", ROUTE, true)],
+            marks(&g),
+            [jump(b"BBBBB", ROUTE)],
             "only the core route teleports"
         );
         let mut g = routed(200, &[(201, false)], &[]);
         seen(&mut g);
-        assert!(jumps(&g).is_empty(), "no teleport, nothing named");
+        assert!(marks(&g).is_empty(), "no teleport, nothing named");
+    }
+
+    #[test]
+    fn each_route_names_the_first_door_it_has_to_pass() {
+        let door = |room| Mark {
+            code: Code::Door(room),
+            colour: ROUTE,
+        };
+        let mut g = routed(200, &[(201, false)], &[(216, false)]);
+        g.set_route_doors([None, Some(210)]);
+        assert_eq!(marks(&g), [door(210)], "the core route's door");
+        g.set_route_doors([Some(210), Some(210)]);
+        assert_eq!(
+            marks(&g),
+            [
+                Mark {
+                    code: Code::Door(210),
+                    colour: PIECE
+                },
+                door(210)
+            ],
+            "the same door for both: named twice, one outline each"
+        );
+        g.set_route_doors([None, None]);
+        assert!(marks(&g).is_empty(), "no door, nothing named");
     }
 
     #[test]
@@ -1854,7 +1866,7 @@ mod tests {
             code: *b"AAAAA",
         }]);
         let (pixels, w, _) = render(&g, Scene::Play, false);
-        // The codes' column, down the panel's right (#49).
+        // The codes' rail, down the panel's right (#49).
         let chips = (WINDOW_W - 130.0, 60.0, 130.0, WINDOW_H - 60.0);
         assert!(
             count(&pixels, w, chips, PIECE) > 0,
@@ -1871,6 +1883,128 @@ mod tests {
         }]);
         let (pixels, w, _) = render(&g, Scene::Play, false);
         assert_eq!(count(&pixels, w, chips, ROUTE), 0, "one route, one outline");
+    }
+
+    /// The pixels of the box at layout `(x, y, w, h)`.
+    fn cut(pixels: &[u32], w: usize, (x, y, bw, bh): (f32, f32, f32, f32)) -> Vec<u32> {
+        let (x0, y0) = ((x * 2.0) as usize, (y * 2.0) as usize);
+        (y0..y0 + (bh * 2.0) as usize)
+            .flat_map(|py| (x0..x0 + (bw * 2.0) as usize).map(move |px| pixels[py * w + px]))
+            .collect()
+    }
+
+    #[test]
+    fn what_each_level_adds_fits_the_pickers_box() {
+        // The picker is 520 wide and the level's box 24 narrower, with 14
+        // of padding either side.
+        let mut fonts = Fonts::load();
+        for line in ADDS {
+            let w = fonts.measure(&[span(line, 13.0, Weight::Regular, HINT_KEY)]);
+            assert!(w <= 520.0 - 24.0 - 28.0, "{line}: {w}");
+        }
+    }
+
+    fn door_code(room: u16) -> crate::frontend::guidance::DoorCode {
+        crate::frontend::guidance::DoorCode {
+            room,
+            chips: [9, 10, 11],
+            graphics: [[0x5A; 32]; 3],
+        }
+    }
+
+    #[test]
+    fn the_core_and_the_teleporters_stand_still_whatever_the_level_and_the_doors() {
+        use crate::frontend::guidance::Hole;
+        let game = |level: u8, doors: usize| {
+            let mut g = routed(200, &[(201, false)], &[(216, false)]);
+            g.set_level(level);
+            g.set_core(
+                (0..9)
+                    .map(|i| Hole {
+                        graphic: [0xA5; 32],
+                        open: i % 2 == 0,
+                        carried: i == 0,
+                    })
+                    .collect(),
+            );
+            g.set_teleporters(&[SeenTeleporter {
+                room: 300,
+                code: *b"AAAAA",
+            }]);
+            let codes: Vec<_> = (0..doors as u16).map(|d| door_code(176 + d)).collect();
+            g.set_door_codes(&codes);
+            render(&g, Scene::Play, false)
+        };
+        let left = PICTURE_W + 24.0;
+        let core = (left, BLOCK_TOP, 90.0, 22.0 + 88.0);
+        let chip = (WINDOW_W - 24.0 - 96.0, BLOCK_TOP, 96.0, 22.0 + 20.0);
+        let (first, w, _) = game(1, 0);
+        assert!(
+            count(&first, w, core, HERE) > 0,
+            "the core's square is there"
+        );
+        assert!(count(&first, w, chip, CODE_FILL) > 0, "and the code's chip");
+        for level in 1..=5 {
+            for doors in [0, 1, 5] {
+                let (pixels, w, _) = game(level, doors);
+                assert_eq!(
+                    cut(&pixels, w, core),
+                    cut(&first, w, core),
+                    "{level} {doors}"
+                );
+                assert_eq!(
+                    cut(&pixels, w, chip),
+                    cut(&first, w, chip),
+                    "{level} {doors}"
+                );
+            }
+        }
+        // Level 6 lists every code instead, under the same heading.
+        let (pixels, w, _) = game(6, 0);
+        assert_eq!(cut(&pixels, w, core), cut(&first, w, core));
+    }
+
+    #[test]
+    fn both_headings_stand_from_the_start() {
+        let mut g = Guidance::default();
+        g.set_level(1);
+        let (none, w, _) = render(&g, Scene::Play, false);
+        g.set_door_codes(&[door_code(210)]);
+        let (one, _, _) = render(&g, Scene::Play, false);
+        // TELEPORTERS, "None yet", DOORS: the same down to the door's chip.
+        let head = (
+            WINDOW_W - 24.0 - 96.0,
+            BLOCK_TOP,
+            96.0,
+            22.0 + 22.0 + 12.0 + 20.0,
+        );
+        assert_eq!(cut(&none, w, head), cut(&one, w, head));
+        assert!(count(&none, w, head, QUIET) > 0, "\"None yet\" is written");
+        let chips = (WINDOW_W - 24.0 - 96.0, BLOCK_TOP + 76.0, 96.0, 40.0);
+        assert_eq!(count(&none, w, chips, CODE_FILL), 0);
+        assert!(count(&one, w, chips, CODE_FILL) > 0, "the door under DOORS");
+    }
+
+    #[test]
+    fn a_door_a_route_has_to_pass_is_outlined_in_the_routes_colour() {
+        let mut g = routed(200, &[(201, false)], &[(216, false)]);
+        g.set_door_codes(&[door_code(176), door_code(210)]);
+        let rail = (WINDOW_W - 24.0 - 100.0, BLOCK_TOP, 104.0, 300.0);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(count(&pixels, w, rail, ROUTE), 0, "no door on the way");
+        g.set_route_doors([None, Some(210)]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert!(count(&pixels, w, rail, ROUTE) > 0, "the core route's door");
+        assert_eq!(count(&pixels, w, rail, PIECE), 0);
+        // A door whose screen has not been seen has no code to outline.
+        g.set_route_doors([Some(429), None]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(count(&pixels, w, rail, PIECE), 0);
+        // Below level 5 no route shows, so nothing is outlined.
+        g.set_route_doors([None, Some(210)]);
+        g.set_level(4);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(count(&pixels, w, rail, ROUTE), 0);
     }
 
     /// A game just over at level 3 with the kept table beside it (#47),
