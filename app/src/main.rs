@@ -27,16 +27,21 @@ use std::path::PathBuf;
 /// unpacked the archive will start it, and exactly when they are most likely
 /// to have forgotten the tape, the program has no console for `eprintln!`
 /// to reach: on Windows a release build has none at all, and on macOS and
-/// Linux there is none to look at. So the message goes to stderr and into a
-/// message box, through the same dialog crate the screen that asks for the
-/// tape uses (#77).
-fn fatal(message: &str) -> ! {
+/// Linux there is none to look at. So the message goes to stderr and, when
+/// the program is running as a window (`dialog`), into a message box too,
+/// through the same dialog crate the screen that asks for the tape uses
+/// (#77). A headless run is a terminal's, and a box there would wait for
+/// nobody: CI's smoke test runs one from an empty folder and expects the
+/// message and exit code 1, promptly.
+fn fatal(message: &str, dialog: bool) -> ! {
     eprintln!("{message}");
-    rfd::MessageDialog::new()
-        .set_level(rfd::MessageLevel::Error)
-        .set_title("ZX Sidekick")
-        .set_description(message)
-        .show();
+    if dialog {
+        rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("ZX Sidekick")
+            .set_description(message)
+            .show();
+    }
     std::process::exit(1)
 }
 
@@ -63,18 +68,20 @@ fn main() {
     let path = args.first().map(PathBuf::from).or_else(|| {
         frontend::tape::find(&folders, sidekick::starquake::is_supported_tape).map(|tape| tape.from)
     });
-    // Without a window there is nobody to ask, so no tape is the end.
+    // Without a window there is nobody to ask, so no tape is the end: said
+    // on the terminal, which is where a headless run is watched from.
     let required = || {
         path.clone()
-            .unwrap_or_else(|| fatal(&frontend::tape::not_found_message(&folders)))
+            .unwrap_or_else(|| fatal(&frontend::tape::not_found_message(&folders), false))
     };
+    let windowed = headless.is_none();
     let result = match headless {
         Some((frames, dir, level)) => frontend::headless::run(&required(), frames, &dir, level),
         // In a window, no tape means asking for one.
         None => frontend::run(path.as_deref()),
     };
     if let Err(e) = result {
-        fatal(&format!("error: {e}"));
+        fatal(&format!("error: {e}"), windowed);
     }
 }
 
