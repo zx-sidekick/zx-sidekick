@@ -1,4 +1,5 @@
-//! Tiny dependency-free PNG writer (uncompressed deflate) for screenshots.
+//! A small PNG writer for screenshots and pictures: RGB, one row filter,
+//! the image data deflated (#81).
 
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
@@ -13,15 +14,6 @@ fn crc32(data: &[u8]) -> u32 {
         }
     }
     !crc
-}
-
-fn adler32(data: &[u8]) -> u32 {
-    let (mut a, mut b) = (1u32, 0u32);
-    for &x in data {
-        a = (a + x as u32) % 65521;
-        b = (b + a) % 65521;
-    }
-    b << 16 | a
 }
 
 fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
@@ -59,16 +51,11 @@ pub fn encode(pixels: &[u32], width: usize, height: usize) -> Vec<u8> {
         }
     }
 
-    let mut zlib = vec![0x78, 0x01];
-    let mut blocks = raw.chunks(65535).peekable();
-    while let Some(block) = blocks.next() {
-        zlib.push(if blocks.peek().is_none() { 1 } else { 0 });
-        let len = block.len() as u16;
-        zlib.extend_from_slice(&len.to_le_bytes());
-        zlib.extend_from_slice(&(!len).to_le_bytes());
-        zlib.extend_from_slice(block);
-    }
-    zlib.extend_from_slice(&adler32(&raw).to_be_bytes());
+    // Deflated, as every PNG reader expects and as makes a screenshot a few
+    // hundred kilobytes rather than several megabytes (#81).
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    std::io::Write::write_all(&mut encoder, &raw).expect("writing to memory");
+    let zlib = encoder.finish().expect("writing to memory");
 
     let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
     let mut ihdr = Vec::new();
@@ -102,34 +89,17 @@ mod tests {
         out
     }
 
-    /// Undoes the stored (uncompressed) deflate blocks of a zlib stream.
-    fn inflate_stored(zlib: &[u8]) -> Vec<u8> {
-        assert_eq!(&zlib[..2], &[0x78, 0x01]);
+    /// Inflates a zlib stream, as a PNG reader would.
+    fn inflate(zlib: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
-        let mut i = 2;
-        loop {
-            let last = zlib[i];
-            let len = u16::from_le_bytes([zlib[i + 1], zlib[i + 2]]);
-            let nlen = u16::from_le_bytes([zlib[i + 3], zlib[i + 4]]);
-            assert_eq!(nlen, !len);
-            out.extend_from_slice(&zlib[i + 5..i + 5 + len as usize]);
-            i += 5 + len as usize;
-            if last == 1 {
-                break;
-            }
-        }
-        assert_eq!(
-            u32::from_be_bytes(zlib[i..i + 4].try_into().unwrap()),
-            adler32(&out)
-        );
-        assert_eq!(i + 4, zlib.len());
+        std::io::Read::read_to_end(&mut flate2::read::ZlibDecoder::new(zlib), &mut out)
+            .expect("a zlib stream");
         out
     }
 
     #[test]
-    fn the_checksums_match_their_published_values() {
+    fn the_checksum_matches_its_published_value() {
         assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
-        assert_eq!(adler32(b"Wikipedia"), 0x11E6_0398);
     }
 
     #[test]
@@ -140,7 +110,7 @@ mod tests {
         let kinds: Vec<&[u8; 4]> = chunks.iter().map(|c| &c.0).collect();
         assert_eq!(kinds, [b"IHDR", b"IDAT", b"IEND"]);
         assert_eq!(chunks[0].1, [0, 0, 0, 2, 0, 0, 0, 2, 8, 2, 0, 0, 0]);
-        let raw = inflate_stored(&chunks[1].1);
+        let raw = inflate(&chunks[1].1);
         assert_eq!(
             raw,
             [0, 0xFF, 0, 0, 0, 0xFF, 0, 0, 0, 0, 0xFF, 0x12, 0x34, 0x56]
@@ -149,12 +119,10 @@ mod tests {
     }
 
     #[test]
-    fn a_large_image_spans_several_deflate_blocks() {
-        // 320x256 RGB with a filter byte per row is well over one 65535-byte
-        // stored block.
+    fn a_large_image_reads_back_and_a_plain_one_is_small() {
         let pixels: Vec<u32> = (0..320 * 256).map(|i| i as u32 * 97).collect();
         let png = encode(&pixels, 320, 256);
-        let raw = inflate_stored(&chunks(&png)[1].1);
+        let raw = inflate(&chunks(&png)[1].1);
         assert_eq!(raw.len(), (320 * 3 + 1) * 256);
         let at = |x: usize, y: usize| {
             let o = y * (320 * 3 + 1) + 1 + x * 3;
@@ -162,6 +130,10 @@ mod tests {
         };
         assert_eq!(at(319, 255), pixels[320 * 256 - 1] & 0xFF_FFFF);
         assert_eq!(at(7, 100), pixels[320 * 100 + 7] & 0xFF_FFFF);
+        // A picture of one colour, as most of a screenshot is, deflates to
+        // a sliver of its raw size.
+        let plain = encode(&vec![0x0F1117; 320 * 256], 320, 256);
+        assert!(plain.len() < 320 * 256 * 3 / 100, "{} bytes", plain.len());
     }
 
     #[test]
