@@ -20,7 +20,7 @@ const CARD_W: f32 = 440.0;
 const CARD_H: f32 = 160.0;
 
 /// Dims the picture and lays the card over its middle.
-pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas) {
+pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: super::gamepad::Layout) {
     canvas.shade(0.0, 0.0, PICTURE_W, HEIGHT, [0, 0, 0], DIM);
     let cx = (PICTURE_W - CARD_W) / 2.0;
     let cy = (HEIGHT - CARD_H) / 2.0;
@@ -63,7 +63,16 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas) {
     x += fonts.word(canvas, x, by, h, "move") + 26.0;
     x += fonts.key_badge(canvas, x, by, h, "Ctrl") + 8.0;
     x += fonts.word(canvas, x, by, h, "or") + 8.0;
-    x += fonts.button_badge(canvas, x, by, h, "X") + 10.0;
+    // The firing button is the west one on every pad; its letter is not
+    // (#101): X on an Xbox pad, Y on a Nintendo one, the square on a
+    // PlayStation one.
+    x += match layout {
+        super::gamepad::Layout::PlayStation => {
+            fonts.mark_badge(canvas, x, by, h, super::text::PadMark::Square)
+        }
+        super::gamepad::Layout::Nintendo => fonts.button_badge(canvas, x, by, h, "Y"),
+        super::gamepad::Layout::Xbox => fonts.button_badge(canvas, x, by, h, "X"),
+    } + 10.0;
     fonts.word(canvas, x, by, h, "fire");
 }
 
@@ -84,7 +93,11 @@ mod tests {
             scale,
         };
         canvas.clear_transparent();
-        draw(&mut Fonts::load(), &mut canvas);
+        draw(
+            &mut Fonts::load(),
+            &mut canvas,
+            crate::frontend::gamepad::Layout::Xbox,
+        );
         let picture_w = (PICTURE_W * scale) as usize;
         let mut out = vec![0u8; w * h * 4];
         for i in 0..w * h {
