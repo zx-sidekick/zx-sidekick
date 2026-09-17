@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use sidekick::starquake::{HighScore, at};
 
-use super::guidance::Record;
+use super::guidance::{LEVELS, Record};
 
 const FILE: &str = "high-scores.txt";
 
@@ -100,7 +100,13 @@ impl Kept {
             let percent = rest.next()?.parse().ok()?;
             let level = match rest.next()? {
                 "-" => None,
-                l => Some(l.parse::<u8>().ok().filter(|&l| l <= 5)?),
+                // A level there is: the file is written by this program,
+                // which has as many levels as `LEVELS` (#79).
+                l => Some(
+                    l.parse::<u8>()
+                        .ok()
+                        .filter(|&l| usize::from(l) < LEVELS.len())?,
+                ),
             };
             if rest.next().is_some() {
                 return None;
@@ -257,6 +263,27 @@ mod tests {
         assert_eq!(after.levels.iter().filter(|&&l| l == Some(5)).count(), 1);
     }
 
+    /// A game at the top level, 6, makes the table: its line reads back
+    /// (#79). Before the fix the file was taken as damaged from then on.
+    #[test]
+    fn a_game_at_the_top_level_reads_back() {
+        let top = LEVELS.len() as u8 - 1;
+        let k = kept();
+        let after = k.after(&with(&k, 0, entry(b"SQK", b"200000", 50)), top);
+        assert_eq!(after.levels[0], Some(top));
+        let text = after.text();
+        assert!(
+            text.starts_with(&format!("SQK 200000 50 {top}\n")),
+            "{text}"
+        );
+        assert_eq!(Kept::parse(&text), Some(after), "the file reads back");
+        let keeper = Keeper::new(Some(&text), k.entries);
+        assert_eq!(
+            keeper.kept, after,
+            "and is the table the program starts from"
+        );
+    }
+
     #[test]
     fn training_saves_nothing_and_puts_the_table_back_at_the_menu() {
         let mut keeper = Keeper::new(None, kept().entries);
@@ -292,6 +319,7 @@ mod tests {
             "STA 109825 31 0\n",
             &text.replace("109825", "10982x"),
             &text.replace(" 0\n", " 9\n"),
+            &text.replace(" 0\n", &format!(" {}\n", LEVELS.len())),
         ] {
             assert_eq!(Kept::parse(damaged), None, "{damaged:?}");
         }
