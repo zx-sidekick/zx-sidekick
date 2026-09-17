@@ -12,7 +12,7 @@ use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Fullscreen, Window, WindowId};
+use winit::window::{Fullscreen, Theme, Window, WindowId};
 
 use super::Shared;
 use super::overlay::{self, Overlay};
@@ -156,6 +156,12 @@ impl ApplicationHandler for App {
             });
         let attrs = Window::default_attributes()
             .with_title("ZX Sidekick · Starquake")
+            // A dark title bar whatever the desktop's setting (#97). Left to
+            // winit, GNOME drew it light in dark mode: on X11 the window gets
+            // no dark hint unless a theme is given, and on Wayland winit asks
+            // the desktop over D-Bus with a 100 ms timeout. A theme given here
+            // settles both, and suits the game's black border.
+            .with_theme(Some(Theme::Dark))
             .with_fullscreen(Some(Fullscreen::Borderless(None)))
             .with_inner_size(LogicalSize::new(
                 WINDOW_W as f64 * scale,
