@@ -16,6 +16,51 @@
 //! `poll` drains the event queue before reading, which is where a pad that
 //! has just connected turns up.
 
+/// Which letters a pad's face buttons carry, from the maker it reports
+/// itself as (#101). The buttons are read by position — `gilrs` names them
+/// South, East, West and North whatever is printed on them — so this
+/// changes only the letters shown in a legend, and which button confirms.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Layout {
+    /// A on the bottom, B right, X left, Y top. The default: it is what
+    /// most pads for a computer are printed with, and what an unrecognised
+    /// pad is taken to be (#101, decision 6).
+    #[default]
+    Xbox,
+    /// A right, B bottom, X top, Y left.
+    Nintendo,
+    /// The cross at the bottom, the circle right, the square left, the
+    /// triangle on top.
+    PlayStation,
+}
+
+/// Nintendo's USB vendor: a Pro Controller, Joy-Cons, or a third-party pad
+/// in its Nintendo mode, which reports itself as one.
+const NINTENDO: u16 = 0x057E;
+/// Sony's.
+const PLAYSTATION: u16 = 0x054C;
+
+impl Layout {
+    /// The layout a pad reporting `vendor` carries.
+    #[must_use]
+    pub fn of(vendor: Option<u16>) -> Layout {
+        match vendor {
+            Some(NINTENDO) => Layout::Nintendo,
+            Some(PLAYSTATION) => Layout::PlayStation,
+            _ => Layout::Xbox,
+        }
+    }
+
+    /// Whether the button that confirms is the right-hand one rather than
+    /// the bottom one: A is on the right of a Nintendo pad, and A confirms
+    /// (#101, decision 1). The cross confirms on a PlayStation pad, which
+    /// is at the bottom as on an Xbox one.
+    #[must_use]
+    pub fn confirms_east(self) -> bool {
+        self == Layout::Nintendo
+    }
+}
+
 /// How far a stick must move before it counts as a direction.
 const DEADZONE: f32 = 0.5;
 
@@ -40,6 +85,31 @@ pub struct Pad {
     /// The top face button (Y on an Xbox pad): switches the piece route
     /// between the nearest missing pieces (#51).
     pub north: bool,
+    /// The letters the first connected pad carries (#101, decision 7).
+    pub layout: Layout,
+}
+
+impl Pad {
+    /// The press that confirms in the picker, and the one that goes back:
+    /// the bottom and right buttons, or the other way round on a pad whose
+    /// A is on the right.
+    #[must_use]
+    pub fn confirm(&self) -> bool {
+        if self.layout.confirms_east() {
+            self.east
+        } else {
+            self.south
+        }
+    }
+
+    #[must_use]
+    pub fn cancel(&self) -> bool {
+        if self.layout.confirms_east() {
+            self.south
+        } else {
+            self.east
+        }
+    }
 }
 
 /// What the picker's buttons were at the last poll and are now, in the
@@ -94,6 +164,11 @@ impl Gamepad {
 
         let mut pad = Pad::default();
         let mut now = [false; 8];
+        // The first pad listed decides the letters; the rest are read for
+        // what they are pressing (#101, decision 7).
+        if let Some((_, first)) = gilrs.gamepads().next() {
+            pad.layout = Layout::of(first.vendor_id());
+        }
         for (_id, gamepad) in gilrs.gamepads() {
             use gilrs::{Axis, Button};
             let pressed = |b| gamepad.is_pressed(b);
@@ -142,6 +217,43 @@ impl Gamepad {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_layout_comes_from_the_maker_the_pad_reports() {
+        assert_eq!(Layout::of(Some(0x057E)), Layout::Nintendo);
+        assert_eq!(Layout::of(Some(0x054C)), Layout::PlayStation);
+        // An Xbox pad, an 8BitDo in its own mode, and a pad that reports no
+        // maker at all: the letters most pads are printed with (#101).
+        assert_eq!(Layout::of(Some(0x045E)), Layout::Xbox);
+        assert_eq!(Layout::of(Some(0x2DC8)), Layout::Xbox);
+        assert_eq!(Layout::of(None), Layout::Xbox);
+    }
+
+    #[test]
+    fn a_is_the_button_that_confirms_wherever_it_is() {
+        // The same press means opposite things on the two pads: A confirms
+        // and B cancels, and A is the bottom button on an Xbox pad and the
+        // right one on a Nintendo pad (#101, decision 1).
+        let press = |layout, south, east| Pad {
+            layout,
+            south,
+            east,
+            ..Pad::default()
+        };
+        let bottom = press(Layout::Xbox, true, false);
+        assert!(bottom.confirm() && !bottom.cancel(), "A on an Xbox pad");
+        let right = press(Layout::Xbox, false, true);
+        assert!(right.cancel() && !right.confirm(), "B on an Xbox pad");
+
+        let bottom = press(Layout::Nintendo, true, false);
+        assert!(bottom.cancel() && !bottom.confirm(), "B on a Switch pad");
+        let right = press(Layout::Nintendo, false, true);
+        assert!(right.confirm() && !right.cancel(), "A on a Switch pad");
+
+        // Sony settled on the cross confirming, and it is at the bottom.
+        let bottom = press(Layout::PlayStation, true, false);
+        assert!(bottom.confirm(), "the cross on a PlayStation pad");
+    }
 
     #[test]
     fn a_button_held_down_is_one_press() {

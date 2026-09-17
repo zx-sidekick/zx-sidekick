@@ -79,7 +79,8 @@ impl Runner {
             std::thread::sleep(Duration::from_millis(20));
             let pad = self.pad.poll();
             let mut guidance = self.shared.guidance.lock().unwrap();
-            if pad.select || pad.east {
+            guidance.set_pad(pad.layout);
+            if pad.select || pad.cancel() {
                 guidance.back();
             }
             if pad.up {
@@ -94,7 +95,7 @@ impl Runner {
             if pad.right {
                 guidance.change(true);
             }
-            if pad.south {
+            if pad.confirm() {
                 guidance.enter();
                 if guidance.take(guidance::Action::Exit) {
                     self.shared.quit.store(true, Ordering::Relaxed);
@@ -204,6 +205,8 @@ impl Runner {
         let mut reading_due = false;
         while !self.shared.quit.load(Ordering::Relaxed) {
             let mut pad = self.pad.poll();
+            // The letters the legends show follow the pad (#101).
+            self.shared.guidance.lock().unwrap().set_pad(pad.layout);
             if pad.north {
                 let mut guidance = self.shared.guidance.lock().unwrap();
                 if !guidance.picker_open() {
