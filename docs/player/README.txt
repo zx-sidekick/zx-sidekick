@@ -62,7 +62,8 @@ The keyboard is the Spectrum's: the letters, digits, Enter, Space,
 Shift (Caps Shift) and right Ctrl (Symbol Shift) are the keys of the
 same name, and the game reads them as it would on the real machine. At
 the title screen the digits choose how to play, as the screen lists,
-and every choice works.
+and every choice works. Q there quits, as the screen says: answer Y and
+the program closes once the game has said its goodbye.
 
 On top of that there is a joystick that works whichever choice you
 made: in play, the program presses the keys the game is listening for.

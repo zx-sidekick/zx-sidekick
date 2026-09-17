@@ -28,9 +28,11 @@ pub enum Scene {
 
 /// The routines whose arrival tells the tracker something: which scene the
 /// program is in, a new game, a teleporter booth entered, and a security
-/// door's screen opened.
-pub const WATCH: [u16; 8] = [
+/// door's screen opened; and the game quitting, which the window closes
+/// the program on (#90).
+pub const WATCH: [u16; 9] = [
     routine::MENU,
+    routine::QUIT,
     routine::HEROES,
     routine::MAIN_LOOP,
     routine::GAME_OVER,

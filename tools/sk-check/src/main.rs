@@ -1711,11 +1711,57 @@ fn facts_check(dir: &Path) -> bool {
     ok &= heroes_check(dir);
     ok &= doors_check(dir);
     ok &= font_check(dir);
+    ok &= quit_check(dir);
     println!(
         "facts: the panel's entry points {}",
         if ok { "hold" } else { "do NOT hold" }
     );
     ok
+}
+
+/// Quit the game on the title screen (#90): Q asks "are you sure", and on Y
+/// the game says goodbye and arrives where it begins wiping itself, which is
+/// where the window closes the program; on N it goes back to the menu and
+/// never arrives there.
+fn quit_check(dir: &Path) -> bool {
+    use sidekick::starquake::routine;
+    let mut title = machine(dir);
+    for _ in 0..250 {
+        title.zx.release_all_keys();
+        title.run_frame();
+    }
+    let answer = |key: &str| {
+        let mut m = title.clone();
+        m.watch = vec![routine::QUIT, routine::MENU];
+        let (mut quit, mut menu) = (None, None);
+        for frame in 0..700u64 {
+            m.zx.release_all_keys();
+            if frame < 5 {
+                m.zx.set_key(Key::by_name("q").expect("a key"), true);
+            }
+            if (60..65).contains(&frame) {
+                m.zx.set_key(Key::by_name(key).expect("a key"), true);
+            }
+            for hit in m.run_frame() {
+                match hit {
+                    routine::QUIT if quit.is_none() => quit = Some(frame),
+                    routine::MENU if frame >= 60 && menu.is_none() => menu = Some(frame),
+                    _ => {}
+                }
+            }
+        }
+        (quit, menu)
+    };
+    let (yes, no) = (answer("y"), answer("n"));
+    // Y: the goodbye lasts the game's own 255 frames before it arrives.
+    let good = yes.0.is_some_and(|f| f > 60 + 255) && no.0.is_none() && no.1.is_some();
+    println!(
+        "  quitting from the title screen: Q then Y arrives at the wipe after {:?} frames, Q then N never does and is back at the menu after {:?} {}",
+        yes.0,
+        no.1,
+        if good { "ok" } else { "FAILED" }
+    );
+    good
 }
 
 /// Reads the map by having the game draw every room, then walks Blob at

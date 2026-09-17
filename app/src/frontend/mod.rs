@@ -261,6 +261,13 @@ impl Runner {
             machine.joystick = input.joystick | pad.bits;
             machine.start = pad.start;
             let hits = machine.run_frame();
+            // Quit the game on the title screen, answered Y (#90): the game
+            // has said goodbye to Olly for its own five seconds and is about
+            // to wipe itself, which a Spectrum follows with a reset. Here the
+            // program closes, the goodbye still on the screen.
+            if hits.contains(&routine::QUIT) {
+                return Ok(());
+            }
             pause = machine.pause_pressed;
             {
                 let mut guidance = self.shared.guidance.lock().unwrap();
