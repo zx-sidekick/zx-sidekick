@@ -358,25 +358,16 @@ pub fn door_code(mem: &[u8]) -> Option<[u8; 3]> {
 }
 
 /// Every room with a security door in it, and the spot of its door marker,
-/// found by having the game build each room on a copy (#66). The rooms are
-/// the tape's own and do not change from game to game, so this is read once.
+/// from the rooms as the map read them, in number order (#66, #80). The
+/// rooms are the tape's own and do not change from game to game, so they are
+/// read once, by [`all_rooms`], and this is a walk over what was read.
 #[must_use]
-pub fn door_rooms(machine: &crate::Machine) -> Vec<(u16, (u8, u8))> {
-    let mut found = Vec::new();
-    for room in 0..512u16 {
-        let mut m = machine.clone();
-        read_room(&mut m, room);
-        let z = &m.zx;
-        let end = z.read16(at::MARKERS_END).max(at::MARKERS);
-        if let Some(a) = (at::MARKERS..end)
-            .step_by(3)
-            .find(|&a| z.mem[usize::from(a) + 2] == DOOR_MARKER)
-        {
-            let a = usize::from(a);
-            found.push((room, (z.mem[a], z.mem[a + 1])));
-        }
-    }
-    found
+pub fn door_rooms(rooms: &[crate::map::Room]) -> Vec<(u16, (u8, u8))> {
+    rooms
+        .iter()
+        .enumerate()
+        .filter_map(|(i, room)| Some((u16::try_from(i).ok()?, room.door?)))
+        .collect()
 }
 
 /// The code a security door asks for this game, read by walking Blob into

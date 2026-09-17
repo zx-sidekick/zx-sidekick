@@ -151,8 +151,8 @@ impl Runner {
         // It takes about a third of a second, before the loading picture.
         let rooms = sidekick::starquake::all_rooms(&machine);
         // Which rooms hold a security door, for level 6's codes (#66): the
-        // tape's own, so read once here rather than at every new game.
-        let doors = sidekick::starquake::door_rooms(&machine);
+        // tape's own, from the rooms just read (#80).
+        let doors = sidekick::starquake::door_rooms(&rooms);
         let graph = sidekick::map::Graph::new(&rooms, sidekick::starquake::CORE_ROOM);
         let openings = sidekick::map::openings(&rooms, sidekick::starquake::CORE_ROOM);
         self.shared.guidance.lock().unwrap().set_openings(openings);
