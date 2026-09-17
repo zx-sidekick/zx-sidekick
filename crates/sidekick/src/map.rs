@@ -675,6 +675,41 @@ pub struct Graph {
     booths: Vec<Place>,
     /// Every room's parts with doors open, to find where Blob is.
     parts: Vec<Parts>,
+    /// The rooms with a security door, to tell when a route crosses one.
+    doors: std::collections::BTreeMap<u16, Door>,
+}
+
+/// A room with a security door, as [`Graph::first_door`] needs it: its parts
+/// with the door shut, the ones its booth and its wall passage are in, and
+/// the rooms its passage leads to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Door {
+    shut: Parts,
+    booth: u8,
+    passage: u8,
+    passage_to: Vec<u16>,
+}
+
+/// The part at the screen cell (`row`, `col`), or the one beside it when the
+/// cell is one Blob does not fit at; 0 when none is found.
+fn part_near(parts: &Parts, row: u8, col: u8) -> u8 {
+    let (row, col) = (i16::from(row), i16::from(col));
+    [
+        (0, 0),
+        (0, 1),
+        (1, 0),
+        (1, 1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (1, -1),
+    ]
+    .into_iter()
+    .map(|(dr, dc)| (row + dr, col + dc))
+    .filter(|&(r, c)| r >= 0 && c >= 0)
+    .map(|(r, c)| parts.at(r as u8, c as u8))
+    .find(|&p| p != 0)
+    .unwrap_or(0)
 }
 
 impl Graph {
@@ -746,10 +781,37 @@ impl Graph {
             .filter(|(_, r)| r.booth_part != 0)
             .map(|(i, r)| (i as u16, open_part(r, r.booth_part)))
             .collect();
+        let doors = rooms
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.door.is_some())
+            .map(|(i, r)| {
+                let room = i as u16;
+                let mut passage_to = Vec::new();
+                if r.passage_right && rooms.get(i + 1).is_some_and(|o| o.passage_left) {
+                    passage_to.push(room + 1);
+                }
+                if r.passage_left
+                    && i.checked_sub(1)
+                        .and_then(|l| rooms.get(l))
+                        .is_some_and(|o| o.passage_right)
+                {
+                    passage_to.push(room - 1);
+                }
+                let door = Door {
+                    shut: r.shut.clone(),
+                    booth: r.booth_part,
+                    passage: r.passage_part,
+                    passage_to,
+                };
+                (room, door)
+            })
+            .collect();
         Graph {
             ways,
             booths,
             parts: rooms.iter().map(|r| r.open.clone()).collect(),
+            doors,
         }
     }
 
@@ -769,23 +831,84 @@ impl Graph {
         let Some(parts) = self.parts.get(usize::from(room)) else {
             return 0;
         };
-        let (row, col) = (i16::from(row), i16::from(col));
-        [
-            (0, 0),
-            (0, 1),
-            (1, 0),
-            (1, 1),
-            (-1, 0),
-            (-1, 1),
-            (0, -1),
-            (1, -1),
-        ]
-        .into_iter()
-        .map(|(dr, dc)| (row + dr, col + dc))
-        .filter(|&(r, c)| r >= 0 && c >= 0)
-        .map(|(r, c)| parts.at(r as u8, c as u8))
-        .find(|&p| p != 0)
-        .unwrap_or(0)
+        part_near(parts, row, col)
+    }
+
+    /// The first room along `route`, walked from Blob at (`x`, `y`) in
+    /// `here`, whose security door the route has to pass (#99): a room with
+    /// a door that is entered in one of its parts with the door shut and
+    /// left from another, with no part serving both. A room the route only
+    /// ends in is not counted, since where in it the route ends is not known
+    /// here. `None` when the route passes no door.
+    #[must_use]
+    pub fn first_door(&self, here: u16, x: u8, y: u8, route: &[Step]) -> Option<u16> {
+        let rooms: Vec<u16> = std::iter::once(here)
+            .chain(route.iter().map(|s| s.room))
+            .collect();
+        for (i, &room) in rooms.iter().enumerate() {
+            let (Some(door), Some(out)) = (self.doors.get(&room), route.get(i)) else {
+                continue;
+            };
+            let entry = if i == 0 {
+                vec![part_near(&door.shut, (0xBF - y.min(0xBF)) >> 3, x >> 3)]
+            } else if route[i - 1].teleport {
+                vec![door.booth]
+            } else {
+                self.edge(room, door, rooms[i - 1])
+            };
+            let exit = if out.teleport {
+                vec![door.booth]
+            } else {
+                self.edge(room, door, out.room)
+            };
+            let known = |parts: &[u8]| parts.iter().any(|&p| p != 0);
+            if known(&entry) && known(&exit) && !entry.iter().any(|p| *p != 0 && exit.contains(p)) {
+                return Some(room);
+            }
+        }
+        None
+    }
+
+    /// The parts of `room`, its door shut, that Blob can cross to or from
+    /// the neighbouring room `other` by.
+    fn edge(&self, room: u16, door: &Door, other: u16) -> Vec<u8> {
+        let (Some(mine), Some(theirs)) = (
+            self.parts.get(usize::from(room)),
+            self.parts.get(usize::from(other)),
+        ) else {
+            return Vec::new();
+        };
+        // The cells either side of the shared edge: mine, then theirs.
+        let cells: Vec<((u8, u8), (u8, u8))> = if other == room.wrapping_add(1) {
+            (FIRST_ROW..LAST_ROW)
+                .map(|r| ((r, LAST_COL - 1), (r, 0)))
+                .collect()
+        } else if room == other.wrapping_add(1) {
+            (FIRST_ROW..LAST_ROW)
+                .map(|r| ((r, 0), (r, LAST_COL - 1)))
+                .collect()
+        } else if other == room.wrapping_add(COLS) {
+            (0..LAST_COL)
+                .map(|c| ((LAST_ROW - 1, c), (FIRST_ROW, c)))
+                .collect()
+        } else if room == other.wrapping_add(COLS) {
+            (0..LAST_COL)
+                .map(|c| ((FIRST_ROW, c), (LAST_ROW - 1, c)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mut parts: Vec<u8> = cells
+            .into_iter()
+            .filter(|&(m, t)| mine.at(m.0, m.1) != 0 && theirs.at(t.0, t.1) != 0)
+            .map(|(m, _)| door.shut.at(m.0, m.1))
+            .collect();
+        if door.passage_to.contains(&other) {
+            parts.push(door.passage);
+        }
+        parts.sort_unstable();
+        parts.dedup();
+        parts
     }
 
     /// The places one step from `place`.
@@ -1404,6 +1527,37 @@ mod tests {
                 teleport: false
             }])
         );
+    }
+
+    #[test]
+    fn a_route_names_the_door_it_has_to_pass() {
+        // As above: from the left half the way to room 1 is through the
+        // door, from the right half it is not, and a route that only ends in
+        // the door's room names none.
+        let mut lines = gapped(false, true, false, false);
+        for line in &mut lines {
+            line.replace_range(15..17, "##");
+        }
+        let door = read_text(&lines, &[(112, 87, DOOR)]);
+        assert!(door.door.is_some(), "the room has a door");
+        let rooms = planet_of(&[
+            (0, door),
+            (1, read_text(&gapped(true, false, false, false), &[])),
+        ]);
+        let g = Graph::new(&rooms, 999);
+        let out = [Step {
+            room: 1,
+            teleport: false,
+        }];
+        let y = 143 - 8 * 6;
+        assert_eq!(g.first_door(0, 5 * 8, y, &out), Some(0));
+        assert_eq!(g.first_door(0, 25 * 8, y, &out), None);
+        let back = [Step {
+            room: 0,
+            teleport: false,
+        }];
+        assert_eq!(g.first_door(1, 5 * 8, y, &back), None);
+        assert_eq!(g.first_door(0, 5 * 8, y, &[]), None);
     }
 
     #[test]

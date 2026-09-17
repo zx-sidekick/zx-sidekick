@@ -225,6 +225,9 @@ pub struct Guidance {
     /// The route to the core while a piece it needs is carried (#44);
     /// `None` otherwise or when there is none.
     core_route: Option<Vec<Step>>,
+    /// The room of the first security door each route has to pass (#99):
+    /// the piece route's, then the core route's.
+    route_doors: [Option<u16>; 2],
     /// The high-score table kept between runs, with each entry's guidance
     /// (#47); `None` until the tape is loaded.
     high_scores: Option<super::scores::Kept>,
@@ -389,6 +392,7 @@ impl Guidance {
     }
 
     /// How many rooms have been visited.
+    #[cfg(test)]
     pub fn explored(&self) -> usize {
         self.visited.iter().filter(|&&v| v).count()
     }
@@ -460,6 +464,20 @@ impl Guidance {
     pub fn set_core_route(&mut self, route: Option<Vec<Step>>) {
         if self.core_route != route {
             self.core_route = route;
+            self.version += 1;
+        }
+    }
+
+    /// The room of the first security door the piece route has to pass,
+    /// then the core route's.
+    pub fn route_doors(&self) -> [Option<u16>; 2] {
+        self.route_doors
+    }
+
+    /// Takes the routes' first doors, if they have changed.
+    pub fn set_route_doors(&mut self, doors: [Option<u16>; 2]) {
+        if self.route_doors != doors {
+            self.route_doors = doors;
             self.version += 1;
         }
     }
@@ -557,6 +575,7 @@ impl Guidance {
             self.core.clear();
             self.route = None;
             self.core_route = None;
+            self.route_doors = [None; 2];
             self.version += 1;
         }
     }

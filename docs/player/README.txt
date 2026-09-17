@@ -92,13 +92,14 @@ GUIDANCE
 The panel beside the picture is for guidance: optional help, in levels
 from 0 (none) to 5, each adding to the ones below.
 
-  Level 1              The codes you have been shown, in a column down
+  Level 1              The codes you have been shown, in a rail down
                        the panel's right, drawn in the game's own
                        letters: under TELEPORTERS, the code of every
                        booth you have entered; under DOORS, the three
                        chips each security door asked you for, once its
-                       screen has shown them to you. With them, the
-                       core's nine slots as a square of three by three:
+                       screen has shown them to you. At the top left,
+                       the core's nine slots as a square of three by
+                       three:
                        what each still wants, what is delivered, and
                        what you are carrying. A door's code stays
                        hidden until you have seen it, and the codes are
@@ -124,9 +125,11 @@ from 0 (none) to 5, each adding to the ones below.
                          a ring      a pyramid takes it in exchange for
                                      one of the core's missing pieces
 
-                       A piece the core still wants is drawn as itself,
-                       in pink. What you carry is not drawn: it is with
-                       you.
+                       The colour says what a thing is for: lilac for
+                       a door (the chips and the card), yellow the
+                       key, white the ring. A piece the core still
+                       wants is drawn as itself, in pink. What you
+                       carry is not drawn: it is with you.
   Level 4              The same for the rooms you have never walked
                        through. The game puts every item out at the
                        start of a game, so it knows where they all are;
@@ -135,9 +138,14 @@ from 0 (none) to 5, each adding to the ones below.
   Level 5              A route to a missing piece, and one to the core
                        while you carry a piece it needs. Each is a line
                        on the map and an arrow in the border the way to
-                       leave the room, marked "item" or "core", with a
-                       legend under the map; and the code to select
-                       when a teleporter is next. The routes run over
+                       leave the room, marked "item" or "core": pink
+                       to the piece, orange to the core, as the legend
+                       beside the core's slots says. The code a route
+                       needs next, a teleporter's to select or a
+                       security door's to bring the chips for, is
+                       outlined in the rail in the route's colour. A
+                       door's code can only be outlined once you have
+                       seen it. The routes run over
                        the whole map, dashed through rooms you have not
                        visited, and once you have been in a piece's
                        room, to the side of the room it lies in. They
