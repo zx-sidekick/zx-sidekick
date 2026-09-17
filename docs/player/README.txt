@@ -175,8 +175,8 @@ from 0 (none) to 5, each adding to the ones below.
                        is as large as your screen allows.
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.
-  Tab, or Y on a       At levels 5 and 6, switch the route to a missing
-  gamepad              piece between the three nearest, and from the
+  Tab, or the top      At levels 5 and 6, switch the route to a missing
+  face button          piece between the three nearest, and from the
                        third back to the nearest. It goes back to the
                        nearest by itself when the piece is picked up or
                        is no longer one of the three nearest.
@@ -190,6 +190,13 @@ from 0 (none) to 5, each adding to the ones below.
                        cancel.
   Esc, B or Select     Cancel: leave the picker as it was when it
                        opened.
+
+  The pad's letters are its own: A keeps and B cancels whatever pad you
+  have, which is the bottom button on an Xbox pad and the right one on
+  a Switch pad, since that is where each has its A. A PlayStation pad
+  keeps with the cross and cancels with the circle. What the window
+  draws follows the maker your pad reports, so a controller with a mode
+  switch shows what its own mode says.
 
 Raising the level, or turning a training switch on, shows on that
 game's score, so the picker asks first, and the score names each switch

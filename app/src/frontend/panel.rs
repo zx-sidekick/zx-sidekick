@@ -2290,6 +2290,38 @@ mod tests {
                 false,
             ),
             ("paused", Guidance::default(), Scene::Play, true),
+            // The same screens as a Switch and a PlayStation pad have them
+            // (#101): the letters follow the pad, and the marks are drawn.
+            (
+                "pad-nintendo-paused",
+                {
+                    let mut g = Guidance::default();
+                    g.set_pad(gamepad::Layout::Nintendo);
+                    g
+                },
+                Scene::Play,
+                true,
+            ),
+            (
+                "pad-playstation-paused",
+                {
+                    let mut g = Guidance::default();
+                    g.set_pad(gamepad::Layout::PlayStation);
+                    g
+                },
+                Scene::Play,
+                true,
+            ),
+            (
+                "pad-playstation-picker",
+                {
+                    let mut g = picker.clone();
+                    g.set_pad(gamepad::Layout::PlayStation);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
             (
                 // Level 1 with the core's slots, which move here in #66.
                 "level1-core",
