@@ -187,6 +187,14 @@ impl Tracker {
                     chosen,
                     (u8::try_from(which).map_or(0, |w| w + 1).min(count), count),
                 );
+                // The first door each route has to pass, for the rail to
+                // outline its code (#99): only the whole map knows a room's
+                // parts.
+                let door = |route: Option<&Vec<Step>>| {
+                    let (graph, _) = whole?;
+                    graph.first_door(here, mem[blob + 5], mem[blob + 6], route?)
+                };
+                guidance.set_route_doors([door(nearest.get(which)), door(core.as_ref())]);
                 guidance.set_route(nearest.get(which).cloned());
                 guidance.set_core_route(core);
                 let mut rooms = RoomSet::default();
