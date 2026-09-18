@@ -19,7 +19,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 - [x] The game runs from your tape with no ROM
 - [x] Window with the Spectrum picture and its border
 - [ ] Sound (built; awaiting a check by ear)
-- [ ] Keyboard, and a joystick in every control method: the arrows with Left Control, or a gamepad with A for down and X for fire, and Start or the game's pause key to pause (built; awaiting a check by hand)
+- [ ] Keyboard, and a joystick in every control method: the arrows with Left Control, or a gamepad with the bottom face button for down and the left one for fire, whatever their letters, and Start or the game's pause key to pause (built; awaiting a check by hand)
 - [x] The high-score table kept between runs in `high-scores.txt` beside the kept tape, with each entry's guidance level, listed beside the game's CORE OF HEROES screen; games with training mode are not kept.
 - [ ] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory (built; awaiting a check by hand)
 - [x] A notice while the game is paused, saying how to go on
