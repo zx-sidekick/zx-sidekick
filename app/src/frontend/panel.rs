@@ -636,13 +636,16 @@ impl Panel {
                         && (if found.seen { seen_marks } else { all_marks })
                     {
                         let (x, y) = at(found.room);
+                        // Clear of the item, which fills its room and may be
+                        // the ring's own colour: a piece is the item route's pink.
+                        let out = 3.0 * unit;
                         canvas.outline(
-                            x - unit,
-                            y - unit,
-                            pitch + 2.0 * unit,
-                            pitch + 2.0 * unit,
-                            3.0 * unit,
-                            1.5 * unit,
+                            x - out,
+                            y - out,
+                            pitch + 2.0 * out,
+                            pitch + 2.0 * out,
+                            4.0 * unit,
+                            2.0 * unit,
                             None,
                             colour,
                         );
@@ -2205,7 +2208,7 @@ mod tests {
         let (at, pitch) = map_at(5);
         let around = |n: u16| {
             let (x, y) = at(n);
-            (x - 2.0, y - 2.0, pitch + 4.0, pitch + 4.0)
+            (x - 4.0, y - 4.0, pitch + 8.0, pitch + 8.0)
         };
         let rings = |g: &Guidance| {
             let (pixels, w, _) = render(g, Scene::Play, false);
