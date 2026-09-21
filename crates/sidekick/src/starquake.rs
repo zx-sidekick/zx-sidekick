@@ -108,6 +108,18 @@ pub mod routine {
     pub const HEROES: u16 = 0x654B;
     /// Setting up a new game.
     pub const NEW_GAME: u16 = 0x629D;
+    /// Where a door's screen makes the three chips of its code, and where
+    /// that ends (#107). No table holds a door's code: from here the game
+    /// XORs the seed ([`super::at::SEED`]), the room ([`super::at::ROOM`])
+    /// and BC, which the door's screen sets to [`super::DOOR_CODE_AT`]
+    /// before calling the builder at `0xD5FD` (from `0xCC2C`; a pyramid's
+    /// screen calls it from `0xCD1F` for two items), brings each of the
+    /// three bytes into the chips' graphics, and leaves them in the code at
+    /// [`super::at::CODE`]. Found by disassembling the tape on 2026-09-21;
+    /// `sk-check facts` checks the bytes at both ends and that every door's
+    /// screen shows what this makes.
+    pub const DOOR_CODE: (u16, [u8; 3]) = (0xD616, [0x2A, 0xC6, 0xD2]);
+    pub const DOOR_CODE_END: (u16, [u8; 3]) = (0xD640, [0xCD, 0x8B, 0xD7]);
     /// Entering a room, up to the play loop.
     pub const ENTER_ROOM: u16 = 0xA426;
     /// Where touching a security door calls [`MODAL`] for the door's screen,
@@ -148,6 +160,10 @@ pub mod at {
     /// and length, then a (graphic, matched) pair for each item. A security
     /// door asks for three chips, the pyramid for two (#33, #49).
     pub const CODE: u16 = 0xD5F4;
+    /// The game's seed, a word: the frame counter as a new game is set up
+    /// (`0x636F`), so it differs from game to game. Every door's code is
+    /// made from it ([`super::routine::DOOR_CODE`]).
+    pub const SEED: u16 = 0xD2C6;
     /// The system variable `CHARS`: 256 less than the address of the
     /// font's space, as the ROM's printing reads it.
     pub const CHARS: u16 = 0x5C36;
@@ -286,6 +302,11 @@ pub const BOOTH_MARKER: u8 = 0x0D;
 /// The marker a security door's tile leaves in its room.
 pub const DOOR_MARKER: u8 = 0x00;
 
+/// BC as a door's screen calls the code builder with it (`0xCC27`): the row
+/// and column the code is drawn at, which the builder also mixes into the
+/// chips ([`routine::DOOR_CODE`]).
+pub const DOOR_CODE_AT: u16 = 0x110B;
+
 /// The marker a deadly patch leaves in its room: touching it is an outright
 /// death, whatever Blob's energy (#68).
 pub const DANGER_MARKER: u8 = 0x06;
@@ -364,62 +385,49 @@ pub fn door_code(mem: &[u8]) -> Option<[u8; 3]> {
     (code[2] == 3).then(|| [code[3], code[5], code[7]])
 }
 
-/// Every room with a security door in it, and the spot of its door marker,
-/// from the rooms as the map read them, in number order (#66, #80). The
+/// Every room with a security door in it, from the rooms as the map read
+/// them, in number order (#66, #80). The
 /// rooms are the tape's own and do not change from game to game, so they are
 /// read once, by [`all_rooms`], and this is a walk over what was read.
 #[must_use]
-pub fn door_rooms(rooms: &[crate::map::Room]) -> Vec<(u16, (u8, u8))> {
+pub fn door_rooms(rooms: &[crate::map::Room]) -> Vec<u16> {
     rooms
         .iter()
         .enumerate()
-        .filter_map(|(i, room)| Some((u16::try_from(i).ok()?, room.door?)))
+        .filter(|(_, room)| room.door.is_some())
+        .filter_map(|(i, _)| u16::try_from(i).ok())
         .collect()
 }
 
-/// The code a security door asks for this game, read by walking Blob into
-/// the door on a copy of the machine, which is the only way its screen is
-/// reached (#66). `spot` is the door marker's, from [`door_rooms`].
+/// The code the security door in `room` asks for this game, made by the
+/// game's own instructions on a copy of the machine (#107): the room and
+/// the door screen's BC are set, and [`routine::DOOR_CODE`] runs to its end,
+/// a hundred instructions or so, with no frame played and no screen shown.
+/// `None` if the game is not the one these facts were read from. A new
+/// game's seed is not written until its play is under way.
 #[must_use]
-pub fn read_door_code(machine: &crate::Machine, room: u16, spot: (u8, u8)) -> Option<[u8; 3]> {
-    let mut entered = machine.clone();
-    entered.zx.write16(at::ROOM, room);
-    entered.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
-    if !entered.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000) {
+pub fn read_door_code(machine: &crate::Machine, room: u16) -> Option<[u8; 3]> {
+    let (start, end) = (routine::DOOR_CODE, routine::DOOR_CODE_END);
+    let holds = |(at, bytes): (u16, [u8; 3])| {
+        machine.zx.mem.get(usize::from(at)..usize::from(at) + 3) == Some(&bytes[..])
+    };
+    if !holds(start) || !holds(end) {
         return None;
     }
-    entered.zx.t = 0;
-    entered.zx.set_interrupts(true);
-    let (x, y) = spot;
-    // Into the door from one side or the other, whichever reaches it. The
-    // joystick goes through the machine, which presses whatever the control
-    // method the player chose listens for: writing the Kempston port would
-    // reach the game only in one of the five.
-    [crate::machine::JOY_RIGHT, crate::machine::JOY_LEFT]
-        .into_iter()
-        .find_map(|input| {
-            let mut m = entered.clone();
-            m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
-            m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
-            m.watch = vec![routine::DOOR_SCREEN, routine::ENTER_ROOM];
-            let mut called = false;
-            for _ in 0..600 {
-                m.zx.release_all_keys();
-                m.joystick = if called { 0 } else { input };
-                for hit in m.run_frame() {
-                    if hit == routine::DOOR_SCREEN {
-                        called = true;
-                    } else if called {
-                        // Back in the room: the screen left its code behind.
-                        return door_code(&m.zx.mem[..]);
-                    }
-                }
-                if !called && m.zx.mem[usize::from(at::ENTITIES) + 5].abs_diff(x) > 8 {
-                    return None;
-                }
-            }
-            None
-        })
+    let mut m = machine.clone();
+    m.zx.write16(at::ROOM, room);
+    m.zx.set_bc(DOOR_CODE_AT);
+    if !m.call(start.0, end.0, 10_000) {
+        return None;
+    }
+    // The chips of the code; its place and length are written before the
+    // builder gets here, and are not needed.
+    let code = usize::from(at::CODE);
+    let chips = [m.zx.mem[code + 3], m.zx.mem[code + 5], m.zx.mem[code + 7]];
+    chips
+        .iter()
+        .all(|&g| matches!(kind(g), Kind::Chip(_)))
+        .then_some(chips)
 }
 
 /// A teleporter whose booth has been entered: the room it is in and its
@@ -738,6 +746,13 @@ mod tests {
         assert_eq!(font.len(), 768);
         assert_eq!(font[(usize::from(b'A') - 0x20) * 8], 0x3C);
         assert_eq!(super::font(&mem[..0xB000]), None, "cut short");
+    }
+
+    #[test]
+    fn no_door_code_is_read_from_a_machine_that_is_not_the_game() {
+        // The code builder is run only where its instructions are found.
+        let m = crate::Machine::blank(0x8000, 0x7000);
+        assert_eq!(read_door_code(&m, 210), None);
     }
 
     #[test]

@@ -295,9 +295,9 @@ impl Runner {
                     guidance.set_high_scores(keeper.kept, keeper.this_game);
                 }
                 // Level 6 tells every code, shown or not (#66). A new game
-                // makes new door codes, so they are read again on a copy of
-                // the machine, on a thread of its own: it takes about a
-                // third of a second, and the game plays on meanwhile.
+                // makes new door codes, so they are read again: the game's
+                // own code builder run on a copy of the machine for each
+                // door (#107), which takes no time to speak of.
                 if hits.contains(&routine::NEW_GAME) {
                     guidance.forget_all_codes();
                     // Not yet: the new game's seed, which its door codes are
@@ -307,29 +307,20 @@ impl Runner {
                 }
                 if reading_due && tracker.scene == track::Scene::Play {
                     reading_due = false;
-                    let reading = guidance.game();
-                    let copy = machine.clone();
-                    let doors = doors.clone();
-                    let shared = Arc::clone(&self.shared);
-                    std::thread::spawn(move || {
-                        let teleporters = sidekick::starquake::all_teleporters(&copy.zx.mem[..]);
-                        let codes: Vec<guidance::DoorCode> = doors
-                            .iter()
-                            .filter_map(|&(room, spot)| {
-                                let chips = sidekick::starquake::read_door_code(&copy, room, spot)?;
-                                Some(guidance::DoorCode {
-                                    room,
-                                    chips,
-                                    graphics: chips
-                                        .map(|g| sidekick::starquake::graphic(&copy.zx.mem[..], g)),
-                                })
+                    let mem = &machine.zx.mem[..];
+                    let teleporters = sidekick::starquake::all_teleporters(mem);
+                    let codes: Vec<guidance::DoorCode> = doors
+                        .iter()
+                        .filter_map(|&room| {
+                            let chips = sidekick::starquake::read_door_code(&machine, room)?;
+                            Some(guidance::DoorCode {
+                                room,
+                                chips,
+                                graphics: chips.map(|g| sidekick::starquake::graphic(mem, g)),
                             })
-                            .collect();
-                        let mut guidance = shared.guidance.lock().unwrap();
-                        if guidance.game() == reading {
-                            guidance.set_all_codes(&teleporters, &codes);
-                        }
-                    });
+                        })
+                        .collect();
+                    guidance.set_all_codes(&teleporters, &codes);
                 }
                 // After a game with training, its table is put back.
                 if hits.contains(&routine::MENU)
