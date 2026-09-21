@@ -6,7 +6,7 @@
 use sidekick::map::{Graph, Known, Place, RoomSet, Step};
 use sidekick::starquake::{
     CORE_ROOM, Item, SeenTeleporter, all_teleporters, at, door_code, entry, font, graphic, hole,
-    items_and_core, kind, missing_pieces, read_door_code, routine, teleporter_code,
+    inventory, items_and_core, kind, missing_pieces, read_door_code, routine, teleporter_code,
 };
 
 use super::guidance::{DoorCode, Found, Guidance, Hole};
@@ -201,6 +201,8 @@ impl Tracker {
                 let (items, core) = items_and_core(mem);
                 let pieces = missing_pieces(&core, &items);
                 guidance.set_core(holes(mem, &core, &items));
+                let carried: Vec<u8> = inventory(mem).into_iter().flatten().collect();
+                guidance.set_carried(&carried);
                 let found = found(mem, &items, &core, &unvisited);
                 let here = u16::from_le_bytes([mem[room], mem[room + 1]]);
                 let booths: Vec<u16> = self.seen.iter().map(|t| t.room).collect();

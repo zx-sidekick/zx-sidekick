@@ -1547,6 +1547,120 @@ fn teleporters_check(dir: &Path) -> bool {
     ok
 }
 
+/// Walks Blob into the door whose marker is at `spot`, one way or the other,
+/// on a copy of `entered`, a machine that has just entered the door's room,
+/// and returns the copy as the room is entered again when the door's screen
+/// is done; `None` if the screen never opened.
+fn walk_into_door(entered: &Machine, (x, y): (u8, u8)) -> Option<Machine> {
+    use sidekick::starquake::{at, routine};
+    [1u8, 2].into_iter().find_map(|input| {
+        let mut m = entered.clone();
+        m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
+        m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
+        m.watch = vec![routine::DOOR_SCREEN, routine::ENTER_ROOM];
+        let mut called = false;
+        for _ in 0..600 {
+            m.zx.release_all_keys();
+            m.zx.kempston = if called { 0 } else { input };
+            for hit in m.run_frame() {
+                if hit == routine::DOOR_SCREEN {
+                    called = true;
+                } else if called {
+                    return Some(m);
+                }
+            }
+            if !called && m.zx.mem[usize::from(at::ENTITIES) + 5].abs_diff(x) > 8 {
+                return None;
+            }
+        }
+        None
+    })
+}
+
+/// What the items do at a security door (#33), on copies of the game in
+/// play with a made-up inventory, walked into the door of room 210: the
+/// slots the door's own screen finds answered are the ones [`covered`]
+/// lights, for nothing carried, the three chips, two of them, the card
+/// alone, and a "?" chip with two chips; Blob is let through, 48 pixels on,
+/// only when all three are; and the screen takes nothing from what is
+/// carried.
+///
+/// [`covered`]: sidekick::starquake::covered
+fn door_items_check(dir: &Path) -> bool {
+    use sidekick::starquake::{
+        DOOR_MARKER, at, covered, door_matched, inventory, read_door_code, read_room, routine,
+    };
+    const ROOM: u16 = 210;
+    let base = into_play(dir, 1);
+    let Some(code) = read_door_code(&base, ROOM) else {
+        println!("  what the items do at a door: no code read FAILED");
+        return false;
+    };
+    let mut drawn = base.clone();
+    read_room(&mut drawn, ROOM);
+    let z = &drawn.zx;
+    let end = z.read16(at::MARKERS_END).max(at::MARKERS);
+    let spot = (at::MARKERS..end)
+        .step_by(3)
+        .find(|&a| z.mem[usize::from(a) + 2] == DOOR_MARKER)
+        .map(|a| (z.mem[usize::from(a)], z.mem[usize::from(a) + 1]));
+    let mut entered = base.clone();
+    entered.zx.write16(at::ROOM, ROOM);
+    entered.zx.mem[usize::from(at::ENTRY_REASON)] = 0;
+    let (Some(spot), true) = (
+        spot,
+        entered.call(routine::ENTER_ROOM, routine::MAIN_LOOP, 20_000_000),
+    ) else {
+        println!("  what the items do at a door: room {ROOM} not entered FAILED");
+        return false;
+    };
+    entered.zx.t = 0;
+    entered.zx.set_interrupts(true);
+    let cases: [(&str, Vec<u8>); 5] = [
+        ("nothing", vec![]),
+        ("the three chips", code.to_vec()),
+        ("two of them", code[..2].to_vec()),
+        ("the card", vec![15]),
+        ("a ? chip and two chips", vec![14, code[1], code[2]]),
+    ];
+    let mut ok = true;
+    let mut said = Vec::new();
+    for (name, carried) in cases {
+        let mut m = entered.clone();
+        let slots = usize::from(at::INVENTORY);
+        m.zx.mem[slots..slots + 8].fill(0);
+        for (slot, &graphic) in carried.iter().enumerate() {
+            m.zx.mem[slots + 2 * slot] = graphic;
+            m.zx.mem[slots + 2 * slot + 1] = 0x47;
+        }
+        let before = inventory(&m.zx.mem[..]);
+        let Some(after) = walk_into_door(&m, spot) else {
+            ok = false;
+            said.push(format!("{name}: the screen never opened FAILED"));
+            continue;
+        };
+        let mem = &after.zx.mem[..];
+        let ours = covered(&code, &carried);
+        let through = mem[usize::from(at::ENTITIES) + 5].abs_diff(spot.0) >= 40;
+        let good = door_matched(mem) == Some(ours)
+            && through == ours.iter().all(|&s| s)
+            && inventory(mem) == before;
+        ok &= good;
+        said.push(format!(
+            "{name}: {} answered, {}{}",
+            ours.iter().filter(|&&s| s).count(),
+            if through { "let through" } else { "refused" },
+            if good { "" } else { " FAILED" }
+        ));
+    }
+    println!(
+        "  what the items do at a door (room {ROOM}, code {code:?}): {}; the door's screen answers the slots the panel lights, lets Blob through only with all three, and takes nothing {}",
+        said.join(", "),
+        if ok { "ok" } else { "FAILED" }
+    );
+    ok
+}
+
 /// The entry points the panel follows: the menu first and then play, and
 /// End this game's keys ending a game in every control method.
 /// Every security door on the tape walked into from each of its markers, on
@@ -1601,28 +1715,7 @@ fn doors_check(dir: &Path) -> bool {
             // From each marker, walking into the door one way or the other.
             let mut codes = Vec::new();
             for &(x, y) in &markers {
-                let code = [1u8, 2].into_iter().find_map(|input| {
-                    let mut m = entered.clone();
-                    m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
-                    m.zx.mem[usize::from(at::ENTITIES) + 6] = y;
-                    m.watch = vec![routine::DOOR_SCREEN, routine::ENTER_ROOM];
-                    let mut called = false;
-                    for _ in 0..600 {
-                        m.zx.release_all_keys();
-                        m.zx.kempston = if called { 0 } else { input };
-                        for hit in m.run_frame() {
-                            if hit == routine::DOOR_SCREEN {
-                                called = true;
-                            } else if called {
-                                return door_code(&m.zx.mem[..]);
-                            }
-                        }
-                        if !called && m.zx.mem[usize::from(at::ENTITIES) + 5].abs_diff(x) > 8 {
-                            return None;
-                        }
-                    }
-                    None
-                });
+                let code = walk_into_door(&entered, (x, y)).and_then(|m| door_code(&m.zx.mem[..]));
                 codes.push(code);
             }
             let chips =
@@ -1754,6 +1847,7 @@ fn facts_check(dir: &Path) -> bool {
     ok &= items_check(dir);
     ok &= heroes_check(dir);
     ok &= doors_check(dir);
+    ok &= door_items_check(dir);
     ok &= font_check(dir);
     ok &= quit_check(dir);
     println!(

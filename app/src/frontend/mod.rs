@@ -197,6 +197,8 @@ impl Runner {
         // Which rooms hold a security door, for level 6's codes (#66): the
         // tape's own, from the rooms read above (#80).
         tracker.door_rooms = sidekick::starquake::door_rooms(&rooms);
+        let spots = sidekick::starquake::door_spots(&rooms);
+        self.shared.guidance.lock().unwrap().set_door_spots(spots);
         let mut freeze = freeze::Freeze::default();
         // Whether the game's pause key was pressed in the last frame.
         let mut pause = false;
