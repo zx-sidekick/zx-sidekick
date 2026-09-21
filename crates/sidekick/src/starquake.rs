@@ -450,6 +450,22 @@ pub fn door_rooms(rooms: &[crate::map::Room]) -> Vec<u16> {
         .collect()
 }
 
+/// Where in its room each security door stands, as a cell of the play area
+/// (column of 32, row of 18), for the map to put the door's number on
+/// (#33): from the door marker's spot, in room order.
+#[must_use]
+pub fn door_spots(rooms: &[crate::map::Room]) -> Vec<(u16, (u8, u8))> {
+    rooms
+        .iter()
+        .enumerate()
+        .filter_map(|(i, room)| {
+            let (x, y) = room.door?;
+            let (row, col) = crate::map::marker_cell(x, y);
+            Some((u16::try_from(i).ok()?, (col, row.saturating_sub(6))))
+        })
+        .collect()
+}
+
 /// The code the security door in `room` asks for this game, made by the
 /// game's own instructions on a copy of the machine (#107): the room and
 /// the door screen's BC are set, and [`routine::DOOR_CODE`] runs to its end,

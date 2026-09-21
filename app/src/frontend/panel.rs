@@ -75,6 +75,22 @@ const DELIVERED: Rgb = [0x3a, 0x3f, 0x4b];
 /// The core column (#7): its tiles' size and pitch, and how many layout
 /// units a pixel of a piece's graphic is.
 const CODE_FILL: Rgb = [0x14, 0x25, 0x2a];
+/// The digits 0 to 9, three pixels by five, for a door's number on the map
+/// (#33): each row's three bits, left to right.
+const DIGITS: [[u8; 5]; 10] = [
+    [0b111, 0b101, 0b101, 0b101, 0b111],
+    [0b010, 0b110, 0b010, 0b010, 0b111],
+    [0b111, 0b001, 0b111, 0b100, 0b111],
+    [0b111, 0b001, 0b111, 0b001, 0b111],
+    [0b101, 0b101, 0b111, 0b001, 0b001],
+    [0b111, 0b100, 0b111, 0b001, 0b111],
+    [0b111, 0b100, 0b111, 0b101, 0b111],
+    [0b111, 0b001, 0b010, 0b010, 0b010],
+    [0b111, 0b101, 0b111, 0b101, 0b111],
+    [0b111, 0b101, 0b111, 0b001, 0b111],
+];
+/// A chip of a door's code that nothing carried answers (#33).
+const CODE_DIM: Rgb = [0x3e, 0x6a, 0x66];
 
 /// A training switch's row in the picker: the heading above them, the pitch
 /// from one row to the next, and the line under them all saying what the
@@ -592,6 +608,80 @@ impl Panel {
                 FLOOR,
             );
         }
+        // Level 5 (#33): what a route's first door still wants, ringed in
+        // the route's colour where it lies: the chips nothing carried
+        // answers, and the "?" chips and cards that would stand in.
+        let (_, doors) = guidance.codes_at(level);
+        if level >= 5 {
+            let [piece_door, core_door] = guidance.route_doors();
+            for (door, colour) in [(piece_door, PIECE), (core_door, ROUTE)] {
+                let Some(code) = door.and_then(|room| doors.iter().find(|c| c.room == room)) else {
+                    continue;
+                };
+                let lit = sidekick::starquake::covered(&code.chips, guidance.carried());
+                let wanted: Vec<Kind> = code
+                    .chips
+                    .iter()
+                    .zip(lit)
+                    .filter(|(_, lit)| !lit)
+                    .map(|(&chip, _)| sidekick::starquake::kind(chip))
+                    .collect();
+                if wanted.is_empty() {
+                    continue;
+                }
+                for found in guidance.items() {
+                    let stands_in = matches!(found.kind, Kind::AnyChip | Kind::DoorCard);
+                    if (stands_in || wanted.contains(&found.kind))
+                        && (if found.seen { seen_marks } else { all_marks })
+                    {
+                        let (x, y) = at(found.room);
+                        canvas.outline(
+                            x - unit,
+                            y - unit,
+                            pitch + 2.0 * unit,
+                            pitch + 2.0 * unit,
+                            3.0 * unit,
+                            1.5 * unit,
+                            None,
+                            colour,
+                        );
+                    }
+                }
+            }
+        }
+        // Last, over whatever a room holds (#33): the number of each door
+        // the rail lists, on the door's own spot in its room, small and with
+        // a dark rim so it reads on the box of the room Blob is in and on a
+        // route's ring.
+        for (n, code) in doors.iter().enumerate() {
+            let Some((fx, fy)) = guidance.door_spot(code.room) else {
+                continue;
+            };
+            let (x, y) = at(code.room);
+            // The digit as pixels, a whole number of screen pixels each, so
+            // it is as sharp at the window's first size as on a big screen.
+            let px = canvas.scale.round().max(1.0) / canvas.scale;
+            let (w, h) = (7.0 * px, 9.0 * px);
+            let (bx, by) = (x + pitch * fx - w / 2.0, y + pitch * fy - h / 2.0);
+            // To whole screen pixels, or the cells blur.
+            let snap = |v: f32| (v * canvas.scale).round() / canvas.scale;
+            let (bx, by) = (snap(bx), snap(by));
+            canvas.round_rect(bx - px, by - px, w + 2.0 * px, h + 2.0 * px, 0.0, PANEL);
+            canvas.round_rect(bx, by, w, h, 0.0, CODE);
+            let rows = DIGITS[(n + 1) % 10];
+            for (r, bits) in rows.iter().enumerate() {
+                for c in 0..3 {
+                    if bits & (0b100 >> c) != 0 {
+                        canvas.cell(
+                            bx + (2 + c) as f32 * px,
+                            by + (2 + r) as f32 * px,
+                            px,
+                            PANEL,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// How many layout units a Spectrum pixel of a code is (#49): half a
@@ -724,14 +814,27 @@ impl Panel {
             self.none_yet(canvas, right, y);
         }
         let door_h = 16.0 * px + 6.0;
-        for code in doors {
+        for (n, code) in doors.iter().enumerate() {
             let x = right - door_w;
             canvas.round_rect(x, y, door_w, door_h, 4.0, CODE_FILL);
             let on = marks.iter().filter(|m| m.code == Code::Door(code.room));
             outlines(canvas, x, y, door_w, door_h, on);
+            // A chip lit once something carried answers it (#33).
+            let lit = sidekick::starquake::covered(&code.chips, guidance.carried());
             for (k, graphic) in code.graphics.iter().enumerate() {
                 let cx = x + 3.0 + k as f32 * (16.0 * px + 2.0);
-                cells(canvas, graphic, cx, y + 3.0, px, CODE);
+                let colour = if lit[k] { CODE } else { CODE_DIM };
+                cells(canvas, graphic, cx, y + 3.0, px, colour);
+            }
+            // The door's number, as the map has it on the door (#33): from
+            // level 2, where the map is there to point at.
+            if level >= 2 {
+                let label = (n + 1).to_string();
+                let spans = [span(&label, 11.0, Weight::SemiBold, CODE)];
+                let w = self.fonts.measure(&spans);
+                let ty = y + (door_h - 15.0) / 2.0;
+                self.fonts
+                    .text(Some(canvas), x - w - 6.0, ty, None, 1.0, &spans);
             }
             y += door_h + 3.0;
         }
@@ -1980,6 +2083,108 @@ mod tests {
         let chips = (WINDOW_W - 24.0 - 96.0, BLOCK_TOP + 76.0, 96.0, 40.0);
         assert_eq!(count(&none, w, chips, CODE_FILL), 0);
         assert!(count(&one, w, chips, CODE_FILL) > 0, "the door under DOORS");
+    }
+
+    /// A door's code asking for chips "2", "4", "2".
+    fn code_242(room: u16) -> crate::frontend::guidance::DoorCode {
+        crate::frontend::guidance::DoorCode {
+            room,
+            chips: [11, 12, 11],
+            graphics: [[0x5A; 32]; 3],
+        }
+    }
+
+    #[test]
+    fn a_chip_of_a_doors_code_is_lit_once_something_carried_answers_it() {
+        let rail = (WINDOW_W - 24.0 - 100.0, BLOCK_TOP, 104.0, 300.0);
+        let mut g = Guidance::default();
+        g.set_level(1);
+        g.set_door_codes(&[code_242(210)]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(
+            count(&pixels, w, rail, CODE),
+            0,
+            "nothing carried, and no number at level 1"
+        );
+        let dim = count(&pixels, w, rail, CODE_DIM);
+        assert!(dim > 0, "the chips are there, dimmed");
+        g.set_carried(&[11]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        let lit = count(&pixels, w, rail, CODE);
+        assert!(lit > 0 && lit < dim, "one chip \"2\" lights one of the two");
+        assert_eq!(count(&pixels, w, rail, CODE_DIM), dim - lit);
+        g.set_carried(&[15]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(
+            count(&pixels, w, rail, CODE_DIM),
+            0,
+            "the card lights them all"
+        );
+    }
+
+    #[test]
+    fn a_doors_number_stands_on_its_spot_on_the_map_and_beside_its_code() {
+        let rail = (WINDOW_W - 24.0 - 100.0, BLOCK_TOP, 104.0, 300.0);
+        let mut g = routed(200, &[], &[]);
+        g.set_level(2);
+        g.set_door_codes(&[code_242(210)]);
+        g.set_door_spots(vec![(210, (22, 10)), (200, (22, 10))]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert!(
+            count(&pixels, w, rail, CODE) > 0,
+            "the number beside the code"
+        );
+        let (at, pitch) = map_at(2);
+        let room = |n: u16| {
+            let (x, y) = at(n);
+            (x, y, pitch, pitch)
+        };
+        assert!(count(&pixels, w, room(210), CODE) > 0, "and on the door");
+        assert_eq!(count(&pixels, w, room(211), CODE), 0);
+        // Room 200 has a door too, but its code has not been seen.
+        assert_eq!(count(&pixels, w, room(200), CODE), 0);
+        // Over the box of the room Blob is in, when that is the door's room.
+        g.set_door_codes(&[code_242(200)]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert!(count(&pixels, w, room(200), CODE) > 0);
+        assert!(
+            count(&pixels, w, room(200), HERE) > 0,
+            "the box still shows"
+        );
+    }
+
+    #[test]
+    fn what_a_routes_door_still_wants_is_ringed_where_it_lies() {
+        use crate::frontend::guidance::Found;
+        let item = |room, graphic: u8| Found {
+            room,
+            kind: sidekick::starquake::kind(graphic),
+            piece: false,
+            graphic: [0; 32],
+            seen: true,
+        };
+        let mut g = routed(200, &[(201, false)], &[(216, false)]);
+        g.set_door_codes(&[code_242(210)]);
+        g.set_route_doors([None, Some(210)]);
+        // A chip "4" it wants, a chip "0" it does not, a "?" chip, a "2".
+        g.set_items(&[item(100, 12), item(104, 9), item(108, 14), item(112, 11)]);
+        let (at, pitch) = map_at(5);
+        let around = |n: u16| {
+            let (x, y) = at(n);
+            (x - 2.0, y - 2.0, pitch + 4.0, pitch + 4.0)
+        };
+        let rings = |g: &Guidance| {
+            let (pixels, w, _) = render(g, Scene::Play, false);
+            [100, 104, 108, 112].map(|n| count(&pixels, w, around(n), ROUTE) > 0)
+        };
+        assert_eq!(rings(&g), [true, false, true, true], "nothing carried");
+        g.set_carried(&[11, 11]);
+        assert_eq!(rings(&g), [true, false, true, false], "both \"2\" carried");
+        g.set_carried(&[15]);
+        assert_eq!(rings(&g), [false; 4], "the card: nothing is wanted");
+        g.set_carried(&[]);
+        g.set_route_doors([None, None]);
+        assert_eq!(rings(&g), [false; 4], "no door on the route");
     }
 
     #[test]

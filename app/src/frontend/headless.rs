@@ -52,6 +52,7 @@ pub fn run(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), String
     let rooms = sidekick::starquake::all_rooms(&machine);
     tracker.graph = sidekick::map::Graph::new(&rooms, sidekick::starquake::CORE_ROOM);
     tracker.door_rooms = sidekick::starquake::door_rooms(&rooms);
+    guidance.set_door_spots(sidekick::starquake::door_spots(&rooms));
     guidance.set_openings(sidekick::map::openings(
         &rooms,
         sidekick::starquake::CORE_ROOM,

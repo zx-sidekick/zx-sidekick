@@ -103,12 +103,19 @@ from 0 (none) to 5, each adding to the ones below.
                        what each still wants, what is delivered, and
                        what you are carrying. A door's code stays
                        hidden until you have seen it, and the codes are
-                       forgotten when a new game starts.
+                       forgotten when a new game starts. A chip of a
+                       door's code is dimmed until something you carry
+                       answers it: that chip, a "?" chip for one that
+                       is missing, or the card for all three. A door
+                       takes nothing from you: what opened it is still
+                       yours afterwards.
   Level 2              A map of the rooms you have walked through:
                        every edge open or closed, walls inside a room
                        (dashed where a security door or a teleporter
                        pad divides it), your room, and the teleporters
-                       you have seen.
+                       you have seen. Each door whose code is in the
+                       rail has a number on it, where it stands in its
+                       room, and the same number beside its code.
   Level 3              What you have seen lying in those rooms, each
                        drawn as what it does:
 
@@ -116,10 +123,8 @@ from 0 (none) to 5, each adding to the ones below.
                                      a chip, which answers that number
                                      in a door's or a pyramid's code
                          a disc with ?
-                                     a chip that answers any one number,
-                                     and is used up doing it
-                         a card      opens any door and any pyramid, and
-                                     is never used up
+                                     a chip that answers any one number
+                         a card      opens any door and any pyramid
                          a key       switches the teleporter pads in the
                                      room you carry it into
                          a ring      a pyramid takes it in exchange for
@@ -145,7 +150,10 @@ from 0 (none) to 5, each adding to the ones below.
                        security door's to bring the chips for, is
                        outlined in the rail in the route's colour. A
                        door's code can only be outlined once you have
-                       seen it. The routes run over
+                       seen it; what that door still wants is ringed
+                       on the map in the route's colour where it lies,
+                       the "?" chips and cards that would do instead
+                       included. The routes run over
                        the whole map, dashed through rooms you have not
                        visited, and once you have been in a piece's
                        room, to the side of the room it lies in. They

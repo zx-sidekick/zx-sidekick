@@ -222,6 +222,11 @@ pub struct Guidance {
     /// The route to the core while a piece it needs is carried (#44);
     /// `None` otherwise or when there is none.
     core_route: Option<Vec<Step>>,
+    /// The graphics of what is carried, slot by slot (#33).
+    carried: Vec<u8>,
+    /// Where in its room each security door stands, as a cell of the play
+    /// area (column of 32, row of 18); the tape's own, read once (#33).
+    door_spots: Vec<(u16, (u8, u8))>,
     /// The room of the first security door each route has to pass (#99):
     /// the piece route's, then the core route's.
     route_doors: [Option<u16>; 2],
@@ -474,6 +479,33 @@ impl Guidance {
         }
     }
 
+    /// The graphics of what is carried.
+    pub fn carried(&self) -> &[u8] {
+        &self.carried
+    }
+
+    /// Takes what is carried, if it has changed.
+    pub fn set_carried(&mut self, carried: &[u8]) {
+        if self.carried != carried {
+            self.carried = carried.to_vec();
+            self.version += 1;
+        }
+    }
+
+    /// Where in its room the security door of `room` stands, as fractions
+    /// of the room's width and height; `None` for a room without one.
+    pub fn door_spot(&self, room: u16) -> Option<(f32, f32)> {
+        let &(_, (col, row)) = self.door_spots.iter().find(|(r, _)| *r == room)?;
+        // The door's tile is four cells wide and three tall, from its cell.
+        Some(((f32::from(col) + 2.0) / 32.0, (f32::from(row) + 1.5) / 18.0))
+    }
+
+    /// Takes where the doors stand, read once from the tape's rooms.
+    pub fn set_door_spots(&mut self, spots: Vec<(u16, (u8, u8))>) {
+        self.door_spots = spots;
+        self.version += 1;
+    }
+
     /// The room of the first security door the piece route has to pass,
     /// then the core route's.
     pub fn route_doors(&self) -> [Option<u16>; 2] {
@@ -582,6 +614,7 @@ impl Guidance {
             self.route = None;
             self.core_route = None;
             self.route_doors = [None; 2];
+            self.carried.clear();
             self.version += 1;
         }
     }
