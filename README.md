@@ -59,7 +59,7 @@ Each level adds to the ones below it:
 
 ![the guidance panel at levels 1 to 6](docs/screenshots/guidance-levels.png)
 
-*The panel at levels 1 to 6, drawn by the program itself on a real game. The game was staged rather than played: Blob was put through the rooms near the start, into three teleporter booths and up against three security doors, and given a chip "2" to carry.*
+*The panel at levels 1 to 6, drawn by the program itself on a real game. The game was staged rather than played: Blob was put through the rooms near the start, into three teleporter booths and up against three security doors, and given a chip "2" to carry. The teleporter codes in it are not the game's: they were swapped for words in the staged game's memory, so the picture gives none away.*
 
 - **Codes you have seen**, in a rail at the panel's right in the game's own letters: every teleporter booth you have entered, and under them the three chips each security door asked you for once its screen has shown them. A chip is dimmed until something you carry answers it: that chip, a "?" chip for one that is missing, or the card for all three. A door takes nothing from you. The codes are forgotten when a new game starts.
 - **The core's slots**, at the top left: the nine pieces in the game's own graphics, what each slot still wants, what is delivered, and what you are carrying.
