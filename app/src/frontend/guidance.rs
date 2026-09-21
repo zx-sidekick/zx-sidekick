@@ -241,6 +241,8 @@ pub struct Guidance {
     /// Which of the nearest missing pieces the route leads to, and of how
     /// many: (1, 3) for the nearest of three, (0, 0) with none.
     piece_choice: (u8, u8),
+    /// The letters the connected pad carries, for the legends (#101).
+    pad: crate::frontend::gamepad::Layout,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -266,6 +268,21 @@ impl Guidance {
 
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    /// The letters the connected pad carries, which every legend follows
+    /// (#101).
+    pub fn pad(&self) -> crate::frontend::gamepad::Layout {
+        self.pad
+    }
+
+    /// Takes the layout from the pad, if it has changed: the version moves
+    /// with it, so the window redraws the badges.
+    pub fn set_pad(&mut self, layout: crate::frontend::gamepad::Layout) {
+        if self.pad != layout {
+            self.pad = layout;
+            self.version += 1;
+        }
     }
 
     pub fn focus(&self) -> Setting {

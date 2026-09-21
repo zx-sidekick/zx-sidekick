@@ -58,6 +58,19 @@ pub struct Fonts {
     layout: Layout<Rgb>,
 }
 
+/// A PlayStation pad's marks, by position (#101). The top button, the
+/// triangle, has no badge anywhere: the only thing it does is switch the
+/// route between the nearest pieces (#51), which the docs name in words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PadMark {
+    /// The bottom button.
+    Cross,
+    /// The right one.
+    Circle,
+    /// The left one.
+    Square,
+}
+
 impl Fonts {
     /// # Panics
     ///
@@ -195,6 +208,45 @@ impl Fonts {
             colour: palette::BADGE_TEXT,
         }]);
         (tw + h * 0.62).max(h)
+    }
+
+    /// A PlayStation pad's mark in a round badge: the cross, circle, square
+    /// or triangle, drawn rather than typed (#101). The proper characters
+    /// are not in the font — ✕ came out as a missing-glyph box — and the
+    /// ones that are sit smaller than a letter beside them.
+    pub fn mark_badge(
+        &mut self,
+        canvas: &mut Canvas,
+        x: f32,
+        y: f32,
+        h: f32,
+        mark: PadMark,
+    ) -> f32 {
+        canvas.round_rect(x, y, h, h, h / 2.0, palette::BADGE);
+        canvas.outline(x, y, h, h, h / 2.0, 1.5, None, palette::BADGE_LINE);
+        let ink = palette::BADGE_TEXT;
+        // The same box every mark is drawn in, a little inside the badge.
+        let r = h * 0.26;
+        let (cx, cy) = (x + h / 2.0, y + h / 2.0);
+        let line = (h * 0.11).max(1.5);
+        match mark {
+            PadMark::Cross => {
+                for (dx, dy) in [(1.0, 1.0), (1.0, -1.0)] {
+                    canvas.line(
+                        (cx - r * dx, cy - r * dy),
+                        (cx + r * dx, cy + r * dy),
+                        line,
+                        None,
+                        ink,
+                    );
+                }
+            }
+            PadMark::Circle => canvas.outline(cx - r, cy - r, 2.0 * r, 2.0 * r, r, line, None, ink),
+            PadMark::Square => {
+                canvas.outline(cx - r, cy - r, 2.0 * r, 2.0 * r, h * 0.05, line, None, ink);
+            }
+        }
+        h
     }
 
     /// A gamepad button in a legend: its letter in a round badge `h` logical
@@ -350,6 +402,44 @@ impl Canvas<'_> {
 
     /// The outline of a rounded rectangle, `thickness` logical pixels wide,
     /// dashed when `dash` is given (the length of a dash and of a gap).
+    /// A line from `a` to `b`, `width` across, dashed when `dash` says how
+    /// long each dash is. The map's routes and a pad's marks are drawn with
+    /// it (#9, #101).
+    pub fn line(
+        &mut self,
+        a: (f32, f32),
+        b: (f32, f32),
+        width: f32,
+        dash: Option<f32>,
+        colour: Rgb,
+    ) {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let length = dx.hypot(dy);
+        if length == 0.0 {
+            return;
+        }
+        let (ux, uy) = (dx / length, dy / length);
+        let (nx, ny) = (-uy * width / 2.0, ux * width / 2.0);
+        // Half a width past each end, as the edge lines overhang their corners.
+        let (from, to) = (-width / 2.0, length + width / 2.0);
+        let (on, step) = dash.map_or((to - from, to - from), |d| (d, 2.0 * d));
+        let mut s = from;
+        while s < to {
+            let e = (s + on).min(to);
+            let p = |t: f32| (a.0 + ux * t, a.1 + uy * t);
+            let (p0, p1) = (p(s), p(e));
+            let corners = [
+                (p0.0 + nx, p0.1 + ny),
+                (p1.0 + nx, p1.1 + ny),
+                (p1.0 - nx, p1.1 - ny),
+                (p0.0 - nx, p0.1 - ny),
+            ];
+            self.triangle([corners[0], corners[1], corners[2]], colour);
+            self.triangle([corners[0], corners[2], corners[3]], colour);
+            s += step;
+        }
+    }
+
     #[allow(
         clippy::too_many_arguments,
         reason = "a rectangle, its corners, its line and its dash"

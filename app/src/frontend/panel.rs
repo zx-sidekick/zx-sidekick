@@ -7,10 +7,11 @@
 //! the rule on #3: a keyboard key is a squarish badge, a pad button a round
 //! one, and a direction a bare arrow.
 
+use super::gamepad;
 use super::guidance::{Guidance, LEVELS, SWITCHES, Setting, is_on, switches_on};
 use super::notice;
 use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
-use super::text::{Canvas, Fonts, Rgb, Span, Weight, palette};
+use super::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, palette};
 use super::track::Scene;
 use sidekick::map::{COLS, ROWS, Step};
 use sidekick::starquake::Kind;
@@ -107,11 +108,28 @@ fn heroes_top(y: f32, switches: usize) -> f32 {
     (end + 14.0).max(126.0)
 }
 
-/// A legend entry: a key, a pad button, or arrows.
+/// The letters or marks the connected pad carries, for a legend (#101).
+/// A confirms and B cancels on both an Xbox and a Nintendo pad — what
+/// changes is the button under each — so only a PlayStation pad's marks
+/// differ here; the firing button is the west one on every pad.
+fn pad_hints(layout: gamepad::Layout) -> (Hint, Hint, Hint) {
+    match layout {
+        gamepad::Layout::PlayStation => (
+            Hint::Mark(PadMark::Cross),
+            Hint::Mark(PadMark::Circle),
+            Hint::Mark(PadMark::Square),
+        ),
+        gamepad::Layout::Nintendo => (Hint::Button("A"), Hint::Button("B"), Hint::Button("Y")),
+        gamepad::Layout::Xbox => (Hint::Button("A"), Hint::Button("B"), Hint::Button("X")),
+    }
+}
+
+/// A legend entry: a key, a pad button, its mark, or arrows.
 #[derive(Clone, Copy)]
 enum Hint {
     Key(&'static str),
     Button(&'static str),
+    Mark(PadMark),
     Arrows(&'static [&'static str]),
 }
 
@@ -275,7 +293,7 @@ impl Panel {
             }
         }
         if paused && !guidance.picker_open() {
-            notice::draw(&mut self.fonts, canvas);
+            notice::draw(&mut self.fonts, canvas, guidance.pad());
         }
         if guidance.picker_open() {
             self.picker(canvas, guidance);
@@ -1190,6 +1208,7 @@ impl Panel {
         }
 
         // What the keys do.
+        let (ok, back, _) = pad_hints(guidance.pad());
         let foot = y + h - 52.0;
         canvas.round_rect(x + 1.0, foot, w - 2.0, 1.0, 0.0, RULE);
         self.hints(
@@ -1199,8 +1218,8 @@ impl Panel {
             &[
                 (&[Hint::Arrows(&["\u{2191}", "\u{2193}"])], "choose"),
                 (&[Hint::Arrows(&["\u{2190}", "\u{2192}"])], "change"),
-                (&[Hint::Key("Enter"), Hint::Button("A")], "OK"),
-                (&[Hint::Key("Esc"), Hint::Button("B")], "cancel"),
+                (&[Hint::Key("Enter"), ok], "OK"),
+                (&[Hint::Key("Esc"), back], "cancel"),
             ],
         );
 
@@ -1300,6 +1319,7 @@ impl Panel {
             1.5,
             &[span(&explanation, 13.0, Weight::Regular, HINT_KEY)],
         );
+        let (ok, back, _) = pad_hints(guidance.pad());
         let foot = y + h - 44.0;
         canvas.round_rect(x + 1.0, foot, w - 2.0, 1.0, 0.0, RULE);
         self.hints(
@@ -1307,8 +1327,8 @@ impl Panel {
             x + 24.0,
             foot + 12.0,
             &[
-                (&[Hint::Key("Enter"), Hint::Button("A")], "go ahead"),
-                (&[Hint::Key("Esc"), Hint::Button("B")], "cancel"),
+                (&[Hint::Key("Enter"), ok], "go ahead"),
+                (&[Hint::Key("Esc"), back], "cancel"),
             ],
         );
     }
@@ -1387,6 +1407,7 @@ impl Panel {
                 x += match *entry {
                     Hint::Key(key) => self.fonts.key_badge(canvas, x, y, HINT_H, key),
                     Hint::Button(button) => self.fonts.button_badge(canvas, x, y, HINT_H, button),
+                    Hint::Mark(mark) => self.fonts.mark_badge(canvas, x, y, HINT_H, mark),
                     Hint::Arrows(arrows) => self.fonts.arrows(canvas, x, y, HINT_H, arrows),
                 } + 5.0;
             }
@@ -1429,31 +1450,7 @@ fn stroke(
     dash: Option<f32>,
     colour: Rgb,
 ) {
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-    let length = dx.hypot(dy);
-    if length == 0.0 {
-        return;
-    }
-    let (ux, uy) = (dx / length, dy / length);
-    let (nx, ny) = (-uy * width / 2.0, ux * width / 2.0);
-    // Half a width past each end, as the edge lines overhang their corners.
-    let (from, to) = (-width / 2.0, length + width / 2.0);
-    let (on, step) = dash.map_or((to - from, to - from), |d| (d, 2.0 * d));
-    let mut s = from;
-    while s < to {
-        let e = (s + on).min(to);
-        let p = |t: f32| (a.0 + ux * t, a.1 + uy * t);
-        let (p0, p1) = (p(s), p(e));
-        let corners = [
-            (p0.0 + nx, p0.1 + ny),
-            (p1.0 + nx, p1.1 + ny),
-            (p1.0 - nx, p1.1 - ny),
-            (p0.0 - nx, p0.1 - ny),
-        ];
-        canvas.triangle([corners[0], corners[1], corners[2]], colour);
-        canvas.triangle([corners[0], corners[2], corners[3]], colour);
-        s += step;
-    }
+    canvas.line(a, b, width, dash, colour);
 }
 
 /// A code in the rail: a teleporter's five letters, or a door's by its room.
@@ -2293,6 +2290,38 @@ mod tests {
                 false,
             ),
             ("paused", Guidance::default(), Scene::Play, true),
+            // The same screens as a Switch and a PlayStation pad have them
+            // (#101): the letters follow the pad, and the marks are drawn.
+            (
+                "pad-nintendo-paused",
+                {
+                    let mut g = Guidance::default();
+                    g.set_pad(gamepad::Layout::Nintendo);
+                    g
+                },
+                Scene::Play,
+                true,
+            ),
+            (
+                "pad-playstation-paused",
+                {
+                    let mut g = Guidance::default();
+                    g.set_pad(gamepad::Layout::PlayStation);
+                    g
+                },
+                Scene::Play,
+                true,
+            ),
+            (
+                "pad-playstation-picker",
+                {
+                    let mut g = picker.clone();
+                    g.set_pad(gamepad::Layout::PlayStation);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
             (
                 // Level 1 with the core's slots, which move here in #66.
                 "level1-core",
