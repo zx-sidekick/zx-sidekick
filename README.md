@@ -18,10 +18,10 @@ Starquake (Stephen Crow / Bubble Bus, 1985), played from your own copy of the ga
 
 - [x] The game runs from your tape with no ROM
 - [x] Window with the Spectrum picture and its border
-- [ ] Sound (built; awaiting a check by ear)
-- [ ] Keyboard, and a joystick in every control method: the arrows with Left Control, or a gamepad with the bottom face button for down and the left one for fire, whatever their letters, and Start or the game's pause key to pause (built; awaiting a check by hand)
+- [x] Sound (built; checked by ear)
+- [x] Keyboard, and a joystick in every control method: the arrows with Left Control, or a gamepad with the bottom face button for down and the left one for fire, whatever their letters, and Start or the game's pause key to pause (built; checked by hand, the gamepad over Bluetooth)
 - [x] The high-score table kept between runs in `high-scores.txt` beside the kept tape, with each entry's guidance level, listed beside the game's CORE OF HEROES screen; games with training mode are not kept.
-- [ ] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory (built; awaiting a check by hand)
+- [x] Tape prompt: find or drop `starquake.tap` or its `.zip`, a link to World of Spectrum, the tape kept in the user data directory (built; checked by hand, dropping a tape included)
 - [x] A notice while the game is paused, saying how to go on
 - [x] The guidance panel beside the game, the picker for the guidance level and training mode's four switches (Esc, or Select on a gamepad), End this game and Exit, the note of how much help a game had beside the game-over screens, and pausing with Start or the pause key.
 - [x] Guidance level 1: the codes you have been shown, in a rail down the panel's right in the game's own letters — every teleporter booth you have entered, and under them the three chips each security door asked for once its screen has shown them — and the core's nine slots as a square of three by three at the panel's top left, each in the same place at every level, in the game's own graphics: what each still wants, what is delivered, and what you carry.
