@@ -160,6 +160,10 @@ pub mod at {
     /// and length, then a (graphic, matched) pair for each item. A security
     /// door asks for three chips, the pyramid for two (#33, #49).
     pub const CODE: u16 = 0xD5F4;
+    /// What Blob carries: four slots of two bytes, the item's graphic and
+    /// its colour, the graphic 0 in an empty slot. A door's and a pyramid's
+    /// screen compare their code with the graphics here (`0xD689`, #33).
+    pub const INVENTORY: u16 = 0xD2D2;
     /// The game's seed, a word: the frame counter as a new game is set up
     /// (`0x636F`), so it differs from game to game. Every door's code is
     /// made from it ([`super::routine::DOOR_CODE`]).
@@ -385,6 +389,53 @@ pub fn door_code(mem: &[u8]) -> Option<[u8; 3]> {
     (code[2] == 3).then(|| [code[3], code[5], code[7]])
 }
 
+/// The graphics of what Blob carries, slot by slot, from `mem` (the
+/// machine's whole 64K); `None` for an empty slot.
+#[must_use]
+pub fn inventory(mem: &[u8]) -> [Option<u8>; 4] {
+    std::array::from_fn(|slot| {
+        mem.get(usize::from(at::INVENTORY) + 2 * slot)
+            .copied()
+            .filter(|&graphic| graphic != 0)
+    })
+}
+
+/// The slots of the code the last door's screen asked for that it found
+/// answered, from the matched flag it leaves beside each chip; `None` when
+/// the last screen was not a door's.
+#[must_use]
+pub fn door_matched(mem: &[u8]) -> Option<[bool; 3]> {
+    let code = mem.get(usize::from(at::CODE)..usize::from(at::CODE) + 9)?;
+    (code[2] == 3).then(|| [code[4], code[6], code[8]].map(|flag| flag == MATCHED))
+}
+
+/// The flag a code screen leaves beside an item of its code that what Blob
+/// carries answered.
+pub const MATCHED: u8 = 0x07;
+
+/// Which chips of a door's code are answered by what is `carried`, for the
+/// panel to light (#33). What the items do is the game's: a chip answers
+/// one slot asking for it, the "?" chip ([`Kind::AnyChip`]) one slot left
+/// over, the card ([`Kind::DoorCard`]) every slot, and a door's screen
+/// takes nothing away. The counting is ours, and `sk-check facts` holds it
+/// against the flags the game's own door screen leaves.
+#[must_use]
+pub fn covered(chips: &[u8; 3], carried: &[u8]) -> [bool; 3] {
+    if carried.iter().any(|&g| kind(g) == Kind::DoorCard) {
+        return [true; 3];
+    }
+    let mut left: Vec<u8> = carried.to_vec();
+    let mut take = |wanted: &dyn Fn(u8) -> bool| {
+        let found = left.iter().position(|&g| wanted(g))?;
+        Some(left.remove(found))
+    };
+    let mut answered = chips.map(|chip| take(&|g| g == chip).is_some());
+    for slot in &mut answered {
+        *slot = *slot || take(&|g| kind(g) == Kind::AnyChip).is_some();
+    }
+    answered
+}
+
 /// Every room with a security door in it, from the rooms as the map read
 /// them, in number order (#66, #80). The
 /// rooms are the tape's own and do not change from game to game, so they are
@@ -576,19 +627,21 @@ impl Item {
 /// for it says. Read from the game's own code by way of
 /// `starquake/starquake-recompiled`, which was written from the tape:
 /// the codes a security door and a Cheops pyramid ask for take five
-/// numbered chips, a wildcard that is used up and a master key that is
-/// not; the pad key switches a teleporter pad; the packs act the moment
+/// numbered chips, a wildcard and a master key, none of which a door's
+/// screen takes away (`sk-check facts`, #33); the pad key switches a teleporter pad; the packs act the moment
 /// they are picked up; and a pyramid takes anything else in exchange for
 /// a core piece.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     /// A numbered chip, `0`, `1`, `2`, `4` or `8`: what a door's code and
-    /// a pyramid's code ask for. Used up when it answers one.
+    /// a pyramid's code ask for, one chip answering one slot. A door's
+    /// screen takes nothing from what is carried (`sk-check facts`, #33);
+    /// what a pyramid's does has not been checked.
     Chip(u8),
-    /// The chip that answers any one slot of a code, and is used up.
+    /// The chip that answers any one slot of a code.
     AnyChip,
-    /// The card that answers any slot of any code and is never used up,
-    /// so it opens every door and every pyramid.
+    /// The card that answers every slot of any code, so it opens every
+    /// door and every pyramid.
     DoorCard,
     /// The key that switches the teleporter pads in a room, by being
     /// carried onto one.
@@ -746,6 +799,59 @@ mod tests {
         assert_eq!(font.len(), 768);
         assert_eq!(font[(usize::from(b'A') - 0x20) * 8], 0x3C);
         assert_eq!(super::font(&mem[..0xB000]), None, "cut short");
+    }
+
+    #[test]
+    fn a_chip_answers_one_slot_a_question_chip_one_left_over_and_the_card_all() {
+        let code = [11, 12, 11];
+        assert_eq!(covered(&code, &[]), [false; 3]);
+        assert_eq!(
+            covered(&code, &[11]),
+            [true, false, false],
+            "one chip, one slot"
+        );
+        assert_eq!(covered(&code, &[11, 11]), [true, false, true]);
+        assert_eq!(
+            covered(&code, &[12, 9]),
+            [false, true, false],
+            "a chip not asked for"
+        );
+        assert_eq!(
+            covered(&code, &[14]),
+            [true, false, false],
+            "the ? chip, one slot"
+        );
+        assert_eq!(
+            covered(&code, &[14, 11]),
+            [true, true, false],
+            "the chip first, the ? next"
+        );
+        assert_eq!(covered(&code, &[14, 14, 12]), [true, true, true]);
+        assert_eq!(covered(&code, &[15]), [true; 3], "the card");
+        assert_eq!(
+            covered(&code, &[27, 33]),
+            [false; 3],
+            "core pieces answer nothing"
+        );
+    }
+
+    #[test]
+    fn the_inventory_is_four_graphics_and_nothing_in_an_empty_slot() {
+        let mut mem = vec![0u8; 0x10000];
+        let at = usize::from(at::INVENTORY);
+        mem[at..at + 8].copy_from_slice(&[11, 0x45, 0, 0, 15, 0x46, 0, 0]);
+        assert_eq!(inventory(&mem), [Some(11), None, Some(15), None]);
+        assert_eq!(inventory(&[]), [None; 4]);
+    }
+
+    #[test]
+    fn the_matched_flags_are_read_from_a_doors_code_only() {
+        let mut mem = vec![0u8; 0x10000];
+        let at = usize::from(at::CODE);
+        mem[at..at + 9].copy_from_slice(&[0x0B, 0x11, 3, 11, 7, 12, 3, 11, 7]);
+        assert_eq!(door_matched(&mem), Some([true, false, true]));
+        mem[at + 2] = 2;
+        assert_eq!(door_matched(&mem), None, "a pyramid's code");
     }
 
     #[test]
