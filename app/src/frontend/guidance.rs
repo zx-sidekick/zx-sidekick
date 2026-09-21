@@ -200,9 +200,6 @@ pub struct Guidance {
     /// (#66). Empty until then.
     all_teleporters: Vec<SeenTeleporter>,
     all_door_codes: Vec<DoorCode>,
-    /// Which game those codes are being read for: a reading that finishes
-    /// after another game has started is dropped rather than shown (#66).
-    game: u64,
     /// Every room's openings, for the map (#5). Empty until they are read.
     openings: Vec<Openings>,
     /// The rooms visited in the game being played, or just ended; empty on
@@ -352,20 +349,12 @@ impl Guidance {
     }
 
     /// A new game's codes are not this game's: forgotten until read again.
-    /// Returns which game the reading that follows is for.
-    pub fn forget_all_codes(&mut self) -> u64 {
-        self.game = self.game.wrapping_add(1);
+    pub fn forget_all_codes(&mut self) {
         if !self.all_teleporters.is_empty() || !self.all_door_codes.is_empty() {
             self.all_teleporters.clear();
             self.all_door_codes.clear();
             self.version += 1;
         }
-        self.game
-    }
-
-    /// The game the codes are being read for.
-    pub fn game(&self) -> u64 {
-        self.game
     }
 
     /// The game's font, 96 letters of eight bytes from the space, once read.

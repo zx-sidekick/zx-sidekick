@@ -5,8 +5,8 @@
 
 use sidekick::map::{Graph, Known, Place, RoomSet, Step};
 use sidekick::starquake::{
-    CORE_ROOM, Item, SeenTeleporter, at, door_code, entry, font, graphic, hole, items_and_core,
-    kind, missing_pieces, routine, teleporter_code,
+    CORE_ROOM, Item, SeenTeleporter, all_teleporters, at, door_code, entry, font, graphic, hole,
+    items_and_core, kind, missing_pieces, read_door_code, routine, teleporter_code,
 };
 
 use super::guidance::{DoorCode, Found, Guidance, Hole};
@@ -60,6 +60,11 @@ pub struct Tracker {
     /// The planet as the map reads it, for level 5's routes (#10); empty
     /// until the program has read the rooms.
     pub graph: Graph,
+    /// The rooms with a security door, for level 6's codes (#66); empty
+    /// until the program has read the rooms.
+    pub door_rooms: Vec<u16>,
+    /// A new game has been set up and its codes are still to be read.
+    codes_due: bool,
 }
 
 impl Tracker {
@@ -94,6 +99,11 @@ impl Tracker {
                 ]));
             }
             routine::NEW_GAME | routine::MENU => {
+                if hit == routine::NEW_GAME {
+                    // A new game makes new door codes (#66).
+                    guidance.forget_all_codes();
+                    self.codes_due = true;
+                }
                 self.seen.clear();
                 self.doors.clear();
                 self.door_opened = None;
@@ -147,6 +157,33 @@ impl Tracker {
         guidance.set_playing(next == Scene::Play);
         self.scene = next;
         Some(next)
+    }
+
+    /// Level 6 tells every code, shown or not (#66): once a new game's play
+    /// is under way, the teleporters' from the game's table and each door's
+    /// from the game's own code builder run on a copy of `machine` (#107),
+    /// which takes no time to speak of. Not before: the new game's seed,
+    /// which its door codes are made from, is not written until then, and a
+    /// reading taken earlier gives the last game's codes.
+    pub fn read_codes(&mut self, machine: &sidekick::Machine, guidance: &mut Guidance) {
+        if !self.codes_due || self.scene != Scene::Play {
+            return;
+        }
+        self.codes_due = false;
+        let mem = &machine.zx.mem[..];
+        let doors: Vec<DoorCode> = self
+            .door_rooms
+            .iter()
+            .filter_map(|&room| {
+                let chips = read_door_code(machine, room)?;
+                Some(DoorCode {
+                    room,
+                    chips,
+                    graphics: chips.map(|g| graphic(mem, g)),
+                })
+            })
+            .collect();
+        guidance.set_all_codes(&all_teleporters(mem), &doors);
     }
 
     /// Passes on the map as the game has it now, in `mem`, after a frame:
@@ -376,6 +413,28 @@ mod tests {
         mem[entry + 5..entry + 7].copy_from_slice(&room.to_le_bytes());
         mem[usize::from(at::ROOM)..usize::from(at::ROOM) + 2].copy_from_slice(&here.to_le_bytes());
         mem
+    }
+
+    #[test]
+    fn every_code_is_read_once_a_new_games_play_is_under_way() {
+        let mut t = Tracker::default();
+        let mut g = Guidance::default();
+        g.set_level(6);
+        let mut m = sidekick::Machine::blank(0x8000, 0x7000);
+        let entry = usize::from(at::TELEPORTER_NAMES);
+        m.zx.mem[entry..entry + 5].copy_from_slice(b"ABCDE");
+        t.follow(&m.zx.mem[..], routine::NEW_GAME, &mut g);
+        t.read_codes(&m, &mut g);
+        assert!(g.codes_at(6).0.is_empty(), "not before play: no seed yet");
+        t.follow(&m.zx.mem[..], routine::MAIN_LOOP, &mut g);
+        t.read_codes(&m, &mut g);
+        assert_eq!(g.codes_at(6).0[0].code, *b"ABCDE", "read in play");
+        // Once a game: a change to the table later is not this game's.
+        m.zx.mem[entry..entry + 5].copy_from_slice(b"VWXYZ");
+        t.read_codes(&m, &mut g);
+        assert_eq!(g.codes_at(6).0[0].code, *b"ABCDE");
+        t.follow(&m.zx.mem[..], routine::NEW_GAME, &mut g);
+        assert!(g.codes_at(6).0.is_empty(), "a new game forgets them");
     }
 
     #[test]
