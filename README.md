@@ -43,17 +43,31 @@ The game starts fullscreen, and F11 leaves it for a window as large as the scree
 
 Beside the picture is the guidance panel. Esc, or Select on a gamepad, opens the picker and holds the game while it is open: up and down choose a row, left and right change it, Enter or A keeps the changes, and Esc, B or Select cancel them. The pad's letters are its own: A keeps and B cancels on an Xbox pad and on a Switch one alike, which is the bottom button on the first and the right one on the second, since that is where each has its A; a PlayStation pad keeps with the cross and cancels with the circle. The letters shown follow the maker the pad reports, so a controller with a mode switch shows what its own mode says. It sets the guidance level and training mode's switches, and asks before a change that would show on the game's score. End this game abandons the game in play the game's own way, by holding A S D F G, and Exit closes the program; both need a second press. Beside the game-over and high-score screens the panel says how much help the game had, and lists the high scores kept between runs with the guidance each was played with.
 
-Each level adds to the ones below it. **Levels 0 to 3 show only what you could have written down yourself; 4 and up tell you things you could not have known.**
+Each level adds to the ones below it:
 
-| level | what the panel shows |
-|---|---|
-| 0 | Nothing. The game as it came on the tape. |
-| 1 | The codes you have been shown this game, in a rail at the panel's right in the game's own letters: every teleporter booth you have entered, and under them the three chips each security door asked you for. At the top left, the core's nine slots: what each still wants, what is delivered, and what you are carrying. |
-| 2 | A map of the rooms you have walked through: every edge open or closed, the walls inside a room, where you are, and the teleporters you have seen. |
-| 3 | What you have seen lying in those rooms, drawn in the game's own graphics and coloured by what it does — lilac for a chip or the card that opens any door, yellow for the pad key, white for something a pyramid trades, pink for a piece the core still wants. |
-| 4 | The same for the rooms you have never walked through. The game places every item at the start of a game, so it knows where they all are; this tells you, ringed to say you have not been there. |
-| 5 | A route to a missing piece and, while you carry a piece the core needs, one to the core. Each is a line on the map and an arrow in the picture's border marked "item" or "core", so they are told apart without colour; pink leads to the piece and orange to the core, and the code a route needs next, a teleporter's or a security door's, is outlined in the rail in that colour. Tab, or the top face button on a gamepad, switches between the three nearest pieces. The routes run over the whole map, dashed through rooms you have not visited, and assume you can fly everywhere, that doors and wall passages work, and that lifts only go up: getting the items and the battery for that is your problem. |
-| 6 | Everything the program knows: every teleporter and door code whether you have been shown it or not, and the whole planet's map, the rooms you have never entered drawn dimmer. |
+| level | | codes you have seen | the core's slots | map you have walked | items you have seen | items everywhere | routes | every code, whole planet |
+|:-:|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| 0 | Off | | | | | | | |
+| 1 | Codes and the core | ● | ● | | | | | |
+| 2 | The map you have walked | ● | ● | ● | | | | |
+| 3 | What you have seen | ● | ● | ● | ● | | | |
+| 4 | What you have not | ● | ● | ● | ● | ● | | |
+| 5 | Routes | ● | ● | ● | ● | ● | ● | |
+| 6 | Everything | ● | ● | ● | ● | ● | ● | ● |
+
+**Levels 0 to 3 show only what you could have written down yourself; 4 and up tell you things you could not have known.**
+
+![the guidance panel at levels 1 to 6](docs/screenshots/guidance-levels.png)
+
+*The panel at levels 1 to 6, drawn by the program itself on a real game. The game was staged rather than played: Blob was put through the rooms near the start, into three teleporter booths and up against three security doors, and given a chip "2" to carry.*
+
+- **Codes you have seen**, in a rail at the panel's right in the game's own letters: every teleporter booth you have entered, and under them the three chips each security door asked you for once its screen has shown them. A chip is dimmed until something you carry answers it: that chip, a "?" chip for one that is missing, or the card for all three. A door takes nothing from you. The codes are forgotten when a new game starts.
+- **The core's slots**, at the top left: the nine pieces in the game's own graphics, what each slot still wants, what is delivered, and what you are carrying.
+- **The map you have walked**: every edge of a room open or closed, the walls inside a room, where you are, and the teleporters you have seen. Each door whose code is in the rail has a number on it, where it stands in its room, and the same number beside its code.
+- **Items you have seen** lying in those rooms, drawn in the game's own graphics and coloured by what each does: lilac for a chip or the card that opens any door, yellow for the pad key, white for something a pyramid trades, pink for a piece the core still wants.
+- **Items everywhere**: the same for the rooms you have never walked through. The game places every item at the start of a game, so it knows where they all are; this tells you, ringed to say you have not been there.
+- **Routes**: one to a missing piece and, while you carry a piece the core needs, one to the core. Each is a line on the map and an arrow in the picture's border marked "item" or "core", so they are told apart without colour; pink leads to the piece and orange to the core. The code a route needs next, a teleporter's or a security door's, is outlined in the rail in that colour, and what that door still wants is ringed on the map where it lies. Tab, or the top face button on a gamepad, switches between the three nearest pieces. The routes run over the whole map, dashed through rooms you have not visited, and assume you can fly everywhere, that doors and wall passages work, and that lifts only go up: getting the items and the battery for that is your problem.
+- **Every code, whole planet**: every teleporter and door code whether you have been shown it or not, and the whole planet's map, the rooms you have never entered drawn dimmer.
 
 Training mode is four switches beside the levels rather than a level of its own: time stands still, so energy drains only on contact; the gun and platform bars stay full; losing a life does not cost one; and nothing harms you: enemies drain no energy, and the kinds that kill on touch, the deadly patches and the zappers cannot kill. The first three are held by writing to the game's memory between frames, never by changing the game; the last also steers a register at the three instructions the game decides an outright death with, and writes nothing, so everything is drawn and erased as the game meant. Every switch used shows on that game's score.
 
