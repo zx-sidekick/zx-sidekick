@@ -151,9 +151,6 @@ impl Runner {
         // once, by having the game draw each room on a copy of the machine.
         // It takes about a third of a second, before the loading picture.
         let rooms = sidekick::starquake::all_rooms(&machine);
-        // Which rooms hold a security door, for level 6's codes (#66): the
-        // tape's own, from the rooms just read (#80).
-        let doors = sidekick::starquake::door_rooms(&rooms);
         let graph = sidekick::map::Graph::new(&rooms, sidekick::starquake::CORE_ROOM);
         let openings = sidekick::map::openings(&rooms, sidekick::starquake::CORE_ROOM);
         self.shared.guidance.lock().unwrap().set_openings(openings);
@@ -197,12 +194,14 @@ impl Runner {
             .set_high_scores(keeper.kept, keeper.this_game);
         let mut tracker = track::Tracker::default();
         tracker.graph = graph;
+        // Which rooms hold a security door, for level 6's codes (#66): the
+        // tape's own, from the rooms read above (#80).
+        tracker.door_rooms = sidekick::starquake::door_rooms(&rooms);
         let mut freeze = freeze::Freeze::default();
         // Whether the game's pause key was pressed in the last frame.
         let mut pause = false;
         // Whether level 6's codes are waiting to be read, once the new game
         // they belong to is actually being played (#66).
-        let mut reading_due = false;
         while !self.shared.quit.load(Ordering::Relaxed) {
             let mut pad = self.pad.poll();
             // The letters the legends show follow the pad (#101).
@@ -294,34 +293,7 @@ impl Runner {
                     }
                     guidance.set_high_scores(keeper.kept, keeper.this_game);
                 }
-                // Level 6 tells every code, shown or not (#66). A new game
-                // makes new door codes, so they are read again: the game's
-                // own code builder run on a copy of the machine for each
-                // door (#107), which takes no time to speak of.
-                if hits.contains(&routine::NEW_GAME) {
-                    guidance.forget_all_codes();
-                    // Not yet: the new game's seed, which its door codes are
-                    // made from, is not written until play is under way, and
-                    // a reading taken here gives the last game's codes.
-                    reading_due = true;
-                }
-                if reading_due && tracker.scene == track::Scene::Play {
-                    reading_due = false;
-                    let mem = &machine.zx.mem[..];
-                    let teleporters = sidekick::starquake::all_teleporters(mem);
-                    let codes: Vec<guidance::DoorCode> = doors
-                        .iter()
-                        .filter_map(|&room| {
-                            let chips = sidekick::starquake::read_door_code(&machine, room)?;
-                            Some(guidance::DoorCode {
-                                room,
-                                chips,
-                                graphics: chips.map(|g| sidekick::starquake::graphic(mem, g)),
-                            })
-                        })
-                        .collect();
-                    guidance.set_all_codes(&teleporters, &codes);
-                }
+                tracker.read_codes(&machine, &mut guidance);
                 // After a game with training, its table is put back.
                 if hits.contains(&routine::MENU)
                     && let Some(table) = keeper.menu()
