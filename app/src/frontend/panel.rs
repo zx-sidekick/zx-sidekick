@@ -76,7 +76,8 @@ const DELIVERED: Rgb = [0x3a, 0x3f, 0x4b];
 /// units a pixel of a piece's graphic is.
 const CODE_FILL: Rgb = [0x14, 0x25, 0x2a];
 /// The digits 0 to 9, three pixels by five, for a door's number on the map
-/// (#33): each row's three bits, left to right.
+/// until the game's font has been read (#33): each row's three bits, left
+/// to right.
 const DIGITS: [[u8; 5]; 10] = [
     [0b111, 0b101, 0b101, 0b101, 0b111],
     [0b010, 0b110, 0b010, 0b010, 0b111],
@@ -658,23 +659,37 @@ impl Panel {
                 continue;
             };
             let (x, y) = at(code.room);
-            // The digit as pixels, a whole number of screen pixels each, so
-            // it is as sharp at the window's first size as on a big screen.
+            // The digit in the game's own font, as the rail's codes are
+            // (@starquake, 2026-09-21), each of its pixels a whole number of
+            // screen pixels so it is as sharp at the window's first size as
+            // on a big screen; until the font is read, our own three by five.
             let px = canvas.scale.round().max(1.0) / canvas.scale;
-            let (w, h) = (7.0 * px, 9.0 * px);
+            let digit = (n + 1) % 10;
+            let glyph: Vec<u8> = match guidance.font().and_then(|f| {
+                let at = (usize::from(b'0') + digit - 0x20) * 8;
+                f.get(at..at + 8)
+            }) {
+                Some(rows) => rows.to_vec(),
+                None => DIGITS[digit].iter().map(|bits| bits << 5).collect(),
+            };
+            let wide = if glyph.len() == 8 { 8 } else { 3 };
+            let pad = if wide == 8 { 1.0 } else { 2.0 };
+            let (w, h) = (
+                (wide as f32 + 2.0 * pad) * px,
+                (glyph.len() as f32 + 2.0 * pad) * px,
+            );
             let (bx, by) = (x + pitch * fx - w / 2.0, y + pitch * fy - h / 2.0);
             // To whole screen pixels, or the cells blur.
             let snap = |v: f32| (v * canvas.scale).round() / canvas.scale;
             let (bx, by) = (snap(bx), snap(by));
             canvas.round_rect(bx - px, by - px, w + 2.0 * px, h + 2.0 * px, 0.0, PANEL);
             canvas.round_rect(bx, by, w, h, 0.0, CODE);
-            let rows = DIGITS[(n + 1) % 10];
-            for (r, bits) in rows.iter().enumerate() {
-                for c in 0..3 {
-                    if bits & (0b100 >> c) != 0 {
+            for (r, bits) in glyph.iter().enumerate() {
+                for c in 0..wide {
+                    if bits & (0x80 >> c) != 0 {
                         canvas.cell(
-                            bx + (2 + c) as f32 * px,
-                            by + (2 + r) as f32 * px,
+                            bx + (pad + c as f32) * px,
+                            by + (pad + r as f32) * px,
                             px,
                             PANEL,
                         );
@@ -2151,6 +2166,25 @@ mod tests {
             count(&pixels, w, room(200), HERE) > 0,
             "the box still shows"
         );
+    }
+
+    #[test]
+    fn a_doors_number_is_drawn_in_the_games_font_once_it_is_read() {
+        let mut g = routed(100, &[], &[]);
+        g.set_level(2);
+        g.set_door_codes(&[code_242(210)]);
+        g.set_door_spots(vec![(210, (22, 10))]);
+        let (at, pitch) = map_at(2);
+        let (x, y) = at(210);
+        let room = (x - 2.0, y - 2.0, pitch + 4.0, pitch + 4.0);
+        // Our own three by five until then: a badge of 7 by 9 with the
+        // digit 1's eight pixels out of it, each two screen pixels square.
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(count(&pixels, w, room, CODE), (7 * 9 - 8) * 4);
+        // A font whose every letter is a full block: 10 by 10, less 8 by 8.
+        g.set_font(&[0xFF; 96 * 8]);
+        let (pixels, w, _) = render(&g, Scene::Play, false);
+        assert_eq!(count(&pixels, w, room, CODE), (10 * 10 - 8 * 8) * 4);
     }
 
     #[test]
