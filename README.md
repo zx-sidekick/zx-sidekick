@@ -93,7 +93,7 @@ Work lands through tickets on the [ZX Sidekick Starquake board](https://github.c
 
 `scripts/check.sh` is the gate; gate on its exit code. Besides what CI runs, it needs the Fuse corpus in `assets/` for the processor conformance test (see `assets/README.md`), `SK_ASSETS` for the checks against the game, and `cargo-deny` and `cargo-about` installed for the dependency policy and `THIRD-PARTY.md`.
 
-CI also checks that the machine and the checks have no frontend dependencies, holds the dependency policy in `deny.toml`, keeps `THIRD-PARTY.md` current, and builds for Intel Macs. `release.yml` builds archives for Linux, macOS and Windows on a version tag, with `docs/player/README.txt` as the player's guide.
+CI also checks that the machine and the checks have no frontend dependencies, holds the dependency policy in `deny.toml`, keeps `THIRD-PARTY.md` current, and builds for Intel Macs. `release.yml` builds archives for Linux, macOS and Windows on a version tag, with `docs/player/README.txt` as the player's guide, and opens each release's notes with what changed since the last one, from the commit messages. [`CHANGELOG.md`](CHANGELOG.md) is the same list for every release; `scripts/changelog.sh` writes it, and is run again after each release is tagged.
 
 ## Licence
 
