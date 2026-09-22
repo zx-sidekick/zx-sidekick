@@ -37,6 +37,10 @@ locally.
   plays it. Add `--headless <frames> <dir> [level]` for screenshots of real play at a guidance level.
 - `cargo about generate --all-features about.hbs -o THIRD-PARTY.md`
   regenerates the attributions after a dependency change.
+- `scripts/changelog.sh` rewrites `CHANGELOG.md` from the commit subjects,
+  one section per release; run it after tagging a release and land it in a
+  PR. `scripts/changelog.sh --notes TAG` prints one release's list, which
+  `release.yml` puts at the top of its notes.
 - `cargo llvm-cov --workspace --summary-only` measures test coverage (needs
   `cargo install cargo-llvm-cov` and `rustup component add llvm-tools`). The
   line counts include the tests' own code; what is left uncovered needs a

@@ -128,29 +128,46 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      # The whole history with its tags, for the list of what changed.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
+
+      # What changed, from the commit messages (#124), then what the player
+      # needs to know: they still need their own tape, and saying so at the
+      # point of download saves somebody a confusing first run.
+      - name: release notes
+        run: |
+          {
+            echo "Built from \`$GITHUB_REF_NAME\`."
+            echo
+            echo "## What changed"
+            echo
+            scripts/changelog.sh --notes "$GITHUB_REF_NAME"
+            echo
+            cat <<'NOTES'
+          **You need your own copy of Starquake to play.** ZX Sidekick contains no part of the original game: it runs your tape, unchanged. README.txt in the archive says where to find one. Not affiliated with or endorsed by the rights holders.
+
+          Run the program and it asks for the tape, or put `starquake.tap` in the same folder first. You can also give the tape on the command line: `./zx-sidekick-starquake path/to/starquake.tap`, or `zx-sidekick-starquake.exe path\to\starquake.tap` on Windows.
+
+          **macOS:** the binary is not signed, so macOS blocks it the first time you run it. In Terminal, in the folder you extracted, run `xattr -d com.apple.quarantine zx-sidekick-starquake`. Or try to open it once, then allow it under System Settings, Privacy & Security.
+
+          **Gamepads** are the Kempston joystick: choose 1 on the title screen. The guidance shows the letters of the pad you have: Xbox, Switch or PlayStation.
+
+          `THIRD-PARTY.txt` in the archive lists the libraries built into the program and their licences.
+          NOTES
+          } > notes.md
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             *.tar.gz
             *.zip
-          # The player still needs their own tape, and saying so at the point
-          # of download saves somebody a confusing first run.
-          body: |
-            Built from `${{ github.ref_name }}`.
-
-            **You need your own copy of Starquake to play.** ZX Sidekick contains no part of the original game: it runs your tape, unchanged. README.txt in the archive says where to find one. Not affiliated with or endorsed by the rights holders.
-
-            Run the program and it asks for the tape, or put `starquake.tap` in the same folder first. You can also give the tape on the command line: `./zx-sidekick-starquake path/to/starquake.tap`, or `zx-sidekick-starquake.exe path\to\starquake.tap` on Windows.
-
-            **macOS:** the binary is not signed, so macOS blocks it the first time you run it. In Terminal, in the folder you extracted, run `xattr -d com.apple.quarantine zx-sidekick-starquake`. Or try to open it once, then allow it under System Settings, Privacy & Security.
-
-            **Gamepads** are the Kempston joystick: choose 1 on the title screen. Some controllers need the right mode: an 8BitDo in Switch mode is detected but sends no input.
-
-            `THIRD-PARTY.txt` in the archive lists the libraries built into the program and their licences.
+          body_path: notes.md
           fail_on_unmatched_files: true
           # A tag with a suffix, like v0.1.0-rc.1, is something to try before
           # the real one, so it is published as a pre-release and never
