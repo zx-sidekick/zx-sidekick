@@ -2865,9 +2865,23 @@ mod tests {
                 "picker-unharmed",
                 {
                     let mut g = picker.clone();
-                    for _ in 0..4 {
+                    for _ in 0..SWITCHES.len() {
                         g.focus_down();
                     }
+                    g.change(true);
+                    g
+                },
+                Scene::Play,
+                false,
+            ),
+            (
+                // Full bridging platforms focused and on, the longest label
+                // with the longest description (#116).
+                "picker-bridges",
+                {
+                    let mut g = picker.clone();
+                    g.focus_down();
+                    g.focus_down();
                     g.change(true);
                     g
                 },
