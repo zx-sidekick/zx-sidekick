@@ -762,6 +762,38 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     // Off changes nothing; on holds what its switch names.
     let plain_drains = plain_low[0] < start[0];
     let full_holds = full_end[1] >= full_start[1] && full_end[2] >= full_start[2];
+    // The bars run down first, then the switch goes on (#104): the run
+    // above starts with them full, so it cannot tell holding from filling.
+    // Blob lays platforms and fires until both are empty, with time
+    // standing still and no harm from enemies so that he lives through it.
+    let (emptied, filled) = {
+        let mut m = base.clone();
+        m.training = Training {
+            time: true,
+            unharmed: true,
+            ..off
+        };
+        let bars = |m: &Machine| [at::PLATFORMS, at::GUN].map(|a| m.zx.mem[usize::from(a)]);
+        for frame in 0..4000u32 {
+            if bars(&m) == [0, 0] {
+                break;
+            }
+            m.zx.release_all_keys();
+            m.zx.kempston = if frame % 2 == 0 {
+                JOY_DOWN | JOY_FIRE
+            } else {
+                0
+            };
+            m.run_frame();
+        }
+        let emptied = bars(&m);
+        m.zx.kempston = 0;
+        m.training = Training { full: true, ..off };
+        m.run_frame();
+        (emptied, bars(&m))
+    };
+    let full_fills =
+        emptied == [0, 0] && filled.iter().all(|&v| v >= sidekick::starquake::BAR_FULL);
     let time_holds = time_low[0] > plain_low[0];
     let lives_hold = lives_low[3] >= start[3] && plain_low[3] < start[3];
     let nothing_drains = both_low[0] >= both_start[0];
@@ -955,6 +987,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         && at_hand(decide::FIELD_KILL.0, &decide::FIELD_KILL.1);
     let good = plain_drains
         && full_holds
+        && full_fills
         && time_holds
         && lives_hold
         && nothing_drains
@@ -975,6 +1008,15 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         lives_low[3],
         plain_low[3],
         if good { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  full gun and platforms switched on with both bars run down to {} and {}: a frame later {} and {} of {} {}",
+        emptied[0],
+        emptied[1],
+        filled[0],
+        filled[1],
+        sidekick::starquake::BAR_FULL,
+        if full_fills { "ok" } else { "FAILED" }
     );
     println!(
         "  time standing still and no harm together: energy never below {} of {}",
