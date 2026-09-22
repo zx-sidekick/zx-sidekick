@@ -96,6 +96,11 @@ answer given in chat is written back into the issue body before acting on it.
   and a sub-issue's ticket or PR never mentions closing its parent: they say
   `Part of #NN` (starquake-recompiled#76 closed its #1 with four sub-issues
   still open, starquake-recompiled#84).
+- **Dependabot's pull requests are the one exception**: they have no issue
+  behind them and no card (`.github/dependabot.yml`, #126). They merge like
+  any other, only with `ready to merge`. A Cargo bump fails the dependency
+  policy job until `THIRD-PARTY.md` is regenerated, so a pass that finds one
+  failing only on that regenerates the file and pushes it onto the branch.
 - **The board is the handoff baton**: the Status field of the "ZX Sidekick
   Starquake" org Project (https://github.com/orgs/zx-sidekick/projects/1).
   Read and move it with `.claude/scripts/board.sh`.

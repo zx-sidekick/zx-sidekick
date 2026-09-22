@@ -1,0 +1,32 @@
+# Dependabot keeps the crates and the workflow actions current (#126).
+#
+# A Cargo bump changes THIRD-PARTY.md, which lists every crate's version, so
+# its PR fails the dependency policy job until the file is regenerated; a
+# board pass does that on the branch (CLAUDE.md). Nothing merges without
+# `ready to merge`.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    # The processor is our fork, pinned to a commit. Moving it is checked
+    # against the Fuse corpus and sk-check on purpose, never by a bot.
+    ignore:
+      - dependency-name: rustzx-z80
+    # Most of our crates are 0.x, where Dependabot's "minor" (0.30 -> 0.31)
+    # is a breaking change in Cargo. So only patch updates share a PR; each
+    # bigger one gets its own, since it can need code changes.
+    groups:
+      crates:
+        update-types: [patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    groups:
+      actions:
+        patterns: ["*"]

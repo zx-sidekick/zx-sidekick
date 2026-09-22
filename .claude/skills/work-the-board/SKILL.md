@@ -160,6 +160,7 @@ direct maintainer request, and they are named as exceptions.
 | reply to one of Claude's review comments | `fix`: fix, push, reply with the commit, **resolve the thread**; `skip`: acknowledge, resolve; `ticket`: file a Backlog issue, reply with the link, resolve; anything else: answer in the thread (starquake-recompiled#77) | `build-slice` |
 | PR with new maintainer comments | address them, re-push | rework |
 | PR carrying `ready to merge` | **merge it** (label + green CI + title + squash) | `merge-pr` |
+| Dependabot PR (no issue, no card) | red only on `THIRD-PARTY.md`: regenerate it on the branch (`cargo about generate --all-features about.hbs -o THIRD-PARTY.md`), push, watch CI. Red on anything else: comment what broke on the PR. Either way it waits for `ready to merge` (#126) | rework |
 
 3. **Post a Next-steps comment on every ticket whose state you moved** (below).
 4. **The build cap: at most one build per pass, and ZERO is a valid pass.**
