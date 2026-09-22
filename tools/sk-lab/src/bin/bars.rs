@@ -34,7 +34,10 @@ fn main() {
 
     // Held down lays platforms, and fire shoots: each for `frames` frames,
     // pressed every other frame, with energy kept up so Blob lives through it.
-    for (name, input, a) in [("bridging platforms", 0x04, BRIDGES), ("laser", 0x10, LASER)] {
+    for (name, input, a) in [
+        ("bridging platforms", 0x04, BRIDGES),
+        ("laser", 0x10, LASER),
+    ] {
         let mut m = base.clone();
         let mut seen = vec![bar(&m, a)];
         for f in 0..frames {

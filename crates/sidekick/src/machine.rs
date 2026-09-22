@@ -700,7 +700,11 @@ mod tests {
         let before = training.read(&z);
         z.mem[usize::from(starquake::at::LASER)] = 0x90;
         training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::LASER), 0x90, "picked up, not put back");
+        assert_eq!(
+            at(&z, starquake::at::LASER),
+            0x90,
+            "picked up, not put back"
+        );
     }
 
     #[test]
