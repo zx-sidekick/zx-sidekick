@@ -90,7 +90,21 @@ GUIDANCE
 --------
 
 The panel beside the picture is for guidance: optional help, in levels
-from 0 (none) to 5, each adding to the ones below.
+from 0 (none) to 6, each adding to the ones below:
+
+                                codes  core   map  items  items routes every-
+                                 seen                seen  every-        thing
+                                                           where
+  0  Off
+  1  Codes and the core            *     *
+  2  The map you have walked       *     *     *
+  3  What you have seen            *     *     *     *
+  4  What you have not             *     *     *     *      *
+  5  Routes                        *     *     *     *      *     *
+  6  Everything                    *     *     *     *      *     *      *
+
+Levels 0 to 3 show only what you could have written down yourself; 4
+and up tell you things you could not have known.
 
   Level 1              The codes you have been shown, in a rail down
                        the panel's right, drawn in the game's own
