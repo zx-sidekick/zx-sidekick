@@ -268,8 +268,11 @@ mod tests {
         assert!(pad.east && !pad.select);
         let y = [false, false, false, false, false, false, false, true];
         presses(&mut pad, y, b);
-        assert!(pad.north && !pad.east, "Y switches the piece route");
+        assert!(
+            pad.north && !pad.east,
+            "the top button switches the piece route"
+        );
         presses(&mut pad, y, y);
-        assert!(!pad.north, "a held Y is one switch");
+        assert!(!pad.north, "a held top button is one switch");
     }
 }

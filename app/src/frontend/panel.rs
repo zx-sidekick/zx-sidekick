@@ -113,7 +113,7 @@ const ADDS: [&str; 7] = [
     "Items seen: pink core piece, lilac card, yellow key, white to trade.",
     "And what is lying in the rooms you have not.",
     "Routes: pink to a missing piece, orange to the core.",
-    "Every code, the whole planet, and what each room holds.",
+    "Every code, and the whole planet.",
 ];
 
 /// Where the CORE OF HEROES heading goes beside the game-over screens
@@ -2716,7 +2716,9 @@ mod tests {
                 false,
             ),
             (
-                "level4",
+                // Level 5's routes over the rooms walked, drawn solid; the
+                // name was level 4's before the levels were re-cut (#66).
+                "level5-walked",
                 {
                     let mut g = Guidance::default();
                     g.set_level(5);
