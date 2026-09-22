@@ -198,11 +198,12 @@ pub mod at {
     /// Blob's energy, 127 as play starts, falling by 4 whenever the drain
     /// counter reaches [`super::DRAIN_DROP`] (#8).
     pub const ENERGY: u16 = 0xD2CD;
-    /// How full the platform bar and the gun bar are: one falls as Blob
-    /// lays platforms, the other by one a shot (#8). The platform bar is 50
-    /// as play starts and the gun [`super::BAR_FULL`] (#104).
-    pub const PLATFORMS: u16 = 0xD2CE;
-    pub const GUN: u16 = 0xD2CF;
+    /// How full the bridging platform bar and the laser bar are, in the
+    /// manual's words (#116): one falls as Blob lays bridging platforms, the
+    /// other by one a shot (#8). The bridging platform bar is 50 as play
+    /// starts and the laser [`super::BAR_FULL`] (#104).
+    pub const BRIDGES: u16 = 0xD2CE;
+    pub const LASER: u16 = 0xD2CF;
     /// The drain counter in Blob's slot (offset `0x18`): it rises by one a
     /// frame, and touching an enemy pushes it on, so energy falls far
     /// faster on contact than by time alone (#8).
@@ -308,10 +309,10 @@ pub fn all_rooms(machine: &crate::Machine) -> Vec<crate::map::Room> {
 /// What the drain counter reaches before energy falls by four (#8).
 pub const DRAIN_DROP: u8 = 0x78;
 
-/// A full bar: energy, the platforms and the gun (#104). The panel draws the
+/// A full bar: energy, the bridging platforms and the laser (#104). The panel draws the
 /// three bars in one loop from `0xD463`, and any bar above this it sets back
-/// to it (`CP 7F`, `LD (HL),7F`); energy and the gun start at it, the
-/// platform bar below it.
+/// to it (`CP 7F`, `LD (HL),7F`); energy and the laser start at it, the
+/// bridging platform bar below it.
 pub const BAR_FULL: u8 = 0x7F;
 
 /// The marker a teleport's tile leaves in its room.

@@ -6,7 +6,7 @@
 //! `bars <assets-dir> [frames]`
 
 use sidekick::machine::Machine;
-use sidekick::starquake::at::{ENERGY, GUN, PLATFORMS};
+use sidekick::starquake::at::{BRIDGES, ENERGY, LASER};
 use sk_lab::{Args, into_play};
 
 /// Where the panel's bar loop starts, and the byte after its `DJNZ`.
@@ -20,10 +20,10 @@ fn main() {
     println!(
         "as play starts: energy {}, platforms {}, gun {}",
         bar(&base, ENERGY),
-        bar(&base, PLATFORMS),
-        bar(&base, GUN)
+        bar(&base, BRIDGES),
+        bar(&base, LASER)
     );
-    // LD B,3; LD HL,GUN; then for each bar: LD A,(HL); CP 7F; JR C,+2;
+    // LD B,3; LD HL,LASER; then for each bar: LD A,(HL); CP 7F; JR C,+2;
     // LD (HL),7F; ... draw ...; DEC HL; DJNZ.
     let bytes: Vec<String> = DRAW.map(|a| format!("{:02X}", base.zx.mem[a])).collect();
     println!(
@@ -34,7 +34,7 @@ fn main() {
 
     // Held down lays platforms, and fire shoots: each for `frames` frames,
     // pressed every other frame, with energy kept up so Blob lives through it.
-    for (name, input, a) in [("platforms", 0x04, PLATFORMS), ("gun", 0x10, GUN)] {
+    for (name, input, a) in [("bridging platforms", 0x04, BRIDGES), ("laser", 0x10, LASER)] {
         let mut m = base.clone();
         let mut seen = vec![bar(&m, a)];
         for f in 0..frames {

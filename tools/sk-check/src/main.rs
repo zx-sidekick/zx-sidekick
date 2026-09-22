@@ -725,10 +725,10 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             let z = &m.zx;
             if frame == SETTLED {
                 settled =
-                    [at::ENERGY, at::PLATFORMS, at::GUN, at::LIVES].map(|a| z.mem[usize::from(a)]);
+                    [at::ENERGY, at::BRIDGES, at::LASER, at::LIVES].map(|a| z.mem[usize::from(a)]);
                 lowest = settled;
             }
-            for (i, a) in [at::ENERGY, at::PLATFORMS, at::GUN, at::LIVES]
+            for (i, a) in [at::ENERGY, at::BRIDGES, at::LASER, at::LIVES]
                 .into_iter()
                 .enumerate()
             {
@@ -740,8 +740,8 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             lowest,
             [
                 z.mem[usize::from(at::ENERGY)],
-                z.mem[usize::from(at::PLATFORMS)],
-                z.mem[usize::from(at::GUN)],
+                z.mem[usize::from(at::BRIDGES)],
+                z.mem[usize::from(at::LASER)],
                 z.mem[usize::from(at::LIVES)],
             ],
             settled,
@@ -773,7 +773,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             unharmed: true,
             ..off
         };
-        let bars = |m: &Machine| [at::PLATFORMS, at::GUN].map(|a| m.zx.mem[usize::from(a)]);
+        let bars = |m: &Machine| [at::BRIDGES, at::LASER].map(|a| m.zx.mem[usize::from(a)]);
         for frame in 0..4000u32 {
             if bars(&m) == [0, 0] {
                 break;

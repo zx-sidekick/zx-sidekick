@@ -79,23 +79,26 @@ pub struct Machine {
     /// player. Each puts back, or fills, after a frame, what the game took.
     pub training: Training,
     /// Whether a bar was filled after the last frame, so the panel still
-    /// shows it as the game last drew it (#104). The game draws a bar only
+    /// shows it as the game last drew it (#104, #116). The game draws a bar only
     /// where it changes it; the next time play reaches the top of its loop
     /// the machine has the game draw the panel again,
     /// [`starquake::routine::PANEL`].
     redraw: bool,
 }
 
-/// Training mode's four switches (#8). Each is off by default, and with
-/// all of them off the machine writes nothing into the game.
+/// Training mode's five switches (#8, #116). Each is off by default, and
+/// with all of them off the machine writes nothing into the game.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Training {
-    /// Time stands still: the drain counter's one-a-frame rise is undone,
-    /// so energy falls only on contact with something.
-    pub time: bool,
-    /// The gun and the platforms are full, however many are used: filled
-    /// when the switch goes on, and kept there (#104).
-    pub full: bool,
+    /// Full energy: the energy bar is full, however much is taken, by time
+    /// or by contact: filled when the switch goes on, and kept there (#116).
+    pub energy: bool,
+    /// Full bridging platforms: the bar is full however many Blob lays,
+    /// filled and kept there as energy is (#104, #116).
+    pub bridges: bool,
+    /// Full laser: the bar is full however many shots are fired (#104,
+    /// #116).
+    pub laser: bool,
     /// The lives left never fall, and the panel's digit with them.
     pub lives: bool,
     /// Touching an enemy costs no energy: the push it gives the counter is
@@ -119,7 +122,7 @@ impl Training {
     /// Whether any switch is on: with none, nothing is read or written.
     #[must_use]
     pub fn any(self) -> bool {
-        self.time || self.full || self.lives || self.unharmed
+        self.energy || self.bridges || self.laser || self.lives || self.unharmed
     }
 
     /// What the switches in force need to know before a frame.
@@ -146,40 +149,33 @@ impl Training {
         let at = |z: &Zx, a: u16| z.mem[usize::from(a)];
         let put = |z: &mut Zx, a: u16, v: u8| z.mem[usize::from(a)] = v;
         // The drain counter rises by one a frame, and contact pushes it on
-        // further. No harm from enemies undoes the push, time standing still
-        // undoes the rise, and with both on neither is left, so the two
-        // together hold energy where it was. Once every so many frames the
+        // further: no harm from enemies undoes the push and leaves the rise,
+        // so energy still falls with time. Once every so many frames the
         // rise reaches the drop, where the game sets the counter to zero and
-        // takes energy (#73): on that frame the game's own value is zero,
-        // and time standing still leaves it there, since the energy is gone
-        // already and from zero the counter stands still again.
-        let now = at(z, starquake::at::DRAIN);
-        let wrapped = before.drain.wrapping_add(1) >= starquake::DRAIN_DROP;
-        let by_time = if wrapped {
-            0
-        } else {
-            before.drain.wrapping_add(1)
-        };
-        let mut held = now;
-        if self.unharmed && held != by_time && held != before.drain {
-            held = by_time;
+        // takes energy (#73): a push on that frame is taken back to zero.
+        if self.unharmed {
+            let now = at(z, starquake::at::DRAIN);
+            let by_time = if before.drain.wrapping_add(1) >= starquake::DRAIN_DROP {
+                0
+            } else {
+                before.drain.wrapping_add(1)
+            };
+            if now != by_time && now != before.drain {
+                put(z, starquake::at::DRAIN, by_time);
+            }
         }
-        if self.time && held == by_time && !wrapped {
-            held = before.drain;
-        }
-        if held != now {
-            put(z, starquake::at::DRAIN, held);
-        }
-        // Full is what the panel draws a bar up to (#104), so a bar the
+        // Full is what the panel draws a bar up to (#104), so a bar its
         // switch finds run down is filled, one used is filled again, and one
         // a pack took higher is left there.
         let mut filled = false;
-        if self.full {
-            for a in [starquake::at::PLATFORMS, starquake::at::GUN] {
-                if at(z, a) < starquake::BAR_FULL {
-                    put(z, a, starquake::BAR_FULL);
-                    filled = true;
-                }
+        for (on, a) in [
+            (self.energy, starquake::at::ENERGY),
+            (self.bridges, starquake::at::BRIDGES),
+            (self.laser, starquake::at::LASER),
+        ] {
+            if on && at(z, a) < starquake::BAR_FULL {
+                put(z, a, starquake::BAR_FULL);
+                filled = true;
             }
         }
         if self.lives && at(z, starquake::at::LIVES) < before.lives {
@@ -510,8 +506,8 @@ mod tests {
         let mut z = Machine::from_ram(vec![0; 0xC000], 0, 0).zx;
         for a in [
             starquake::at::DRAIN,
-            starquake::at::PLATFORMS,
-            starquake::at::GUN,
+            starquake::at::BRIDGES,
+            starquake::at::LASER,
             starquake::at::LIVES,
             starquake::at::LIVES_DIGIT,
         ] {
@@ -540,25 +536,31 @@ mod tests {
     }
 
     #[test]
-    fn time_standing_still_undoes_the_frame_s_own_drain() {
+    fn full_energy_fills_the_bar_and_keeps_it_full() {
+        // The switch goes on with energy run down (#116): the next frame it
+        // is full, and says it filled a bar, so the panel is drawn again.
         let mut z = watched(10);
         let training = Training {
-            time: true,
+            energy: true,
             ..Training::default()
         };
+        z.mem[usize::from(starquake::at::ENERGY)] = 20;
         let before = training.read(&z);
-        // A frame's own rise: one.
-        z.mem[usize::from(starquake::at::DRAIN)] = 11;
-        training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::DRAIN), 10, "time does not drain");
-        // Contact pushes it further, and that still counts.
+        assert!(training.hold(&mut z, before), "a bar was filled");
+        assert_eq!(at(&z, starquake::at::ENERGY), starquake::BAR_FULL);
+        // Time and contact take four at a drop; it is filled again.
+        let before = training.read(&z);
+        z.mem[usize::from(starquake::at::ENERGY)] = starquake::BAR_FULL - 4;
+        assert!(training.hold(&mut z, before));
+        assert_eq!(at(&z, starquake::at::ENERGY), starquake::BAR_FULL);
+        // Full already: nothing to fill, nothing to draw.
+        let before = training.read(&z);
+        assert!(!training.hold(&mut z, before), "nothing filled");
+        // The drain counter is the game's: the switch does not touch it.
+        let before = training.read(&z);
         z.mem[usize::from(starquake::at::DRAIN)] = 40;
         training.hold(&mut z, before);
-        assert_eq!(
-            at(&z, starquake::at::DRAIN),
-            40,
-            "but touching an enemy does"
-        );
+        assert_eq!(at(&z, starquake::at::DRAIN), 40);
     }
 
     #[test]
@@ -602,83 +604,103 @@ mod tests {
             unharmed: true,
             ..off
         };
-        let time = Training { time: true, ..off };
-        let both = Training {
-            time: true,
-            unharmed: true,
-            ..off
-        };
         assert_eq!(
             wrap(unharmed, 10),
             0,
             "the frame's own value is zero, not the drop"
         );
         assert_eq!(wrap(unharmed, 0), 0, "no touch: left alone");
-        assert_eq!(
-            wrap(time, 0),
-            0,
-            "a wrapped frame stays at zero rather than wrapping again"
-        );
-        assert_eq!(wrap(both, 10), 0, "both: the touch undone, the zero kept");
-        assert_eq!(wrap(both, 0), 0);
-        // And a frame short of the wrap is as before.
+        // And a frame short of the wrap rises by its one.
         let mut z = watched(starquake::DRAIN_DROP - 2);
-        let before = both.read(&z);
+        let before = unharmed.read(&z);
         z.mem[usize::from(starquake::at::DRAIN)] = starquake::DRAIN_DROP - 1;
-        both.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::DRAIN), starquake::DRAIN_DROP - 2);
+        unharmed.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::DRAIN), starquake::DRAIN_DROP - 1);
     }
 
     #[test]
-    fn time_and_no_harm_together_leave_the_counter_where_it_was() {
+    fn full_energy_and_no_harm_together_keep_energy_full() {
         let mut z = watched(10);
         let training = Training {
-            time: true,
+            energy: true,
             unharmed: true,
             ..Training::default()
         };
+        z.mem[usize::from(starquake::at::ENERGY)] = starquake::BAR_FULL;
         let before = training.read(&z);
-        // Contact on top of the frame's own rise: both are taken back.
+        // Contact on top of the frame's own rise: the push is taken back,
+        // and energy a drop took is filled.
         z.mem[usize::from(starquake::at::DRAIN)] = 40;
+        z.mem[usize::from(starquake::at::ENERGY)] = starquake::BAR_FULL - 4;
         training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::DRAIN), 10, "nothing drains energy");
+        assert_eq!(at(&z, starquake::at::DRAIN), 11, "only time's rise");
+        assert_eq!(at(&z, starquake::at::ENERGY), starquake::BAR_FULL);
     }
 
     #[test]
-    fn full_gun_and_platforms_fills_an_empty_bar() {
-        // The switch goes on with the platform bar run down and the gun
-        // empty (#104): the next frame both are full.
-        let mut z = watched(10);
-        let training = Training {
-            full: true,
-            ..Training::default()
-        };
-        z.mem[usize::from(starquake::at::PLATFORMS)] = 0;
-        z.mem[usize::from(starquake::at::GUN)] = 0;
-        let before = training.read(&z);
-        training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::PLATFORMS), starquake::BAR_FULL);
-        assert_eq!(at(&z, starquake::at::GUN), starquake::BAR_FULL);
+    fn each_full_switch_fills_only_its_own_bar() {
+        // A switch goes on with its bar run down (#104, #116): the next frame
+        // that bar is full, and the others are as the game left them.
+        for (switch, bar) in [
+            (
+                Training {
+                    energy: true,
+                    ..Training::default()
+                },
+                starquake::at::ENERGY,
+            ),
+            (
+                Training {
+                    bridges: true,
+                    ..Training::default()
+                },
+                starquake::at::BRIDGES,
+            ),
+            (
+                Training {
+                    laser: true,
+                    ..Training::default()
+                },
+                starquake::at::LASER,
+            ),
+        ] {
+            let mut z = watched(10);
+            let bars = [
+                starquake::at::ENERGY,
+                starquake::at::BRIDGES,
+                starquake::at::LASER,
+            ];
+            for a in bars {
+                z.mem[usize::from(a)] = 0;
+            }
+            let before = switch.read(&z);
+            switch.hold(&mut z, before);
+            for a in bars {
+                let want = if a == bar { starquake::BAR_FULL } else { 0 };
+                assert_eq!(at(&z, a), want, "{switch:?} at {a:#06x}");
+            }
+        }
     }
 
     #[test]
-    fn a_full_gun_and_platforms_never_fall() {
+    fn full_bridging_platforms_and_laser_never_fall() {
         let mut z = watched(starquake::BAR_FULL);
         let training = Training {
-            full: true,
+            bridges: true,
+            laser: true,
             ..Training::default()
         };
         let before = training.read(&z);
-        z.mem[usize::from(starquake::at::PLATFORMS)] = 4;
-        z.mem[usize::from(starquake::at::GUN)] = 0;
+        z.mem[usize::from(starquake::at::BRIDGES)] = 4;
+        z.mem[usize::from(starquake::at::LASER)] = 0;
         training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::PLATFORMS), starquake::BAR_FULL);
-        assert_eq!(at(&z, starquake::at::GUN), starquake::BAR_FULL);
+        assert_eq!(at(&z, starquake::at::BRIDGES), starquake::BAR_FULL);
+        assert_eq!(at(&z, starquake::at::LASER), starquake::BAR_FULL);
         // A pack that takes a bar past full is kept, not put back.
         let before = training.read(&z);
-        z.mem[usize::from(starquake::at::GUN)] = 0x90;
+        z.mem[usize::from(starquake::at::LASER)] = 0x90;
         training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::GUN), 0x90, "picked up, not put back");
+        assert_eq!(at(&z, starquake::at::LASER), 0x90, "picked up, not put back");
     }
 
     #[test]
