@@ -863,7 +863,7 @@ mod tests {
         let mut g = Guidance::default();
         g.set_level(3);
         g.set_training(Training {
-            time: true,
+            energy: true,
             ..Training::default()
         });
         g.set_level(1);
@@ -875,7 +875,7 @@ mod tests {
             Record {
                 highest: 1,
                 training: Training {
-                    time: true,
+                    energy: true,
                     ..Training::default()
                 }
             },

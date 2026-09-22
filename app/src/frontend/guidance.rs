@@ -73,14 +73,16 @@ pub struct Record {
 }
 
 /// The rows of the picker, top to bottom: the guidance level, training
-/// mode's four switches (#8), then the actions.
+/// mode's five switches (#8, #116), then the actions.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Setting {
     #[default]
     Level,
-    /// One of training mode's four switches (#8), in the order they show.
-    Time,
-    Full,
+    /// One of training mode's five switches (#8, #116), in the order they
+    /// show.
+    Energy,
+    Bridges,
+    Laser,
     Lives,
     Unharmed,
     EndGame,
@@ -88,17 +90,18 @@ pub enum Setting {
 }
 
 /// Training mode's switches as the picker names them: the row, its label,
-/// and what it does (#8).
-pub const SWITCHES: [(Setting, &str, &str); 4] = [
+/// and what it does (#8), in the manual's words (#116).
+pub const SWITCHES: [(Setting, &str, &str); 5] = [
+    (Setting::Energy, "Full energy", "Energy stays full."),
     (
-        Setting::Time,
-        "Time stands still",
-        "Energy stops draining as time passes.",
+        Setting::Bridges,
+        "Full bridging platforms",
+        "The bridging platforms stay full, however many you lay.",
     ),
     (
-        Setting::Full,
-        "Full gun and platforms",
-        "The gun and the platform bars stay full.",
+        Setting::Laser,
+        "Full laser",
+        "The laser stays full, however much you fire.",
     ),
     (
         Setting::Lives,
@@ -115,8 +118,9 @@ pub const SWITCHES: [(Setting, &str, &str); 4] = [
 /// The switch a picker row stands for, if it is one.
 fn switch(setting: Setting, of: &mut Training) -> Option<&mut bool> {
     match setting {
-        Setting::Time => Some(&mut of.time),
-        Setting::Full => Some(&mut of.full),
+        Setting::Energy => Some(&mut of.energy),
+        Setting::Bridges => Some(&mut of.bridges),
+        Setting::Laser => Some(&mut of.laser),
         Setting::Lives => Some(&mut of.lives),
         Setting::Unharmed => Some(&mut of.unharmed),
         _ => None,
@@ -126,8 +130,9 @@ fn switch(setting: Setting, of: &mut Training) -> Option<&mut bool> {
 /// Every switch either of them holds.
 fn merged(a: Training, b: Training) -> Training {
     Training {
-        time: a.time || b.time,
-        full: a.full || b.full,
+        energy: a.energy || b.energy,
+        bridges: a.bridges || b.bridges,
+        laser: a.laser || b.laser,
         lives: a.lives || b.lives,
         unharmed: a.unharmed || b.unharmed,
     }
@@ -135,8 +140,9 @@ fn merged(a: Training, b: Training) -> Training {
 
 /// Whether `on` turns on anything `was` did not.
 fn newly_on(on: Training, was: Training) -> bool {
-    (on.time && !was.time)
-        || (on.full && !was.full)
+    (on.energy && !was.energy)
+        || (on.bridges && !was.bridges)
+        || (on.laser && !was.laser)
         || (on.lives && !was.lives)
         || (on.unharmed && !was.unharmed)
 }
@@ -835,9 +841,9 @@ mod tests {
         g.set_level(3);
         g.set_level(1);
         assert_eq!(g.record().highest, 3);
-        g.set_training(only(Setting::Time));
+        g.set_training(only(Setting::Energy));
         g.set_training(Training::default());
-        assert!(g.record().training.time);
+        assert!(g.record().training.energy);
     }
 
     #[test]
@@ -849,7 +855,11 @@ mod tests {
         g.change(false);
         g.focus_down();
         g.change(true);
-        assert_eq!(g.picked(), (1, only(Setting::Time)), "chosen in the picker");
+        assert_eq!(
+            g.picked(),
+            (1, only(Setting::Energy)),
+            "chosen in the picker"
+        );
         assert_eq!(
             (g.level(), g.training()),
             (3, Training::default()),
@@ -859,7 +869,11 @@ mod tests {
         assert!(g.asking(), "training mode would show");
         g.change(false);
         g.enter();
-        assert_eq!((g.level(), g.training()), (1, only(Setting::Time)), "kept");
+        assert_eq!(
+            (g.level(), g.training()),
+            (1, only(Setting::Energy)),
+            "kept"
+        );
     }
 
     #[test]
@@ -935,8 +949,8 @@ mod tests {
         g.focus_down();
         assert!(g.asking(), "and nothing moves while it asks");
         g.enter();
-        assert_eq!(g.training(), only(Setting::Time));
-        assert!(g.record().training.time);
+        assert_eq!(g.training(), only(Setting::Energy));
+        assert!(g.record().training.energy);
     }
 
     #[test]
@@ -986,7 +1000,8 @@ mod tests {
         g.set_playing(true);
         g.open();
         g.change(true);
-        for _ in 0..5 {
+        // Past the level and every switch.
+        for _ in 0..=SWITCHES.len() {
             g.focus_down();
         }
         g.enter();
@@ -1013,7 +1028,8 @@ mod tests {
         let mut g = Guidance::default();
         g.set_playing(true);
         g.open();
-        for _ in 0..5 {
+        // Past the level and every switch.
+        for _ in 0..=SWITCHES.len() {
             g.focus_down();
         }
         assert_eq!(g.focus(), Setting::EndGame);
@@ -1029,7 +1045,8 @@ mod tests {
     fn moving_away_cancels_a_first_press() {
         let mut g = Guidance::default();
         g.open();
-        for _ in 0..5 {
+        // Past the level and every switch.
+        for _ in 0..=SWITCHES.len() {
             g.focus_down();
         }
         assert_eq!(g.focus(), Setting::Exit);
@@ -1045,7 +1062,8 @@ mod tests {
         let mut g = Guidance::default();
         g.set_playing(true);
         g.open();
-        for _ in 0..5 {
+        // Past the level and every switch.
+        for _ in 0..=SWITCHES.len() {
             g.focus_down();
         }
         g.close();
@@ -1060,8 +1078,9 @@ mod tests {
             g.rows(),
             [
                 Setting::Level,
-                Setting::Time,
-                Setting::Full,
+                Setting::Energy,
+                Setting::Bridges,
+                Setting::Laser,
                 Setting::Lives,
                 Setting::Unharmed,
                 Setting::Exit
@@ -1072,8 +1091,9 @@ mod tests {
             g.rows(),
             [
                 Setting::Level,
-                Setting::Time,
-                Setting::Full,
+                Setting::Energy,
+                Setting::Bridges,
+                Setting::Laser,
                 Setting::Lives,
                 Setting::Unharmed,
                 Setting::EndGame,

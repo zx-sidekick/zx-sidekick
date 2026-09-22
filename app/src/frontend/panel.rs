@@ -1129,9 +1129,9 @@ impl Panel {
         };
         let actions_h: f32 = actions.iter().map(|&r| action_h(r) + 4.0).sum::<f32>() - 4.0;
         // Where the switches end, and with them the rule above the actions:
-        // the heading, the four rows, and the line saying what the focused
-        // one does, which is always kept.
-        let rule = 250.0 + SWITCH_HEAD + 4.0 * SWITCH_PITCH + SWITCH_SAYS + 6.0;
+        // the heading, a row for each switch, and the line saying what the
+        // focused one does, which is always kept.
+        let rule = 250.0 + SWITCH_HEAD + SWITCHES.len() as f32 * SWITCH_PITCH + SWITCH_SAYS + 6.0;
         let (w, h) = (520.0, rule + 8.0 + actions_h + 12.0 + 52.0);
         let x = (WINDOW_W - w) / 2.0;
         let y = (WINDOW_H - h) / 2.0;
@@ -1229,7 +1229,7 @@ impl Panel {
             &[span(ADDS[level as usize], 13.0, Weight::Regular, HINT_KEY)],
         );
 
-        // Training mode: four switches, a row each (#8).
+        // Training mode: five switches, a row each (#8, #116).
         let mut top = y + 250.0;
         self.spaced(canvas, rx + 14.0, top, "TRAINING");
         top += SWITCH_HEAD;
@@ -2033,6 +2033,25 @@ mod tests {
     }
 
     #[test]
+    fn every_switch_fits_its_row() {
+        // The picker's rows are 24 narrower than its 520: a label from 14 in
+        // must end short of the Off and On at the right, and what the switch
+        // does, centred under the rows, within them (#116).
+        let mut fonts = Fonts::load();
+        let row = 520.0 - 24.0;
+        let off_on = fonts.measure(&[span("Off", 13.0, Weight::SemiBold, BRIGHT)])
+            + fonts.measure(&[span("On", 13.0, Weight::SemiBold, BRIGHT)])
+            + 2.0 * 20.0
+            + 14.0;
+        for (_, label, does) in SWITCHES {
+            let w = fonts.measure(&[span(label, 14.0, Weight::SemiBold, TITLE)]);
+            assert!(14.0 + w + 16.0 <= row - off_on, "{label}: {w}");
+            let d = fonts.measure(&[span(does, 12.0, Weight::Regular, HINT_KEY)]);
+            assert!(d <= row - 28.0, "{does}: {d}");
+        }
+    }
+
+    #[test]
     fn what_each_level_adds_fits_the_pickers_box() {
         // The picker is 520 wide and the level's box 24 narrower, with 14
         // of padding either side.
@@ -2537,7 +2556,7 @@ mod tests {
         let mut record = Guidance::default();
         record.set_level(3);
         record.set_training(Training {
-            time: true,
+            energy: true,
             ..Training::default()
         });
         let cases = [
@@ -2910,8 +2929,9 @@ mod tests {
                     let mut g = heroes();
                     g.set_level(6);
                     g.set_training(Training {
-                        time: true,
-                        full: true,
+                        energy: true,
+                        bridges: true,
+                        laser: true,
                         lives: true,
                         unharmed: true,
                     });
