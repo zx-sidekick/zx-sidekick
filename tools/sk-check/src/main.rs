@@ -766,7 +766,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     // above starts with them full, so it cannot tell holding from filling.
     // Blob lays platforms and fires until both are empty, with time
     // standing still and no harm from enemies so that he lives through it.
-    let (emptied, filled) = {
+    let (emptied, filled, shown) = {
         let mut m = base.clone();
         m.training = Training {
             time: true,
@@ -790,10 +790,20 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         m.zx.kempston = 0;
         m.training = Training { full: true, ..off };
         m.run_frame();
-        (emptied, bars(&m))
+        let filled = bars(&m);
+        // The game draws a bar only where it changes it, so the panel is
+        // drawn again at the top of the play loop: a few frames on, it shows
+        // what the game's own panel routine draws for what is there now.
+        for _ in 0..3 {
+            m.run_frame();
+        }
+        let mut drawn = m.clone();
+        drawn.call(routine::PANEL.0, 0, 1_000_000);
+        let panel = |m: &Machine| m.zx.mem[0x4000..0x4800].to_vec();
+        (emptied, filled, panel(&m) == panel(&drawn))
     };
     let full_fills =
-        emptied == [0, 0] && filled.iter().all(|&v| v >= sidekick::starquake::BAR_FULL);
+        emptied == [0, 0] && filled.iter().all(|&v| v >= sidekick::starquake::BAR_FULL) && shown;
     let time_holds = time_low[0] > plain_low[0];
     let lives_hold = lives_low[3] >= start[3] && plain_low[3] < start[3];
     let nothing_drains = both_low[0] >= both_start[0];
@@ -979,12 +989,14 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         }
     }
     let pickups_hold = pickups.len() == 6 && pickups.iter().all(|&(_, on)| on);
-    // And the three instructions the switch steers are where the facts say.
+    // And the three instructions the switch steers, and the panel routine
+    // full gun and platforms has the game run, are where the facts say.
     let at_hand =
         |a: u16, bytes: &[u8]| &base.zx.mem[usize::from(a)..usize::from(a) + bytes.len()] == bytes;
     let decides = at_hand(decide::ENEMY_KILL.0, &decide::ENEMY_KILL.1)
         && at_hand(decide::PATCH_KILL.0, &decide::PATCH_KILL.1)
-        && at_hand(decide::FIELD_KILL.0, &decide::FIELD_KILL.1);
+        && at_hand(decide::FIELD_KILL.0, &decide::FIELD_KILL.1)
+        && at_hand(routine::PANEL.0, &routine::PANEL.1);
     let good = plain_drains
         && full_holds
         && full_fills
@@ -1010,12 +1022,17 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         if good { "ok" } else { "FAILED" }
     );
     println!(
-        "  full gun and platforms switched on with both bars run down to {} and {}: a frame later {} and {} of {} {}",
+        "  full gun and platforms switched on with both bars run down to {} and {}: a frame later {} and {} of {}, and the panel {} {}",
         emptied[0],
         emptied[1],
         filled[0],
         filled[1],
         sidekick::starquake::BAR_FULL,
+        if shown {
+            "drawn as the game draws them"
+        } else {
+            "still showing them as they were"
+        },
         if full_fills { "ok" } else { "FAILED" }
     );
     println!(
@@ -1065,7 +1082,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         if pickups_hold { "ok" } else { "FAILED" }
     );
     println!(
-        "  the three instructions the switch steers are on the tape as recorded {}",
+        "  the three instructions the switch steers, and where the panel is drawn from, are on the tape as recorded {}",
         if decides { "ok" } else { "FAILED" }
     );
     good

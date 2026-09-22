@@ -108,6 +108,13 @@ pub mod routine {
     pub const HEROES: u16 = 0x654B;
     /// Setting up a new game.
     pub const NEW_GAME: u16 = 0x629D;
+    /// Drawing the panel's lives digit, its three bars and what Blob
+    /// carries (#104): the game reaches it through `0xD425`, which first
+    /// adds the score waiting to be added, after a pickup and as a game
+    /// starts. It clears the carried items' boxes before drawing into them,
+    /// so drawing it again changes only what has changed. With the bytes it
+    /// begins with, `LD A,(lives)`, which `sk-check training` checks.
+    pub const PANEL: (u16, [u8; 3]) = (0xD428, [0x3A, 0xCC, 0xD2]);
     /// Where a door's screen makes the three chips of its code, and where
     /// that ends (#107). No table holds a door's code: from here the game
     /// XORs the seed ([`super::at::SEED`]), the room ([`super::at::ROOM`])

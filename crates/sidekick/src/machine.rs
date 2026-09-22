@@ -78,6 +78,12 @@ pub struct Machine {
     /// Training mode's switches (#8): what the machine holds still for the
     /// player. Each puts back, or fills, after a frame, what the game took.
     pub training: Training,
+    /// Whether a bar was filled after the last frame, so the panel still
+    /// shows it as the game last drew it (#104). The game draws a bar only
+    /// where it changes it; the next time play reaches the top of its loop
+    /// the machine has the game draw the panel again,
+    /// [`starquake::routine::PANEL`].
+    redraw: bool,
 }
 
 /// Training mode's four switches (#8). Each is off by default, and with
@@ -131,9 +137,11 @@ impl Training {
     }
 
     /// Puts back what the switches in force hold still, after a frame.
-    pub fn hold(self, z: &mut Zx, before: Held) {
+    /// Whether it filled a bar, which the panel does not show until the game
+    /// draws it again.
+    pub fn hold(self, z: &mut Zx, before: Held) -> bool {
         if !self.any() {
-            return;
+            return false;
         }
         let at = |z: &Zx, a: u16| z.mem[usize::from(a)];
         let put = |z: &mut Zx, a: u16, v: u8| z.mem[usize::from(a)] = v;
@@ -165,16 +173,20 @@ impl Training {
         // Full is what the panel draws a bar up to (#104), so a bar the
         // switch finds run down is filled, one used is filled again, and one
         // a pack took higher is left there.
+        let mut filled = false;
         if self.full {
             for a in [starquake::at::PLATFORMS, starquake::at::GUN] {
-                let v = at(z, a).max(starquake::BAR_FULL);
-                put(z, a, v);
+                if at(z, a) < starquake::BAR_FULL {
+                    put(z, a, starquake::BAR_FULL);
+                    filled = true;
+                }
             }
         }
         if self.lives && at(z, starquake::at::LIVES) < before.lives {
             put(z, starquake::at::LIVES, before.lives);
             put(z, starquake::at::LIVES_DIGIT, before.digit);
         }
+        filled
     }
 }
 
@@ -316,6 +328,7 @@ impl Machine {
             pause_pressed: false,
             pause_was_down: false,
             training: Training::default(),
+            redraw: false,
         }
     }
 
@@ -414,6 +427,7 @@ impl Machine {
             holding,
             pause_pressed,
             pause_was_down,
+            redraw,
             ..
         } = self;
         *pause_pressed = false;
@@ -460,6 +474,14 @@ impl Machine {
             if training.unharmed {
                 survive(z, pc);
             }
+            // The play loop begins with a call, so nothing is carried in a
+            // register at its top: the panel is drawn from there, returning
+            // to it.
+            if *redraw && pc == starquake::routine::MAIN_LOOP {
+                *redraw = false;
+                z.push(pc);
+                z.set_pc(starquake::routine::PANEL.0);
+            }
             if start_game
                 && (pc == starquake::MENU_INPUT
                     || pc == starquake::MENU_KEY
@@ -472,7 +494,9 @@ impl Machine {
         if hold.is_none() {
             *holding = false;
         }
-        training.hold(&mut self.zx, before);
+        if training.hold(&mut self.zx, before) {
+            self.redraw = true;
+        }
         hits
     }
 }
