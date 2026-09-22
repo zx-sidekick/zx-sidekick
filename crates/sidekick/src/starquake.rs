@@ -108,6 +108,13 @@ pub mod routine {
     pub const HEROES: u16 = 0x654B;
     /// Setting up a new game.
     pub const NEW_GAME: u16 = 0x629D;
+    /// Drawing the panel's lives digit, its three bars and what Blob
+    /// carries (#104): the game reaches it through `0xD425`, which first
+    /// adds the score waiting to be added, after a pickup and as a game
+    /// starts. It clears the carried items' boxes before drawing into them,
+    /// so drawing it again changes only what has changed. With the bytes it
+    /// begins with, `LD A,(lives)`, which `sk-check training` checks.
+    pub const PANEL: (u16, [u8; 3]) = (0xD428, [0x3A, 0xCC, 0xD2]);
     /// Where a door's screen makes the three chips of its code, and where
     /// that ends (#107). No table holds a door's code: from here the game
     /// XORs the seed ([`super::at::SEED`]), the room ([`super::at::ROOM`])
@@ -192,7 +199,8 @@ pub mod at {
     /// counter reaches [`super::DRAIN_DROP`] (#8).
     pub const ENERGY: u16 = 0xD2CD;
     /// How full the platform bar and the gun bar are: one falls as Blob
-    /// lays platforms, the other by one a shot (#8).
+    /// lays platforms, the other by one a shot (#8). The platform bar is 50
+    /// as play starts and the gun [`super::BAR_FULL`] (#104).
     pub const PLATFORMS: u16 = 0xD2CE;
     pub const GUN: u16 = 0xD2CF;
     /// The drain counter in Blob's slot (offset `0x18`): it rises by one a
@@ -299,6 +307,12 @@ pub fn all_rooms(machine: &crate::Machine) -> Vec<crate::map::Room> {
 
 /// What the drain counter reaches before energy falls by four (#8).
 pub const DRAIN_DROP: u8 = 0x78;
+
+/// A full bar: energy, the platforms and the gun (#104). The panel draws the
+/// three bars in one loop from `0xD463`, and any bar above this it sets back
+/// to it (`CP 7F`, `LD (HL),7F`); energy and the gun start at it, the
+/// platform bar below it.
+pub const BAR_FULL: u8 = 0x7F;
 
 /// The marker a teleporter booth's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;

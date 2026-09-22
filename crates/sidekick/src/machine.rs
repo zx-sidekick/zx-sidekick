@@ -76,8 +76,14 @@ pub struct Machine {
     /// Whether the pause key was down at the last pause read.
     pause_was_down: bool,
     /// Training mode's switches (#8): what the machine holds still for the
-    /// player. Each puts back, after a frame, something the game took.
+    /// player. Each puts back, or fills, after a frame, what the game took.
     pub training: Training,
+    /// Whether a bar was filled after the last frame, so the panel still
+    /// shows it as the game last drew it (#104). The game draws a bar only
+    /// where it changes it; the next time play reaches the top of its loop
+    /// the machine has the game draw the panel again,
+    /// [`starquake::routine::PANEL`].
+    redraw: bool,
 }
 
 /// Training mode's four switches (#8). Each is off by default, and with
@@ -87,7 +93,8 @@ pub struct Training {
     /// Time stands still: the drain counter's one-a-frame rise is undone,
     /// so energy falls only on contact with something.
     pub time: bool,
-    /// The gun and the platforms stay full, however many are used.
+    /// The gun and the platforms are full, however many are used: filled
+    /// when the switch goes on, and kept there (#104).
     pub full: bool,
     /// The lives left never fall, and the panel's digit with them.
     pub lives: bool,
@@ -104,8 +111,6 @@ pub struct Training {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Held {
     drain: u8,
-    platforms: u8,
-    gun: u8,
     lives: u8,
     digit: u8,
 }
@@ -126,17 +131,17 @@ impl Training {
         let at = |a: u16| z.mem[usize::from(a)];
         Held {
             drain: at(starquake::at::DRAIN),
-            platforms: at(starquake::at::PLATFORMS),
-            gun: at(starquake::at::GUN),
             lives: at(starquake::at::LIVES),
             digit: at(starquake::at::LIVES_DIGIT),
         }
     }
 
     /// Puts back what the switches in force hold still, after a frame.
-    pub fn hold(self, z: &mut Zx, before: Held) {
+    /// Whether it filled a bar, which the panel does not show until the game
+    /// draws it again.
+    pub fn hold(self, z: &mut Zx, before: Held) -> bool {
         if !self.any() {
-            return;
+            return false;
         }
         let at = |z: &Zx, a: u16| z.mem[usize::from(a)];
         let put = |z: &mut Zx, a: u16, v: u8| z.mem[usize::from(a)] = v;
@@ -165,16 +170,23 @@ impl Training {
         if held != now {
             put(z, starquake::at::DRAIN, held);
         }
+        // Full is what the panel draws a bar up to (#104), so a bar the
+        // switch finds run down is filled, one used is filled again, and one
+        // a pack took higher is left there.
+        let mut filled = false;
         if self.full {
-            let platforms = before.platforms.max(at(z, starquake::at::PLATFORMS));
-            let gun = before.gun.max(at(z, starquake::at::GUN));
-            put(z, starquake::at::PLATFORMS, platforms);
-            put(z, starquake::at::GUN, gun);
+            for a in [starquake::at::PLATFORMS, starquake::at::GUN] {
+                if at(z, a) < starquake::BAR_FULL {
+                    put(z, a, starquake::BAR_FULL);
+                    filled = true;
+                }
+            }
         }
         if self.lives && at(z, starquake::at::LIVES) < before.lives {
             put(z, starquake::at::LIVES, before.lives);
             put(z, starquake::at::LIVES_DIGIT, before.digit);
         }
+        filled
     }
 }
 
@@ -316,6 +328,7 @@ impl Machine {
             pause_pressed: false,
             pause_was_down: false,
             training: Training::default(),
+            redraw: false,
         }
     }
 
@@ -414,6 +427,7 @@ impl Machine {
             holding,
             pause_pressed,
             pause_was_down,
+            redraw,
             ..
         } = self;
         *pause_pressed = false;
@@ -460,6 +474,14 @@ impl Machine {
             if training.unharmed {
                 survive(z, pc);
             }
+            // The play loop begins with a call, so nothing is carried in a
+            // register at its top: the panel is drawn from there, returning
+            // to it.
+            if *redraw && pc == starquake::routine::MAIN_LOOP {
+                *redraw = false;
+                z.push(pc);
+                z.set_pc(starquake::routine::PANEL.0);
+            }
             if start_game
                 && (pc == starquake::MENU_INPUT
                     || pc == starquake::MENU_KEY
@@ -472,7 +494,9 @@ impl Machine {
         if hold.is_none() {
             *holding = false;
         }
-        training.hold(&mut self.zx, before);
+        if training.hold(&mut self.zx, before) {
+            self.redraw = true;
+        }
         hits
     }
 }
@@ -621,8 +645,25 @@ mod tests {
     }
 
     #[test]
-    fn a_full_gun_and_platforms_never_fall() {
+    fn full_gun_and_platforms_fills_an_empty_bar() {
+        // The switch goes on with the platform bar run down and the gun
+        // empty (#104): the next frame both are full.
         let mut z = watched(10);
+        let training = Training {
+            full: true,
+            ..Training::default()
+        };
+        z.mem[usize::from(starquake::at::PLATFORMS)] = 0;
+        z.mem[usize::from(starquake::at::GUN)] = 0;
+        let before = training.read(&z);
+        training.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::PLATFORMS), starquake::BAR_FULL);
+        assert_eq!(at(&z, starquake::at::GUN), starquake::BAR_FULL);
+    }
+
+    #[test]
+    fn a_full_gun_and_platforms_never_fall() {
+        let mut z = watched(starquake::BAR_FULL);
         let training = Training {
             full: true,
             ..Training::default()
@@ -631,12 +672,13 @@ mod tests {
         z.mem[usize::from(starquake::at::PLATFORMS)] = 4;
         z.mem[usize::from(starquake::at::GUN)] = 0;
         training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::PLATFORMS), 10);
-        assert_eq!(at(&z, starquake::at::GUN), 10);
-        // A pack that fills them further is kept.
-        z.mem[usize::from(starquake::at::GUN)] = 30;
+        assert_eq!(at(&z, starquake::at::PLATFORMS), starquake::BAR_FULL);
+        assert_eq!(at(&z, starquake::at::GUN), starquake::BAR_FULL);
+        // A pack that takes a bar past full is kept, not put back.
+        let before = training.read(&z);
+        z.mem[usize::from(starquake::at::GUN)] = 0x90;
         training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::GUN), 30, "picked up, not put back");
+        assert_eq!(at(&z, starquake::at::GUN), 0x90, "picked up, not put back");
     }
 
     #[test]

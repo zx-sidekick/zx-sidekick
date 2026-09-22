@@ -11,6 +11,7 @@ Every tool takes the assets folder first, reads `starquake.tap` from it and writ
 
 ## Probes
 
+- `bars <dir> [frames]`: the energy, platform and gun bars as play starts, the panel's loop that draws them and caps each at 127, and what laying platforms and firing take from them (#104).
 - `markers <dir> <room>[,<room>…]`: a room's markers, the three bytes each of its tiles leaves, with the cell each is at.
 - `attrs <dir> <room> [first-col] [last-col]`: the attribute bytes of a room's cells.
 - `survey <dir>`: every attribute value used across all rooms, and the rooms holding lift cells.
