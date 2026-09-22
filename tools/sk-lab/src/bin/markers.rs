@@ -1,7 +1,7 @@
 //! A room's markers, the three bytes each its tiles leave (x, y, kind), with
-//! the cell each is at: `0x00` a security door, `0x0B` a teleporter pad,
-//! `0x0C` a hover pad, `0x0D` a booth, `0x0E` a platform pickup, `0x0F` a
-//! wall passage.
+//! the cell each is at: `0x00` a security door, `0x0B` a space lock,
+//! `0x0C` a flying platform, `0x0D` a teleport, `0x0E` a platform pack, `0x0F` a
+//! secret passage.
 //!
 //! `markers <assets-dir> <room>[,<room>...]`
 

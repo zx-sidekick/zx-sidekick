@@ -21,8 +21,8 @@
 //!   runs first, then play, and holding A S D F G from the top of the play
 //!   loop, as End this game does, reaches the game-over screens and comes
 //!   back round to the menu, in every control method; and that the
-//!   teleporter table holds fifteen codes in fifteen rooms and, with a ROM,
-//!   that walking into each booth prints its code; and that in play the
+//!   teleport table holds fifteen codes in fifteen rooms and, with a ROM,
+//!   that walking into each teleport prints its code; and that in play the
 //!   room stays a room and every room walked into is marked visited; and
 //!   that every room marked as holding a missing core piece gets a wanted
 //!   piece placed in it when the game enters it; and that the pieces and
@@ -895,7 +895,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     }
     let things_held = things.iter().filter(|&&(_, on)| !on).count();
     let things_hold = things.len() == 10 && things_held == things.len();
-    // The deadly patches: stand him on the marker.
+    // The impalers: stand him on the marker.
     let mut patches = Vec::new();
     for room in 0..128u16 {
         let killed = |unharmed: bool| {
@@ -923,7 +923,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     }
     let patches_held = patches.iter().filter(|&&(_, on)| !on).count();
     let patches_hold = patches.len() == 6 && patches_held == patches.len();
-    // The zappers: stand him in a force field's strip.
+    // The zap rays: stand him in a force field's strip.
     let mut fields = Vec::new();
     for room in 0..128u16 {
         let killed = |unharmed: bool| {
@@ -1459,9 +1459,9 @@ fn visited_check(dir: &Path) -> bool {
     good
 }
 
-/// The teleporter table holds fifteen codes of five capital letters in
+/// The teleport table holds fifteen codes of five capital letters in
 /// fifteen different rooms, and, with a ROM for the stepping, walking into
-/// each booth has the game print the code the table gives for its room:
+/// each teleport has the game print the code the table gives for its room:
 /// the moment a code counts as seen (#4).
 fn teleporters_check(dir: &Path) -> bool {
     use sidekick::rom::PRINT_A_2;
@@ -1491,7 +1491,7 @@ fn teleporters_check(dir: &Path) -> bool {
         return ok;
     }
     // Into play first, as a player would, on a machine with the real ROM,
-    // which handles the interrupts while the booth is stepped through.
+    // which handles the interrupts while the teleport is stepped through.
     let mut base = m.with_rom(&read(dir, "48.rom"));
     base.watch = vec![routine::MAIN_LOOP];
     let mut script = Script(0xBEEF);
@@ -1522,9 +1522,9 @@ fn teleporters_check(dir: &Path) -> bool {
             ok = false;
             continue;
         };
-        // Stand Blob on the booth, carry on as the play loop does, on a
+        // Stand Blob on the teleport, carry on as the play loop does, on a
         // fresh frame with interrupts on, and read what is printed from the
-        // moment the booth starts.
+        // moment the teleport starts.
         z.mem[usize::from(at::ENTITIES) + 5] = z.mem[usize::from(marker)];
         z.mem[usize::from(at::ENTITIES) + 6] = z.mem[usize::from(marker) + 1];
         z.t = 0;
@@ -1550,11 +1550,11 @@ fn teleporters_check(dir: &Path) -> bool {
             && teleporter_code(&z.mem[..], room) == Some(code);
         printed_ok += usize::from(good);
         ok &= good;
-        // From the first booth, type the next booth's code: the game should
+        // From the first teleport, type the next teleport's code: the game should
         // move Blob there and record the room as entered by teleport.
         if room == entries[0].0 && good {
             let (to, next) = entries[1];
-            // Let the booth finish printing and wait for a key.
+            // Let the teleport finish printing and wait for a key.
             for _ in 0..60 {
                 m.zx.release_all_keys();
                 m.run_frame();
@@ -1569,8 +1569,8 @@ fn teleporters_check(dir: &Path) -> bool {
                     m.run_frame();
                 }
             }
-            // The room number changes as the booth takes the code; the game
-            // enters the room, with its reason set, when the booth is done.
+            // The room number changes as the teleport takes the code; the game
+            // enters the room, with its reason set, when the teleport is done.
             let (mut arrived, mut reason) = (false, 0xFF);
             for _ in 0..300 {
                 m.zx.release_all_keys();
@@ -1639,8 +1639,8 @@ fn walk_into_door(entered: &Machine, (x, y): (u8, u8)) -> Option<Machine> {
 /// What the items do at a security door (#33), on copies of the game in
 /// play with a made-up inventory, walked into the door of room 210: the
 /// slots the door's own screen finds answered are the ones [`covered`]
-/// lights, for nothing carried, the three chips, two of them, the card
-/// alone, and a "?" chip with two chips; Blob is let through, 48 pixels on,
+/// lights, for nothing carried, the three key code cards, two of them, the access card
+/// alone, and a "?" card with two key code cards; Blob is let through, 48 pixels on,
 /// only when all three are; and the screen takes nothing from what is
 /// carried.
 ///
@@ -1725,7 +1725,7 @@ fn door_items_check(dir: &Path) -> bool {
 /// Every security door on the tape walked into from each of its markers, on
 /// copies of the game in play: touching it calls its screen from
 /// [`DOOR_SCREEN`], the room is entered again when the screen is done, and
-/// the code the screen left is three chips, the same from every marker in
+/// the code the screen left is three key code cards, the same from every marker in
 /// the room (#49). And the code builder run on its own on a copy
 /// ([`read_door_code`], #107) makes the code each door's screen shows, in
 /// this game and in one with another seed, with the instructions it is
@@ -2021,7 +2021,7 @@ fn map_check(dir: &Path, walks: usize) -> bool {
                 .iter()
                 .any(|&h| h == routine::MODAL || h == routine::DEATH)
             {
-                // A door, booth or pyramid screen, or a lost life: this walk's
+                // A door, teleport or pyramid screen, or a lost life: this walk's
                 // view of where Blob is starts again.
                 part = 0;
                 last_place = None;
@@ -2144,7 +2144,7 @@ fn map_check(dir: &Path, walks: usize) -> bool {
     failures == 0 && crossings > 0 && passages_ok && missing == 0 && checked > 0
 }
 
-/// Every wall passage walked into from each side Blob can stand beside it,
+/// Every secret passage walked into from each side Blob can stand beside it,
 /// on copies of `base` in play: he must reach the room on that side, and the
 /// map must join the two rooms that way, and join no two rooms a walk does
 /// not (#10).

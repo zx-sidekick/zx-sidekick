@@ -1,6 +1,6 @@
 //! The level 5 spike's search (#10): from a way into a room, on copies of
 //! the machine, every input on every frame play reads it, keeping each
-//! state of Blob once, until he leaves the room, dies, or a door, booth or
+//! state of Blob once, until he leaves the room, dies, or a door, teleport or
 //! pyramid screen opens. Nothing here moves Blob: the game does, on the
 //! copies. Its positive findings replay; its negative ones are not to be
 //! trusted (the ticket's report says why).
@@ -137,7 +137,7 @@ pub struct Room {
     pub frames: u64,
     pub deaths: usize,
     pub pruned: usize,
-    /// Where a door, booth or pyramid screen opened.
+    /// Where a door, teleport or pyramid screen opened.
     pub modal: HashSet<(u8, u8)>,
     /// The machine just after each exit, for the next room's search (taken
     /// away as they are handed on).

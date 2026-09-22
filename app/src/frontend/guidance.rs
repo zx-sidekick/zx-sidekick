@@ -5,7 +5,7 @@
 //! Nothing here reaches the game. The window and the game thread share it:
 //! the window changes it from the keyboard and draws it, and the game thread
 //! changes it from a gamepad and holds the game while the picker is open.
-//! What each level shows is its own ticket's (#3); level 1's teleporter
+//! What each level shows is its own ticket's (#3); level 1's teleport
 //! codes are carried here from the game thread to the panel (#4).
 
 use sidekick::machine::Training;
@@ -44,7 +44,7 @@ pub struct Found {
 }
 
 /// A security door whose screen has shown its code this game (#49): the
-/// room, the three chips it asks for by graphic, and their graphics read
+/// room, the three key code cards it asks for by graphic, and their graphics read
 /// from the game's memory to draw them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DoorCode {
@@ -186,7 +186,7 @@ pub struct Guidance {
     playing: bool,
     /// An action confirmed and not yet carried out.
     requested: Option<Action>,
-    /// The teleporters whose booths were entered this game, in the order
+    /// The teleports entered this game, in the order
     /// they were entered.
     teleporters: Vec<SeenTeleporter>,
     /// The security doors whose codes were seen this game, in the order
@@ -195,7 +195,7 @@ pub struct Guidance {
     /// The game's font, read from memory once play starts, for drawing
     /// codes in its letters (#49); empty until then.
     font: Vec<u8>,
-    /// Every teleporter and every security door's code, whether or not it
+    /// Every teleport and every security door's code, whether or not it
     /// has been shown: level 6 tells them all, read once a game has started
     /// (#66). Empty until then.
     all_teleporters: Vec<SeenTeleporter>,
@@ -313,12 +313,12 @@ impl Guidance {
         level > self.record.highest || newly_on(training, self.record.training)
     }
 
-    /// The teleporters seen this game.
+    /// The teleports seen this game.
     pub fn teleporters(&self) -> &[SeenTeleporter] {
         &self.teleporters
     }
 
-    /// Takes the game's list of teleporters seen, if it has changed.
+    /// Takes the game's list of teleports seen, if it has changed.
     pub fn set_teleporters(&mut self, seen: &[SeenTeleporter]) {
         if self.teleporters != seen {
             self.teleporters = seen.to_vec();

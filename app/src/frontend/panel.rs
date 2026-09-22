@@ -68,7 +68,7 @@ const CORE_WORD: &str = "core";
 /// How far apart the two border arrows stand when they leave the same way.
 const ARROW_APART: f32 = 22.0;
 /// Where the panel's block starts under its header (#99): the CORE and
-/// TELEPORTERS headings, with the core's square and the codes 22 below.
+/// TELEPORTS headings, with the core's square and the codes 22 below.
 const BLOCK_TOP: f32 = 70.0;
 const DELIVERED: Rgb = [0x3a, 0x3f, 0x4b];
 
@@ -95,7 +95,7 @@ const DIGITS: [[u8; 5]; 10] = [
 /// TELEPORTS now (#117), and the map beside it keeps the size it had.
 const RAIL_W: f32 = 93.18;
 
-/// A chip of a door's code that nothing carried answers (#33).
+/// A key code card of a door's code that nothing carried answers (#33).
 const CODE_DIM: Rgb = [0x3e, 0x6a, 0x66];
 
 /// A training switch's row in the picker: the heading above them, the pitch
@@ -326,7 +326,7 @@ impl Panel {
     /// square. Every room is a faint dot; visited rooms join into floor, with
     /// a line along each edge that has no opening, so an opening is a gap in
     /// the wall, and walls inside a divided room, dashed where a door divides
-    /// it. The teleporters seen are diamonds and the room Blob is in is
+    /// it. The teleports seen are diamonds and the room Blob is in is
     /// marked. From level 3 (#6, #36), so is every room holding a core piece
     /// still needed and every item found, from level 4 (#66) in the rooms
     /// never walked through as well, one of those outlined so the mark has
@@ -615,8 +615,8 @@ impl Panel {
             );
         }
         // Level 5 (#33): what a route's first door still wants, ringed in
-        // the route's colour where it lies: the chips nothing carried
-        // answers, and the "?" chips and cards that would stand in.
+        // the route's colour where it lies: the key code cards nothing carried
+        // answers, and the "?" cards and access cards that would stand in.
         let (_, doors) = guidance.codes_at(level);
         if level >= 5 {
             let [piece_door, core_door] = guidance.route_doors();
@@ -756,9 +756,9 @@ impl Panel {
     }
 
     /// Level 1 (#4, #49, #99): the codes seen this game in a rail at the
-    /// panel's right, one to a line: the teleporters' codes in the game's
-    /// own letters under TELEPORTERS, then each door's three chips under
-    /// DOORS, so finding a door never moves a teleporter's code. Both
+    /// panel's right, one to a line: the teleports' codes in the game's
+    /// own letters under TELEPORTS, then each door's three key code cards under
+    /// DOORS, so finding a door never moves a teleport's code. Both
     /// headings stand from the start, with "None yet" under one that has
     /// nothing. The next teleport and the next door on a route are outlined
     /// in its colour. Returns the rail's width.
@@ -847,7 +847,7 @@ impl Panel {
             canvas.round_rect(x, y, door_w, door_h, 4.0, CODE_FILL);
             let on = marks.iter().filter(|m| m.code == Code::Door(code.room));
             outlines(canvas, x, y, door_w, door_h, on);
-            // A chip lit once something carried answers it (#33).
+            // A key code card lit once something carried answers it (#33).
             let lit = sidekick::starquake::covered(&code.chips, guidance.carried());
             for (k, graphic) in code.graphics.iter().enumerate() {
                 let cx = x + 3.0 + k as f32 * (16.0 * px + 2.0);
@@ -1584,7 +1584,7 @@ fn stroke(
     canvas.line(a, b, width, dash, colour);
 }
 
-/// A code in the rail: a teleporter's five letters, or a door's by its room.
+/// A code in the rail: a teleport's five letters, or a door's by its room.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Code {
     Teleporter([u8; 5]),
@@ -1628,7 +1628,7 @@ fn marks(guidance: &Guidance) -> Vec<Mark> {
     .collect()
 }
 
-/// A route's outline on a code's chip at (`x`, `y`), the other route's
+/// A route's outline on a code's key code card at (`x`, `y`), the other route's
 /// around it when both need the same one (#46).
 fn outlines<'a>(
     canvas: &mut Canvas,
@@ -2110,7 +2110,7 @@ mod tests {
         let (none, w, _) = render(&g, Scene::Play, false);
         g.set_door_codes(&[door_code(210)]);
         let (one, _, _) = render(&g, Scene::Play, false);
-        // TELEPORTERS, "None yet", DOORS: the same down to the door's chip.
+        // TELEPORTS, "None yet", DOORS: the same down to the door's key code card.
         let head = (
             WINDOW_W - 24.0 - 96.0,
             BLOCK_TOP,
@@ -2124,7 +2124,7 @@ mod tests {
         assert!(count(&one, w, chips, CODE_FILL) > 0, "the door under DOORS");
     }
 
-    /// A door's code asking for chips "2", "4", "2".
+    /// A door's code asking for key code cards "2", "4", "2".
     fn code_242(room: u16) -> crate::frontend::guidance::DoorCode {
         crate::frontend::guidance::DoorCode {
             room,
@@ -2224,7 +2224,7 @@ mod tests {
         let mut g = routed(200, &[(201, false)], &[(216, false)]);
         g.set_door_codes(&[code_242(210)]);
         g.set_route_doors([None, Some(210)]);
-        // A chip "4" it wants, a chip "0" it does not, a "?" chip, a "2".
+        // A key code card "4" it wants, a key code card "0" it does not, a "?" card, a "2".
         g.set_items(&[item(100, 12), item(104, 9), item(108, 14), item(112, 11)]);
         let (at, pitch) = map_at(5);
         let around = |n: u16| {
@@ -2300,7 +2300,7 @@ mod tests {
 
     /// Level 4 with every code a game can show (#49): eight door codes,
     /// the codes `sk-check facts` reads on one game, and fifteen
-    /// teleporters. Their chips come from the tape, so it needs `SQ_TAPE`.
+    /// teleports. Their key code cards come from the tape, so it needs `SQ_TAPE`.
     fn doors_seen(level: u8) -> Guidance {
         let mut g = Guidance::default();
         g.set_level(level);
@@ -2439,7 +2439,7 @@ mod tests {
     }
 
     /// A made-up exploration, like the mockup's: a random walk over the
-    /// map, whose steps are its only openings, with `codes` teleporters seen
+    /// map, whose steps are its only openings, with `codes` teleports seen
     /// on the way. The codes are placeholders; the real ones are the
     /// original's text.
     fn explore(g: &mut Guidance, codes: usize) {
@@ -2657,7 +2657,7 @@ mod tests {
                     g.set_core(made_up_core());
                     let items = made_up_items(&g);
                     g.set_items(&items);
-                    // Every teleporter's code, not only the booths entered.
+                    // Every teleport's code, not only the teleports entered.
                     let seen: Vec<SeenTeleporter> = (0..15u16)
                         .map(|i| SeenTeleporter {
                             room: i * 33 + 7,

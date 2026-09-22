@@ -1,6 +1,6 @@
 //! The whole planet as one picture, `planet.png` in the assets folder:
 //! every room as the game draws it, with its openings, inner walls where they stand, doors,
-//! wall passages and lifts drawn over it, the start room and the core room
+//! secret passages and vacuum tubes drawn over it, the start room and the core room
 //! outlined, and rooms not reachable from the start with doors shut dimmed.
 //!
 //! `planet <assets-dir> [--half]`
@@ -103,7 +103,7 @@ fn main() {
                 img.fill(x0 + ROOM_W as i64 + 1, y0 + row as i64 * 8, 4, 16, OPEN);
             }
         }
-        // A wall passage: its tile outlined, and a bar on each side whose
+        // A secret passage: its tile outlined, and a bar on each side whose
         // neighbour has a passage too.
         let has_passage = |r: u16| planet.rooms[usize::from(r)].passage.is_some();
         if let Some((prow, pcol)) = planet.rooms[usize::from(room)].passage {

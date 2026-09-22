@@ -189,7 +189,7 @@ impl Parts {
     /// Joins the parts on either side of a tile `width` cells wide and
     /// three tall from its cell at screen (`row`, `col`): what a door does
     /// when it opens, moving Blob 48 pixels past the tile rather than
-    /// through its cells, and what a teleporter pad does when it is blanked.
+    /// through its cells, and what a space lock does when it is blanked.
     /// So on each side the nearest place Blob fits within six cells counts,
     /// and whatever lies between two doors' tiles, the second tile included,
     /// does not keep the sides apart.
@@ -242,7 +242,7 @@ pub struct Room {
     /// Its parts with security doors shut, and with them open.
     pub shut: Parts,
     pub open: Parts,
-    /// The cell of its wall passage marker, if it has one.
+    /// The cell of its secret passage marker, if it has one.
     pub passage: Option<(u8, u8)>,
     /// Which way its passage leads: right when Blob can stand beside the
     /// tile on its left and walk into it, left when he can on its right. On
@@ -252,10 +252,10 @@ pub struct Room {
     /// Its solid cells, a bit per cell: bit `col` of `solid[row]`, rows from
     /// the top of the play area.
     pub solid: [u32; 18],
-    /// Its lift cells, the same way: a lift only ever carries Blob up.
+    /// Its vacuum tube cells, the same way: a vacuum tube only ever carries Blob up.
     pub lift: [u32; 18],
-    /// The part (doors shut) Blob can reach its wall passage from, and the
-    /// part its teleporter booth is in.
+    /// The part (doors shut) Blob can reach its secret passage from, and the
+    /// part its teleport is in.
     pub passage_part: u8,
     pub booth_part: u8,
     /// The spot of its security door's marker, as the game keeps it (x, y),
@@ -268,21 +268,21 @@ pub fn marker_cell(x: u8, y: u8) -> (u8, u8) {
     (0x18 - ((y as u16 + 1) >> 3) as u8, x >> 3)
 }
 
-/// The marker a wall passage's tile leaves: touching it while walking left or
+/// The marker a secret passage's tile leaves: touching it while walking left or
 /// right takes Blob into the room beside, to that room's own passage marker.
 const PASSAGE: u8 = 0x0F;
 
 /// The marker a security door's tile leaves.
 const DOOR: u8 = 0;
 
-/// The attributes of a lift's cells, bright with green paper and used for
+/// The attributes of a vacuum tube's cells, bright with green paper and used for
 /// nothing else on the planet: standing in one carries Blob up (#10).
 pub const LIFT_ATTRS: [u8; 2] = [0x60, 0x64];
 
-/// The marker a teleporter booth's tile leaves.
+/// The marker a teleport's tile leaves.
 const BOOTH: u8 = 0x0D;
 
-/// The marker a teleporter pad's tile leaves, one on each side of the pad's
+/// The marker a space lock's tile leaves, one on each side of the lock's
 /// own column, which stands one cell wide and three tall in a gap and is
 /// blanked, once, when Blob touches it carrying item `0x10`. Found on
 /// 2026-09-15 by walking Blob into the pads on the player's tape (#40).
@@ -449,7 +449,7 @@ struct Port {
 
 /// The stretches of a room's edge Blob can leave through, in clockwise
 /// order: every place he fits against an edge, joined where they touch and
-/// belong to the same part, and the wall passages on the sides given.
+/// belong to the same part, and the secret passages on the sides given.
 fn ports(room: &Room, passage_left: bool, passage_right: bool) -> Vec<Port> {
     let last_down = (SPOTS_DOWN - 1) as u8;
     let last_across = (SPOTS_ACROSS - 1) as u8;
@@ -583,8 +583,8 @@ impl Known {
     }
 
     /// The fewest steps from `start` to a room in `targets`, a teleport
-    /// counting as one step: walking over known steps, and from a booth in
-    /// `booths` to any other of them. The core room, whose screen a player
+    /// counting as one step: walking over known steps, and from a teleport in
+    /// `teleports` to any other of them. The core room, whose screen a player
     /// walks into from its left and is put back from, counts as reached
     /// from the room to its left once that room is reached. `None` when no
     /// target can be reached; empty when `start` is one.
@@ -658,16 +658,16 @@ fn open_part(room: &Room, shut: u8) -> u8 {
 }
 
 /// Where Blob can be on the planet: a room, and the part of it he is in,
-/// with its doors and teleporter pads open (#10).
+/// with its doors and space locks open (#10).
 pub type Place = (u16, u8);
 
 /// The planet as the map reads it, for level 5 (#10): every place, and the
 /// places a step leads to from each. Two rooms join where both have a place
 /// for Blob at the same spot on their shared edge, both ways and in every
 /// direction, since level 5 assumes Blob can fly everywhere and leaves the
-/// logistics to the player (decision 5), except down through a lift, which
-/// only ever goes up; and where their wall passages lead to each other.
-/// Doors and teleporter pads count as open, and the core room is reached
+/// logistics to the player (decision 5), except down through a vacuum tube, which
+/// only ever goes up; and where their secret passages lead to each other.
+/// Doors and space locks count as open, and the core room is reached
 /// from the room to its left.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Graph {
@@ -680,7 +680,7 @@ pub struct Graph {
 }
 
 /// A room with a security door, as [`Graph::first_door`] needs it: its parts
-/// with the door shut, the ones its booth and its wall passage are in, and
+/// with the door shut, the ones its teleport and its secret passage are in, and
 /// the rooms its passage leads to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Door {
@@ -766,7 +766,7 @@ impl Graph {
                         (room + COLS, below.open.at(FIRST_ROW, c)),
                         (room, r.open.at(LAST_ROW - 1, c)),
                     );
-                    // Up always; down only where no lift stands at the edge.
+                    // Up always; down only where no vacuum tube stands at the edge.
                     join(up, down, false);
                     if !(lift(r, 16, c) || lift(r, 17, c) || lift(below, 0, c) || lift(below, 1, c))
                     {
@@ -924,8 +924,8 @@ impl Graph {
 
     /// The fewest steps from `start` to a room in `targets` or a place in
     /// `places` over the whole map (level 5, #10), a teleport counting as
-    /// one: the graph's ways, and a jump from a booth in a room in `booths`
-    /// to another such booth. `start` with part 0 starts from every place
+    /// one: the graph's ways, and a jump from a teleport in a room in `teleports`
+    /// to another such teleport. `start` with part 0 starts from every place
     /// in its room. `None` when no target can be reached; empty when
     /// `start` is at one.
     #[must_use]
@@ -1172,7 +1172,7 @@ mod tests {
         assert_eq!(r.door, Some((96, 87)), "the first door marker's spot (#80)");
     }
 
-    /// Room 190: a teleporter pad, one cell wide and three tall, closing the
+    /// Room 190: a space lock, one cell wide and three tall, closing the
     /// only gap between the halves; its two markers sit either side of it.
     #[test]
     fn a_teleporter_pad_in_the_only_gap_makes_a_door() {
@@ -1295,7 +1295,7 @@ mod tests {
         assert!(drawn.iter().any(|l| l.contains('D')), "{drawn:?}");
     }
 
-    /// A room walled all round with a wall passage's tile at screen row 13,
+    /// A room walled all round with a secret passage's tile at screen row 13,
     /// column `col`, and solid cells from `solid_from` to `solid_to` on rows
     /// 12 to 15, so Blob can stand beside the tile on one side only.
     fn passage_room(col: u8, solid_from: usize, solid_to: usize) -> Room {
@@ -1331,7 +1331,7 @@ mod tests {
         assert!(!o[0].left && !o[3].right);
     }
 
-    /// A room read from text, `#` solid, `L` a lift's cell and anything else
+    /// A room read from text, `#` solid, `L` a vacuum tube's cell and anything else
     /// free, with the markers given.
     fn read_text(lines: &[String], markers: &[(u8, u8, u8)]) -> Room {
         let grid: Vec<Vec<char>> = lines.iter().map(|l| l.chars().collect()).collect();
@@ -1478,7 +1478,7 @@ mod tests {
 
     #[test]
     fn level_5_jumps_between_booths_entered_only() {
-        // Room 0 and room 16, closed all round, each with a booth: the only
+        // Room 0 and room 16, closed all round, each with a teleport: the only
         // way into 16 is the jump.
         let booth = (160, 15, BOOTH);
         let rooms = planet_of(&[

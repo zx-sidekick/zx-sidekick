@@ -94,7 +94,7 @@ pub mod routine {
     pub const QUIT: u16 = 0x60D6;
     /// The top of the play loop, once a frame while Blob is being played.
     pub const MAIN_LOOP: u16 = 0xA523;
-    /// Where the play loop hands over to a security door, a teleporter booth
+    /// Where the play loop hands over to a security door, a teleport
     /// or the pyramid, each of which then runs as a screen of its own.
     pub const MODAL: u16 = 0xA412;
     /// Blob losing a life.
@@ -115,13 +115,13 @@ pub mod routine {
     /// so drawing it again changes only what has changed. With the bytes it
     /// begins with, `LD A,(lives)`, which `sk-check training` checks.
     pub const PANEL: (u16, [u8; 3]) = (0xD428, [0x3A, 0xCC, 0xD2]);
-    /// Where a door's screen makes the three chips of its code, and where
+    /// Where a door's screen makes the three key code cards of its code, and where
     /// that ends (#107). No table holds a door's code: from here the game
     /// XORs the seed ([`super::at::SEED`]), the room ([`super::at::ROOM`])
     /// and BC, which the door's screen sets to [`super::DOOR_CODE_AT`]
     /// before calling the builder at `0xD5FD` (from `0xCC2C`; a pyramid's
     /// screen calls it from `0xCD1F` for two items), brings each of the
-    /// three bytes into the chips' graphics, and leaves them in the code at
+    /// three bytes into the key code cards' graphics, and leaves them in the code at
     /// [`super::at::CODE`]. Found by disassembling the tape on 2026-09-21;
     /// `sk-check facts` checks the bytes at both ends and that every door's
     /// screen shows what this makes.
@@ -131,10 +131,10 @@ pub mod routine {
     pub const ENTER_ROOM: u16 = 0xA426;
     /// Where touching a security door calls [`MODAL`] for the door's screen,
     /// which shows the door's access code (#49). Checked on the player's
-    /// tape by `sk-check facts`; a booth calls it from elsewhere.
+    /// tape by `sk-check facts`; a teleport calls it from elsewhere.
     pub const DOOR_SCREEN: u16 = 0xCBEA;
-    /// A teleporter booth, one of the screens play hands over to. It prints
-    /// the code of the teleporter Blob is standing in.
+    /// A teleport, one of the screens play hands over to. It prints
+    /// the code of the teleport Blob is standing in.
     pub const TELEPORT_BOOTH: u16 = 0xCED4;
     /// Drawing a 2 × 2 graphic: the attribute in A, the character row in B,
     /// the column in C, and the graphic's 32 bytes at HL (see
@@ -152,8 +152,8 @@ pub mod routine {
 pub mod at {
     /// The room Blob is in, a word from 0 to 511.
     pub const ROOM: u16 = 0xD2C8;
-    /// The teleporters: fifteen entries of five letters, the code, then the
-    /// room the teleporter is in as a word.
+    /// The teleports: fifteen entries of five letters, the code, then the
+    /// room the teleport is in as a word.
     pub const TELEPORTER_NAMES: u16 = 0xD036;
     pub const TELEPORTER_COUNT: usize = 15;
     /// The six entity slots, 32 bytes each; slot 0 is Blob, whose position
@@ -165,7 +165,7 @@ pub mod at {
     pub const MARKERS_END: u16 = 0x96FA;
     /// The code the last door or pyramid screen asked for: its column, row
     /// and length, then a (graphic, matched) pair for each item. A security
-    /// door asks for three chips, the pyramid for two (#33, #49).
+    /// door asks for three key code cards, the pyramid for two (#33, #49).
     pub const CODE: u16 = 0xD5F4;
     /// What Blob carries: four slots of two bytes, the item's graphic and
     /// its colour, the graphic 0 in an empty slot. A door's and a pyramid's
@@ -229,11 +229,11 @@ pub mod at {
 }
 
 /// Why a room was entered, as the game keeps it at [`at::ENTRY_REASON`].
-/// Found on 2026-09-15 by typing codes into a booth on the player's tape:
-/// any code that teleports, the booth's own included, leaves
+/// Found on 2026-09-15 by typing codes into a teleport on the player's tape:
+/// any code that teleports, the teleport's own included, leaves
 /// [`entry::TELEPORTED`]; a code not recognised leaves 3.
 pub mod entry {
-    /// Walking in through an edge or a wall passage.
+    /// Walking in through an edge or a secret passage.
     pub const WALKED: u8 = 0;
     /// Arriving by teleport.
     pub const TELEPORTED: u8 = 4;
@@ -314,7 +314,7 @@ pub const DRAIN_DROP: u8 = 0x78;
 /// platform bar below it.
 pub const BAR_FULL: u8 = 0x7F;
 
-/// The marker a teleporter booth's tile leaves in its room.
+/// The marker a teleport's tile leaves in its room.
 pub const BOOTH_MARKER: u8 = 0x0D;
 
 /// The marker a security door's tile leaves in its room.
@@ -322,10 +322,10 @@ pub const DOOR_MARKER: u8 = 0x00;
 
 /// BC as a door's screen calls the code builder with it (`0xCC27`): the row
 /// and column the code is drawn at, which the builder also mixes into the
-/// chips ([`routine::DOOR_CODE`]).
+/// key code cards ([`routine::DOOR_CODE`]).
 pub const DOOR_CODE_AT: u16 = 0x110B;
 
-/// The marker a deadly patch leaves in its room: touching it is an outright
+/// The marker an impaler leaves in its room: touching it is an outright
 /// death, whatever Blob's energy (#68).
 pub const DANGER_MARKER: u8 = 0x06;
 
@@ -353,7 +353,7 @@ pub const SLOT_X: usize = 5;
 pub const SLOT_Y: usize = 6;
 pub const SLOT_GRAPHIC: usize = 7;
 
-/// A zapper is a force field: four records of eight bytes, the column first
+/// A zap ray is a force field: four records of eight bytes, the column first
 /// and the row second, and a column of zero ends the table (#8).
 pub const FORCE_FIELDS: u16 = 0x9635;
 pub const FORCE_FIELD_REC: usize = 8;
@@ -394,7 +394,7 @@ pub fn font(mem: &[u8]) -> Option<&[u8]> {
     mem.get(usize::from(at::FONT)..usize::from(at::FONT) + 96 * 8)
 }
 
-/// The three chips a security door's screen asked for, by graphic, from the
+/// The three key code cards a security door's screen asked for, by graphic, from the
 /// code in `mem` (the machine's whole 64K), when the last screen was a
 /// door's: a pyramid's code, of two items, is not one.
 #[must_use]
@@ -415,7 +415,7 @@ pub fn inventory(mem: &[u8]) -> [Option<u8>; 4] {
 }
 
 /// The slots of the code the last door's screen asked for that it found
-/// answered, from the matched flag it leaves beside each chip; `None` when
+/// answered, from the matched flag it leaves beside each key code card; `None` when
 /// the last screen was not a door's.
 #[must_use]
 pub fn door_matched(mem: &[u8]) -> Option<[bool; 3]> {
@@ -427,9 +427,9 @@ pub fn door_matched(mem: &[u8]) -> Option<[bool; 3]> {
 /// carries answered.
 pub const MATCHED: u8 = 0x07;
 
-/// Which chips of a door's code are answered by what is `carried`, for the
-/// panel to light (#33). What the items do is the game's: a chip answers
-/// one slot asking for it, the "?" chip ([`Kind::AnyChip`]) one slot left
+/// Which key code cards of a door's code are answered by what is `carried`, for the
+/// panel to light (#33). What the items do is the game's: a key code card answers
+/// one slot asking for it, the "?" card ([`Kind::AnyChip`]) one slot left
 /// over, the card ([`Kind::DoorCard`]) every slot, and a door's screen
 /// takes nothing away. The counting is ours, and `sk-check facts` holds it
 /// against the flags the game's own door screen leaves.
@@ -501,7 +501,7 @@ pub fn read_door_code(machine: &crate::Machine, room: u16) -> Option<[u8; 3]> {
     if !m.call(start.0, end.0, 10_000) {
         return None;
     }
-    // The chips of the code; its place and length are written before the
+    // The key code cards of the code; its place and length are written before the
     // builder gets here, and are not needed.
     let code = usize::from(at::CODE);
     let chips = [m.zx.mem[code + 3], m.zx.mem[code + 5], m.zx.mem[code + 7]];
@@ -511,7 +511,7 @@ pub fn read_door_code(machine: &crate::Machine, room: u16) -> Option<[u8; 3]> {
         .then_some(chips)
 }
 
-/// A teleporter whose booth has been entered: the room it is in and its
+/// A teleport that has been entered: the room it is in and its
 /// code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SeenTeleporter {
@@ -555,7 +555,7 @@ pub fn write_high_scores(mem: &mut [u8], table: &[HighScore; at::HIGH_SCORE_COUN
     }
 }
 
-/// The code of the teleporter in `room`, from the game's table in `mem`
+/// The code of the teleport in `room`, from the game's table in `mem`
 /// (the machine's whole 64K), if there is one there.
 #[must_use]
 pub fn teleporter_code(mem: &[u8], room: u16) -> Option<[u8; 5]> {
@@ -566,8 +566,8 @@ pub fn teleporter_code(mem: &[u8], room: u16) -> Option<[u8; 5]> {
     })
 }
 
-/// Every teleporter on the planet, from the same table, whether or not its
-/// booth has been entered: level 6 tells them all (#66).
+/// Every teleport on the planet, from the same table, whether or not it has
+/// been entered: level 6 tells them all (#66).
 #[must_use]
 pub fn all_teleporters(mem: &[u8]) -> Vec<SeenTeleporter> {
     (0..at::TELEPORTER_COUNT)
@@ -590,7 +590,7 @@ pub fn all_teleporters(mem: &[u8]) -> Vec<SeenTeleporter> {
 pub const END_GAME_KEYS: (usize, u8) = (1, 0x1F);
 
 /// What End this game holds: [`END_GAME_KEYS`], from the top of the play
-/// loop until play hands over to a death or to a door, booth or pyramid
+/// loop until play hands over to a death or to a door, teleport or pyramid
 /// screen, which would read them as letters.
 #[must_use]
 pub fn end_game_hold() -> crate::machine::Hold {
@@ -657,23 +657,23 @@ impl Item {
 /// for it says. Read from the game's own code by way of
 /// `starquake/starquake-recompiled`, which was written from the tape:
 /// the codes a security door and a Cheops pyramid ask for take five
-/// numbered chips, a wildcard and a master key, none of which a door's
-/// screen takes away (`sk-check facts`, #33); the pad key switches a teleporter pad; the packs act the moment
+/// numbered key code cards, a "?" card and the access card, none of which a door's
+/// screen takes away (`sk-check facts`, #33); the key switches a space lock; the packs act the moment
 /// they are picked up; and a pyramid takes anything else in exchange for
 /// a core piece.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
-    /// A numbered chip, `0`, `1`, `2`, `4` or `8`: what a door's code and
-    /// a pyramid's code ask for, one chip answering one slot. A door's
+    /// A numbered key code card, `0`, `1`, `2`, `4` or `8`: what a door's code and
+    /// a pyramid's code ask for, one key code card answering one slot. A door's
     /// screen takes nothing from what is carried (`sk-check facts`, #33);
     /// what a pyramid's does has not been checked.
     Chip(u8),
-    /// The chip that answers any one slot of a code.
+    /// The key code card that answers any one slot of a code.
     AnyChip,
     /// The card that answers every slot of any code, so it opens every
     /// door and every pyramid.
     DoorCard,
-    /// The key that switches the teleporter pads in a room, by being
+    /// The key that switches the space locks in a room, by being
     /// carried onto one.
     PadKey,
     /// A pack: it acts the moment it is picked up, giving a life or
