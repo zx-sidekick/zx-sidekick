@@ -90,6 +90,11 @@ const DIGITS: [[u8; 5]; 10] = [
     [0b111, 0b101, 0b111, 0b101, 0b111],
     [0b111, 0b101, 0b111, 0b001, 0b111],
 ];
+/// The codes' rail is never narrower than this: the width its old
+/// TELEPORTERS heading gave it in the layout #99 approved. Its heading is
+/// TELEPORTS now (#117), and the map beside it keeps the size it had.
+const RAIL_W: f32 = 93.18;
+
 /// A chip of a door's code that nothing carried answers (#33).
 const CODE_DIM: Rgb = [0x3e, 0x6a, 0x66];
 
@@ -770,8 +775,13 @@ impl Panel {
         let door_w = 3.0 * 16.0 * px + 4.0 + 6.0;
         let (tile_w, tile_h) = (5.0 * 8.0 * px + 6.0, 8.0 * px + 6.0);
         // Never narrower than its headings, which are right-aligned to the
-        // panel's margin and would otherwise reach over the map.
-        let width = door_w.max(tile_w).max(self.spaced_width("TELEPORTS"));
+        // panel's margin and would otherwise reach over the map, nor than
+        // the rail #99's layout was approved with, so the map keeps its
+        // size (#117).
+        let width = door_w
+            .max(tile_w)
+            .max(self.spaced_width("TELEPORTS"))
+            .max(RAIL_W);
         // The ones you have been shown, or every one there is at level 6.
         let (seen, doors) = guidance.codes_at(level);
         let mut y = top;
@@ -1794,7 +1804,7 @@ mod tests {
         let left = PICTURE_W + 24.0;
         // A code's pixel at the tests' scale of 2, and the column's width.
         let px = 1.5;
-        let col_w = ((3.0f32 * 16.0 * px + 4.0).max(5.0 * 8.0 * px) + 6.0).max(92.5);
+        let col_w = ((3.0f32 * 16.0 * px + 4.0).max(5.0 * 8.0 * px) + 6.0).max(RAIL_W);
         let map_w = WINDOW_H.mul_add(0.0, WINDOW_W - 24.0) - col_w - 16.0 - left;
         // The map starts under the core's square at every level (#99).
         let square = 3.0 * (16.0 * px + 2.0) + 8.0;
@@ -2009,6 +2019,17 @@ mod tests {
         (y0..y0 + (bh * 2.0) as usize)
             .flat_map(|py| (x0..x0 + (bw * 2.0) as usize).map(move |px| pixels[py * w + px]))
             .collect()
+    }
+
+    #[test]
+    fn the_codes_rail_keeps_the_width_its_layout_was_approved_with() {
+        // The heading was TELEPORTERS when #99's layout was approved; it is
+        // TELEPORTS now (#117), and the rail, and so the map, keep that
+        // width.
+        let mut panel = Panel::new();
+        let old = panel.spaced_width("TELEPORTERS");
+        assert!((old - RAIL_W).abs() < 0.01, "{old} against {RAIL_W}");
+        assert!(panel.spaced_width("TELEPORTS") < RAIL_W);
     }
 
     #[test]
