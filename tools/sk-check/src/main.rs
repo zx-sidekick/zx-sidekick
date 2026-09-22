@@ -725,10 +725,10 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             let z = &m.zx;
             if frame == SETTLED {
                 settled =
-                    [at::ENERGY, at::PLATFORMS, at::GUN, at::LIVES].map(|a| z.mem[usize::from(a)]);
+                    [at::ENERGY, at::BRIDGES, at::LASER, at::LIVES].map(|a| z.mem[usize::from(a)]);
                 lowest = settled;
             }
-            for (i, a) in [at::ENERGY, at::PLATFORMS, at::GUN, at::LIVES]
+            for (i, a) in [at::ENERGY, at::BRIDGES, at::LASER, at::LIVES]
                 .into_iter()
                 .enumerate()
             {
@@ -740,8 +740,8 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             lowest,
             [
                 z.mem[usize::from(at::ENERGY)],
-                z.mem[usize::from(at::PLATFORMS)],
-                z.mem[usize::from(at::GUN)],
+                z.mem[usize::from(at::BRIDGES)],
+                z.mem[usize::from(at::LASER)],
                 z.mem[usize::from(at::LIVES)],
             ],
             settled,
@@ -749,33 +749,46 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     };
     let off = Training::default();
     let (plain_low, plain_end, start) = run(off);
-    let (_, full_end, full_start) = run(Training { full: true, ..off });
-    let (time_low, _, _) = run(Training { time: true, ..off });
+    let (_, full_end, full_start) = run(Training {
+        bridges: true,
+        laser: true,
+        ..off
+    });
+    let (energy_low, _, _) = run(Training {
+        energy: true,
+        ..off
+    });
     let (lives_low, _, _) = run(Training { lives: true, ..off });
-    // Time standing still and no harm from things together: nothing takes
-    // energy at all.
+    // Full energy and no harm from things together: nothing takes energy
+    // at all.
     let (both_low, _, both_start) = run(Training {
-        time: true,
+        energy: true,
         unharmed: true,
         ..off
     });
     // Off changes nothing; on holds what its switch names.
     let plain_drains = plain_low[0] < start[0];
     let full_holds = full_end[1] >= full_start[1] && full_end[2] >= full_start[2];
-    // The bars run down first, then the switch goes on (#104): the run
-    // above starts with them full, so it cannot tell holding from filling.
-    // Blob lays platforms and fires until both are empty, with time
-    // standing still and no harm from enemies so that he lives through it.
-    let (emptied, filled, shown) = {
+    let energy_holds = energy_low[0] >= sidekick::starquake::BAR_FULL;
+    // Each bar run down in play first, then its switch goes on (#104,
+    // #116): the runs above start with the bars full, so they cannot tell
+    // holding from filling. Blob lays bridging platforms and fires until
+    // both bars are empty, with full energy and no harm from enemies so
+    // that he lives through it; then with only no harm on, time takes
+    // energy. Each switch alone must then fill its own bar a frame later,
+    // leave the other two as they were, and a few frames on the panel must
+    // show what the game's own panel routine draws for what is there.
+    let bars_at = [at::ENERGY, at::BRIDGES, at::LASER];
+    let bars = |m: &Machine| bars_at.map(|a| m.zx.mem[usize::from(a)]);
+    let run_down = {
         let mut m = base.clone();
         m.training = Training {
-            time: true,
+            energy: true,
             unharmed: true,
             ..off
         };
-        let bars = |m: &Machine| [at::PLATFORMS, at::GUN].map(|a| m.zx.mem[usize::from(a)]);
         for frame in 0..4000u32 {
-            if bars(&m) == [0, 0] {
+            if bars(&m)[1..] == [0, 0] {
                 break;
             }
             m.zx.release_all_keys();
@@ -786,30 +799,108 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             };
             m.run_frame();
         }
-        let emptied = bars(&m);
         m.zx.kempston = 0;
-        m.training = Training { full: true, ..off };
+        m.training = Training {
+            unharmed: true,
+            ..off
+        };
+        for _ in 0..400 {
+            if bars(&m)[0] < sidekick::starquake::BAR_FULL {
+                break;
+            }
+            m.run_frame();
+        }
+        m
+    };
+    let emptied = bars(&run_down);
+    let fills: Vec<(&str, [u8; 3], bool)> = [
+        (
+            "full energy",
+            Training {
+                energy: true,
+                ..off
+            },
+        ),
+        (
+            "full bridging platforms",
+            Training {
+                bridges: true,
+                ..off
+            },
+        ),
+        ("full laser", Training { laser: true, ..off }),
+    ]
+    .into_iter()
+    .map(|(name, switch)| {
+        let mut m = run_down.clone();
+        m.training = switch;
         m.run_frame();
         let filled = bars(&m);
-        // The game draws a bar only where it changes it, so the panel is
-        // drawn again at the top of the play loop: a few frames on, it shows
-        // what the game's own panel routine draws for what is there now.
         for _ in 0..3 {
             m.run_frame();
         }
         let mut drawn = m.clone();
         drawn.call(routine::PANEL.0, 0, 1_000_000);
         let panel = |m: &Machine| m.zx.mem[0x4000..0x4800].to_vec();
-        (emptied, filled, panel(&m) == panel(&drawn))
+        (name, filled, panel(&m) == panel(&drawn))
+    })
+    .collect();
+    // Once full, a kept bar is never taken from (#116): with the three Full
+    // switches on, Blob fires and lays bridging platforms, and at no
+    // instruction of any frame does a bar fall below full, though the game
+    // goes to take from them. Filling a bar back after each frame instead
+    // left it drawn short for a frame every time, which the player sees as
+    // a flicker.
+    let (takes, dipped) = {
+        let mut m = run_down.clone();
+        m.training = Training {
+            energy: true,
+            bridges: true,
+            laser: true,
+            unharmed: true,
+            ..off
+        };
+        m.run_frame();
+        let (mut takes, mut dipped) = (0u32, 0u32);
+        for frame in 0..600u32 {
+            m.zx.release_all_keys();
+            m.zx.kempston = if frame % 2 == 0 {
+                JOY_DOWN | JOY_FIRE
+            } else {
+                0
+            };
+            let mut low = false;
+            m.run_frame_observing(|z| {
+                if z.pc() == decide::BAR_TAKE.0 {
+                    takes += 1;
+                }
+                low |= bars_at
+                    .iter()
+                    .any(|&a| z.mem[usize::from(a)] < sidekick::starquake::BAR_FULL);
+            });
+            dipped += u32::from(low);
+        }
+        (takes, dipped)
     };
-    let full_fills =
-        emptied == [0, 0] && filled.iter().all(|&v| v >= sidekick::starquake::BAR_FULL) && shown;
-    let time_holds = time_low[0] > plain_low[0];
+    let never_short = takes > 0 && dipped == 0;
+    let full_fills = emptied[0] < sidekick::starquake::BAR_FULL
+        && emptied[1..] == [0, 0]
+        && fills.iter().enumerate().all(|(i, (_, filled, shown))| {
+            *shown
+                && (0..3).all(|b| {
+                    if b == i {
+                        filled[b] >= sidekick::starquake::BAR_FULL
+                    } else {
+                        // Time may take a drop from energy in that frame.
+                        filled[b] <= emptied[b] && (b == 0 || filled[b] == emptied[b])
+                    }
+                })
+        });
     let lives_hold = lives_low[3] >= start[3] && plain_low[3] < start[3];
     let nothing_drains = both_low[0] >= both_start[0];
     // The outright deaths (#68). Each case enters a room on a copy, stands
     // Blob on what kills there and watches for the death routine, with no
-    // harm from enemies off and on; time stands still in both runs so the
+    // harm from enemies off and on; full energy is on in both runs so the
     // energy death cannot be what ends them. A room is chosen for one case
     // only when it holds none of the other two dangers, so that what kills
     // with the switch off is the danger under test.
@@ -817,7 +908,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         let mut m = base.clone();
         m.training = Training {
             unharmed,
-            time: true,
+            energy: true,
             ..Training::default()
         };
         m.zx.write16(at::ROOM, room);
@@ -989,18 +1080,22 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         }
     }
     let pickups_hold = pickups.len() == 6 && pickups.iter().all(|&(_, on)| on);
-    // And the three instructions the switch steers, and the panel routine
-    // full gun and platforms has the game run, are where the facts say.
+    // And the three instructions no harm from enemies steers, the panel
+    // routine a Full switch has the game run, and the instruction the Full
+    // switches steer with the RET they go on from, are where the facts say.
     let at_hand =
         |a: u16, bytes: &[u8]| &base.zx.mem[usize::from(a)..usize::from(a) + bytes.len()] == bytes;
     let decides = at_hand(decide::ENEMY_KILL.0, &decide::ENEMY_KILL.1)
         && at_hand(decide::PATCH_KILL.0, &decide::PATCH_KILL.1)
         && at_hand(decide::FIELD_KILL.0, &decide::FIELD_KILL.1)
-        && at_hand(routine::PANEL.0, &routine::PANEL.1);
+        && at_hand(routine::PANEL.0, &routine::PANEL.1)
+        && at_hand(decide::BAR_TAKE.0, &decide::BAR_TAKE.1)
+        && at_hand(decide::BAR_TAKE_END.0, &decide::BAR_TAKE_END.1);
     let good = plain_drains
         && full_holds
         && full_fills
-        && time_holds
+        && never_short
+        && energy_holds
         && lives_hold
         && nothing_drains
         && things_hold
@@ -1009,38 +1104,50 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         && pickups_hold
         && decides;
     println!(
-        "  training over {frames} frames: with none, energy fell to {} of {}; full bars ended at {} and {} of {} and {}; time standing still left energy at {} or better; endless lives never went below {} where a plain run fell to {} {}",
+        "  training over {frames} frames: with none, energy fell to {} of {}; full bridging platforms and full laser ended at {} and {} of {} and {}; full energy never let energy below {}; endless lives never went below {} where a plain run fell to {} {}",
         plain_low[0],
         start[0],
         full_end[1],
         full_end[2],
         full_start[1],
         full_start[2],
-        time_low[0],
+        energy_low[0],
         lives_low[3],
         plain_low[3],
         if good { "ok" } else { "FAILED" }
     );
     println!(
-        "  full gun and platforms switched on with both bars run down to {} and {}: a frame later {} and {} of {}, and the panel {} {}",
+        "  the bars run down in play to energy {}, bridging platforms {} and laser {}: {} {}",
         emptied[0],
         emptied[1],
-        filled[0],
-        filled[1],
-        sidekick::starquake::BAR_FULL,
-        if shown {
-            "drawn as the game draws them"
-        } else {
-            "still showing them as they were"
-        },
+        emptied[2],
+        fills
+            .iter()
+            .map(|(name, filled, shown)| format!(
+                "{name} a frame later {} {} {}, and the panel {}",
+                filled[0],
+                filled[1],
+                filled[2],
+                if *shown {
+                    "drawn as the game draws it"
+                } else {
+                    "still showing it as it was"
+                }
+            ))
+            .collect::<Vec<_>>()
+            .join("; "),
         if full_fills { "ok" } else { "FAILED" }
     );
     println!(
-        "  time standing still and no harm together: energy never below {} of {}",
+        "  with the three Full switches on over 600 frames of firing and laying bridging platforms, the game went to take from a bar {takes} times and a bar fell below full in {dipped} frames {}",
+        if never_short { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  full energy and no harm together: energy never below {} of {}",
         both_low[0], both_start[0]
     );
     println!(
-        "  with every switch off the play ends as the game left it: energy {}, platforms {}, gun {}, lives {}",
+        "  with every switch off the play ends as the game left it: energy {}, bridging platforms {}, laser {}, lives {}",
         plain_end[0], plain_end[1], plain_end[2], plain_end[3]
     );
     let rooms = |cases: &[(u16, bool)]| {
@@ -1082,7 +1189,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         if pickups_hold { "ok" } else { "FAILED" }
     );
     println!(
-        "  the three instructions the switch steers, and where the panel is drawn from, are on the tape as recorded {}",
+        "  the three instructions no harm from enemies steers, where the panel is drawn from, and where a bar is taken from and its routine returns, are on the tape as recorded {}",
         if decides { "ok" } else { "FAILED" }
     );
     good

@@ -291,7 +291,7 @@ mod tests {
         let training = Record {
             highest: 2,
             training: Training {
-                time: true,
+                energy: true,
                 ..Training::default()
             },
         };

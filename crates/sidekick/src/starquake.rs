@@ -198,11 +198,12 @@ pub mod at {
     /// Blob's energy, 127 as play starts, falling by 4 whenever the drain
     /// counter reaches [`super::DRAIN_DROP`] (#8).
     pub const ENERGY: u16 = 0xD2CD;
-    /// How full the platform bar and the gun bar are: one falls as Blob
-    /// lays platforms, the other by one a shot (#8). The platform bar is 50
-    /// as play starts and the gun [`super::BAR_FULL`] (#104).
-    pub const PLATFORMS: u16 = 0xD2CE;
-    pub const GUN: u16 = 0xD2CF;
+    /// How full the bridging platform bar and the laser bar are, in the
+    /// manual's words (#116): one falls as Blob lays bridging platforms, the
+    /// other by one a shot (#8). The bridging platform bar is 50 as play
+    /// starts and the laser [`super::BAR_FULL`] (#104).
+    pub const BRIDGES: u16 = 0xD2CE;
+    pub const LASER: u16 = 0xD2CF;
     /// The drain counter in Blob's slot (offset `0x18`): it rises by one a
     /// frame, and touching an enemy pushes it on, so energy falls far
     /// faster on contact than by time alone (#8).
@@ -308,10 +309,10 @@ pub fn all_rooms(machine: &crate::Machine) -> Vec<crate::map::Room> {
 /// What the drain counter reaches before energy falls by four (#8).
 pub const DRAIN_DROP: u8 = 0x78;
 
-/// A full bar: energy, the platforms and the gun (#104). The panel draws the
+/// A full bar: energy, the bridging platforms and the laser (#104). The panel draws the
 /// three bars in one loop from `0xD463`, and any bar above this it sets back
-/// to it (`CP 7F`, `LD (HL),7F`); energy and the gun start at it, the
-/// platform bar below it.
+/// to it (`CP 7F`, `LD (HL),7F`); energy and the laser start at it, the
+/// bridging platform bar below it.
 pub const BAR_FULL: u8 = 0x7F;
 
 /// The marker a teleport's tile leaves in its room.
@@ -385,6 +386,20 @@ pub mod decide {
     /// flag set as the call is reached, it is not made, and `OR A` next
     /// sets the flags afresh from A.
     pub const FIELD_KILL: (u16, [u8; 3]) = (0xA56A, [0xC4, 0x50, 0xC3]);
+    /// `SUB C` in the routine that takes from a bar (#116), `0xD4E9`,
+    /// reached through `0xD41F`: it is called with A the bar (0 energy, 1
+    /// bridging platforms, 2 laser) and C how much to take, points HL at the
+    /// bar from [`super::at::ENERGY`], takes C from it, stopping at zero,
+    /// stores it, and prints the cell where the bar now ends, then returns
+    /// at [`BAR_TAKE_END`]. Nothing is pushed before this instruction, so
+    /// going on from the `RET` there returns to the caller with nothing
+    /// taken and nothing printed. Its four callers (`0xC848` bridging
+    /// platforms, `0xC884` and `0xCA3C` the laser, `0xCB58` the drain
+    /// counter's drop from energy) each load A afresh and set their flags
+    /// again after the call. Found by disassembling the tape on 2026-09-22.
+    pub const BAR_TAKE: (u16, [u8; 3]) = (0xD4F5, [0x91, 0x30, 0x01]);
+    /// The `RET` that ends the routine taking from a bar.
+    pub const BAR_TAKE_END: (u16, [u8; 1]) = (0xD520, [0xC9]);
 }
 
 /// The game's font from `mem` (the machine's whole 64K): 96 letters of
