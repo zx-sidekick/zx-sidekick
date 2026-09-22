@@ -78,7 +78,7 @@ impl Planet {
     /// The rooms reachable from `start` (with Blob's top cell at screen
     /// `row`, `col`) over (room, part) nodes: two rooms join where both have
     /// Blob-sized free cells at the same place on their shared edge, or
-    /// through wall passages. Doors shut, no teleporter, and the core room
+    /// through secret passages. Doors shut, no teleport, and the core room
     /// a dead end.
     #[must_use]
     pub fn reach(&self, start: u16, row: u8, col: u8) -> HashSet<u16> {
@@ -158,13 +158,13 @@ impl Planet {
     }
 }
 
-/// Whether an attribute is a lift's.
+/// Whether an attribute is a vacuum tube's.
 #[must_use]
 pub fn lift(attr: u8) -> bool {
     LIFT_ATTRS.contains(&attr)
 }
 
-/// A room's cells as text, `#` solid and `.` free, `=` a lift, one line a
+/// A room's cells as text, `#` solid and `.` free, `=` a vacuum tube, one line a
 /// row.
 #[must_use]
 pub fn draw(cells: &Cells) -> Vec<String> {

@@ -8,7 +8,7 @@ use crate::search::Exit;
 /// One room the search reached.
 #[derive(Clone, Debug, Default)]
 pub struct Record {
-    /// Whether a door, booth or pyramid screen opened somewhere in it.
+    /// Whether a door, teleport or pyramid screen opened somewhere in it.
     pub modal: bool,
     pub exits: Vec<Exit>,
 }

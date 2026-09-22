@@ -1,6 +1,6 @@
 //! Following the game from what it does: which part of the program is
 //! running, from the entry points it arrives at, passed on to the guidance
-//! panel so it knows when a game starts and ends; and the teleporter booths
+//! panel so it knows when a game starts and ends; and the teleports
 //! entered and the security door codes seen, for level 1 (#4, #49).
 
 use sidekick::map::{Graph, Known, Place, RoomSet, Step};
@@ -27,7 +27,7 @@ pub enum Scene {
 }
 
 /// The routines whose arrival tells the tracker something: which scene the
-/// program is in, a new game, a teleporter booth entered, and a security
+/// program is in, a new game, a teleport entered, and a security
 /// door's screen opened; and the game quitting, which the window closes
 /// the program on (#90).
 pub const WATCH: [u16; 9] = [
@@ -45,7 +45,7 @@ pub const WATCH: [u16; 9] = [
 #[derive(Default)]
 pub struct Tracker {
     pub scene: Scene,
-    /// The booths entered this game, in the order they were entered.
+    /// The teleports entered this game, in the order they were entered.
     seen: Vec<SeenTeleporter>,
     /// The connections walked this game (#9).
     known: Known,
@@ -71,7 +71,7 @@ impl Tracker {
     /// Takes in one watched routine the program arrived at, with the
     /// machine's memory `mem` as it arrived, and tells `guidance` when a game
     /// starts, which begins its record, whether one is being played, and
-    /// which teleporters' booths have been entered and which security doors'
+    /// which teleports have been entered and which security doors'
     /// codes have been seen. The codes are forgotten
     /// when a new game is set up and on the title screen, which shows none.
     /// Returns the new scene if it changed.
@@ -160,7 +160,7 @@ impl Tracker {
     }
 
     /// Level 6 tells every code, shown or not (#66): once a new game's play
-    /// is under way, the teleporters' from the game's table and each door's
+    /// is under way, the teleports' from the game's table and each door's
     /// from the game's own code builder run on a copy of `machine` (#107),
     /// which takes no time to speak of. Not before: the new game's seed,
     /// which its door codes are made from, is not written until then, and a
@@ -260,7 +260,7 @@ const NEAREST: usize = 3;
 /// connections `known`, to a piece's room, or with `whole`, over the whole
 /// map from that place (#10), to the part of the room a piece is in once
 /// its room has been entered and it has a spot (#50). A teleport between
-/// two of `booths` counts as one step.
+/// two of `teleports` counts as one step.
 fn routes(
     known: &Known,
     whole: Option<(&Graph, Place)>,
@@ -406,7 +406,7 @@ mod tests {
         assert_eq!(t.follow(&[], 0x1234, &mut g), None, "not a watched routine");
     }
 
-    /// Memory with the teleporter table holding `code` for `room`, and Blob
+    /// Memory with the teleport table holding `code` for `room`, and Blob
     /// in `here`.
     fn memory(room: u16, code: &[u8; 5], here: u16) -> Vec<u8> {
         let mut mem = vec![0u8; 0x10000];
@@ -456,7 +456,7 @@ mod tests {
             }],
             "entered twice, seen once"
         );
-        // A booth in a room the table has no teleporter for adds nothing.
+        // A teleport in a room the table has no code for adds nothing.
         t.follow(&memory(300, b"ABCDE", 301), routine::TELEPORT_BOOTH, &mut g);
         assert_eq!(g.teleporters().len(), 1);
         t.follow(&mem, routine::GAME_OVER, &mut g);

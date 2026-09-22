@@ -1,4 +1,4 @@
-//! Rooms as text, side by side: `#` solid, `.` free, `=` a lift, `W` a
+//! Rooms as text, side by side: `#` solid, `.` free, `=` a vacuum tube, `W` a
 //! cell of a wall inside the room as the map reads it, `D` a door's or a
 //! pad's, with the map's openings above; and with
 //! `--png`, each room as the game draws it, `room-N.png` in the assets

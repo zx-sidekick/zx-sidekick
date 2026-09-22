@@ -1,6 +1,6 @@
 //! The whole map from the start: rooms searched as their entries are found,
 //! on several threads, with a report every minute and `exits.txt` written
-//! into the assets folder at the end. Doors and booths stop the search, so
+//! into the assets folder at the end. Doors and teleports stop the search, so
 //! it covers the part of the planet reachable without them.
 //!
 //! `whole <assets-dir> [threads] [minutes] [--full] [--diagonals] [--no-prune] [--no-platforms] [--hold=N]`

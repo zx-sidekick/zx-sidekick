@@ -28,7 +28,7 @@ pub const DRAIN: usize = 0x18;
 /// The built platform: its cell, then a life that runs out after about 160
 /// frames (#10).
 pub const PLATFORM_RECORD: u16 = 0xDBBB;
-/// The attributes of a lift's cells, bright with green paper, used for
+/// The attributes of a vacuum tube's cells, bright with green paper, used for
 /// nothing else on the planet: standing on one carries Blob up (#10).
 pub const LIFT_ATTRS: [u8; 2] = [0x60, 0x64];
 /// Blob's slot in memory, as a byte offset.
@@ -226,9 +226,9 @@ pub fn stand(base: &Machine, room: u16, x: u8, y: u8) -> Option<Machine> {
 }
 
 /// The inventory: four slots of (graphic, colour), which the game consults
-/// at a door or a teleporter pad (#10).
+/// at a door or a space lock (#10).
 pub const INVENTORY: u16 = 0xD2D2;
-/// The eight teleporter pads: (room low byte, flags with the room's high
+/// The eight space locks: (room low byte, flags with the room's high
 /// bit), the low seven bits of the flags cleared once the pad has been
 /// switched with item `0x10` (#10).
 pub const PADS: u16 = 0x95F0;

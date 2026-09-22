@@ -106,48 +106,51 @@ from 0 (none) to 6, each adding to the ones below:
 Levels 0 to 3 show only what you could have written down yourself; 4
 and up tell you things you could not have known.
 
-  Level 1              The codes you have been shown, in a rail down
-                       the panel's right, drawn in the game's own
-                       letters: under TELEPORTERS, the code of every
-                       booth you have entered; under DOORS, the three
-                       chips each security door asked you for, once its
+  Level 1              The codes you have been shown, in a rail down the
+                       panel's right, drawn in the game's own letters:
+                       under TELEPORTS, the code of every teleport you
+                       have entered; under DOORS, the three key code
+                       cards each security door asked you for, once its
                        screen has shown them to you. At the top left,
                        the core's nine slots as a square of three by
-                       three:
-                       what each still wants, what is delivered, and
-                       what you are carrying. A door's code stays
+                       three: what each still wants, what is delivered,
+                       and what you are carrying. A door's code stays
                        hidden until you have seen it, and the codes are
-                       forgotten when a new game starts. A chip of a
+                       forgotten when a new game starts. A card of a
                        door's code is dimmed until something you carry
-                       answers it: that chip, a "?" chip for one that
-                       is missing, or the card for all three. A door
+                       answers it: that card, a "?" card for one that is
+                       missing, or the access card for all three. A door
                        takes nothing from you: what opened it is still
                        yours afterwards.
-  Level 2              A map of the rooms you have walked through:
-                       every edge open or closed, walls inside a room
-                       (dashed where a security door or a teleporter
-                       pad divides it), your room, and the teleporters
-                       you have seen. Each door whose code is in the
-                       rail has a number on it, where it stands in its
-                       room, and the same number beside its code.
+  Level 2              A map of the rooms you have walked through: every
+                       edge open or closed, walls inside a room (dashed
+                       where a security door or a space lock divides
+                       it), your room, and the teleports you have seen.
+                       Each door whose code is in the rail has a number
+                       on it, where it stands in its room, and the same
+                       number beside its code.
   Level 3              What you have seen lying in those rooms, each
                        drawn as what it does:
 
                          a disc with 0, 1, 2, 4 or 8
-                                     a chip, which answers that number
-                                     in a door's or a pyramid's code
+                                     a key code card, which answers
+                                     that number in a door's or a
+                                     trading pyramid's code
                          a disc with ?
-                                     a chip that answers any one number
-                         a card      opens any door and any pyramid
-                         a key       switches the teleporter pads in the
-                                     room you carry it into
-                         a ring      a pyramid takes it in exchange for
-                                     one of the core's missing pieces
+                                     a key code card that answers any
+                                     one number
+                         a card      the access card: opens any door
+                                     and any trading pyramid
+                         a key       opens the space locks in the room
+                                     you carry it into
+                         a ring      a trading pyramid takes it in
+                                     exchange for one of the core's
+                                     missing pieces
 
-                       The colour says what a thing is for: lilac for
-                       a door (the chips and the card), yellow the
-                       key, white the ring. A piece the core still
-                       wants is drawn as itself, in pink. What you
+                       The colour says what a thing is for: lilac for a
+                       door (the key code cards and the access card),
+                       yellow the key, white the ring. A piece the core
+                       still wants is drawn as itself, in pink. What you
                        carry is not drawn: it is with you.
   Level 4              The same for the rooms you have never walked
                        through. The game puts every item out at the
@@ -157,24 +160,24 @@ and up tell you things you could not have known.
   Level 5              A route to a missing piece, and one to the core
                        while you carry a piece it needs. Each is a line
                        on the map and an arrow in the border the way to
-                       leave the room, marked "item" or "core": pink
-                       to the piece, orange to the core, as the legend
+                       leave the room, marked "item" or "core": pink to
+                       the piece, orange to the core, as the legend
                        beside the core's slots says. The code a route
-                       needs next, a teleporter's to select or a
-                       security door's to bring the chips for, is
-                       outlined in the rail in the route's colour. A
-                       door's code can only be outlined once you have
-                       seen it; what that door still wants is ringed
-                       on the map in the route's colour where it lies,
-                       the "?" chips and cards that would do instead
-                       included. The routes run over
-                       the whole map, dashed through rooms you have not
-                       visited, and once you have been in a piece's
-                       room, to the side of the room it lies in. They
-                       assume you can fly everywhere, that doors and
-                       tubes work, and that lifts only go up: getting
-                       the items and the battery for that is up to you.
-  Level 6              Everything the program knows: every teleporter
+                       needs next, a teleport's to select or a security
+                       door's to bring the cards for, is outlined in the
+                       rail in the route's colour. A door's code can
+                       only be outlined once you have seen it; what that
+                       door still wants is ringed on the map in the
+                       route's colour where it lies, the "?" cards and
+                       access cards that would do instead included. The
+                       routes run over the whole map, dashed through
+                       rooms you have not visited, and once you have
+                       been in a piece's room, to the side of the room
+                       it lies in. They assume you can fly everywhere,
+                       that doors and space locks open, and that vacuum
+                       tubes only go up: getting the items and the
+                       energy for that is up to you.
+  Level 6              Everything the program knows: every teleport
                        and door code whether you have been shown it or
                        not, and the whole planet's map, the rooms you
                        have never entered drawn dimmer.
@@ -188,9 +191,9 @@ and up tell you things you could not have known.
                                                 up and never run down
                          Endless lives          losing a life does not
                                                 cost one
-                         No harm from enemies   enemies, deadly patches
-                                                and zappers cost no
-                                                energy and cannot kill
+                         No harm from enemies   enemies, impalers and
+                                                zap rays cost no energy
+                                                and cannot kill
 
   F11                  Leave fullscreen, or go back to it. The game
                        starts fullscreen; the window it leaves you with

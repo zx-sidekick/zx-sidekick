@@ -1,5 +1,5 @@
 //! Every attribute value used in the play area across all 512 rooms, how
-//! many cells hold each, and the rooms holding lift cells.
+//! many cells hold each, and the rooms holding vacuum tube cells.
 //!
 //! `survey <assets-dir>`
 

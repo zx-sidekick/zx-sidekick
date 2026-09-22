@@ -100,8 +100,8 @@ pub struct Training {
     pub lives: bool,
     /// Touching an enemy costs no energy: the push it gives the counter is
     /// taken back, so only time takes energy. And nothing kills outright
-    /// (#68): the things that kill on touch, the deadly patches and the
-    /// zappers are steered past their kill at the instruction the game
+    /// (#68): the things that kill on touch, the impalers and the
+    /// zap rays are steered past their kill at the instruction the game
     /// decides each with, [`starquake::decide`], with nothing written into
     /// the game.
     pub unharmed: bool,
@@ -1042,7 +1042,7 @@ mod tests {
     #[test]
     fn every_other_marker_is_left_as_it_is_with_no_harm_on() {
         // The compare is reached for every marker Blob touches, an item
-        // (kinds from 0x14) or a hover pad (0x0C) included, and those must
+        // (kinds from 0x14) or a flying platform (0x0C) included, and those must
         // still be what they are (#68, found playing).
         let (at, cp) = starquake::decide::PATCH_KILL;
         for kind in [0x0C, 0x0D, 0x0E, 0x14, 0x20] {
