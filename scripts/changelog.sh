@@ -8,8 +8,9 @@
 #
 # A release (vX.Y.Z) lists everything since the release before it; a
 # candidate (vX.Y.Z-rc.N) lists what is new since the tag before it, release
-# or candidate. CHANGELOG.md has a section for each release, newest first:
-# a candidate's changes are in the release it led to.
+# or candidate; either oldest first. CHANGELOG.md has a section for each
+# release, the newest release first: a candidate's changes are in the release
+# it led to.
 set -euo pipefail
 
 REPO="https://github.com/zx-sidekick/zx-sidekick-starquake"
@@ -34,12 +35,13 @@ since() {
   echo "$prev"
 }
 
-# The commits in $1's list, newest first, one Markdown line each, with the
+# The commits in $1's list, oldest first, in the order they were merged, as
+# GitHub's own release notes list them, one Markdown line each, with the
 # pull request's number linked.
 list() {
   local tag=$1 from
   from=$(since "$tag")
-  git log --format='%s' "${from:+$from..}$tag" \
+  git log --reverse --format='%s' "${from:+$from..}$tag" \
     | sed -E "s|\(#([0-9]+)\)$|([#\1]($REPO/pull/\1))|; s|^|- |"
 }
 
@@ -57,7 +59,7 @@ cd "$(git rev-parse --show-toplevel)"
 {
   echo "# Changelog"
   echo
-  echo "What changed in each release, from the commit messages: every line is one pull request, squash-merged into \`main\`. Written by \`scripts/changelog.sh\`, which is run when a release is tagged; do not edit it by hand. A release candidate's changes are in the release it led to."
+  echo "What changed in each release, from the commit messages: every line is one pull request, squash-merged into \`main\`, in the order they were merged. Written by \`scripts/changelog.sh\`, which is run when a release is tagged; do not edit it by hand. A release candidate's changes are in the release it led to."
   while read -r tag; do
     is_release "$tag" || continue
     echo
