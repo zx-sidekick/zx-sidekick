@@ -184,8 +184,8 @@ and up tell you things you could not have known.
                          Time stands still      energy drains only
                                                 when something touches
                                                 you
-                         Full gun and platforms those two bars never
-                                                run down
+                         Full gun and platforms those two bars fill
+                                                up and never run down
                          Endless lives          losing a life does not
                                                 cost one
                          No harm from enemies   enemies, deadly patches

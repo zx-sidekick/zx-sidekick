@@ -76,7 +76,7 @@ pub struct Machine {
     /// Whether the pause key was down at the last pause read.
     pause_was_down: bool,
     /// Training mode's switches (#8): what the machine holds still for the
-    /// player. Each puts back, after a frame, something the game took.
+    /// player. Each puts back, or fills, after a frame, what the game took.
     pub training: Training,
 }
 
@@ -87,7 +87,8 @@ pub struct Training {
     /// Time stands still: the drain counter's one-a-frame rise is undone,
     /// so energy falls only on contact with something.
     pub time: bool,
-    /// The gun and the platforms stay full, however many are used.
+    /// The gun and the platforms are full, however many are used: filled
+    /// when the switch goes on, and kept there (#104).
     pub full: bool,
     /// The lives left never fall, and the panel's digit with them.
     pub lives: bool,
@@ -104,8 +105,6 @@ pub struct Training {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Held {
     drain: u8,
-    platforms: u8,
-    gun: u8,
     lives: u8,
     digit: u8,
 }
@@ -126,8 +125,6 @@ impl Training {
         let at = |a: u16| z.mem[usize::from(a)];
         Held {
             drain: at(starquake::at::DRAIN),
-            platforms: at(starquake::at::PLATFORMS),
-            gun: at(starquake::at::GUN),
             lives: at(starquake::at::LIVES),
             digit: at(starquake::at::LIVES_DIGIT),
         }
@@ -165,11 +162,14 @@ impl Training {
         if held != now {
             put(z, starquake::at::DRAIN, held);
         }
+        // Full is what the panel draws a bar up to (#104), so a bar the
+        // switch finds run down is filled, one used is filled again, and one
+        // a pack took higher is left there.
         if self.full {
-            let platforms = before.platforms.max(at(z, starquake::at::PLATFORMS));
-            let gun = before.gun.max(at(z, starquake::at::GUN));
-            put(z, starquake::at::PLATFORMS, platforms);
-            put(z, starquake::at::GUN, gun);
+            for a in [starquake::at::PLATFORMS, starquake::at::GUN] {
+                let v = at(z, a).max(starquake::BAR_FULL);
+                put(z, a, v);
+            }
         }
         if self.lives && at(z, starquake::at::LIVES) < before.lives {
             put(z, starquake::at::LIVES, before.lives);
@@ -621,8 +621,25 @@ mod tests {
     }
 
     #[test]
-    fn a_full_gun_and_platforms_never_fall() {
+    fn full_gun_and_platforms_fills_an_empty_bar() {
+        // The switch goes on with the platform bar run down and the gun
+        // empty (#104): the next frame both are full.
         let mut z = watched(10);
+        let training = Training {
+            full: true,
+            ..Training::default()
+        };
+        z.mem[usize::from(starquake::at::PLATFORMS)] = 0;
+        z.mem[usize::from(starquake::at::GUN)] = 0;
+        let before = training.read(&z);
+        training.hold(&mut z, before);
+        assert_eq!(at(&z, starquake::at::PLATFORMS), starquake::BAR_FULL);
+        assert_eq!(at(&z, starquake::at::GUN), starquake::BAR_FULL);
+    }
+
+    #[test]
+    fn a_full_gun_and_platforms_never_fall() {
+        let mut z = watched(starquake::BAR_FULL);
         let training = Training {
             full: true,
             ..Training::default()
@@ -631,12 +648,13 @@ mod tests {
         z.mem[usize::from(starquake::at::PLATFORMS)] = 4;
         z.mem[usize::from(starquake::at::GUN)] = 0;
         training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::PLATFORMS), 10);
-        assert_eq!(at(&z, starquake::at::GUN), 10);
-        // A pack that fills them further is kept.
-        z.mem[usize::from(starquake::at::GUN)] = 30;
+        assert_eq!(at(&z, starquake::at::PLATFORMS), starquake::BAR_FULL);
+        assert_eq!(at(&z, starquake::at::GUN), starquake::BAR_FULL);
+        // A pack that takes a bar past full is kept, not put back.
+        let before = training.read(&z);
+        z.mem[usize::from(starquake::at::GUN)] = 0x90;
         training.hold(&mut z, before);
-        assert_eq!(at(&z, starquake::at::GUN), 30, "picked up, not put back");
+        assert_eq!(at(&z, starquake::at::GUN), 0x90, "picked up, not put back");
     }
 
     #[test]
