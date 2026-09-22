@@ -108,7 +108,7 @@ pub const SWITCHES: [(Setting, &str, &str); 4] = [
     (
         Setting::Unharmed,
         "No harm from enemies",
-        "Enemies, deadly patches and zappers cost no energy and cannot kill.",
+        "Enemies, impalers and zap rays cost no energy and cannot kill.",
     ),
 ];
 

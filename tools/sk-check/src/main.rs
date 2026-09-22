@@ -1059,7 +1059,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         if things_hold { "ok" } else { "FAILED" }
     );
     println!(
-        "  standing on a deadly patch kills in {} of {} rooms ({}), and with no harm from enemies in {} {}",
+        "  standing on an impaler kills in {} of {} rooms ({}), and with no harm from enemies in {} {}",
         patches.len(),
         patches.len(),
         rooms(&patches),
@@ -1067,7 +1067,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         if patches_hold { "ok" } else { "FAILED" }
     );
     println!(
-        "  standing in a zapper kills in {} of {} rooms ({}), and with no harm from enemies in {} {}",
+        "  standing in a zap ray kills in {} of {} rooms ({}), and with no harm from enemies in {} {}",
         fields.len(),
         fields.len(),
         rooms(&fields),
@@ -1480,14 +1480,14 @@ fn teleporters_check(dir: &Path) -> bool {
             .iter()
             .all(|(room, code)| *room < 512 && code.iter().all(u8::is_ascii_uppercase));
     println!(
-        "  the teleporter table: {} codes in {} rooms {}",
+        "  the teleport table: {} codes in {} rooms {}",
         entries.len(),
         rooms.len(),
         if ok { "ok" } else { "FAILED" }
     );
     let rom = dir.join("48.rom");
     if !rom.exists() {
-        println!("  no 48.rom: the booths were NOT walked into");
+        println!("  no 48.rom: the teleports were NOT walked into");
         return ok;
     }
     // Into play first, as a player would, on a machine with the real ROM,
@@ -1518,7 +1518,7 @@ fn teleporters_check(dir: &Path) -> bool {
             .step_by(3)
             .find(|&a| z.mem[usize::from(a) + 2] == BOOTH_MARKER);
         let Some(marker) = booth else {
-            println!("  room {room} has no booth: FAILED");
+            println!("  room {room} has no teleport: FAILED");
             ok = false;
             continue;
         };
@@ -1587,7 +1587,7 @@ fn teleporters_check(dir: &Path) -> bool {
             }
             let teleported = arrived && reason == sidekick::starquake::entry::TELEPORTED;
             println!(
-                "  typing another booth's code: arrived in room {to} {}, entry reason {reason} {}",
+                "  typing another teleport's code: arrived in room {to} {}, entry reason {reason} {}",
                 if arrived { "yes" } else { "no" },
                 if teleported { "ok" } else { "FAILED" }
             );
@@ -1595,7 +1595,7 @@ fn teleporters_check(dir: &Path) -> bool {
         }
     }
     println!(
-        "  walking into each booth prints its code: {printed_ok} of {} {}",
+        "  walking into each teleport prints its code: {printed_ok} of {} {}",
         entries.len(),
         if printed_ok == entries.len() {
             "ok"
@@ -1677,10 +1677,10 @@ fn door_items_check(dir: &Path) -> bool {
     entered.zx.set_interrupts(true);
     let cases: [(&str, Vec<u8>); 5] = [
         ("nothing", vec![]),
-        ("the three chips", code.to_vec()),
+        ("the three key code cards", code.to_vec()),
         ("two of them", code[..2].to_vec()),
-        ("the card", vec![15]),
-        ("a ? chip and two chips", vec![14, code[1], code[2]]),
+        ("the access card", vec![15]),
+        ("a ? card and two cards", vec![14, code[1], code[2]]),
     ];
     let mut ok = true;
     let mut said = Vec::new();
@@ -1808,7 +1808,7 @@ fn doors_check(dir: &Path) -> bool {
         })
         .collect();
     println!(
-        "  the security doors: {} rooms, each walked into from every door marker, each screen leaving the same code of three chips: {} {}",
+        "  the security doors: {} rooms, each walked into from every door marker, each screen leaving the same code of three key code cards: {} {}",
         rooms.len(),
         list.join(", "),
         if ok { "ok" } else { "FAILED" }
@@ -2233,7 +2233,7 @@ fn passages_check(
         }
     }
     println!(
-        "map: {walked} walks into wall passages, {} pairs of rooms joined by them, {failures} against the map",
+        "map: {walked} walks into secret passages, {} pairs of rooms joined by them, {failures} against the map",
         joined.len()
     );
     failures == 0 && walked > 0

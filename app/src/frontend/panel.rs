@@ -105,7 +105,7 @@ const ADDS: [&str; 7] = [
     "The original game, no help.",
     "The codes you have been shown, and the core's nine slots.",
     "A map of the rooms you have walked through.",
-    "Items seen: pink core piece, lilac door, yellow pad key, white trade.",
+    "Items seen: pink core piece, lilac card, yellow key, white to trade.",
     "And what is lying in the rooms you have not.",
     "Routes: pink to a missing piece, orange to the core.",
     "Every code, the whole planet, and what each room holds.",
@@ -771,11 +771,11 @@ impl Panel {
         let (tile_w, tile_h) = (5.0 * 8.0 * px + 6.0, 8.0 * px + 6.0);
         // Never narrower than its headings, which are right-aligned to the
         // panel's margin and would otherwise reach over the map.
-        let width = door_w.max(tile_w).max(self.spaced_width("TELEPORTERS"));
+        let width = door_w.max(tile_w).max(self.spaced_width("TELEPORTS"));
         // The ones you have been shown, or every one there is at level 6.
         let (seen, doors) = guidance.codes_at(level);
         let mut y = top;
-        self.spaced_right(canvas, right, y, "TELEPORTERS");
+        self.spaced_right(canvas, right, y, "TELEPORTS");
         y += 22.0;
         if seen.is_empty() {
             self.none_yet(canvas, right, y);
