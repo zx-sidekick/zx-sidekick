@@ -386,6 +386,20 @@ pub mod decide {
     /// flag set as the call is reached, it is not made, and `OR A` next
     /// sets the flags afresh from A.
     pub const FIELD_KILL: (u16, [u8; 3]) = (0xA56A, [0xC4, 0x50, 0xC3]);
+    /// `SUB C` in the routine that takes from a bar (#116), `0xD4E9`,
+    /// reached through `0xD41F`: it is called with A the bar (0 energy, 1
+    /// bridging platforms, 2 laser) and C how much to take, points HL at the
+    /// bar from [`super::at::ENERGY`], takes C from it, stopping at zero,
+    /// stores it, and prints the cell where the bar now ends, then returns
+    /// at [`BAR_TAKE_END`]. Nothing is pushed before this instruction, so
+    /// going on from the `RET` there returns to the caller with nothing
+    /// taken and nothing printed. Its four callers (`0xC848` bridging
+    /// platforms, `0xC884` and `0xCA3C` the laser, `0xCB58` the drain
+    /// counter's drop from energy) each load A afresh and set their flags
+    /// again after the call. Found by disassembling the tape on 2026-09-22.
+    pub const BAR_TAKE: (u16, [u8; 3]) = (0xD4F5, [0x91, 0x30, 0x01]);
+    /// The `RET` that ends the routine taking from a bar.
+    pub const BAR_TAKE_END: (u16, [u8; 1]) = (0xD520, [0xC9]);
 }
 
 /// The game's font from `mem` (the machine's whole 64K): 96 letters of

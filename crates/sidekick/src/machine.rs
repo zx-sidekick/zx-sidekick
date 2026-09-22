@@ -165,8 +165,10 @@ impl Training {
             }
         }
         // Full is what the panel draws a bar up to (#104), so a bar its
-        // switch finds run down is filled, one used is filled again, and one
-        // a pack took higher is left there.
+        // switch finds run down is filled, and one a pack took higher is left
+        // there. Once it is full nothing is taken from it again: the game is
+        // kept from taking at the instruction it takes with (keep_bars), so
+        // this only fills a bar the switch found low.
         let mut filled = false;
         for (on, a) in [
             (self.energy, starquake::at::ENERGY),
@@ -183,6 +185,29 @@ impl Training {
             put(z, starquake::at::LIVES_DIGIT, before.digit);
         }
         filled
+    }
+}
+
+/// Keeps a bar whose Full switch is on from being taken from (#116), when
+/// `pc` is where the game takes from a bar ([`starquake::decide::BAR_TAKE`]):
+/// HL points at the bar, and the routine goes on from its `RET` instead, so
+/// nothing is taken and nothing printed. Nothing is written into the game,
+/// and the panel never shows the bar short: filling it back after the
+/// frame, as [`Training::hold`] does, left it drawn short for a frame each
+/// time; making C zero instead printed the full bar's end a notch short,
+/// since only the panel's own loop draws the full end cell.
+fn keep_bars(z: &mut Zx, pc: u16, training: Training) {
+    if pc != starquake::decide::BAR_TAKE.0 {
+        return;
+    }
+    let kept = match z.hl() {
+        starquake::at::ENERGY => training.energy,
+        starquake::at::BRIDGES => training.bridges,
+        starquake::at::LASER => training.laser,
+        _ => false,
+    };
+    if kept {
+        z.set_pc(starquake::decide::BAR_TAKE_END.0);
     }
 }
 
@@ -470,6 +495,7 @@ impl Machine {
             if training.unharmed {
                 survive(z, pc);
             }
+            keep_bars(z, pc, training);
             // The play loop begins with a call, so nothing is carried in a
             // register at its top: the panel is drawn from there, returning
             // to it.
@@ -705,6 +731,49 @@ mod tests {
             0x90,
             "picked up, not put back"
         );
+    }
+
+    #[test]
+    fn a_kept_bar_is_not_taken_from() {
+        // At the instruction where the game takes from a bar, HL points at
+        // it: a bar whose switch is on sends the routine to its RET, so
+        // nothing is taken or printed (#116); every other bar is left to the
+        // game.
+        use starquake::decide::{BAR_TAKE, BAR_TAKE_END};
+        let at_take = |hl: u16, training: Training| {
+            let mut z = watched(10);
+            z.set_pc(BAR_TAKE.0);
+            z.set_hl(hl);
+            keep_bars(&mut z, BAR_TAKE.0, training);
+            z.pc()
+        };
+        let laser = Training {
+            laser: true,
+            ..Training::default()
+        };
+        assert_eq!(at_take(starquake::at::LASER, laser), BAR_TAKE_END.0);
+        assert_eq!(
+            at_take(starquake::at::BRIDGES, laser),
+            BAR_TAKE.0,
+            "not its bar"
+        );
+        assert_eq!(at_take(starquake::at::ENERGY, laser), BAR_TAKE.0);
+        assert_eq!(
+            at_take(starquake::at::LASER, Training::default()),
+            BAR_TAKE.0,
+            "switch off"
+        );
+        let energy = Training {
+            energy: true,
+            ..Training::default()
+        };
+        assert_eq!(at_take(starquake::at::ENERGY, energy), BAR_TAKE_END.0);
+        // Anywhere else nothing is steered.
+        let mut z = watched(10);
+        z.set_pc(0x8000);
+        z.set_hl(starquake::at::LASER);
+        keep_bars(&mut z, 0x8000, laser);
+        assert_eq!(z.pc(), 0x8000);
     }
 
     #[test]

@@ -845,6 +845,44 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         (name, filled, panel(&m) == panel(&drawn))
     })
     .collect();
+    // Once full, a kept bar is never taken from (#116): with the three Full
+    // switches on, Blob fires and lays bridging platforms, and at no
+    // instruction of any frame does a bar fall below full, though the game
+    // goes to take from them. Filling a bar back after each frame instead
+    // left it drawn short for a frame every time, which the player sees as
+    // a flicker.
+    let (takes, dipped) = {
+        let mut m = run_down.clone();
+        m.training = Training {
+            energy: true,
+            bridges: true,
+            laser: true,
+            unharmed: true,
+            ..off
+        };
+        m.run_frame();
+        let (mut takes, mut dipped) = (0u32, 0u32);
+        for frame in 0..600u32 {
+            m.zx.release_all_keys();
+            m.zx.kempston = if frame % 2 == 0 {
+                JOY_DOWN | JOY_FIRE
+            } else {
+                0
+            };
+            let mut low = false;
+            m.run_frame_observing(|z| {
+                if z.pc() == decide::BAR_TAKE.0 {
+                    takes += 1;
+                }
+                low |= bars_at
+                    .iter()
+                    .any(|&a| z.mem[usize::from(a)] < sidekick::starquake::BAR_FULL);
+            });
+            dipped += u32::from(low);
+        }
+        (takes, dipped)
+    };
+    let never_short = takes > 0 && dipped == 0;
     let full_fills = emptied[0] < sidekick::starquake::BAR_FULL
         && emptied[1..] == [0, 0]
         && fills.iter().enumerate().all(|(i, (_, filled, shown))| {
@@ -1042,17 +1080,21 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         }
     }
     let pickups_hold = pickups.len() == 6 && pickups.iter().all(|&(_, on)| on);
-    // And the three instructions the switch steers, and the panel routine
-    // a Full switch has the game run, are where the facts say.
+    // And the three instructions no harm from enemies steers, the panel
+    // routine a Full switch has the game run, and the instruction the Full
+    // switches steer with the RET they go on from, are where the facts say.
     let at_hand =
         |a: u16, bytes: &[u8]| &base.zx.mem[usize::from(a)..usize::from(a) + bytes.len()] == bytes;
     let decides = at_hand(decide::ENEMY_KILL.0, &decide::ENEMY_KILL.1)
         && at_hand(decide::PATCH_KILL.0, &decide::PATCH_KILL.1)
         && at_hand(decide::FIELD_KILL.0, &decide::FIELD_KILL.1)
-        && at_hand(routine::PANEL.0, &routine::PANEL.1);
+        && at_hand(routine::PANEL.0, &routine::PANEL.1)
+        && at_hand(decide::BAR_TAKE.0, &decide::BAR_TAKE.1)
+        && at_hand(decide::BAR_TAKE_END.0, &decide::BAR_TAKE_END.1);
     let good = plain_drains
         && full_holds
         && full_fills
+        && never_short
         && energy_holds
         && lives_hold
         && nothing_drains
@@ -1095,6 +1137,10 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             .collect::<Vec<_>>()
             .join("; "),
         if full_fills { "ok" } else { "FAILED" }
+    );
+    println!(
+        "  with the three Full switches on over 600 frames of firing and laying bridging platforms, the game went to take from a bar {takes} times and a bar fell below full in {dipped} frames {}",
+        if never_short { "ok" } else { "FAILED" }
     );
     println!(
         "  full energy and no harm together: energy never below {} of {}",
@@ -1143,7 +1189,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
         if pickups_hold { "ok" } else { "FAILED" }
     );
     println!(
-        "  the three instructions the switch steers, and where the panel is drawn from, are on the tape as recorded {}",
+        "  the three instructions no harm from enemies steers, where the panel is drawn from, and where a bar is taken from and its routine returns, are on the tape as recorded {}",
         if decides { "ok" } else { "FAILED" }
     );
     good
