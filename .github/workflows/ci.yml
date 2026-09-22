@@ -84,7 +84,7 @@ jobs:
       # SourceForge outage from turning `main` red on an unrelated change.
       - name: Cache the Z80 test corpus
         id: corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             assets/tests.in
