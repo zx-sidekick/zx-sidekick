@@ -1043,7 +1043,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     }
     let pickups_hold = pickups.len() == 6 && pickups.iter().all(|&(_, on)| on);
     // And the three instructions the switch steers, and the panel routine
-    // full gun and platforms has the game run, are where the facts say.
+    // a Full switch has the game run, are where the facts say.
     let at_hand =
         |a: u16, bytes: &[u8]| &base.zx.mem[usize::from(a)..usize::from(a) + bytes.len()] == bytes;
     let decides = at_hand(decide::ENEMY_KILL.0, &decide::ENEMY_KILL.1)

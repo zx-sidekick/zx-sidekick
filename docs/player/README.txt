@@ -182,13 +182,16 @@ and up tell you things you could not have known.
                        not, and the whole planet's map, the rooms you
                        have never entered drawn dimmer.
 
-  Training             Four switches of their own, all off until you
+  Training             Five switches of their own, all off until you
                        turn them on:
-                         Time stands still      energy drains only
-                                                when something touches
-                                                you
-                         Full gun and platforms those two bars fill
-                                                up and never run down
+                         Full energy            the energy bar fills up
+                                                and never runs down
+                         Full bridging platforms
+                                                the bridging platforms
+                                                fill up and never run
+                                                out
+                         Full laser             the laser fills up and
+                                                never runs out
                          Endless lives          losing a life does not
                                                 cost one
                          No harm from enemies   enemies, impalers and

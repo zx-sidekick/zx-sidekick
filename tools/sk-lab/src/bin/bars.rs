@@ -1,7 +1,7 @@
-//! The energy, platform and gun bars (#104): what each holds as play starts,
-//! the panel's loop that draws them and sets one above
-//! [`sidekick::starquake::BAR_FULL`] back to it, and what the platforms and
-//! the gun fall to when Blob lays platforms or fires for a while.
+//! The energy, bridging platform and laser bars (#104, #116): what each
+//! holds as play starts, the panel's loop that draws them and sets one above
+//! [`sidekick::starquake::BAR_FULL`] back to it, and what the bridging
+//! platforms and the laser fall to when Blob lays them or fires for a while.
 //!
 //! `bars <assets-dir> [frames]`
 
@@ -18,7 +18,7 @@ fn main() {
     let base = into_play(&args.tape());
     let bar = |m: &Machine, a: u16| m.zx.mem[usize::from(a)];
     println!(
-        "as play starts: energy {}, platforms {}, gun {}",
+        "as play starts: energy {}, bridging platforms {}, laser {}",
         bar(&base, ENERGY),
         bar(&base, BRIDGES),
         bar(&base, LASER)
