@@ -10,4 +10,4 @@ This project contains no part of the original game and no Spectrum ROM. Everythi
 |---|---|---|
 | `starquake.tap` | Starquake (Bubble Bus, 1985), SHA-1 `65450d6f33692c2c2868c0b497037f2cfd0ef3bd` | every local check |
 | `48.rom` | ZX Spectrum 48K ROM, SHA-1 `5ea7c2b824672e914525d1d5c419d71b84a426a2` | only the check that answering the three ROM calls matches the real ROM (`docs/rom.md`) |
-| `tests.in`, `tests.expected` | The Fuse project's Z80 test corpus (GPL, fetched, never committed) | the processor conformance test |
+| `tests.in`, `tests.expected` | The Fuse project's Z80 test corpus (GPL, fetched, never committed); `scripts/check.sh` also finds it in `SK_ASSETS` | the processor conformance test |

@@ -91,7 +91,7 @@ CI builds and tests everything that needs no game data, on Linux, macOS and Wind
 
 Work lands through tickets on the [ZX Sidekick Starquake board](https://github.com/orgs/zx-sidekick/projects/1) and reviewed pull requests; `CLAUDE.md` describes the flow.
 
-`scripts/check.sh` is the gate; gate on its exit code. Besides what CI runs, it needs the Fuse corpus in `assets/` for the processor conformance test (see `assets/README.md`), `SK_ASSETS` for the checks against the game, and `cargo-deny` and `cargo-about` installed for the dependency policy and `THIRD-PARTY.md`.
+`scripts/check.sh` is the gate; gate on its exit code. Besides what CI runs, it needs the Fuse corpus in `assets/` or in `SK_ASSETS` for the processor conformance test (see `assets/README.md`), `SK_ASSETS` for the checks against the game, and `cargo-deny` and `cargo-about` installed for the dependency policy and `THIRD-PARTY.md`. Without the corpus it fails, unless `SK_NO_FUSE=1` says to skip it; whatever did not run, it names at the end.
 
 CI also checks that the machine and the checks have no frontend dependencies, holds the dependency policy in `deny.toml`, keeps `THIRD-PARTY.md` current, and builds for Intel Macs. `release.yml` builds archives for Linux, macOS and Windows on a version tag, with `docs/player/README.txt` as the player's guide, and opens each release's notes with what changed since the last one, from the commit messages. [`CHANGELOG.md`](CHANGELOG.md) is the same list for every release; `scripts/changelog.sh` writes it, and is run again after each release is tagged.
 

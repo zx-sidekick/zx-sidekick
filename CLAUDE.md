@@ -19,7 +19,9 @@ locally.
   libraries without the frontend, the dependency policy and `THIRD-PARTY.md`,
   the Fuse corpus, and, with `SK_ASSETS` pointing at a folder holding
   `starquake.tap` and `48.rom`, the checks against the game. **Gate on the
-  exit code, never on grepped output.**
+  exit code, never on grepped output.** It fails without the Fuse corpus
+  (`tests.in` and `tests.expected`, in `assets/` or `SK_ASSETS`) unless
+  `SK_NO_FUSE=1`, and ends by naming every check that did not run.
 - `cargo run --release -p sk-check -- entry "$SK_ASSETS"`,
   `… -- rom "$SK_ASSETS" 6000`, `… -- keys "$SK_ASSETS"`,
   `… -- facts "$SK_ASSETS"`, `… -- training "$SK_ASSETS" 900` and
@@ -32,7 +34,9 @@ locally.
   search. They look, `sk-check` proves; none runs in CI or the gate.
 - `cargo test -p zx-spectrum --test fuse -- --nocapture` checks the processor
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
-  `assets/tests.expected`).
+  `assets/tests.expected`, or `FUSE_TESTS` naming the folder that holds
+  them; without them it passes having checked nothing, which is why the gate
+  looks for them itself).
 - `cargo run --release -p zx-sidekick-starquake -- "$SK_ASSETS/starquake.tap"`
   plays it. Add `--headless <frames> <dir> [level]` for screenshots of real play at a guidance level.
 - `cargo about generate --all-features about.hbs -o THIRD-PARTY.md`
