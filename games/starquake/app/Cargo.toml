@@ -14,7 +14,6 @@ sidekick.workspace = true
 sidekick-frontend.workspace = true
 starquake.workspace = true
 zx-core.workspace = true
-zx-spectrum.workspace = true
 # The window's keys, which the guidance panel takes some of; and the message
 # box a fatal startup error goes in, since a program started from a file
 # manager has no console.

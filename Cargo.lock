@@ -2006,7 +2006,6 @@ name = "starquake-lab"
 version = "0.3.0"
 dependencies = [
  "flate2",
- "sidekick",
  "starquake",
  "zx-core",
  "zx-spectrum",
@@ -3030,7 +3029,6 @@ dependencies = [
  "starquake",
  "winit",
  "zx-core",
- "zx-spectrum",
 ]
 
 [[package]]
