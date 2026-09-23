@@ -6,9 +6,9 @@
 //! at (x, y) and holds the input (1 right, 2 left) until the door screen
 //! opens; up to four items by graphic go in his inventory first.
 
-use sk_lab::search::Platforms;
-use sk_lab::{Args, CODE, SEED, carry, into_play, stand};
 use starquake::facts::routine;
+use starquake_lab::search::Platforms;
+use starquake_lab::{Args, CODE, SEED, carry, into_play, stand};
 
 fn main() {
     let args = Args::parse("door <assets-dir> <room> <x> <y> [input] [--carry=G,G,...]");
@@ -30,15 +30,15 @@ fn main() {
     };
     let mut opened = None;
     for f in 0..300 {
-        let hits = sk_lab::frame(&mut m, input, Platforms::Unlimited);
+        let hits = starquake_lab::frame(&mut m, input, Platforms::Unlimited);
         if hits.contains(&routine::MODAL) {
             opened = Some(f);
             break;
         }
-        if sk_lab::room(&m) != room {
+        if starquake_lab::room(&m) != room {
             println!(
                 "room {room}: left for {} before any screen",
-                sk_lab::room(&m)
+                starquake_lab::room(&m)
             );
             return;
         }
@@ -47,12 +47,12 @@ fn main() {
         println!("room {room}: no screen opened in 300 frames from ({x},{y}) holding {input}");
         return;
     };
-    let (bx, by) = sk_lab::blob(&m);
+    let (bx, by) = starquake_lab::blob(&m);
     // The screen runs on: let it, with nothing held, until play resumes.
     m.watch = vec![routine::MAIN_LOOP, routine::DEATH];
     let mut resumed = None;
     for f in 0..3000 {
-        let hits = sk_lab::frame(&mut m, 0, Platforms::Unlimited);
+        let hits = starquake_lab::frame(&mut m, 0, Platforms::Unlimited);
         if hits.contains(&routine::MAIN_LOOP) {
             resumed = Some(f);
             break;
@@ -66,9 +66,9 @@ fn main() {
     let matched: Vec<u8> = (0..usize::from(mem[code + 2]))
         .map(|i| mem[code + 3 + i * 2 + 1])
         .collect();
-    let (nx, ny) = sk_lab::blob(&m);
+    let (nx, ny) = starquake_lab::blob(&m);
     let inventory: Vec<u8> = (0..4)
-        .map(|s| mem[usize::from(sk_lab::INVENTORY) + s * 2])
+        .map(|s| mem[usize::from(starquake_lab::INVENTORY) + s * 2])
         .collect();
     println!("inventory after: {inventory:?}");
     println!(
@@ -77,7 +77,7 @@ fn main() {
         mem[code],
         mem[code + 1],
         resumed.map_or("never".to_string(), |f| format!("after {f} frames")),
-        sk_lab::room(&m),
+        starquake_lab::room(&m),
         if nx == bx {
             ", not moved"
         } else {

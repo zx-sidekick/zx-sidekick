@@ -3,8 +3,8 @@
 //!
 //! `attrs <assets-dir> <room> [first-col] [last-col]`
 
-use sk_lab::rooms::Planet;
-use sk_lab::{Args, into_play};
+use starquake_lab::rooms::Planet;
+use starquake_lab::{Args, into_play};
 
 fn main() {
     let args = Args::parse("attrs <assets-dir> <room> [first-col] [last-col]");

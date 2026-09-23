@@ -17,7 +17,7 @@ commit, inside our own 48K bus (`crates/zx-spectrum`). The ROM-free machine ever
 game runs on is `crates/sidekick`, and the window, sound, input and tape prompt
 every game shows it through are `crates/sidekick-frontend` (#141). Starquake's
 facts, map and rules for the machine are `games/starquake/starquake`, and
-`games/starquake/sk-check` checks them against a real ROM supplied locally.
+`games/starquake/check` checks them against a real ROM supplied locally.
 
 ## Commands
 
@@ -28,16 +28,16 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
   exit code, never on grepped output.** It fails without the Fuse corpus
   (`tests.in` and `tests.expected`, in `assets/` or `SK_ASSETS`) unless
   `SK_NO_FUSE=1`, and ends by naming every check that did not run.
-- `cargo run --release -p sk-check -- entry "$SK_ASSETS"`,
+- `cargo run --release -p starquake-check -- entry "$SK_ASSETS"`,
   `… -- rom "$SK_ASSETS" 6000`, `… -- keys "$SK_ASSETS"`,
   `… -- facts "$SK_ASSETS"`, `… -- training "$SK_ASSETS" 900` and
   `… -- map "$SK_ASSETS" 60` run the checks against the game on their own
   (`keys`, `training` and `map` need only the tape; `facts` walks into the
   teleporter booths only with the ROM).
-- `cargo run --release -p sk-lab --bin planet -- "$SK_ASSETS"` draws the whole
+- `cargo run --release -p starquake-lab --bin planet -- "$SK_ASSETS"` draws the whole
   planet with every room's openings into `assets/planet.png`; the other
-  `sk-lab` tools (`games/starquake/sk-lab/README.md`) probe rooms and run the level 5
-  search. They look, `sk-check` proves; none runs in CI or the gate.
+  `starquake-lab` tools (`games/starquake/lab/README.md`) probe rooms and run the level 5
+  search. They look, `starquake-check` proves; none runs in CI or the gate.
 - `cargo test -p zx-spectrum --test fuse -- --nocapture` checks the processor
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
   `assets/tests.expected`, or `FUSE_TESTS` naming the folder that holds
@@ -61,7 +61,7 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
 - `cargo llvm-cov --workspace --summary-only` measures test coverage (needs
   `cargo install cargo-llvm-cov` and `rustup component add llvm-tools`). The
   line counts include the tests' own code; what is left uncovered needs a
-  window, a sound card, a gamepad, or the player's tape (`sk-check`).
+  window, a sound card, a gamepad, or the player's tape (`starquake-check`).
 - The tool shell is zsh: never name a variable `status`, and run anything
   loop-shaped as a `bash` script.
 
@@ -74,13 +74,13 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
   Starquake is facts: the tape's checksum, where it starts, memory addresses.
   The game runs as its own program; none of it is reimplemented. Reused code
   is our own generic work, recorded in `REUSED.md`.
-- **The checks against the game are the contract.** `sk-check entry` must find
-  the loader returning where the game is started, `sk-check rom` must find
+- **The checks against the game are the contract.** `starquake-check entry` must find
+  the loader returning where the game is started, `starquake-check rom` must find
   every compared ROM call answered as the real ROM does (20,326 of 20,326 when
-  the fork was pinned), `sk-check keys` must find the joystick reaching the
+  the fork was pinned), `starquake-check keys` must find the joystick reaching the
   game and the pause key taken from it in all five control methods, and
-  `sk-check facts` must find the entry points the guidance panel follows and
-  End this game ending a game, and `sk-check training` must find each training
+  `starquake-check facts` must find the entry points the guidance panel follows and
+  End this game ending a game, and `starquake-check training` must find each training
   switch holding what it promises and leaving the rest alone, with nothing
   written when they are all off. A change that moves any of them is a
   deliberate, called-out decision, never a check adjusted to make it pass.

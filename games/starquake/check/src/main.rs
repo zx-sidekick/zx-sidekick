@@ -1,6 +1,6 @@
 //! Local checks against the player's own copy of the game.
 //!
-//! Usage: `sk-check <command> <assets-dir>`, where the folder holds
+//! Usage: `starquake-check <command> <assets-dir>`, where the folder holds
 //! `starquake.tap` and, for `rom`, `48.rom`. Nothing here runs in CI, which
 //! has neither.
 //!
@@ -2400,7 +2400,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "usage: sk-check rom|entry|keys|facts|map|shot <assets-dir> [frames] [out-dir]"
+                "usage: starquake-check rom|entry|keys|facts|map|shot <assets-dir> [frames] [out-dir]"
             );
             std::process::exit(2);
         }

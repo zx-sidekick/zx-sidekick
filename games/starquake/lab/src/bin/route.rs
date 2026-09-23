@@ -11,12 +11,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use sk_lab::exits;
-use sk_lab::search::{Exit, Room, Settings};
-use sk_lab::{Args, Rng, into_play};
 use starquake::Machine;
 use starquake::facts::{CORE_ROOM, PLAY_INPUT, routine};
 use starquake::map::Openings;
+use starquake_lab::exits;
+use starquake_lab::search::{Exit, Room, Settings};
+use starquake_lab::{Args, Rng, into_play};
 
 fn neighbours(o: &[Openings], r: u16) -> Vec<u16> {
     let x = &o[usize::from(r)];
@@ -121,17 +121,17 @@ fn replay(base: &Machine, rooms: &HashMap<u16, Room>, target: u16, settings: &Se
     let mut m = base.clone();
     m.watch = vec![routine::MODAL, routine::DEATH, PLAY_INPUT];
     for segment in segments {
-        let here = sk_lab::room(&m);
+        let here = starquake_lab::room(&m);
         for (i, &input) in segment.iter().enumerate() {
-            sk_lab::frame(&mut m, input, settings.platforms);
-            let moved = sk_lab::room(&m) != here;
+            starquake_lab::frame(&mut m, input, settings.platforms);
+            let moved = starquake_lab::room(&m) != here;
             if moved != (i + 1 == segment.len()) {
                 return false;
             }
         }
-        sk_lab::settle(&mut m, settings.platforms);
+        starquake_lab::settle(&mut m, settings.platforms);
     }
-    sk_lab::room(&m) == target
+    starquake_lab::room(&m) == target
 }
 
 fn route_to(
@@ -144,7 +144,7 @@ fn route_to(
     settings: &Settings,
 ) -> Outcome {
     let started = Instant::now();
-    let start = sk_lab::room(base);
+    let start = starquake_lab::room(base);
     let frames_before: u64 = rooms.values().map(|r| r.frames).sum();
     if rooms.get(&start).is_none_or(|r| r.seen.is_empty()) {
         rooms
@@ -244,7 +244,7 @@ fn main() {
     let reachable: HashSet<u16> = exits::read(&text).keys().copied().collect();
     let base = into_play(&args.tape());
     let o = starquake::facts::all_openings(&base);
-    let start = sk_lab::room(&base);
+    let start = starquake_lab::room(&base);
     let mut rng = Rng(0x5EED);
     let mut yes: Vec<u16> = reachable.iter().copied().filter(|&r| r != start).collect();
     yes.sort_unstable();

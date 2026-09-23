@@ -8,11 +8,11 @@
 
 use std::collections::{BTreeSet, HashSet};
 
-use sk_lab::exits;
-use sk_lab::rooms::Planet;
-use sk_lab::{Args, into_play, top_row};
 use starquake::facts::CORE_ROOM;
 use starquake::map::{COLS, Room};
+use starquake_lab::exits;
+use starquake_lab::rooms::Planet;
+use starquake_lab::{Args, into_play, top_row};
 
 /// The parts, with doors shut, touching each edge: left, right, up, down.
 fn edge_parts(r: &Room) -> [BTreeSet<u8>; 4] {
@@ -48,8 +48,8 @@ fn main() {
     let dump = exits::read(&text);
     let base = into_play(&args.tape());
     let planet = Planet::read(&base);
-    let start = sk_lab::room(&base);
-    let (bx, by) = sk_lab::blob(&base);
+    let start = starquake_lab::room(&base);
+    let (bx, by) = starquake_lab::blob(&base);
 
     let dirs = [
         (-1i32, 0usize, "left"),

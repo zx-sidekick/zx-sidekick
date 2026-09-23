@@ -63,7 +63,7 @@ maintainer's.
 - **Goal**: what ships, plus the one-line reason.
 - **Decisions**: numbered, each with its why. Anything unsettled is a question
   TO the maintainer. Never decide design direction yourself.
-- **Fidelity**: say whether the change can move `sk-check entry`, `rom`,
+- **Fidelity**: say whether the change can move `starquake-check entry`, `rom`,
   `keys` or `facts`, or the Fuse corpus result. If it can, the ticket says why that is right
   before the work starts — a check is never adjusted to make a change pass.
   Say whether it keeps to `GOAL.md`'s hard rules (no game or ROM data, no

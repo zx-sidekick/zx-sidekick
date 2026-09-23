@@ -1,8 +1,8 @@
-# sk-lab
+# starquake-lab
 
-Tools for studying the game on the player's own tape: pictures, probes and the level 5 search (#10, #39). They are not checks: `sk-check` proves things, these look at them. Nothing here runs in CI or in the gate, which only builds them.
+Tools for studying the game on the player's own tape: pictures, probes and the level 5 search (#10, #39). They are not checks: `starquake-check` proves things, these look at them. Nothing here runs in CI or in the gate, which only builds them.
 
-Every tool takes the assets folder first, reads `starquake.tap` from it and writes whatever it produces into it. That folder is ignored by git, so nothing derived from the game is ever committed (`GOAL.md`, rule 1). Run one with `cargo run --release -p sk-lab --bin <tool> -- "$SK_ASSETS" …`.
+Every tool takes the assets folder first, reads `starquake.tap` from it and writes whatever it produces into it. That folder is ignored by git, so nothing derived from the game is ever committed (`GOAL.md`, rule 1). Run one with `cargo run --release -p starquake-lab --bin <tool> -- "$SK_ASSETS" …`.
 
 ## Pictures
 

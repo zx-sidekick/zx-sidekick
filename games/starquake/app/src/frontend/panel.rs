@@ -2319,7 +2319,7 @@ mod tests {
     }
 
     /// Level 4 with every code a game can show (#49): eight door codes,
-    /// the codes `sk-check facts` reads on one game, and fifteen
+    /// the codes `starquake-check facts` reads on one game, and fifteen
     /// teleports. Their key code cards come from the tape, so it needs `SQ_TAPE`.
     fn doors_seen(level: u8) -> Guidance {
         let mut g = Guidance::default();

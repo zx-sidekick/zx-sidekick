@@ -5,15 +5,15 @@
 //! room is entered as walking in, from where the game puts Blob, or the start
 //! room from play when none is given.
 
-use sk_lab::search::{COARSE_KEY, FULL_KEY, Room, Settings};
-use sk_lab::{Args, into_play, stand};
+use starquake_lab::search::{COARSE_KEY, FULL_KEY, Room, Settings};
+use starquake_lab::{Args, into_play, stand};
 
 fn main() {
     let args = Args::parse("variant <assets-dir> [room] [--hold=N] [--no-prune] [--no-platforms]");
     let base = into_play(&args.tape());
     let entry = match args.rest.first().and_then(|r| r.parse::<u16>().ok()) {
         Some(room) => {
-            let (x, y) = sk_lab::blob(&base);
+            let (x, y) = starquake_lab::blob(&base);
             stand(&base, room, x, y).unwrap_or_else(|| {
                 eprintln!("room {room} did not settle with Blob at ({x},{y})");
                 std::process::exit(2);
@@ -21,7 +21,7 @@ fn main() {
         }
         None => base.clone(),
     };
-    let room = sk_lab::room(&entry);
+    let room = starquake_lab::room(&entry);
     for (name, key) in [("coarse", COARSE_KEY), ("full", FULL_KEY)] {
         for diagonals in [false, true] {
             let settings = Settings {

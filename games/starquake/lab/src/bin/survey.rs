@@ -5,8 +5,8 @@
 
 use std::collections::BTreeMap;
 
-use sk_lab::rooms::{Planet, lift};
-use sk_lab::{Args, into_play};
+use starquake_lab::rooms::{Planet, lift};
+use starquake_lab::{Args, into_play};
 
 fn main() {
     let args = Args::parse("survey <assets-dir>");

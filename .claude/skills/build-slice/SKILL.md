@@ -43,7 +43,7 @@ ticket nobody moved: that one goes back to `Plan`.
    right reason. A test that can never run (skipped, unreachable) is worse than
    none: check it actually ran.
 2. Implement. Keep the invariants (CLAUDE.md): no game or ROM data is ever
-   committed, no game logic is translated (`GOAL.md`), and `sk-check entry`,
+   committed, no game logic is translated (`GOAL.md`), and `starquake-check entry`,
    `rom`, `keys` and `facts` and the Fuse corpus still come out as they did. A result that
    moves is a deliberate, called-out decision, never a check adjusted to pass.
 3. **Gate on the exit code, never on grepped output:**
@@ -111,7 +111,7 @@ The gates prove it compiles, lints and passes its tests. They cannot see:
   the thing built; what crosses between threads; what a key or button still
   held does when a screen changes under it.
 - **Tests** that assert the decisions, not the current implementation.
-- **Fidelity**: whether anything could move `sk-check entry`, `rom`, `keys`
+- **Fidelity**: whether anything could move `starquake-check entry`, `rom`, `keys`
   or `facts`, or the Fuse corpus; and whether anything strays from `GOAL.md`'s hard rules
   (game data, translated game logic, the ROM).
 
@@ -164,7 +164,7 @@ the maintainer's replies are part of the review.
 ## Finish
 
 - Docs: update `README.md` / `CLAUDE.md` if anything they say changed. If the
-  change touches what `sk-check` proves, `README.md`'s *How it is checked*
+  change touches what `starquake-check` proves, `README.md`'s *How it is checked*
   section says what the claim rests on and must stay true to it. Anything
   reused from another project gets its row in `REUSED.md`.
 - **A mockup in the ticket?** Its image must reach `main` in this PR. Once

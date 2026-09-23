@@ -20,7 +20,7 @@ pub const FRAMES: u16 = 0x5C78;
 
 /// T-states the interrupt routine takes, counted from its first instruction
 /// to its `RET`. The ROM's keyboard scan makes it vary a little with what is
-/// held; this is its mean cost over play, measured against the ROM (`games/starquake/sk-check`).
+/// held; this is its mean cost over play, measured against the ROM (`games/starquake/check`).
 pub const MASK_INT_T: u32 = 882;
 
 /// Answers the routine at the program counter, if it is one of these. Returns whether it
