@@ -45,6 +45,12 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
   looks for them itself).
 - `cargo run --release -p zx-sidekick-starquake -- "$SK_ASSETS/starquake.tap"`
   plays it. Add `--headless <frames> <dir> [level]` for screenshots of real play at a guidance level.
+- Manic Miner (#142): `cargo run --release -p manicminer-check -- all "$SK_ASSETS"`
+  runs its checks (`entry`, `keys`, `facts`, `font`; `entry` and the font's
+  comparison need `48.rom`), which the gate runs when `SK_ASSETS` holds
+  `manic.tap`; `cargo run --release -p zx-sidekick-manicminer --
+  "$SK_ASSETS/manic.tap"` plays it, with `--headless <frames> <dir>` for
+  screenshots.
 - `cargo about generate --all-features about.hbs -o THIRD-PARTY.md`
   regenerates the attributions after a dependency change.
 - **Releasing a game** (#132): its version is in its crates' `Cargo.toml`, the
@@ -69,7 +75,11 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
 
 - **No game or ROM data is ever committed.** `assets/` is ignored except its
   README, and CI has a job that fails if anything slips through. This is what
-  makes the project legal to publish; nothing is worth breaking it for.
+  makes the project legal to publish; nothing is worth breaking it for. The
+  one exception is the Spectrum ROM's character set, 768 bytes in
+  `games/manicminer/manicminer/src/font.rs`, which Manic Miner prints with:
+  included under Amstrad's permission for emulators, acknowledged as it asks
+  (@starquake, #140 decision 1). No ROM file and no ROM code, ever.
 - **No translated game logic** (`GOAL.md`, rule 2). What the code knows about
   Starquake is facts: the tape's checksum, where it starts, memory addresses.
   The game runs as its own program; none of it is reimplemented. Reused code

@@ -58,11 +58,6 @@ pub trait Screen: Send + Sync + 'static {
     fn draw(painter: &mut Self::Painter, canvas: &mut Canvas, shown: &Self::Shown, paused: bool);
     /// Offers the game a key the window got, before it goes to the Spectrum.
     fn key(&self, code: KeyCode) -> Key;
-    /// Offers the game a file dropped on its window while it plays. Returns
-    /// whether it took it, which redraws the window.
-    fn dropped(&self, _path: &std::path::Path) -> bool {
-        false
-    }
 }
 
 /// What the game did with a key it was offered.
@@ -289,13 +284,6 @@ impl<G: Screen> ApplicationHandler for App<G> {
                 }
             }
             WindowEvent::RedrawRequested => self.redraw_game(event_loop),
-            WindowEvent::DroppedFile(path) => {
-                if self.shared.game.dropped(&path)
-                    && let Some(w) = &self.window
-                {
-                    w.request_redraw();
-                }
-            }
             _ => {}
         }
     }

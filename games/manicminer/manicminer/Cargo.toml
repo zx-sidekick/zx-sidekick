@@ -1,6 +1,6 @@
 [package]
 name = "manicminer"
-description = "Manic Miner's facts, its rules for the ZX Sidekick machine, and the font it prints with when there is no ROM"
+description = "Manic Miner's facts, its rules for the ZX Sidekick machine, and the Spectrum ROM's character set it prints with"
 # Manic Miner's version, the same in its crates (manicminer, the app and
 # manicminer-check); its release is tagged manicminer-v<this>.
 version = "0.1.0"

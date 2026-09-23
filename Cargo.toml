@@ -11,6 +11,7 @@ members = [
     "games/starquake/app",
     "games/manicminer/manicminer",
     "games/manicminer/check",
+    "games/manicminer/app",
 ]
 
 [workspace.package]

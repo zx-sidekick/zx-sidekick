@@ -1,6 +1,6 @@
 //! Checks of ZX Sidekick against the player's own copy of Manic Miner
-//! (#142). Each needs the tape in the folder given; `entry` and the ROM's
-//! half of `font` need a Spectrum 48K ROM there too. They are the contract
+//! (#142). Each needs the tape in the folder given; `entry`, and `font`'s
+//! comparison with the ROM, need a Spectrum 48K ROM there too. They are the contract
 //! the machine keeps with the game, and none runs in CI: the tape and the
 //! ROM are never committed.
 //!
@@ -8,7 +8,9 @@
 
 use std::path::Path;
 
-use manicminer::facts::{ENTRY_PC, ENTRY_SP, FONT, PAUSE_KEYS, at, is_supported_tape, routine};
+use manicminer::facts::{
+    ENTRY_PC, ENTRY_SP, FONT, PAUSE_KEYS, ROM_SHA1, at, is_supported_tape, routine,
+};
 use manicminer::{JOY_FIRE, JOY_RIGHT, Machine};
 use zx_spectrum::Key;
 
@@ -35,9 +37,9 @@ fn tape(dir: &Path) -> Vec<u8> {
     panic!("no {} in {}", TAPES.join(" or "), dir.display());
 }
 
-/// The game as the program starts it, with our font.
+/// The game as the program starts it.
 fn machine(dir: &Path) -> Machine {
-    manicminer::start(&tape(dir), &manicminer::font::OURS).expect("the tape loads")
+    manicminer::start(&tape(dir)).expect("the tape loads")
 }
 
 fn key(name: &str) -> Key {
@@ -300,59 +302,41 @@ fn facts_check(dir: &Path) -> bool {
     in_order && quit
 }
 
-/// The cavern's name, as the game prints it on the screen, is drawn from the
-/// bytes where the ROM's character set would be: ours with no ROM, and the
-/// ROM's own when the player's ROM gives them.
+/// The cavern's name, as the game prints it on the screen, is drawn letter
+/// for letter from the character set placed where the ROM has it; and those
+/// bytes are the ROM's own, when the ROM is in the folder to compare with.
 fn font_check(dir: &Path) -> bool {
-    let mut fonts = vec![("ours", manicminer::font::OURS)];
-    if let Ok(rom) = std::fs::read(dir.join("48.rom")) {
-        match manicminer::font::from_rom(&rom) {
-            Some(font) => fonts.push(("the ROM's", font)),
-            None => println!("font: 48.rom is not the ROM this version knows; its half skipped"),
-        }
-    }
+    let set = &manicminer::font::CHARACTER_SET;
     let mut ok = true;
-    for (name, font) in fonts {
-        let mut m = into_play(dir);
-        let at = usize::from(FONT);
-        m.zx.mem[at..at + 768].copy_from_slice(&font);
-        // The name is printed as a cavern starts: start this one again.
-        let mut m2 = manicminer::start(&tape(dir), &font).expect("the tape loads");
-        m2.zx.mem[usize::from(at::CAVERN)] = m.zx.mem[usize::from(at::CAVERN)];
-        let m = {
-            m2.watch = vec![routine::MAIN_LOOP];
-            run(&mut m2, 100);
-            m2.zx.set_key(key("enter"), true);
-            let mut started = false;
-            for _ in 0..600 {
-                if m2.run_frame().contains(&routine::MAIN_LOOP) {
-                    started = true;
-                    break;
-                }
-            }
-            assert!(started, "a game starts");
-            m2
-        };
-        // The name's row on the screen: character row 16, from the working
-        // buffer's 32 letters.
-        let mut right = 0;
-        for col in 0..32usize {
-            let letter = usize::from(m.zx.mem[usize::from(at::CAVERN_NAME) + col]);
-            let glyph = &font[(letter - 32) * 8..(letter - 32) * 8 + 8];
-            let drawn: Vec<u8> = (0..8)
-                .map(|line| {
-                    let y = 128 + line;
-                    m.zx.mem[0x4000 + zx_core::screen::line_offset(y) + col]
-                })
-                .collect();
-            if drawn == glyph {
-                right += 1;
-            }
+    match std::fs::read(dir.join("48.rom")) {
+        Ok(rom) if zx_core::sha1::sha1_hex(&rom) == ROM_SHA1 => {
+            let at = usize::from(FONT);
+            let same = rom[at..at + 768] == set[..];
+            println!(
+                "font: the character set {} the 48K ROM's",
+                if same { "is" } else { "is NOT" }
+            );
+            ok &= same;
         }
-        println!("font: with {name}, {right} of 32 letters of the cavern's name drawn from it");
-        ok &= right == 32;
+        Ok(_) => println!("font: 48.rom is not the ROM this version knows; not compared"),
+        Err(_) => println!("font: no 48.rom to compare the character set with"),
     }
-    ok
+    let m = into_play(dir);
+    // The name's row on the screen: character row 16, from the working
+    // buffer's 32 letters.
+    let mut right = 0;
+    for col in 0..32usize {
+        let letter = usize::from(m.zx.mem[usize::from(at::CAVERN_NAME) + col]);
+        let glyph = &set[(letter - 32) * 8..(letter - 32) * 8 + 8];
+        let drawn: Vec<u8> = (0..8)
+            .map(|line| m.zx.mem[0x4000 + zx_core::screen::line_offset(128 + line) + col])
+            .collect();
+        if drawn == glyph {
+            right += 1;
+        }
+    }
+    println!("font: {right} of 32 letters of the cavern's name drawn from the character set");
+    ok && right == 32
 }
 
 fn main() {

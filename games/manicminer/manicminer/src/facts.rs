@@ -7,7 +7,8 @@
 /// The SHA-1 of the one tape this version supports: the Bug-Byte release.
 pub const TAPE_SHA1: &str = "84808c20566aa65e9308c3f8910a16bacfa1b982";
 
-/// The SHA-1 of the 48K ROM whose character set may be used for the text.
+/// The SHA-1 of the 48K ROM the character set is from, which the font check
+/// compares it with.
 pub const ROM_SHA1: &str = "5ea7c2b824672e914525d1d5c419d71b84a426a2";
 
 /// Where the game starts: its BASIC loader ends with `RANDOMIZE USR 33792`.

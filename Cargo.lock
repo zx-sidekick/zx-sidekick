@@ -3008,6 +3008,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zx-sidekick-manicminer"
+version = "0.1.0"
+dependencies = [
+ "manicminer",
+ "rfd",
+ "sidekick",
+ "sidekick-frontend",
+ "winit",
+ "zx-core",
+ "zx-spectrum",
+]
+
+[[package]]
 name = "zx-sidekick-starquake"
 version = "0.3.0"
 dependencies = [

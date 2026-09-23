@@ -1,11 +1,12 @@
-# Builds Starquake's program when one of its tags is pushed (starquake-v0.3.0,
-# or starquake-v0.3.0-rc.1 for a candidate; #132), and attaches the
-# binaries to a GitHub release.
+# Builds a game's program when one of its tags is pushed (starquake-v0.3.0,
+# manicminer-v0.1.0, or with -rc.N for a candidate; #132, #142), and attaches
+# the binaries to a GitHub release. The tag names the game; a manual run
+# says which.
 #
 # A binary is less useful here than it would be for most games: it still needs
-# the player's own copy of Starquake to run, and asks for one before it starts.
-# It saves them installing Rust, and that is all it saves them. See
-# games/starquake/docs/player/README.txt.
+# the player's own copy of the game to run, and asks for one before it starts.
+# It saves them installing Rust, and that is all it saves them. See each
+# game's docs/player/README.txt.
 #
 # Linux, macOS and Windows — the same three CI builds and tests on. A target
 # is only shipped once something proves it works.
@@ -16,8 +17,15 @@ on:
   push:
     tags:
       - "starquake-v*"
+      - "manicminer-v*"
   # So the build can be exercised without minting a tag.
   workflow_dispatch:
+    inputs:
+      game:
+        description: Which game to build
+        type: choice
+        options: [starquake, manicminer]
+        default: starquake
 
 permissions:
   contents: write
@@ -49,6 +57,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The game this is: the tag's first part (manicminer-v0.1.0), or the
+      # manual run's choice.
+      - name: Which game
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            game="${GITHUB_REF_NAME%%-v[0-9]*}"
+          else
+            game="${{ inputs.game }}"
+          fi
+          echo "GAME=$game" >> "$GITHUB_ENV"
+
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.98.1"
@@ -66,7 +85,7 @@ jobs:
             libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev
 
       - name: Build
-        run: cargo build --release --locked -p zx-sidekick-starquake --target ${{ matrix.target }}
+        run: cargo build --release --locked -p "zx-sidekick-$GAME" --target ${{ matrix.target }}
 
       # Proves the binary starts on its runner: from an empty folder it must
       # say it found no tape and exit 1, which is as far as it gets without
@@ -76,7 +95,7 @@ jobs:
       - name: Smoke test
         if: runner.os != 'Windows'
         run: |
-          bin="$PWD/target/${{ matrix.target }}/release/zx-sidekick-starquake"
+          bin="$PWD/target/${{ matrix.target }}/release/zx-sidekick-$GAME"
           empty=$(mktemp -d)
           cd "$empty"
           set +e
@@ -84,7 +103,7 @@ jobs:
           code=$?
           set -e
           echo "$out"
-          [ "$code" -eq 1 ] && grep -q "no copy of Starquake found" <<< "$out"
+          [ "$code" -eq 1 ] && grep -q "no copy of .* found" <<< "$out"
 
       # Named for the target, since four of these land in one release. A
       # tarball everywhere but Windows, where a zip is what Explorer opens
@@ -96,17 +115,17 @@ jobs:
           # exists. `mkdir zx-sidekick-starquake-feat/thing-x86_64-...` fails.
           ref="${GITHUB_REF_NAME//\//-}"
           # The archive already names the game: zx-sidekick-starquake-v0.3.0-...
-          ref="${ref#starquake-}"
-          dir="zx-sidekick-starquake-$ref-${{ matrix.target }}"
+          ref="${ref#"$GAME"-}"
+          dir="zx-sidekick-$GAME-$ref-${{ matrix.target }}"
           mkdir "$dir"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            cp target/${{ matrix.target }}/release/zx-sidekick-starquake.exe "$dir/"
+            cp "target/${{ matrix.target }}/release/zx-sidekick-$GAME.exe" "$dir/"
           else
-            cp target/${{ matrix.target }}/release/zx-sidekick-starquake "$dir/"
+            cp "target/${{ matrix.target }}/release/zx-sidekick-$GAME" "$dir/"
           fi
           # The player's guide, not the repository README, which is about
           # working on the code. Plain text, because anyone can open it.
-          cp games/starquake/docs/player/* "$dir/"
+          cp "games/$GAME/docs/player/"* "$dir/"
           cp LICENSE-MIT LICENSE-APACHE "$dir/"
           cp THIRD-PARTY.md "$dir/THIRD-PARTY.txt"
           # The font the program draws its own screens in travels with its
@@ -141,10 +160,13 @@ jobs:
           merge-multiple: true
 
       # What changed, from the commit messages (#124), then what the player
-      # needs to know: they still need their own tape, and saying so at the
-      # point of download saves somebody a confusing first run.
+      # needs to know, which is the game's own (games/<game>/docs/release.md):
+      # they still need their own tape, and saying so at the point of
+      # download saves somebody a confusing first run.
       - name: release notes
         run: |
+          game="${GITHUB_REF_NAME%%-v[0-9]*}"
+          [ "$game" != "$GITHUB_REF_NAME" ] || game=starquake
           {
             echo "Built from \`$GITHUB_REF_NAME\`."
             echo
@@ -152,17 +174,7 @@ jobs:
             echo
             scripts/changelog.sh --notes "$GITHUB_REF_NAME"
             echo
-            cat <<'NOTES'
-          **You need your own copy of Starquake to play.** ZX Sidekick contains no part of the original game: it runs your tape, unchanged. README.txt in the archive says where to find one. Not affiliated with or endorsed by the rights holders.
-
-          Run the program and it asks for the tape, or put `starquake.tap` in the same folder first. You can also give the tape on the command line: `./zx-sidekick-starquake path/to/starquake.tap`, or `zx-sidekick-starquake.exe path\to\starquake.tap` on Windows.
-
-          **macOS:** the binary is not signed, so macOS blocks it the first time you run it. In Terminal, in the folder you extracted, run `xattr -d com.apple.quarantine zx-sidekick-starquake`. Or try to open it once, then allow it under System Settings, Privacy & Security.
-
-          **Gamepads** are the Kempston joystick: choose 1 on the title screen. The guidance shows the letters of the pad you have: Xbox, Switch or PlayStation.
-
-          `THIRD-PARTY.txt` in the archive lists the libraries built into the program and their licences.
-          NOTES
+            cat "games/$game/docs/release.md"
           } > notes.md
 
       - uses: softprops/action-gh-release@v3

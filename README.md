@@ -3,13 +3,14 @@
 Classic ZX Spectrum games played from your own copy: the original program runs, unchanged, in an emulated Spectrum inside the app, with guidance added around it. One program per game.
 
 - [Starquake](games/starquake/README.md) (Stephen Crow / Bubble Bus, 1985)
+- [Manic Miner](games/manicminer/README.md) (Matthew Smith / Bug-Byte, 1983): plain play so far
 
 **Not affiliated with or endorsed by the rights holders of the games or of the ZX Spectrum.** You need your own copy of each game; ZX Sidekick contains no part of any of them.
 
 ## The legal model
 
 - **What is in this repository:** an emulated Spectrum (the screen, sound and keyboard around a Z80 processor), the window, and *facts* about Starquake: the tape's checksum, where the game starts, and memory addresses.
-- **What is not:** any part of the game (no tapes, snapshots, graphics, maps or text extracted into files), any translation of its program into another language, and the Spectrum ROM. Continuous integration fails if a game or ROM file is ever committed.
+- **What is not:** any part of any game (no tapes, snapshots, graphics, maps or text extracted into files), any translation of its program into another language, and the Spectrum ROM, with one exception: the ROM's character set, 768 bytes that Manic Miner prints its text with, included under Amstrad's permission for emulators (#142). Amstrad have kindly given their permission for the redistribution of their copyrighted material but retain that copyright. Continuous integration fails if a game or ROM file is ever committed.
 - **The processor:** `rustzx-z80` (MIT, [RustZX](https://github.com/rustzx/rustzx)), from our fork [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx).
 - **Reused code:** our own generic code from starquake-recompiled and the earlier ZX Sidekick build, listed in `REUSED.md`.
 
