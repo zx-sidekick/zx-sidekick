@@ -10,7 +10,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), the plain game, running as the **or
 2. **No translated game logic.** Anything specific to Starquake is limited to facts: the tape's checksum, where it starts, memory addresses. The game runs as its own program; none of it is reimplemented.
 3. **Generic code is fine:** the emulated machine, the window, sound, input and tape prompt.
 4. **Reuse our own generic work** from [starquake-recompiled](https://github.com/starquake/starquake-recompiled) and the earlier ZX Sidekick build, never starquake-recompiled's `games/starquake` game-logic modules. `REUSED.md` records every file's origin and commit.
-5. **No ROM file.** Starquake enters the ROM at only three addresses, and the program answers those calls itself. `games/starquake/docs/rom.md` holds the evidence and the decision.
+5. **No ROM file.** Starquake enters the ROM at only three addresses, and the program answers those calls itself. `games/starquake/docs/rom.md` holds the evidence and the decision. Manic Miner calls none, and reads only the ROM's character set for its text: those 768 bytes are included, under Amstrad's permission for emulators to include the Spectrum ROM, acknowledged as it asks (#140, decision 1). No game ever needs a ROM file, and no ROM code is ever included.
 6. **Brand first.** "ZX Sidekick" is the brand and the game title appears in plain text only, with no logos or title lettering. The app and README carry a "not affiliated with or endorsed by the rights holders; you need your own copy" notice. Third-party licences are listed and respected.
 
 ## The processor

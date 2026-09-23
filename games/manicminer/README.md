@@ -1,0 +1,37 @@
+# ZX Sidekick for Manic Miner
+
+Manic Miner (Matthew Smith / Bug-Byte, 1983), played from your own copy of the game.
+
+**Not affiliated with or endorsed by the rights holders of Manic Miner or the ZX Spectrum.** You need your own copy of the game, the original Bug-Byte release. ZX Sidekick contains no part of it: the original program you supply runs in an emulated Spectrum inside the app, unchanged.
+
+> Plain play, the first step of #140. Guidance and training come as their own sub-issues of #140. See [`GOAL.md`](../../GOAL.md) for the aim.
+
+## The ROM
+
+Not needed. Manic Miner calls no ROM routine and never enables interrupts. The one thing it takes from a ROM is its character set, the 768 bytes at `0x3D00`, for its text. Those bytes are included in the program (`manicminer/src/font.rs`), under Amstrad's permission for emulators to include the Spectrum ROM (#140, decision 1). Amstrad have kindly given their permission for the redistribution of their copyrighted material but retain that copyright. No ROM file and no ROM code are included, and the font check proves the bytes are the 48K ROM's own.
+
+## What works
+
+- [x] The game runs from your tape with no ROM, from the title and its tune to game over
+- [x] Its text in the Spectrum's own letters, from the ROM's character set
+- [x] Keyboard, and the Kempston joystick the game finds by itself: the arrows with Left Control, or a gamepad with A or X to jump (built; not yet checked by hand)
+- [x] Pausing freezes the emulation, with the game's own pause keys (A to G) or Start, and the window says so (built; not yet checked by hand)
+- [x] Sound (built; not yet checked by ear)
+- [x] Tape prompt: find or drop the tape or its `.zip`, kept in the user data directory (built; not yet checked by hand)
+
+## Playing
+
+```
+cargo run --release -p zx-sidekick-manicminer
+```
+
+The game starts fullscreen, and F11 leaves it for a window. `--headless FRAMES [DIR]` runs without a window, ENTER held on the title screen to start a game, and writes a PNG of the picture every 250 frames.
+
+## How it is checked
+
+Against your own tape, `SK_ASSETS=<folder with manic.tap and 48.rom> scripts/check.sh` runs the checks against the game itself (`games/manicminer/check`):
+
+- **entry**: boots a real ROM, types `LOAD ""`, and feeds its loader the tape; its BASIC goes on to `RANDOMIZE USR 33792` and arrives at `0x8400` with the stack at `0x7519`, exactly where ZX Sidekick starts the game.
+- **keys**: the game finds the Kempston joystick; with the keyboard and with the joystick alike Willy walks and jumps; a pause key is reported while the game goes on running its loop, never waiting in its own pause; and Start starts a game from the title screen.
+- **facts**: a game played by nobody arrives at the title, a new game, the main loop, a life lost and game over in that order, and CAPS SHIFT with SPACE goes back to the title.
+- **font**: the character set included is the 48K ROM's own, byte for byte, and the cavern's name is drawn letter for letter from it.

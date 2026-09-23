@@ -91,6 +91,21 @@ else
   skipped+=("the checks against the game: SK_ASSETS is not set, or has no starquake.tap")
 fi
 
+# Manic Miner's, when SK_ASSETS holds its tape (#142): all but entry need
+# only the tape, and font compares the character set with the ROM's when 48.rom is there.
+if [ -n "${SK_ASSETS:-}" ] && { [ -f "$SK_ASSETS/manic.tap" ] || [ -f "$SK_ASSETS/manicminer.tap" ]; }; then
+  run "manicminer keys (keyboard, Kempston, pause, Start)" cargo run -q --release -p manicminer-check --locked -- keys "$SK_ASSETS"
+  run "manicminer facts (title, play, a life lost, game over, quit)" cargo run -q --release -p manicminer-check --locked -- facts "$SK_ASSETS"
+  run "manicminer font (the text drawn from the ROM's character set)" cargo run -q --release -p manicminer-check --locked -- font "$SK_ASSETS"
+  if [ -f "$SK_ASSETS/48.rom" ]; then
+    run "manicminer entry (real ROM loader)" cargo run -q --release -p manicminer-check --locked -- entry "$SK_ASSETS"
+  else
+    skipped+=("Manic Miner's entry: no 48.rom in SK_ASSETS")
+  fi
+else
+  skipped+=("Manic Miner's checks: SK_ASSETS is not set, or has no manic.tap")
+fi
+
 if [ ${#skipped[@]} -ne 0 ]; then
   printf 'NOT RUN: %s\n' "${skipped[@]}"
 fi

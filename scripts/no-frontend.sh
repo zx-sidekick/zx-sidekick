@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 frontend='^(winit|pixels|wgpu|cpal|gilrs|rfd|fontdue|zip|windows-sys) '
-found=$(cargo tree --locked -e normal --prefix none -p zx-core -p zx-spectrum -p sidekick -p starquake -p starquake-check -p starquake-lab \
+found=$(cargo tree --locked -e normal --prefix none -p zx-core -p zx-spectrum -p sidekick -p starquake -p starquake-check -p starquake-lab -p manicminer -p manicminer-check \
   | grep -E "$frontend" | sort -u || true)
 if [ -n "$found" ]; then
   echo "the machine or the checks depend on frontend crates:"

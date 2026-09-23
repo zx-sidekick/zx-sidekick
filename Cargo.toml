@@ -9,6 +9,9 @@ members = [
     "games/starquake/check",
     "games/starquake/lab",
     "games/starquake/app",
+    "games/manicminer/manicminer",
+    "games/manicminer/check",
+    "games/manicminer/app",
 ]
 
 [workspace.package]
@@ -27,6 +30,7 @@ zx-spectrum = { path = "crates/zx-spectrum" }
 sidekick = { path = "crates/sidekick" }
 sidekick-frontend = { path = "crates/sidekick-frontend" }
 starquake = { path = "games/starquake/starquake" }
+manicminer = { path = "games/manicminer/manicminer" }
 
 # The whole game runs on an emulated processor, so even dev builds need
 # optimising to keep up with a real Spectrum.
