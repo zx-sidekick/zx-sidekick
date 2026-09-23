@@ -1,7 +1,8 @@
 //! Manic Miner's side of ZX Sidekick (#140, #142): the facts about the game
 //! (which tape it is, where it starts, where it reads its keys), its
-//! [`play::Play`] rules for the shared machine, and the Spectrum ROM's
-//! character set it prints with.
+//! [`play::Play`] rules for the shared machine, what [`guide`] reads of a
+//! cavern for the guidance panel, and the Spectrum ROM's character set it
+//! prints with.
 //!
 //! Nothing in this crate is the game's program. The game runs no ROM code
 //! at all; the one thing it takes from the ROM is its character set,
@@ -9,6 +10,7 @@
 
 pub mod facts;
 pub mod font;
+pub mod guide;
 pub mod play;
 
 pub use sidekick::machine::{Input, JOY_DOWN, JOY_FIRE, JOY_LEFT, JOY_RIGHT, JOY_UP};

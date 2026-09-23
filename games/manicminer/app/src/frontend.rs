@@ -1,7 +1,8 @@
-//! Manic Miner in the window every game shares (`sidekick-frontend`): no
-//! panel yet; over the picture the training picker (#148) and the pause
-//! notice; and the machine's loop, which feeds the game the keyboard and
-//! the Kempston joystick, and carries out what the picker asks.
+//! Manic Miner in the window every game shares (`sidekick-frontend`): the
+//! guidance panel beside the picture (#153); over them the picker (#148)
+//! and the pause notice; and the machine's loop, which feeds the game the
+//! keyboard and the Kempston joystick, carries out what the picker asks,
+//! and follows the game for the panel.
 
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -15,7 +16,12 @@ use sidekick_frontend::video::{Key, Screen};
 use sidekick_frontend::{Game, Pacer, freeze, notice, tape};
 use winit::keyboard::KeyCode;
 
+use crate::panel::{self, Follow, View};
 use crate::picker::{self, Action, Picker};
+
+/// The panel beside the picture, in Spectrum pixels: as wide as
+/// Starquake's.
+pub const PANEL_W: usize = 136;
 
 /// Manic Miner, as the shared frontend finds its tape and names it.
 pub static GAME: Game = Game {
@@ -64,6 +70,8 @@ pub struct Guide {
     picker: Mutex<Picker>,
     /// The cavern being played, which Go to cavern starts from.
     cavern: Mutex<u8>,
+    /// What the panel shows, and a count that moves whenever it changes.
+    view: Mutex<(View, u64)>,
 }
 
 impl Guide {
@@ -77,7 +85,7 @@ impl Guide {
 /// The state shared between the machine's thread and the window.
 pub type Shared = sidekick_frontend::Shared<Guide>;
 
-/// The pause notice's letters.
+/// The panel's, the picker's and the pause notice's letters.
 pub struct Painter(Fonts);
 
 impl Default for Painter {
@@ -87,33 +95,36 @@ impl Default for Painter {
 }
 
 impl Screen for Guide {
-    const PANEL_W: usize = 0;
-    /// The pad's letters and the picker's version.
-    type Stamp = (Layout, u64);
-    type Shown = (Layout, Picker);
+    const PANEL_W: usize = PANEL_W;
+    /// The pad's letters, the picker's version and the view's.
+    type Stamp = (Layout, u64, u64);
+    type Shown = (Layout, Picker, View);
     type Painter = Painter;
 
     fn stamp(&self) -> Self::Stamp {
         let layout = *self.layout.lock().unwrap();
-        (layout, self.picker.lock().unwrap().version())
+        let picker = self.picker.lock().unwrap().version();
+        (layout, picker, self.view.lock().unwrap().1)
     }
 
     fn shown_unless(&self, since: Option<Self::Stamp>) -> Option<(Self::Stamp, Self::Shown)> {
         let layout = *self.layout.lock().unwrap();
         let picker = self.picker.lock().unwrap();
-        let stamp = (layout, picker.version());
-        (since != Some(stamp)).then(|| (stamp, (layout, picker.clone())))
+        let view = self.view.lock().unwrap();
+        let stamp = (layout, picker.version(), view.1);
+        (since != Some(stamp)).then(|| (stamp, (layout, picker.clone(), view.0.clone())))
     }
 
-    /// The picker while it is open, and otherwise the pause notice while
-    /// paused.
+    /// The panel at the level in force; over it the picker while it is
+    /// open, and otherwise the pause notice while paused.
     fn draw(
         painter: &mut Painter,
         canvas: &mut Canvas,
-        (layout, picker): &Self::Shown,
+        (layout, picker, view): &Self::Shown,
         paused: bool,
     ) {
         canvas.clear_transparent();
+        panel::draw(&mut painter.0, canvas, view, picker.level());
         if picker.is_open() {
             picker::draw(&mut painter.0, canvas, picker, *layout);
         } else if paused {
@@ -189,6 +200,16 @@ fn hold_for_picker(shared: &Shared, pad: &mut gamepad::Gamepad, pacer: &mut Pace
     gamepad::Pad::default()
 }
 
+/// Whether a game is being played after a frame that reached `hits`: from
+/// the main loop's first pass outside the demo until the title screen.
+fn playing_after(was: bool, hits: &[u16], mem: &[u8]) -> bool {
+    if hits.contains(&routine::TITLE) {
+        false
+    } else {
+        was || (hits.contains(&routine::MAIN_LOOP) && mem[usize::from(at::DEMO)] == 0)
+    }
+}
+
 /// The caverns' names, as the game has them, from the machine's memory.
 fn cavern_names(machine: &manicminer::Machine) -> Vec<String> {
     (0..20)
@@ -223,6 +244,9 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
     // long since its main loop ran.
     let mut pause = false;
     let mut since_loop = PLAY_FRAMES;
+    let mut follow = Follow::default();
+    // A game is played from its first pass of the main loop to the title.
+    let mut playing = false;
     while !shared.quit.load(Ordering::Relaxed) {
         let mut now = pad.poll();
         *shared.game.layout.lock().unwrap() = now.layout;
@@ -303,6 +327,19 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
             ending = false;
         }
         *shared.game.cavern.lock().unwrap() = machine.zx.mem[usize::from(at::CAVERN)];
+        playing = playing_after(playing, &hits, &machine.zx.mem[..]);
+        let view = follow.frame(
+            &machine.zx.mem[..],
+            since_loop == 0,
+            since_loop < PLAY_FRAMES,
+            playing,
+        );
+        {
+            let mut shown = shared.game.view.lock().unwrap();
+            if shown.0 != view {
+                *shown = (view, shown.1 + 1);
+            }
+        }
         pause = machine.rules.pause_pressed;
         let edges = std::mem::take(&mut machine.zx.speaker);
         let border = machine.zx.border;
@@ -319,19 +356,46 @@ pub fn run(path: Option<&Path>) -> Result<(), String> {
 }
 
 /// Runs the game without a window for `frames` frames, ENTER held on the
-/// title screen to start a game, and writes a picture every 250 frames into
-/// `dir`.
-pub fn headless(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
+/// title screen to start a game, and writes the window every 250 frames
+/// into `dir`: the picture, and beside it the panel at guidance `level`.
+///
+/// # Errors
+///
+/// If the tape cannot be read or the folder cannot be written.
+pub fn headless(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), String> {
+    use sidekick_frontend::overlay::{self, HEIGHT};
     use sidekick_frontend::video::{FULL_H, FULL_W, draw};
     let tape = tape::read(&GAME, path)?;
     let mut machine = manicminer::start(&tape)?;
+    machine.watch = vec![routine::MAIN_LOOP, routine::TITLE];
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let enter = zx_spectrum::Key::by_name("enter").expect("a key");
+    let mut picker = Picker::default();
+    picker.set_level(level);
+    let mut fonts = Fonts::load();
+    let mut follow = Follow::default();
+    let mut since_loop = PLAY_FRAMES;
+    let mut playing = false;
     let mut rgba = vec![0u8; FULL_W * FULL_H * 4];
+    let (w, h) = (overlay::width(PANEL_W) as usize, HEIGHT as usize);
+    let mut over = vec![0u8; w * h * 4];
     for frame in 0..frames {
         machine.zx.set_key(enter, (100..300).contains(&frame));
-        machine.run_frame();
+        let hits = machine.run_frame();
         machine.zx.speaker.clear();
+        let passed = hits.contains(&routine::MAIN_LOOP);
+        since_loop = if passed {
+            0
+        } else {
+            since_loop.saturating_add(1)
+        };
+        playing = playing_after(playing, &hits, &machine.zx.mem[..]);
+        let view = follow.frame(
+            &machine.zx.mem[..],
+            passed,
+            since_loop < PLAY_FRAMES,
+            playing,
+        );
         if frame % 250 == 249 {
             draw(
                 &machine.zx.mem[0x4000..0x5B00],
@@ -339,14 +403,34 @@ pub fn headless(path: &Path, frames: u64, dir: &Path) -> Result<(), String> {
                 frame,
                 &mut rgba,
             );
-            let pixels: Vec<u32> = rgba
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|p| u32::from(p[0]) << 16 | u32::from(p[1]) << 8 | u32::from(p[2]))
+            let mut canvas = Canvas {
+                pixels: &mut over,
+                width: w,
+                height: h,
+                scale: 1.0,
+            };
+            canvas.clear_transparent();
+            panel::draw(&mut fonts, &mut canvas, &view, picker.level());
+            // The picture scaled up on the left, the overlay laid over it.
+            let k = h / FULL_H;
+            let pixels: Vec<u32> = (0..w * h)
+                .map(|i| {
+                    let (x, y) = (i % w, i / w);
+                    let under = if x < FULL_W * k {
+                        let at = ((y / k) * FULL_W + x / k) * 4;
+                        [rgba[at], rgba[at + 1], rgba[at + 2]]
+                    } else {
+                        [0; 3]
+                    };
+                    let o = &over[i * 4..i * 4 + 4];
+                    let alpha = u32::from(o[3]);
+                    let channel =
+                        |c: usize| u32::from(o[c]) + u32::from(under[c]) * (255 - alpha) / 255;
+                    channel(0) << 16 | channel(1) << 8 | channel(2)
+                })
                 .collect();
             let file = dir.join(format!("frame-{frame:05}.png"));
-            std::fs::write(&file, zx_core::png::encode(&pixels, FULL_W, FULL_H))
+            std::fs::write(&file, zx_core::png::encode(&pixels, w, h))
                 .map_err(|e| format!("{}: {e}", file.display()))?;
         }
     }

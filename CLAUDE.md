@@ -50,8 +50,8 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
   runs its checks (`entry`, `keys`, `facts`, `font`, `training`; `entry` and the font's
   comparison need `48.rom`), which the gate runs when `SK_ASSETS` holds
   `manic.tap`; `cargo run --release -p zx-sidekick-manicminer --
-  "$SK_ASSETS/manic.tap"` plays it, with `--headless <frames> <dir>` for
-  screenshots.
+  "$SK_ASSETS/manic.tap"` plays it, with `--headless <frames> <dir> [level]`
+  for screenshots of the window with the guidance panel (#153).
 - `cargo about generate --all-features about.hbs -o THIRD-PARTY.md`
   regenerates the attributions after a dependency change.
 - **Releasing a game** (#132): its version is in its crates' `Cargo.toml`, the

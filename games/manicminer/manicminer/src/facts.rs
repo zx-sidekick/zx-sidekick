@@ -110,6 +110,8 @@ pub mod at {
     pub const KEMPSTON: u16 = 0x8459;
     /// Willy's cell in the attribute buffer (two bytes).
     pub const WILLY_CELL: u16 = 0x806C;
+    /// Willy's height, in pixels doubled: 16 of it a cell (#153).
+    pub const WILLY_Y: u16 = 0x8068;
     /// Willy's airborne state: 0 standing, 1 jumping, 2 to 11 falling
     /// safely, 12 and up too far, 255 killed.
     pub const AIRBORNE: u16 = 0x806B;
@@ -125,7 +127,71 @@ pub mod at {
     /// The twenty caverns, 1K each from here, each with its name at offset
     /// 512.
     pub const CAVERNS: u16 = 0xB000;
+    /// The cavern being played, copied from the second half of its 1K; the
+    /// facts below are in this copy (#153).
+    pub const CAVERN_COPY: u16 = 0x8000;
+    /// The eight tile kinds, 9 bytes each (attribute, then the graphic), in
+    /// the order of [`crate::guide::Tile`].
+    pub const TILES: u16 = 0x8020;
+    /// The conveyor: its direction (0 left, 1 right), its address in the
+    /// screen buffer (two bytes) and its length in cells.
+    pub const CONVEYOR: u16 = 0x806F;
+    /// The items, 5 bytes each (attribute, address in the attribute buffer,
+    /// the screen buffer's high byte, a spare), ending at `0xFF`. An item's
+    /// attribute is 0 once it is collected.
+    pub const ITEMS: u16 = 0x8075;
+    /// The portal's attribute, flashing once every item is taken.
+    pub const PORTAL: u16 = 0x808F;
+    /// The portal's top left cell, as an address in the attribute buffer.
+    pub const PORTAL_CELL: u16 = 0x80B0;
+    /// The air's clock, which the air routine lowers by
+    /// [`crate::facts::AIR_CLOCK_STEP`] each pass of the main loop; the air
+    /// loses a unit when it wraps.
+    pub const CLOCK: u16 = 0x80BD;
+    /// The horizontal guardians, up to four of 7 bytes, ending at `0xFF`:
+    /// attribute (0 for an empty slot), cell address in the attribute buffer
+    /// (two bytes), the screen buffer's high byte, frame, then the leftmost
+    /// and rightmost cell's low address byte.
+    pub const HORIZONTAL: u16 = 0x80BE;
+    /// The vertical guardians, up to four of 7 bytes, ending at `0xFF`:
+    /// attribute, frame, y in pixels, column, step, then the lowest and
+    /// highest y.
+    pub const VERTICAL: u16 = 0x80DD;
+    /// The attribute buffer the game draws each pass into, 512 cells: the
+    /// addresses above are into it.
+    pub const ATTRIBUTES: u16 = 0x5C00;
+    /// The empty cavern's cells: its attributes without Willy, the
+    /// guardians or the items, 512 cells.
+    pub const EMPTY_CELLS: u16 = 0x5E00;
+    /// The screen buffer the game draws into, laid out as the display file.
+    pub const SCREEN_BUFFER: u16 = 0x7000;
 }
+
+/// The caverns the main loop treats apart, by its compares of the cavern's
+/// number from `0x876F` (#153).
+pub mod caverns {
+    /// Eugene's own routine (`CP $04` at `0x8772`).
+    pub const EUGENE: u8 = 4;
+    /// The Kong Beast's own routine (`CP $07` at `0x878A`, `CP $0B` at
+    /// `0x8792`).
+    pub const KONG_BEAST: [u8; 2] = [7, 11];
+    /// The vertical guardians' table is run from this cavern on (`CP $08`
+    /// at `0x8782`, `CALL NC,$8EF1`); before it, what is there is not a
+    /// guardian table.
+    pub const VERTICAL_FROM: u8 = 8;
+    /// The Skylabs' own routine instead of the vertical guardians' (`CP $0D`
+    /// at `0x877A`): they fall down one column and come back in another.
+    pub const SKYLABS: u8 = 13;
+    /// The light beam's own routine (`CP $12` at `0x879A`).
+    pub const SOLAR: u8 = 18;
+}
+
+/// The air when none is left: the air routine reports "no air" when the
+/// clock wraps at this (`CP $24` at `0x8A4B`).
+pub const AIR_EMPTY: u8 = 0x24;
+/// What the air routine takes from the clock each pass (`SUB $04` at
+/// `0x8A3F`); the clock wraps to `0xFC`.
+pub const AIR_CLOCK_STEP: u8 = 4;
 
 /// Whether `bytes` are the tape these facts are about.
 #[must_use]

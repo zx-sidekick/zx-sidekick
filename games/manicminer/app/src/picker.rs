@@ -1,19 +1,23 @@
-//! The training picker (#148): laid over the picture, opened with Esc or
+//! The picker (#148, #153): laid over the picture, opened with Esc or
 //! Select, and holding the game while it is open, as Starquake's picker
-//! does. Five switches, a row to go to a cavern, End this game and Exit.
+//! does. The guidance level, five training switches, a row to go to a
+//! cavern, End this game and Exit.
 //! Left and right change the highlighted row in the picker only; Enter or
 //! A keeps the changes and closes it, or does the action; Esc, B or Select
 //! close it and keep nothing. An action asks for a second press.
 
 use manicminer::play::Training;
 use sidekick_frontend::gamepad::Layout;
-use sidekick_frontend::overlay::HEIGHT;
+use sidekick_frontend::overlay::{self, HEIGHT};
 use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight};
-use sidekick_frontend::video::FULL_W;
+
+use crate::frontend::PANEL_W;
 
 /// The picker's rows, top to bottom.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Row {
+    /// The guidance level.
+    Level,
     /// One of the five switches, by its place in [`SWITCHES`].
     Switch(usize),
     Cavern,
@@ -21,7 +25,8 @@ enum Row {
     Exit,
 }
 
-const ROWS: [Row; 8] = [
+const ROWS: [Row; 9] = [
+    Row::Level,
     Row::Switch(0),
     Row::Switch(1),
     Row::Switch(2),
@@ -31,6 +36,20 @@ const ROWS: [Row; 8] = [
     Row::EndGame,
     Row::Exit,
 ];
+
+/// Each guidance level's name, as the panel and the picker show it (#153).
+pub const LEVELS: [&str; 4] = ["Off", "On screen", "Items and portal", "What can hurt you"];
+
+/// What each level adds, which the picker says under it.
+const ADDS: [&str; 4] = [
+    "The original game, no help.",
+    "Air in seconds, the items left, the portal, and the cavern.",
+    "The cavern drawn beside the picture, its items and portal ringed.",
+    "Nasty tiles, crumbling floor, conveyors, and each guardian's path.",
+];
+
+/// The highest level.
+const TOP_LEVEL: u8 = LEVELS.len() as u8 - 1;
 
 /// Each switch's name, and what it does, which the picker says under them
 /// while it is highlighted.
@@ -77,8 +96,11 @@ pub struct Picker {
     open: bool,
     /// The highlighted row, by its place in [`ROWS`].
     focus: usize,
-    /// The switches in force, and those chosen in the picker, not yet kept.
+    /// The guidance level and switches in force, and those chosen in the
+    /// picker, not yet kept.
+    level: u8,
     training: Training,
+    picked_level: u8,
     picked: Training,
     /// The cavern the Go to cavern row shows, 0 to 19.
     cavern: u8,
@@ -110,10 +132,28 @@ impl Picker {
         self.training
     }
 
+    /// The guidance level in force, 0 to 3.
+    pub fn level(&self) -> u8 {
+        self.level
+    }
+
+    /// Starts at guidance `level` (headless, which has no picker).
+    pub fn set_level(&mut self, level: u8) {
+        self.level = level.min(TOP_LEVEL);
+        self.version += 1;
+    }
+
+    /// Keeps what is chosen in the picker.
+    fn keep(&mut self) {
+        self.level = self.picked_level;
+        self.training = self.picked;
+    }
+
     /// Opens the picker on the switches in force, with Go to cavern showing
     /// the cavern being played, `cavern`.
     pub fn open(&mut self, cavern: u8) {
         self.open = true;
+        self.picked_level = self.level;
         self.picked = self.training;
         self.cavern = cavern.min(19);
         self.focus = 0;
@@ -148,10 +188,17 @@ impl Picker {
         self.version += 1;
     }
 
-    /// Left and right: a switch off or on, or the cavern down or up, in the
-    /// picker only until it is kept.
+    /// Left and right: the level down or up, a switch off or on, or the
+    /// cavern down or up, in the picker only until it is kept.
     pub fn change(&mut self, up: bool) {
         match ROWS[self.focus] {
+            Row::Level => {
+                self.picked_level = if up {
+                    (self.picked_level + 1).min(TOP_LEVEL)
+                } else {
+                    self.picked_level.saturating_sub(1)
+                };
+            }
             Row::Switch(i) => *switch(&mut self.picked, i) = up,
             Row::Cavern => {
                 self.cavern = if up {
@@ -165,17 +212,17 @@ impl Picker {
         self.version += 1;
     }
 
-    /// Enter or A. On a switch it keeps what is chosen and closes the
-    /// picker; on Go to cavern it keeps them and goes there; on an action
-    /// the first press asks for a second, and the second does it.
+    /// Enter or A. On the level or a switch it keeps what is chosen and
+    /// closes the picker; on Go to cavern it keeps them and goes there; on
+    /// an action the first press asks for a second, and the second does it.
     pub fn enter(&mut self) {
         match ROWS[self.focus] {
-            Row::Switch(_) => {
-                self.training = self.picked;
+            Row::Level | Row::Switch(_) => {
+                self.keep();
                 self.close();
             }
             Row::Cavern => {
-                self.training = self.picked;
+                self.keep();
                 self.requested = Some(Action::GoTo(self.cavern));
                 self.close();
             }
@@ -226,6 +273,14 @@ const DANGER: Rgb = [0xe0, 0x67, 0x6f];
 const DANGER_FILL: Rgb = [0x2a, 0x16, 0x18];
 const DANGER_TITLE: Rgb = [0xf3, 0xc6, 0xca];
 const DANGER_TEXT: Rgb = [0xe0, 0xa3, 0xa8];
+const LABEL_FOCUSED: Rgb = [0xa9, 0xc5, 0xff];
+const ACCENT_DIM: Rgb = [0x5e, 0x7f, 0xb8];
+const NOTCH: Rgb = [0x26, 0x2b, 0x37];
+
+/// The guidance level's box, as tall as Starquake's.
+const LEVEL_BOX: f32 = 184.0;
+/// The TRAINING heading over the switches.
+const SWITCH_HEAD: f32 = 22.0;
 
 /// A row's height, and the space it takes.
 const PITCH: f32 = 34.0;
@@ -255,11 +310,12 @@ fn pad_badges(layout: Layout) -> (Badge, Badge) {
 
 /// Draws the picker over the picture, which it dims.
 pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) {
-    let (ww, wh) = (FULL_W as f32 * 3.0, HEIGHT);
+    let (ww, wh) = (overlay::width(PANEL_W), HEIGHT);
     canvas.shade(0.0, 0.0, ww, wh, DIM, 184);
     let action_h = |row: Row| if p.armed == Some(row) { 54.0 } else { 40.0 };
     let actions_h = action_h(Row::EndGame) + 4.0 + action_h(Row::Exit);
-    let rule = 56.0 + 14.0 + 6.0 * PITCH + 18.0 + 6.0;
+    let switches_top = 56.0 + LEVEL_BOX + 16.0 + SWITCH_HEAD;
+    let rule = switches_top + 6.0 * PITCH + 18.0 + 6.0;
     let (w, h) = (560.0, rule + 8.0 + actions_h + 12.0 + 52.0);
     let x = (ww - w) / 2.0;
     let y = (wh - h) / 2.0;
@@ -271,7 +327,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
         y + 20.0,
         None,
         1.0,
-        &[span("Training", 19.0, Weight::SemiBold, BRIGHT)],
+        &[span("Guidance", 19.0, Weight::SemiBold, BRIGHT)],
     );
     let paused = [span("The game is paused", 12.0, Weight::Regular, LABEL)];
     let pw = fonts.measure(&paused);
@@ -290,7 +346,16 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
         canvas.round_rect(rx, top, rw, PITCH - 4.0, 8.0, ACCENT);
         canvas.round_rect(rx + 2.0, top + 2.0, rw - 4.0, PITCH - 8.0, 6.0, SELECTED);
     };
-    let mut top = y + 56.0 + 14.0;
+    level_box(fonts, canvas, p, rx, y + 56.0, rw, focus == Row::Level);
+    spaced(
+        fonts,
+        canvas,
+        rx + 14.0,
+        y + 56.0 + LEVEL_BOX + 16.0,
+        "TRAINING",
+        LABEL,
+    );
+    let mut top = y + switches_top;
     let mut says = None;
     let mut picked = p.picked;
     for (i, (label, does)) in SWITCHES.iter().enumerate() {
@@ -460,6 +525,117 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
     fonts.word(canvas, hx + 2.0, hy, hh, "cancel");
 }
 
+/// A small label with its letters spread out, as Starquake's panel has.
+fn spaced(fonts: &mut Fonts, canvas: &mut Canvas, mut x: f32, y: f32, text: &str, colour: Rgb) {
+    let mut buf = [0u8; 4];
+    for c in text.chars() {
+        let s = span(c.encode_utf8(&mut buf), 11.0, Weight::SemiBold, colour);
+        fonts.text(Some(canvas), x, y, None, 1.0, std::slice::from_ref(&s));
+        x += fonts.advance(c, 11.0, Weight::SemiBold) + 11.0 * 0.14;
+    }
+}
+
+/// The guidance level, as Starquake's picker shows it: the number and its
+/// name between arrows, a notch a level, and what the level adds.
+fn level_box(
+    fonts: &mut Fonts,
+    canvas: &mut Canvas,
+    p: &Picker,
+    x: f32,
+    y: f32,
+    w: f32,
+    focused: bool,
+) {
+    let level = p.picked_level;
+    if focused {
+        canvas.round_rect(x, y, w, LEVEL_BOX, 10.0, ACCENT);
+        canvas.round_rect(x + 2.0, y + 2.0, w - 4.0, LEVEL_BOX - 4.0, 8.0, SELECTED);
+    }
+    spaced(
+        fonts,
+        canvas,
+        x + 16.0,
+        y + 14.0,
+        "GUIDANCE LEVEL",
+        if focused { LABEL_FOCUSED } else { LABEL },
+    );
+    let arrow = |on: bool| match (on, focused) {
+        (true, true) => ACCENT,
+        (true, false) => ARROW,
+        (false, _) => NOTCH,
+    };
+    let (l, r, cy) = (x + 16.0, x + w - 16.0, y + 69.0);
+    canvas.triangle(
+        [(l, cy), (l + 14.0, cy - 8.0), (l + 14.0, cy + 8.0)],
+        arrow(level > 0),
+    );
+    canvas.triangle(
+        [(r, cy), (r - 14.0, cy - 8.0), (r - 14.0, cy + 8.0)],
+        arrow(level < TOP_LEVEL),
+    );
+    let value = if focused { TITLE } else { VALUE_DIM };
+    let centred = |fonts: &mut Fonts, canvas: &mut Canvas, top: f32, spans: &[Span]| {
+        let tw = fonts.measure(spans);
+        fonts.text(Some(canvas), x + (w - tw) / 2.0, top, None, 1.0, spans);
+    };
+    centred(
+        fonts,
+        canvas,
+        y + 30.0,
+        &[span(&level.to_string(), 40.0, Weight::SemiBold, value)],
+    );
+    centred(
+        fonts,
+        canvas,
+        y + 80.0,
+        &[span(
+            LEVELS[usize::from(level)],
+            17.0,
+            Weight::SemiBold,
+            value,
+        )],
+    );
+    let (nx, nw, gap) = (x + 16.0, w - 32.0, 6.0);
+    let step = (nw - f32::from(TOP_LEVEL - 1) * gap) / f32::from(TOP_LEVEL);
+    for i in 1..=TOP_LEVEL {
+        let colour = match (i <= level, focused) {
+            (true, true) => ACCENT,
+            (true, false) => ACCENT_DIM,
+            (false, _) => NOTCH,
+        };
+        canvas.round_rect(
+            nx + f32::from(i - 1) * (step + gap),
+            y + 116.0,
+            step,
+            8.0,
+            3.0,
+            colour,
+        );
+    }
+    fonts.text(
+        Some(canvas),
+        nx,
+        y + 130.0,
+        None,
+        1.0,
+        &[span("less help", 11.0, Weight::Regular, PAUSED)],
+    );
+    let more = [span("more help", 11.0, Weight::Regular, PAUSED)];
+    let mw = fonts.measure(&more);
+    fonts.text(Some(canvas), nx + nw - mw, y + 130.0, None, 1.0, &more);
+    centred(
+        fonts,
+        canvas,
+        y + 152.0,
+        &[span(
+            ADDS[usize::from(level)],
+            13.0,
+            Weight::Regular,
+            HINT_KEY,
+        )],
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,10 +660,11 @@ mod tests {
         let mut fonts = Fonts::load();
         for (name, focus_cavern) in [("switch", false), ("cavern", true)] {
             if focus_cavern {
-                p.focus_down();
-                p.focus_down();
+                for _ in 0..3 {
+                    p.focus_down();
+                }
             }
-            let (w, h) = ((FULL_W as f32 * 3.0) as usize, HEIGHT as usize);
+            let (w, h) = (overlay::width(PANEL_W) as usize, HEIGHT as usize);
             let mut pixels = vec![0u8; w * h * 4];
             let mut canvas = Canvas {
                 pixels: &mut pixels,
@@ -516,20 +693,41 @@ mod tests {
         let mut p = Picker::default();
         p.open(0);
         p.change(true);
+        p.focus_down();
+        p.change(true);
         p.back();
+        assert_eq!(p.level(), 0, "Esc keeps nothing");
         assert_eq!(p.training(), Training::default(), "Esc keeps nothing");
         p.open(0);
         p.change(true);
+        p.focus_down();
+        p.change(true);
         p.enter();
-        assert!(p.training().lives, "Enter keeps it");
+        assert_eq!(p.level(), 1, "Enter keeps the level");
+        assert!(p.training().lives, "and the switches");
         assert!(!p.is_open());
+    }
+
+    #[test]
+    fn the_level_stops_at_off_and_at_the_top() {
+        let mut p = Picker::default();
+        p.open(0);
+        p.change(false);
+        p.enter();
+        assert_eq!(p.level(), 0);
+        p.open(0);
+        for _ in 0..10 {
+            p.change(true);
+        }
+        p.enter();
+        assert_eq!(p.level(), TOP_LEVEL);
     }
 
     #[test]
     fn go_to_cavern_wraps_and_is_requested_with_enter() {
         let mut p = Picker::default();
         p.open(0);
-        for _ in 0..5 {
+        for _ in 0..6 {
             p.focus_down();
         }
         p.change(false);
