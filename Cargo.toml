@@ -10,6 +10,8 @@ members = [
 ]
 
 [workspace.package]
+# The shared crates' version. Each game's crates carry the game's own, the
+# same in all of them, which its release tag names (#132).
 version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
