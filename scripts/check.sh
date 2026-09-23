@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # check.sh — the pre-PR gate. Exits non-zero if anything fails.
 #
-# The processor conformance test needs the Fuse corpus in assets/; without
-# it that check is reported as skipped, loudly.
+# The processor conformance test needs the Fuse corpus, in assets/ or in
+# SK_ASSETS. Without it the gate fails (#78): a pass must mean the processor
+# was checked in our bus. SK_NO_FUSE=1 lets it pass anyway, and says so.
+#
+# Every check that did not run is named again at the end, next to the result.
 #
 # Gate on the EXIT CODE. Never grep the output.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 failed=()
+skipped=()
 run() {
   local name="$1"; shift
   echo "=== $name"
@@ -30,7 +34,7 @@ run "no-frontend" scripts/no-frontend.sh
 if command -v cargo-deny > /dev/null; then
   run "cargo-deny" cargo deny check
 else
-  echo "!!! cargo-deny not installed; the dependency policy was NOT checked."
+  skipped+=("the dependency policy: cargo-deny is not installed")
 fi
 # The attributions shipped with a binary. Same story:
 # `cargo install cargo-about --locked --features cli`.
@@ -43,18 +47,29 @@ if command -v cargo-about > /dev/null; then
     failed+=("THIRD-PARTY.md is stale: cargo about generate --all-features about.hbs -o THIRD-PARTY.md")
   fi
 else
-  echo "!!! cargo-about not installed; THIRD-PARTY.md was NOT checked."
+  skipped+=("THIRD-PARTY.md: cargo-about is not installed")
 fi
 
 echo "=== Z80 conformance"
-if [ -f assets/tests.in ] && [ -f assets/tests.expected ]; then
-  out=$(cargo test -q -p zx-spectrum --test fuse --locked -- --nocapture 2>&1)
+corpus=""
+for dir in assets ${SK_ASSETS:+"$SK_ASSETS"}; do
+  if [ -f "$dir/tests.in" ] && [ -f "$dir/tests.expected" ]; then
+    # Absolute, since cargo runs the test from its own crate's folder.
+    corpus=$(cd "$dir" && pwd)
+    break
+  fi
+done
+if [ -n "$corpus" ]; then
+  echo "the Fuse corpus from $corpus/"
+  out=$(FUSE_TESTS="$corpus" cargo test -q -p zx-spectrum --test fuse --locked -- --nocapture 2>&1)
   if ! printf '%s\n' "$out" | grep -q 'Z80 corpus: 1329/1335 cases match exactly, 6 more differ only in the undocumented bits 3 and 5 of F' \
     || ! printf '%s\n' "$out" | grep -q 'Z80 bus activity: 1335/1335 cases match'; then
     failed+=("Z80 conformance")
   fi
+elif [ "${SK_NO_FUSE:-}" = 1 ]; then
+  skipped+=("Z80 conformance: SK_NO_FUSE=1")
 else
-  echo "!!! the Fuse corpus is not in assets/; conformance was NOT checked."
+  failed+=("Z80 conformance: no Fuse corpus in assets/ or SK_ASSETS (see assets/README.md; SK_NO_FUSE=1 skips it)")
 fi
 
 # The local checks against the player's copy of the game, which CI cannot
@@ -70,14 +85,21 @@ if [ -n "${SK_ASSETS:-}" ] && [ -f "$SK_ASSETS/starquake.tap" ]; then
     run "entry (real ROM loader)"  cargo run -q --release -p sk-check --locked -- entry "$SK_ASSETS"
     run "rom (answers vs real ROM)" cargo run -q --release -p sk-check --locked -- rom "$SK_ASSETS" 6000
   else
-    echo "!!! no 48.rom in SK_ASSETS; the ROM checks did NOT run."
+    skipped+=("entry and rom: no 48.rom in SK_ASSETS")
   fi
 else
-  echo "!!! SK_ASSETS not set (or no starquake.tap in it); the checks against the game did NOT run."
+  skipped+=("the checks against the game: SK_ASSETS is not set, or has no starquake.tap")
 fi
 
+if [ ${#skipped[@]} -ne 0 ]; then
+  printf 'NOT RUN: %s\n' "${skipped[@]}"
+fi
 if [ ${#failed[@]} -ne 0 ]; then
   printf 'FAILED: %s\n' "${failed[@]}"
   exit 1
 fi
-echo "all checks passed"
+if [ ${#skipped[@]} -ne 0 ]; then
+  echo "every check that ran passed"
+else
+  echo "all checks passed"
+fi
