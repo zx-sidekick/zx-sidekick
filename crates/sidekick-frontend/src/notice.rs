@@ -19,8 +19,9 @@ const DIM: u8 = 158;
 const CARD_W: f32 = 440.0;
 const CARD_H: f32 = 160.0;
 
-/// Dims the picture and lays the card over its middle.
-pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: crate::gamepad::Layout) {
+/// Dims the picture and lays the card over its middle. `action` is what the
+/// fire button does in the game: "fire" in Starquake, "jump" in Manic Miner.
+pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: crate::gamepad::Layout, action: &str) {
     canvas.shade(0.0, 0.0, PICTURE_W, HEIGHT, [0, 0, 0], DIM);
     let cx = (PICTURE_W - CARD_W) / 2.0;
     let cy = (HEIGHT - CARD_H) / 2.0;
@@ -40,6 +41,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: crate::gamepad::Layo
             colour: palette::TITLE,
         }],
     );
+    let go_on = format!("Move or {action} to continue.");
     fonts.text(
         Some(canvas),
         cx + pad,
@@ -47,7 +49,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: crate::gamepad::Layo
         None,
         1.0,
         &[Span {
-            text: "Move or fire to continue.",
+            text: &go_on,
             size: 16.0,
             weight: Weight::Regular,
             colour: palette::MUTED,
@@ -73,7 +75,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: crate::gamepad::Layo
         crate::gamepad::Layout::Nintendo => fonts.button_badge(canvas, x, by, h, "Y"),
         crate::gamepad::Layout::Xbox => fonts.button_badge(canvas, x, by, h, "X"),
     } + 10.0;
-    fonts.word(canvas, x, by, h, "fire");
+    fonts.word(canvas, x, by, h, action);
 }
 
 #[cfg(test)]
@@ -98,6 +100,7 @@ mod tests {
             &mut Fonts::load(),
             &mut canvas,
             crate::gamepad::Layout::Xbox,
+            "fire",
         );
         let picture_w = (PICTURE_W * scale) as usize;
         let mut out = vec![0u8; w * h * 4];

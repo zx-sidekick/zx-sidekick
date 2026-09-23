@@ -316,7 +316,7 @@ impl Panel {
             }
         }
         if paused && !guidance.picker_open() {
-            notice::draw(&mut self.fonts, canvas, guidance.pad());
+            notice::draw(&mut self.fonts, canvas, guidance.pad(), "fire");
         }
         if guidance.picker_open() {
             self.picker(canvas, guidance);
