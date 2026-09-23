@@ -4,7 +4,7 @@
 //! the machine keeps with the game, and none runs in CI: the tape and the
 //! ROM are never committed.
 //!
-//! `manicminer-check <entry|keys|facts|font|all> <assets-dir>`
+//! `manicminer-check <entry|keys|facts|font|training|all> <assets-dir>`
 
 use std::path::Path;
 
@@ -339,9 +339,231 @@ fn font_check(dir: &Path) -> bool {
     ok && right == 32
 }
 
+/// How Willy was killed: the instruction that sent the game to its kill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Death {
+    Fall,
+    Guardian,
+    Nasty,
+}
+
+/// Runs `frames` frames with `keys` held, and says how Willy was first
+/// killed, if he was.
+fn death(m: &mut Machine, frames: u64, keys: &[&str]) -> Option<Death> {
+    use manicminer::facts::steer;
+    for k in keys {
+        m.zx.set_key(key(k), true);
+    }
+    let mut prev = 0u16;
+    let mut found = None;
+    for _ in 0..frames {
+        m.run_frame_observing(|z| {
+            let pc = z.pc();
+            if found.is_none() && (pc == 0x8D05 || pc == 0x8D06) {
+                found = if prev == steer::FALL_KILL {
+                    Some(Death::Fall)
+                } else if steer::NASTY_KILLS.contains(&prev) {
+                    Some(Death::Nasty)
+                } else if steer::GUARDIAN_DRAWS.iter().any(|&g| prev == g + 3) {
+                    Some(Death::Guardian)
+                } else {
+                    None
+                };
+            }
+            prev = pc;
+        });
+        if found.is_some() {
+            break;
+        }
+    }
+    m.zx.release_all_keys();
+    found
+}
+
+/// A game in play in `cavern`, reached by typing the game's own cheat
+/// ([`manicminer::play::Play::go_to`]), with `training` in force.
+fn in_cavern(dir: &Path, cavern: u8, training: manicminer::play::Training) -> Option<Machine> {
+    let mut m = into_play(dir);
+    m.rules.training = training;
+    m.rules.go_to = Some(cavern);
+    m.watch = vec![routine::MAIN_LOOP];
+    for _ in 0..400 {
+        m.run_frame();
+        if m.rules.go_to.is_none() && m.zx.mem[usize::from(at::CAVERN)] == cavern {
+            run(&mut m, 20);
+            return Some(m);
+        }
+    }
+    None
+}
+
+/// Training mode (#148): going to any cavern by the game's own cheat; each
+/// switch keeps Willy from the death it is about, which the same play
+/// without it meets; air and lives stay where they are; and with every
+/// switch off the machine changes nothing the game would not.
+fn training_check(dir: &Path) -> bool {
+    use manicminer::play::Training;
+    let mut ok = true;
+    // Every cavern by the cheat.
+    let reached = (0..20u8)
+        .filter(|&c| in_cavern(dir, c, Training::default()).is_some())
+        .count();
+    println!("training: went to {reached} of 20 caverns by the game's own cheat");
+    ok &= reached == 20;
+    // Each switch against the death it is about, in play that meets it.
+    let cases: [(&str, Training, u8, &[&str], Death); 5] = [
+        (
+            "safe falls",
+            Training {
+                falls: true,
+                ..Training::default()
+            },
+            5,
+            &["p"],
+            Death::Fall,
+        ),
+        (
+            "no harm from nasties",
+            Training {
+                nasties: true,
+                ..Training::default()
+            },
+            9,
+            &["p", "space"],
+            Death::Nasty,
+        ),
+        (
+            "no harm from guardians",
+            Training {
+                guardians: true,
+                ..Training::default()
+            },
+            0,
+            &["p", "space"],
+            Death::Guardian,
+        ),
+        (
+            "no harm from Eugene",
+            Training {
+                guardians: true,
+                ..Training::default()
+            },
+            4,
+            &[],
+            Death::Guardian,
+        ),
+        (
+            "no harm from the Kong Beast",
+            Training {
+                guardians: true,
+                ..Training::default()
+            },
+            7,
+            &[],
+            Death::Guardian,
+        ),
+    ];
+    for (name, on, cavern, keys, meant) in cases {
+        let off =
+            in_cavern(dir, cavern, Training::default()).map(|mut m| death(&mut m, 1500, keys));
+        let with = in_cavern(dir, cavern, on).map(|mut m| death(&mut m, 1500, keys));
+        let good = off == Some(Some(meant)) && with.is_some_and(|d| d != Some(meant));
+        println!(
+            "training: {name}: without it {:?}, with it {:?}{}",
+            off.flatten(),
+            with.flatten(),
+            if good { "" } else { "  NOT AS PROMISED" }
+        );
+        ok &= good;
+    }
+    // Endless lives: a death takes none.
+    for (lives, name) in [(false, "off"), (true, "on")] {
+        let Some(mut m) = in_cavern(
+            dir,
+            9,
+            Training {
+                lives,
+                ..Training::default()
+            },
+        ) else {
+            ok = false;
+            continue;
+        };
+        let before = m.zx.mem[usize::from(at::LIVES)];
+        m.watch = vec![routine::LOSE_LIFE, routine::MAIN_LOOP];
+        m.zx.set_key(key("p"), true);
+        m.zx.set_key(key("space"), true);
+        let mut died = false;
+        for _ in 0..600 {
+            if m.run_frame().contains(&routine::LOSE_LIFE) {
+                died = true;
+                m.zx.release_all_keys();
+                run(&mut m, 200);
+                break;
+            }
+        }
+        let after = m.zx.mem[usize::from(at::LIVES)];
+        let good = died && (after == before) == lives;
+        println!(
+            "training: endless lives {name}: {before} lives, {after} after a death{}",
+            if good { "" } else { "  NOT AS PROMISED" }
+        );
+        ok &= good;
+    }
+    // Air stays full: a minute of play takes none.
+    for (air, name) in [(false, "off"), (true, "on")] {
+        let mut m = into_play(dir);
+        m.rules.training = Training {
+            air,
+            ..Training::default()
+        };
+        let before = m.zx.mem[usize::from(at::AIR)];
+        run(&mut m, 3000);
+        let after = m.zx.mem[usize::from(at::AIR)];
+        let good = (after == before) == air;
+        println!(
+            "training: air stays full {name}: {before} then {after}{}",
+            if good { "" } else { "  NOT AS PROMISED" }
+        );
+        ok &= good;
+    }
+    // Every switch off: the whole of memory as a machine with no rules at
+    // all leaves it, after play that meets a death.
+    let tap = tape(dir);
+    let mut plain =
+        sidekick::Machine::<()>::from_tape(&tap, ENTRY_PC, ENTRY_SP).expect("the tape loads");
+    let font_at = usize::from(FONT);
+    plain.zx.mem[font_at..font_at + 768].copy_from_slice(&manicminer::font::CHARACTER_SET);
+    let mut ours = machine(dir);
+    for frame in 0..2000u64 {
+        for z in [&mut plain.zx, &mut ours.zx] {
+            z.release_all_keys();
+            if (100..300).contains(&frame) {
+                z.set_key(key("enter"), true);
+            }
+            if frame > 700 {
+                z.set_key(key("p"), true);
+                z.set_key(key("space"), true);
+            }
+        }
+        plain.run_frame();
+        ours.run_frame();
+    }
+    let same = plain.zx.mem[..] == ours.zx.mem[..] && plain.zx.pc() == ours.zx.pc();
+    println!(
+        "training: with every switch off, memory {} a machine with no rules",
+        if same {
+            "is the same as"
+        } else {
+            "is NOT the same as"
+        }
+    );
+    ok && same
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let usage = "manicminer-check <entry|keys|facts|font|all> <assets-dir>";
+    let usage = "manicminer-check <entry|keys|facts|font|training|all> <assets-dir>";
     let (Some(command), Some(dir)) = (args.first(), args.get(1)) else {
         eprintln!("usage: {usage}");
         std::process::exit(2);
@@ -352,12 +574,14 @@ fn main() {
         "keys" => keys_check(dir),
         "facts" => facts_check(dir),
         "font" => font_check(dir),
+        "training" => training_check(dir),
         "all" => {
             let results = [
                 entry_check(dir),
                 keys_check(dir),
                 facts_check(dir),
                 font_check(dir),
+                training_check(dir),
             ];
             results.iter().all(|&r| r)
         }
