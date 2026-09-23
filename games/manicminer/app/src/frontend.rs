@@ -1,18 +1,21 @@
 //! Manic Miner in the window every game shares (`sidekick-frontend`): no
-//! panel yet, only the pause notice over the picture, and the machine's
-//! loop, which feeds the game the keyboard and the Kempston joystick.
+//! panel yet; over the picture the training picker (#148) and the pause
+//! notice; and the machine's loop, which feeds the game the keyboard and
+//! the Kempston joystick, and carries out what the picker asks.
 
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use manicminer::facts::routine;
+use manicminer::facts::{at, routine};
 use sidekick_frontend::gamepad::{self, Layout};
 use sidekick_frontend::text::{Canvas, Fonts};
 use sidekick_frontend::video::{Key, Screen};
 use sidekick_frontend::{Game, Pacer, freeze, notice, tape};
 use winit::keyboard::KeyCode;
+
+use crate::picker::{self, Action, Picker};
 
 /// Manic Miner, as the shared frontend finds its tape and names it.
 pub static GAME: Game = Game {
@@ -55,8 +58,20 @@ const PLAY_FRAMES: u32 = 12;
 /// share.
 #[derive(Default)]
 pub struct Guide {
-    /// The pad's letters, for the pause notice's legend.
+    /// The pad's letters, for the legends.
     layout: Mutex<Layout>,
+    /// The training picker.
+    picker: Mutex<Picker>,
+    /// The cavern being played, which Go to cavern starts from.
+    cavern: Mutex<u8>,
+}
+
+impl Guide {
+    /// Opens the picker, starting Go to cavern from the cavern being played.
+    fn open(&self) {
+        let cavern = *self.cavern.lock().unwrap();
+        self.picker.lock().unwrap().open(cavern);
+    }
 }
 
 /// The state shared between the machine's thread and the window.
@@ -73,46 +88,165 @@ impl Default for Painter {
 
 impl Screen for Guide {
     const PANEL_W: usize = 0;
-    type Stamp = Layout;
-    type Shown = Layout;
+    /// The pad's letters and the picker's version.
+    type Stamp = (Layout, u64);
+    type Shown = (Layout, Picker);
     type Painter = Painter;
 
-    fn stamp(&self) -> Layout {
-        *self.layout.lock().unwrap()
+    fn stamp(&self) -> Self::Stamp {
+        let layout = *self.layout.lock().unwrap();
+        (layout, self.picker.lock().unwrap().version())
     }
 
-    fn shown_unless(&self, since: Option<Layout>) -> Option<(Layout, Layout)> {
-        let layout = self.stamp();
-        (since != Some(layout)).then_some((layout, layout))
+    fn shown_unless(&self, since: Option<Self::Stamp>) -> Option<(Self::Stamp, Self::Shown)> {
+        let layout = *self.layout.lock().unwrap();
+        let picker = self.picker.lock().unwrap();
+        let stamp = (layout, picker.version());
+        (since != Some(stamp)).then(|| (stamp, (layout, picker.clone())))
     }
 
-    /// Nothing over the picture but the pause notice, while paused.
-    fn draw(painter: &mut Painter, canvas: &mut Canvas, layout: &Layout, paused: bool) {
+    /// The picker while it is open, and otherwise the pause notice while
+    /// paused.
+    fn draw(
+        painter: &mut Painter,
+        canvas: &mut Canvas,
+        (layout, picker): &Self::Shown,
+        paused: bool,
+    ) {
         canvas.clear_transparent();
-        if paused {
+        if picker.is_open() {
+            picker::draw(&mut painter.0, canvas, picker, *layout);
+        } else if paused {
             notice::draw(&mut painter.0, canvas, *layout, "jump");
         }
     }
 
-    /// Every key is the game's.
-    fn key(&self, _code: KeyCode) -> Key {
-        Key::Pass
+    /// Esc opens the picker and goes back; while it is open the arrows and
+    /// Enter work it, and it has the keyboard to itself. Every other key is
+    /// the game's.
+    fn key(&self, code: KeyCode) -> Key {
+        let open = self.picker.lock().unwrap().is_open();
+        if code == KeyCode::Escape && !open {
+            self.open();
+            // Opening it: whatever was held is let go, as the game will not
+            // see the key-ups.
+            return Key::Taken {
+                release: true,
+                quit: false,
+            };
+        }
+        if !open {
+            return Key::Pass;
+        }
+        let mut picker = self.picker.lock().unwrap();
+        match code {
+            KeyCode::Escape => picker.back(),
+            KeyCode::ArrowUp => picker.focus_up(),
+            KeyCode::ArrowDown => picker.focus_down(),
+            KeyCode::ArrowLeft => picker.change(false),
+            KeyCode::ArrowRight => picker.change(true),
+            KeyCode::Enter | KeyCode::NumpadEnter => picker.enter(),
+            _ => {}
+        }
+        Key::Taken {
+            release: false,
+            quit: picker.exiting(),
+        }
     }
+}
+
+/// Holds the game while the picker is open, taking the pad's side of it: up
+/// and down choose a row, left and right change it, A does the highlighted
+/// thing, and B or Select goes back. No time passes for the game, so its
+/// pacing starts again from now. Returns no input for the frame it resumes
+/// on, so the button that closed the picker is not also a jump.
+fn hold_for_picker(shared: &Shared, pad: &mut gamepad::Gamepad, pacer: &mut Pacer) -> gamepad::Pad {
+    while shared.game.picker.lock().unwrap().is_open() && !shared.quit.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(20));
+        let now = pad.poll();
+        *shared.game.layout.lock().unwrap() = now.layout;
+        let mut picker = shared.game.picker.lock().unwrap();
+        if now.select || now.cancel() {
+            picker.back();
+        }
+        if now.up {
+            picker.focus_up();
+        }
+        if now.down {
+            picker.focus_down();
+        }
+        if now.left {
+            picker.change(false);
+        }
+        if now.right {
+            picker.change(true);
+        }
+        if now.confirm() {
+            picker.enter();
+        }
+    }
+    pacer.restart();
+    gamepad::Pad::default()
+}
+
+/// The caverns' names, as the game has them, from the machine's memory.
+fn cavern_names(machine: &manicminer::Machine) -> Vec<String> {
+    (0..20)
+        .map(|n| {
+            let at = usize::from(at::CAVERNS) + 1024 * n + 512;
+            String::from_utf8_lossy(&machine.zx.mem[at..at + 32])
+                .trim()
+                .to_string()
+        })
+        .collect()
 }
 
 /// Manic Miner's loop on the machine's thread.
 fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), String> {
     let mut machine = manicminer::start(tape)?;
-    machine.watch = vec![routine::MAIN_LOOP];
+    machine.watch = vec![routine::MAIN_LOOP, routine::TITLE];
+    shared
+        .game
+        .picker
+        .lock()
+        .unwrap()
+        .set_names(cavern_names(&machine));
     let mut pad = gamepad::Gamepad::new(BUTTONS);
+    // Whether End this game is holding the game's own quit keys, CAPS SHIFT
+    // and SPACE, until it is back at the title screen.
+    let mut ending = false;
     let mut freeze = freeze::Freeze::default();
     // Whether the game's pause key was pressed in the last frame, and how
     // long since its main loop ran.
     let mut pause = false;
     let mut since_loop = PLAY_FRAMES;
     while !shared.quit.load(Ordering::Relaxed) {
-        let pad = pad.poll();
-        *shared.game.layout.lock().unwrap() = pad.layout;
+        let mut now = pad.poll();
+        *shared.game.layout.lock().unwrap() = now.layout;
+        if now.select && !shared.game.picker.lock().unwrap().is_open() {
+            shared.game.open();
+        }
+        if shared.game.picker.lock().unwrap().is_open() {
+            now = hold_for_picker(shared, &mut pad, &mut pacer);
+        }
+        let (action, training) = {
+            let mut picker = shared.game.picker.lock().unwrap();
+            (picker.take(), picker.training())
+        };
+        match action {
+            Some(Action::Exit) => return Ok(()),
+            Some(Action::EndGame) => {
+                ending = true;
+                freeze.thaw();
+            }
+            Some(Action::GoTo(cavern)) => {
+                machine.rules.go_to = Some(cavern);
+                freeze.thaw();
+            }
+            None => {}
+        }
+        machine.rules.training = training;
+        let pad = now;
         let input = *shared.input.lock().unwrap();
         let joystick = input.joystick | pad.bits;
         // Paused: no frame runs until a key, a direction, jump or Start,
@@ -130,16 +264,24 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
             continue;
         }
         machine.zx.keys = input.keys;
+        if ending {
+            machine.zx.set_key(zx_spectrum::Key::Matrix(0, 0), true);
+            machine.zx.set_key(zx_spectrum::Key::Matrix(7, 0), true);
+        }
         // The game reads the Kempston port for itself, having found one
         // there at the title screen.
         machine.zx.kempston = joystick;
         machine.rules.start = pad.start;
         let hits = machine.run_frame();
-        since_loop = if hits.is_empty() {
-            since_loop.saturating_add(1)
-        } else {
+        since_loop = if hits.contains(&routine::MAIN_LOOP) {
             0
+        } else {
+            since_loop.saturating_add(1)
         };
+        if hits.contains(&routine::TITLE) {
+            ending = false;
+        }
+        *shared.game.cavern.lock().unwrap() = machine.zx.mem[usize::from(at::CAVERN)];
         pause = machine.rules.pause_pressed;
         let edges = std::mem::take(&mut machine.zx.speaker);
         let border = machine.zx.border;

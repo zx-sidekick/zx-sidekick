@@ -4,7 +4,7 @@ Manic Miner (Matthew Smith / Bug-Byte, 1983), played from your own copy of the g
 
 **Not affiliated with or endorsed by the rights holders of Manic Miner or the ZX Spectrum.** You need your own copy of the game, the original Bug-Byte release. ZX Sidekick contains no part of it: the original program you supply runs in an emulated Spectrum inside the app, unchanged.
 
-> Plain play, the first step of #140. Guidance and training come as their own sub-issues of #140. See [`GOAL.md`](../../GOAL.md) for the aim.
+> Plain play and training mode so far, from #140. Guidance comes as its own sub-issues of #140. See [`GOAL.md`](../../GOAL.md) for the aim.
 
 ## The ROM
 
@@ -18,6 +18,7 @@ Not needed. Manic Miner calls no ROM routine and never enables interrupts. The o
 - [x] Pausing freezes the emulation, with the game's own pause keys (A to G) or Start, and the window says so (built; not yet checked by hand)
 - [x] Sound (built; not yet checked by ear)
 - [x] Tape prompt: find or drop the tape or its `.zip`, kept in the user data directory (built; not yet checked by hand)
+- [x] Training mode (#148): a picker over the picture (Esc, or Select on a pad) with five switches (endless lives, air stays full, safe falls, no harm from guardians, no harm from nasties), Go to cavern by the game's own cheat, End this game and Exit. Each switch steers the game at the one instruction it decides the thing with, and writes nothing into it (built; not yet checked by hand)
 
 ## Playing
 
@@ -35,3 +36,4 @@ Against your own tape, `SK_ASSETS=<folder with manic.tap and 48.rom> scripts/che
 - **keys**: the game finds the Kempston joystick; with the keyboard and with the joystick alike Willy walks and jumps; a pause key is reported while the game goes on running its loop, never waiting in its own pause; and Start starts a game from the title screen.
 - **facts**: a game played by nobody arrives at the title, a new game, the main loop, a life lost and game over in that order, and CAPS SHIFT with SPACE goes back to the title.
 - **font**: the character set included is the 48K ROM's own, byte for byte, and the cavern's name is drawn letter for letter from it.
+- **training**: Go to cavern reaches all 20 caverns by the game's own cheat; a fall, a nasty, a guardian, Eugene and the Kong Beast each kill Willy in play without their switch and not with it; a death takes no life with endless lives on; the air is where it started after a minute with air stays full on; and with every switch off, the whole of memory after play is as a machine with no rules at all leaves it.

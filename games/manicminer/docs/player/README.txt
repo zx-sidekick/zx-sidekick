@@ -77,3 +77,28 @@ Pausing, with Start or with the game's own pause keys (A to G), stops
 the game where it is and the window says so. Any key, a direction, jump
 or Start goes on. The keys H to Enter turn the music on and off, as the
 game always did.
+
+
+TRAINING
+--------
+
+Esc, or Select on a gamepad, opens the training picker over the game,
+which waits while it is open. Up and down choose a row; left and right
+change it; Enter or A keeps what you chose, and Esc, B or Select closes
+the picker without changing anything.
+
+  Endless lives        A life lost is not taken from the lives left.
+  Air stays full       The air never runs down, not even under the
+                       light beam.
+  Safe falls           A fall of any height lands Willy safely.
+  No harm from         Guardians, Eugene, the Kong Beast and the
+  guardians            Skylabs pass through Willy.
+  No harm from         Nasty tiles do not kill.
+  nasties
+  Go to cavern         Choose a cavern and press Enter or A: the game
+                       goes there with its own cheat and starts that
+                       cavern again. The cheat's boot appears beside
+                       your lives, as it always did.
+
+End this game goes back to the title screen, and Exit Manic Miner
+closes the program; each asks you to press Enter or A a second time.
