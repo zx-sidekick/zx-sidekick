@@ -78,8 +78,8 @@ pub struct Guide {
     jumps: Mutex<Option<(Place, Vec<Jump>)>>,
 }
 
-/// Where Willy stands, as a preview is for: the cavern, his middle and the
-/// way he faces.
+/// Where Willy is, as a preview is for: the cavern, his middle and the way
+/// he faces.
 type Place = (u8, (u8, u8), u8);
 
 fn place(machine: &manicminer::Machine) -> Place {
@@ -369,17 +369,20 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
             since_loop < PLAY_FRAMES,
             playing,
         );
-        // Level 4: a preview each pass while Willy stands, when the worker
-        // is free (a copy handed over only then); shown while he stands
-        // where it was worked out.
+        // Level 4: a preview each pass while Willy is on the ground, when
+        // the worker is free (a copy handed over only then). Standing
+        // still, it is shown where it was worked out; walking, the latest
+        // is shown until the next replaces it, up to a step behind him
+        // (#156).
         let level = shared.game.picker.lock().unwrap().level();
-        if level >= 4 && playing && preview::standing(&machine) {
+        if level >= 4 && playing && preview::on_ground(&machine) {
             let here = place(&machine);
             if since_loop == 0 {
                 let _busy = preview_to.try_send((here, machine.clone()));
             }
+            let walking = preview::walking(&machine);
             if let Some((at, jumps)) = &*shared.game.jumps.lock().unwrap()
-                && *at == here
+                && (*at == here || (walking && at.0 == here.0))
             {
                 view.jumps.clone_from(jumps);
             }

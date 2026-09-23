@@ -321,9 +321,10 @@ fn staged(dir: &Path, cavern: u8, right: u64, training: manicminer::play::Traini
     m
 }
 
-/// The jump preview (#155): each jump it finds, made in play by a player
-/// who holds the keys all the way through, ends the same way at the same
-/// place; and a fall the preview finds fatal lands with safe falls on.
+/// The jump preview (#155): each jump it finds, standing still or walking,
+/// made in play by a player who holds the keys all the way through, ends
+/// the same way at the same place; and a fall the preview finds fatal
+/// lands with safe falls on.
 fn preview_check(dir: &Path) -> bool {
     use manicminer::play::Training;
     use manicminer::preview::{self, End, Way};
@@ -331,9 +332,24 @@ fn preview_check(dir: &Path) -> bool {
     // most with one that kills.
     let scenes: [(u8, u64); 7] = [(18, 0), (5, 0), (5, 80), (0, 100), (0, 0), (2, 0), (1, 60)];
     let (mut same, mut jumps, mut deaths, mut saved) = (0, 0, 0, 0);
-    for (cavern, right) in scenes {
-        let m = staged(dir, cavern, right, Training::default());
-        for j in preview::jumps(&m) {
+    let mut walked = 0;
+    // Each scene standing still, and again walking right (#156).
+    let walking = scenes.map(|(cavern, right)| (cavern, right, true));
+    for (cavern, right, walk) in scenes
+        .map(|(c, r)| (c, r, false))
+        .into_iter()
+        .chain(walking)
+    {
+        let mut m = staged(dir, cavern, right, Training::default());
+        if walk {
+            hold(&mut m, &["p"], 12);
+            if !preview::walking(&m) {
+                continue;
+            }
+        }
+        let found = preview::jumps(&m);
+        walked += if walk { found.len() } else { 0 };
+        for j in found {
             jumps += 1;
             if j.end == End::Dies {
                 deaths += 1;
@@ -370,6 +386,12 @@ fn preview_check(dir: &Path) -> bool {
                 // Jump until he is off the ground; the direction held on,
                 // though the game steers nobody in the air.
                 p.zx.release_all_keys();
+                // Walking, a jump straight up is jump alone.
+                let keys: Vec<&str> = if walk && j.way == Way::Up {
+                    vec!["space"]
+                } else {
+                    keys.clone()
+                };
                 for k in keys.iter().filter(|k| !started || **k != "space") {
                     p.zx.set_key(key(k), true);
                 }
@@ -411,8 +433,9 @@ fn preview_check(dir: &Path) -> bool {
     println!(
         "facts: {same} of {jumps} previewed jumps ({deaths} of them deaths) ended the same way in play"
     );
+    println!("facts: {walked} of them were from Willy walking, two a scene");
     println!("facts: {saved} of the {deaths} deaths landed with safe falls on");
-    same == jumps && jumps >= 15 && deaths >= 3 && saved >= 1
+    same == jumps && jumps >= 15 && deaths >= 3 && saved >= 1 && walked >= 6
 }
 
 /// Pressing `keys` for a frame's worth of play, as a player would.

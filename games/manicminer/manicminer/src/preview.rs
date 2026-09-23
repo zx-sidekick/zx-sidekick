@@ -53,12 +53,17 @@ pub struct Jump {
 /// take far fewer.
 const LONGEST: u32 = 300;
 
-/// Whether Willy is standing still: on the ground and not walking (bit 1
-/// of [`at::FACING`] is set while he moves). A preview for a walking Willy
-/// would be for a place he has already left by the time it is done.
+/// Whether Willy is on the ground, where a jump can start.
 #[must_use]
-pub fn standing(m: &Machine) -> bool {
-    m.zx.mem[usize::from(at::AIRBORNE)] == 0 && m.zx.mem[usize::from(at::FACING)] & 2 == 0
+pub fn on_ground(m: &Machine) -> bool {
+    m.zx.mem[usize::from(at::AIRBORNE)] == 0
+}
+
+/// Whether Willy is walking: bit 1 of [`at::FACING`], which the game sets
+/// while he moves.
+#[must_use]
+pub fn walking(m: &Machine) -> bool {
+    m.zx.mem[usize::from(at::FACING)] & 2 != 0
 }
 
 /// The middle of Willy's 16 pixels square, in the cavern's pixels.
@@ -83,14 +88,25 @@ fn press(m: &mut Machine, name: &str) {
     m.zx.set_key(Key::by_name(name).expect("a key"), true);
 }
 
-/// The three jumps from where Willy stands, with the training switches in
-/// force in `m`; none if he is not standing.
+/// The jumps from where Willy is, with the training switches in force in
+/// `m`: all three while he stands still; while he walks, the two he can
+/// make without turning, the way he walks and straight up (#156). None in
+/// the air.
 #[must_use]
 pub fn jumps(m: &Machine) -> Vec<Jump> {
-    if !standing(m) {
+    if !on_ground(m) {
         return Vec::new();
     }
-    Way::ALL.iter().filter_map(|&way| jump(m, way)).collect()
+    let ahead = if facing_left(m) {
+        Way::Left
+    } else {
+        Way::Right
+    };
+    Way::ALL
+        .iter()
+        .filter(|&&way| !walking(m) || way == Way::Up || way == ahead)
+        .filter_map(|&way| jump(m, way))
+        .collect()
 }
 
 /// One jump from where Willy stands in `m`, if it starts at all. A jump
