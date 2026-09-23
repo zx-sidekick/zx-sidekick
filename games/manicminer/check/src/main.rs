@@ -310,7 +310,163 @@ fn facts_check(dir: &Path) -> bool {
         if demo { "set" } else { "NOT set" },
         if game { "clear" } else { "NOT clear" }
     );
-    in_order && quit && demo && game
+    in_order && quit && demo && game && guide_check(dir)
+}
+
+/// Pressing `keys` for a frame's worth of play, as a player would.
+fn hold(m: &mut Machine, keys: &[&str], frames: u64) -> Vec<u16> {
+    m.zx.release_all_keys();
+    for k in keys {
+        m.zx.set_key(key(k), true);
+    }
+    run(m, frames)
+}
+
+/// What guidance reads (#153), against the game in every cavern: the
+/// cavern's own definition on the tape; its cells as the game lays them;
+/// each patrol kept by its guardian through play; Willy's cell where his
+/// height says; an item taken leaving one fewer; and the air's passes
+/// counting down one a pass of the main loop.
+fn guide_check(dir: &Path) -> bool {
+    use manicminer::guide::{self, Patrol, Tile};
+    use manicminer::play::Training;
+    // Nothing kills, so play goes on in the cavern it is about.
+    let safe = Training {
+        lives: true,
+        air: true,
+        falls: true,
+        guardians: true,
+        nasties: true,
+    };
+    let mut ok = true;
+    let (mut defined, mut laid, mut kept, mut patrols, mut willy) = (0, 0, 0, 0, 0);
+    let mut taken = None;
+    for cavern in 0..20u8 {
+        let Some(mut m) = in_cavern(dir, cavern, safe) else {
+            println!("facts: cavern {cavern} was NOT reached");
+            ok = false;
+            continue;
+        };
+        let c = guide::read(&m.zx.mem[..]);
+        // The definition on the tape: the second half of the cavern's 1K is
+        // what the game copies to where the facts are read.
+        let def = usize::from(at::CAVERNS) + 1024 * usize::from(cavern);
+        let copy = |a: u16, len: usize| {
+            let off = usize::from(a - at::CAVERN_COPY);
+            m.zx.mem[usize::from(a)..usize::from(a) + len]
+                == m.zx.mem[def + 512 + off..def + 512 + off + len]
+        };
+        let items_where = (0..c.items.len() as u16).all(|i| copy(at::ITEMS + 5 * i + 1, 2));
+        if copy(at::TILES, 72)
+            && copy(at::CONVEYOR, 4)
+            && copy(at::PORTAL_CELL, 2)
+            && items_where
+            && c.number == cavern
+        {
+            defined += 1;
+        }
+        // The empty cavern's cells are its own layout, and the conveyor's
+        // cells are conveyor.
+        let cells_ok = m.zx.mem[usize::from(at::EMPTY_CELLS)..usize::from(at::EMPTY_CELLS) + 512]
+            == m.zx.mem[def..def + 512];
+        let conveyor_ok = c.conveyor.is_none_or(|v| {
+            (0..v.length).all(|k| {
+                c.tile(usize::from(v.cell.row), usize::from(v.cell.col + k)) == Tile::Conveyor
+            })
+        });
+        if cells_ok && conveyor_ok {
+            laid += 1;
+        }
+        // Play: each guardian inside its patrol, Willy's cell at his height.
+        let mut inside = vec![true; c.patrols.len()];
+        let mut willy_ok = true;
+        for frame in 0..1000u64 {
+            let keys: &[&str] = match (frame / 100) % 4 {
+                0 => &["p"],
+                1 => &["o", "space"],
+                2 => &["p", "space"],
+                _ => &["o"],
+            };
+            hold(&mut m, keys, 1);
+            let mem = &m.zx.mem;
+            let now = guide::read(&mem[..]);
+            let mut positions = Vec::new();
+            for g in 0..4u16 {
+                let r = usize::from(at::HORIZONTAL + 7 * g);
+                if mem[r] == 0xFF {
+                    break;
+                }
+                if mem[r] != 0 {
+                    positions.push(mem[r + 1] & 31);
+                }
+            }
+            for g in 0..4u16 {
+                let r = usize::from(at::VERTICAL + 7 * g);
+                if positions.len() >= c.patrols.len() || mem[r] == 0xFF {
+                    break;
+                }
+                positions.push(mem[r + 2] / 8);
+            }
+            for ((p, at), inside) in c.patrols.iter().zip(&positions).zip(&mut inside) {
+                let (Patrol::Across { from, to, .. } | Patrol::Down { from, to, .. }) = *p;
+                *inside &= (from..=to).contains(at);
+            }
+            // Willy's height is kept doubled: a cell is 16 of it.
+            let height = mem[usize::from(at::WILLY_Y)] / 16;
+            willy_ok &= now.willy.is_some_and(|w| w.row == height);
+            if taken.is_none() && now.items_left() + 1 == c.items_left() {
+                taken = Some(cavern);
+            }
+        }
+        kept += inside.iter().filter(|&&k| k).count();
+        patrols += inside.len();
+        willy += usize::from(willy_ok);
+    }
+    println!("facts: {defined} of 20 caverns read as the tape defines them");
+    println!(
+        "facts: {laid} of 20 caverns' cells as the game lays them, the conveyor on its own tiles"
+    );
+    println!("facts: {kept} of {patrols} guardians kept their patrols through play");
+    println!("facts: Willy's cell was at his height in {willy} of 20 caverns");
+    println!(
+        "facts: {}",
+        taken.map_or("NO item was taken in play".to_string(), |c| format!(
+            "an item taken in cavern {c} left one fewer"
+        ))
+    );
+    ok &= defined == 20 && laid == 20 && kept == patrols && patrols > 0 && willy == 20;
+    ok &= taken.is_some();
+    // The portal: shut with items left, open once none is, staged by
+    // clearing the items' attributes as taking them does.
+    let mut m = into_play(dir);
+    let shut = !guide::read(&m.zx.mem[..]).portal_open;
+    let mut a = usize::from(at::ITEMS);
+    while m.zx.mem[a] != 0xFF {
+        m.zx.mem[a] = 0;
+        a += 5;
+    }
+    run(&mut m, 20);
+    let open = guide::read(&m.zx.mem[..]).portal_open;
+    println!(
+        "facts: the portal was {} with items left and {} once none was",
+        if shut { "shut" } else { "NOT shut" },
+        if open { "open" } else { "NOT open" }
+    );
+    ok &= shut && open;
+    // The air: one pass fewer each pass of the main loop, until it is out.
+    let mut m = into_play(dir);
+    let before = guide::read(&m.zx.mem[..]).air_passes;
+    let passes = run(&mut m, 1000)
+        .iter()
+        .filter(|&&h| h == routine::MAIN_LOOP)
+        .count() as u32;
+    let after = guide::read(&m.zx.mem[..]).air_passes;
+    let air_ok = before - after == passes;
+    println!(
+        "facts: the air's passes went {before} to {after} over {passes} passes of the main loop{}",
+        if air_ok { "" } else { "  NOT one a pass" }
+    );
+    ok && air_ok
 }
 
 /// The cavern's name, as the game prints it on the screen, is drawn letter

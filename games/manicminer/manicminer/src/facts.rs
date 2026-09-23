@@ -110,6 +110,8 @@ pub mod at {
     pub const KEMPSTON: u16 = 0x8459;
     /// Willy's cell in the attribute buffer (two bytes).
     pub const WILLY_CELL: u16 = 0x806C;
+    /// Willy's height, in pixels doubled: 16 of it a cell (#153).
+    pub const WILLY_Y: u16 = 0x8068;
     /// Willy's airborne state: 0 standing, 1 jumping, 2 to 11 falling
     /// safely, 12 and up too far, 255 killed.
     pub const AIRBORNE: u16 = 0x806B;

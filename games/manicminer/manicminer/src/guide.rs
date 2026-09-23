@@ -133,7 +133,7 @@ pub fn read(mem: &[u8]) -> Cavern {
             .map_or(Tile::Background, |i| KINDS[i])
     };
     let empty = usize::from(at::EMPTY_CELLS);
-    let cells = mem[empty..empty + COLUMNS * ROWS]
+    let cells: Vec<Tile> = mem[empty..empty + COLUMNS * ROWS]
         .iter()
         .map(|&a| kind(a))
         .collect();
@@ -153,18 +153,28 @@ pub fn read(mem: &[u8]) -> Cavern {
     }
 
     // The conveyor's address is in the screen buffer, laid out as the
-    // display file: a third, a character row, a pixel line, a column.
+    // display file: a third, a character row, a pixel line, a column. Two
+    // caverns keep a record where no conveyor is laid (The Endorian Forest,
+    // Amoebatrons' Revenge): a conveyor is one only on its own tiles.
     let conveyor = {
         let off = word(mem, at::CONVEYOR + 1).wrapping_sub(at::SCREEN_BUFFER);
         let length = byte(mem, at::CONVEYOR + 3);
-        (off < 0x1000 && length > 0).then(|| Conveyor {
-            cell: Cell {
-                row: (((off >> 11) << 3) | ((off >> 5) & 7)) as u8,
-                col: (off & 31) as u8,
-            },
-            length,
-            rightwards: byte(mem, at::CONVEYOR) == 1,
-        })
+        (off < 0x1000 && length > 0)
+            .then(|| Conveyor {
+                cell: Cell {
+                    row: (((off >> 11) << 3) | ((off >> 5) & 7)) as u8,
+                    col: (off & 31) as u8,
+                },
+                length,
+                rightwards: byte(mem, at::CONVEYOR) == 1,
+            })
+            .filter(|v| {
+                (0..v.length).all(|k| {
+                    let col = usize::from(v.cell.col + k);
+                    col < COLUMNS
+                        && cells[usize::from(v.cell.row) * COLUMNS + col] == Tile::Conveyor
+                })
+            })
     };
 
     let mut patrols = Vec::new();
@@ -246,6 +256,7 @@ mod tests {
         mem[empty + 32 * 14] = 0x44; // a nasty
         mem[empty + 32 * 14 + 1] = 0x05; // the other nasty
         mem[empty + 32 * 5 + 7] = 0x02; // crumbling
+        mem[empty + 32 * 9 + 8..empty + 32 * 9 + 28].fill(0x04); // the conveyor
         // Two items, the second taken, then the end.
         set(
             &mut mem,
@@ -314,6 +325,13 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_conveyor_is_one_only_on_its_own_tiles() {
+        let mut mem = staged();
+        mem[usize::from(at::EMPTY_CELLS) + 32 * 9 + 10] = 0x42;
+        assert_eq!(read(&mem).conveyor, None);
     }
 
     #[test]
