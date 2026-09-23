@@ -1861,7 +1861,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "sidekick"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "zx-core",
  "zx-spectrum",
@@ -1885,7 +1885,7 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
 name = "sk-check"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "sidekick",
  "zx-core",
@@ -1894,7 +1894,7 @@ dependencies = [
 
 [[package]]
 name = "sk-lab"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "flate2",
  "sidekick",
@@ -2963,7 +2963,7 @@ dependencies = [
 
 [[package]]
 name = "zx-sidekick-starquake"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cpal",
  "fontdue",
