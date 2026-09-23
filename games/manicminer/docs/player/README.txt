@@ -79,13 +79,30 @@ or Start goes on. The keys H to Enter turn the music on and off, as the
 game always did.
 
 
-TRAINING
---------
+GUIDANCE AND TRAINING
+---------------------
 
-Esc, or Select on a gamepad, opens the training picker over the game,
-which waits while it is open. Up and down choose a row; left and right
+Esc, or Select on a gamepad, opens the picker over the game, which
+waits while it is open. Up and down choose a row; left and right
 change it; Enter or A keeps what you chose, and Esc, B or Select closes
 the picker without changing anything.
+
+The guidance level at the top chooses what the panel beside the
+picture shows. It starts at 0 each time the program starts.
+
+  0 Off                The panel says so, and shows nothing else.
+  1 On screen          The cavern's number and name, the air left in
+                       seconds, the items left, and whether the
+                       portal is open.
+  2 Items and portal   The cavern drawn on the panel, with Willy, the
+                       items ringed and the portal outlined: green
+                       once it is open.
+  3 What can hurt you  Nasty tiles in red, crumbling floor, which way
+                       the conveyors run, and each guardian's path
+                       with its ends. Eugene, the Kong Beast and the
+                       Skylabs have no path drawn.
+
+The training switches are under it:
 
   Endless lives        A life lost is not taken from the lives left.
   Air stays full       The air never runs down, not even under the
