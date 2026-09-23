@@ -1868,6 +1868,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sidekick-frontend"
+version = "0.2.0"
+dependencies = [
+ "cpal",
+ "fontdue",
+ "gilrs",
+ "pixels",
+ "rfd",
+ "sidekick",
+ "winit",
+ "zip",
+ "zx-core",
+ "zx-spectrum",
+]
+
+[[package]]
 name = "simd_cesu8"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2976,15 +2992,11 @@ dependencies = [
 name = "zx-sidekick-starquake"
 version = "0.3.0"
 dependencies = [
- "cpal",
- "fontdue",
- "gilrs",
- "pixels",
  "rfd",
  "sidekick",
+ "sidekick-frontend",
  "starquake",
  "winit",
- "zip",
  "zx-core",
  "zx-spectrum",
 ]

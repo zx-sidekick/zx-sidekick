@@ -7,12 +7,13 @@
 //! the rule on #3: a keyboard key is a squarish badge, a pad button a round
 //! one, and a direction a bare arrow.
 
-use super::gamepad;
+use super::OVERLAY_W as WINDOW_W;
 use super::guidance::{Guidance, LEVELS, SWITCHES, Setting, is_on, switches_on};
-use super::notice;
-use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
-use super::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, palette};
 use super::track::Scene;
+use sidekick_frontend::gamepad;
+use sidekick_frontend::notice;
+use sidekick_frontend::overlay::{HEIGHT as WINDOW_H, PICTURE_W};
+use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, palette};
 use starquake::facts::Kind;
 use starquake::map::{COLS, ROWS, Step};
 

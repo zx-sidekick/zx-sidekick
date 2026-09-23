@@ -250,7 +250,7 @@ pub struct Guidance {
     /// many: (1, 3) for the nearest of three, (0, 0) with none.
     piece_choice: (u8, u8),
     /// The letters the connected pad carries, for the legends (#101).
-    pad: crate::frontend::gamepad::Layout,
+    pad: sidekick_frontend::gamepad::Layout,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -280,13 +280,13 @@ impl Guidance {
 
     /// The letters the connected pad carries, which every legend follows
     /// (#101).
-    pub fn pad(&self) -> crate::frontend::gamepad::Layout {
+    pub fn pad(&self) -> sidekick_frontend::gamepad::Layout {
         self.pad
     }
 
     /// Takes the layout from the pad, if it has changed: the version moves
     /// with it, so the window redraws the badges.
-    pub fn set_pad(&mut self, layout: crate::frontend::gamepad::Layout) {
+    pub fn set_pad(&mut self, layout: sidekick_frontend::gamepad::Layout) {
         if self.pad != layout {
             self.pad = layout;
             self.version += 1;

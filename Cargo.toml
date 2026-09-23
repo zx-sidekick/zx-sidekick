@@ -4,6 +4,7 @@ members = [
     "crates/zx-core",
     "crates/zx-spectrum",
     "crates/sidekick",
+    "crates/sidekick-frontend",
     "games/starquake/starquake",
     "games/starquake/sk-check",
     "games/starquake/sk-lab",
@@ -24,6 +25,7 @@ publish = false
 zx-core = { path = "crates/zx-core" }
 zx-spectrum = { path = "crates/zx-spectrum" }
 sidekick = { path = "crates/sidekick" }
+sidekick-frontend = { path = "crates/sidekick-frontend" }
 starquake = { path = "games/starquake/starquake" }
 
 # The whole game runs on an emulated processor, so even dev builds need

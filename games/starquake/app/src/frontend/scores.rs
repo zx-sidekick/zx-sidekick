@@ -180,7 +180,7 @@ impl Keeper {
 
 /// Where the table is kept: beside the kept tape.
 pub fn path() -> Option<PathBuf> {
-    super::tape::app_dir().map(|d| d.join(FILE))
+    sidekick_frontend::tape::app_dir(&super::GAME).map(|d| d.join(FILE))
 }
 
 /// Writes `kept` to `path`, making its folder if need be.

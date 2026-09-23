@@ -3,7 +3,8 @@
 //! The pad reports the five joystick bits in the Kempston port's order, and
 //! the machine presses them however the game's chosen control method
 //! listens, so the pad works whichever option was picked on the title
-//! screen. The d-pad and the left stick move; the bottom face button is
+//! screen. The d-pad and the left stick move; what the bottom and left face
+//! buttons press is the game's ([`Buttons`]): in Starquake the bottom one is
 //! down and the left one fires, as platformers lay them out. Start pauses,
 //! which freezes the emulation, and Start again continues (`freeze.rs`).
 //! Select opens the guidance picker (#25), where the d-pad and stick work
@@ -130,23 +131,36 @@ fn presses(pad: &mut Pad, now: Held, was: Held) {
     pad.north = pressed(7);
 }
 
+/// The joystick bits the bottom and left face buttons press: the game's
+/// choice, since what a platformer's player presses most differs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Buttons {
+    /// The bottom face button (A on an Xbox pad).
+    pub south: u8,
+    /// The left one (X on an Xbox pad).
+    pub west: u8,
+}
+
 pub struct Gamepad {
     gilrs: Option<gilrs::Gilrs>,
+    buttons: Buttons,
     /// The picker's buttons at the last poll, to tell a press from a hold.
     was: Held,
 }
 
 impl Gamepad {
-    pub fn new() -> Gamepad {
+    pub fn new(buttons: Buttons) -> Gamepad {
         match gilrs::Gilrs::new() {
             Ok(gilrs) => Gamepad {
                 gilrs: Some(gilrs),
+                buttons,
                 was: [false; 8],
             },
             Err(e) => {
                 eprintln!("no gamepad support: {e}");
                 Gamepad {
                     gilrs: None,
+                    buttons,
                     was: [false; 8],
                 }
             }
@@ -188,15 +202,13 @@ impl Gamepad {
             if pressed(Button::DPadUp) || y > DEADZONE {
                 pad.bits |= 0x08;
             }
-            // The face buttons as a platformer lays them out: the bottom
-            // one (A on an Xbox pad) is down, which in Starquake lays a
-            // platform under Blob, the move a player makes most; the left
-            // one (X) fires. The others do nothing.
+            // The bottom and left face buttons (A and X on an Xbox pad) as
+            // the game lays them out. The others do nothing.
             if pressed(Button::South) {
-                pad.bits |= 0x04;
+                pad.bits |= self.buttons.south;
             }
             if pressed(Button::West) {
-                pad.bits |= 0x10;
+                pad.bits |= self.buttons.west;
             }
             pad.start |= pressed(Button::Start);
             now[0] |= pressed(Button::Select);

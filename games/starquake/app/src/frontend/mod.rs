@@ -1,69 +1,156 @@
-//! Window, input and sound around the emulated machine.
+//! Starquake in the window every game shares (`sidekick-frontend`): its
+//! guidance panel beside the picture, the picker over it, and the machine's
+//! loop, which follows the game for the panel and keeps its high scores.
 
-mod audio;
-mod freeze;
-mod gamepad;
 mod guidance;
 pub mod headless;
-mod input;
-mod notice;
-mod overlay;
 mod panel;
-mod prompt;
 mod scores;
-pub mod tape;
-mod text;
 mod track;
-mod video;
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use sidekick::Input;
+use sidekick_frontend::video::{Key, Screen};
+use sidekick_frontend::{Game, Pacer, freeze, gamepad, overlay, tape, text::Canvas};
 use starquake::Machine;
 use starquake::facts::{
     ENTRY_PC, ENTRY_SP, end_game_hold, high_scores, routine, write_high_scores,
 };
 use starquake::play::Training;
+use winit::keyboard::KeyCode;
 
-/// How long a Spectrum frame lasts, from the clock it is derived from
-/// rather than written out.
-const FRAME_PERIOD: Duration = Duration::from_nanos(zx_core::timing::FRAME_NANOS);
-const FRAMES_PER_SECOND: u32 = 50;
+/// Starquake, as the shared frontend finds its tape and names it.
+pub static GAME: Game = Game {
+    name: "Starquake",
+    release: "the original Bubble Bus release",
+    program: "zx-sidekick-starquake",
+    title: "ZX Sidekick · Starquake",
+    // This project's name, and the 8.3 name World of Spectrum's zip holds
+    // (`STARQUAK.TAP`), each bare and zipped.
+    names: &[
+        "starquake.tap",
+        "starquak.tap",
+        "starquake.tap.zip",
+        "starquak.tap.zip",
+    ],
+    kept: "starquake.tap",
+    accept: starquake::facts::is_supported_tape,
+    sha1: starquake::facts::TAPE_SHA1,
+    heading: "STARQUAKE",
+    about: "Nothing from the original game is included. The graphics, maps and sound are read \
+            from your own Starquake tape each time the game starts.",
+    zip: "Starquake.tap.zip",
+    page: "https://worldofspectrum.net/item/0004873/",
+    page_shown: "worldofspectrum.net/item/0004873",
+    credit: "Starquake \u{a9} 1985 Stephen Crow / Bubble Bus Software. Not affiliated.",
+};
+
+/// The pad's bottom face button is down, which lays a platform under Blob,
+/// the move a player makes most, and the left one fires, as platformers lay
+/// them out (#22).
+const BUTTONS: gamepad::Buttons = gamepad::Buttons {
+    south: sidekick::machine::JOY_DOWN,
+    west: sidekick::machine::JOY_FIRE,
+};
+
+/// The guidance panel's width at the Spectrum's scale, beside the picture.
+pub const PANEL_W: usize = 136;
+/// The width the overlay is laid out in, the panel beside the picture.
+pub const OVERLAY_W: f32 = overlay::width(PANEL_W);
 
 /// How long the tape's loading picture stays up before the game starts, as it
 /// would at the end of loading from a cassette.
 const LOADING_FRAMES: u32 = 150;
 
-/// State shared between the machine's thread and the window.
-pub struct Shared {
-    /// The most recent frame: display memory, border colour, frame number,
-    /// and whether the game is paused: the emulation frozen.
-    pub screen: Mutex<(Vec<u8>, u8, u64, bool)>,
-    pub input: Mutex<Input>,
-    /// Set when either side wants to stop: the window was closed, or the
-    /// machine's thread finished.
-    pub quit: AtomicBool,
-    /// Set when the machine's thread stopped without being asked to, so the
-    /// window can report it rather than sitting on a frozen picture.
-    pub dead: AtomicBool,
+/// Starquake's part of the state the machine's thread and the window share.
+pub struct Guide {
     /// The guidance level, training mode and the picker.
     pub guidance: Mutex<guidance::Guidance>,
     /// Which part of the program the game is in, for the panel.
     pub scene: Mutex<track::Scene>,
 }
 
+impl Default for Guide {
+    fn default() -> Guide {
+        Guide {
+            guidance: Mutex::new(guidance::Guidance::default()),
+            scene: Mutex::new(track::Scene::Loading),
+        }
+    }
+}
+
+/// The state shared between the machine's thread and the window.
+pub type Shared = sidekick_frontend::Shared<Guide>;
+
+impl Default for panel::Panel {
+    fn default() -> panel::Panel {
+        panel::Panel::new()
+    }
+}
+
+impl Screen for Guide {
+    const PANEL_W: usize = PANEL_W;
+    /// The guidance's version and the scene: the panel is drawn from both.
+    type Stamp = (u64, track::Scene);
+    type Shown = (guidance::Guidance, track::Scene);
+    type Painter = panel::Panel;
+
+    fn stamp(&self) -> Self::Stamp {
+        let version = self.guidance.lock().unwrap().version();
+        (version, *self.scene.lock().unwrap())
+    }
+
+    fn shown_unless(&self, since: Option<Self::Stamp>) -> Option<(Self::Stamp, Self::Shown)> {
+        let scene = *self.scene.lock().unwrap();
+        let guidance = self.guidance.lock().unwrap();
+        let stamp = (guidance.version(), scene);
+        (since != Some(stamp)).then(|| (stamp, (guidance.clone(), scene)))
+    }
+
+    fn draw(panel: &mut panel::Panel, canvas: &mut Canvas, shown: &Self::Shown, paused: bool) {
+        panel.draw(canvas, &shown.0, shown.1, paused);
+    }
+
+    /// The keys the guidance panel takes. Esc opens the picker and goes back,
+    /// and Tab switches the piece route; while it is open the arrows and
+    /// Enter work it, and it has the keyboard to itself, so nothing typed
+    /// into it reaches the game.
+    fn key(&self, code: KeyCode) -> Key {
+        let mut guidance = self.guidance.lock().unwrap();
+        let open = guidance.picker_open();
+        let mut quit = false;
+        match code {
+            KeyCode::Escape if open => guidance.back(),
+            KeyCode::Escape => guidance.open(),
+            // Tab, no key of the Spectrum's, switches the piece route (#51).
+            KeyCode::Tab if !open => guidance.switch_piece(),
+            _ if !open => return Key::Pass,
+            KeyCode::ArrowUp => guidance.focus_up(),
+            KeyCode::ArrowDown => guidance.focus_down(),
+            KeyCode::ArrowLeft => guidance.change(false),
+            KeyCode::ArrowRight => guidance.change(true),
+            KeyCode::Enter | KeyCode::NumpadEnter => {
+                guidance.enter();
+                quit = guidance.take(guidance::Action::Exit);
+            }
+            _ => {}
+        }
+        // Opening it: whatever was held is let go, as the game will not see
+        // the key-ups.
+        let release = guidance.picker_open() && !open;
+        Key::Taken { release, quit }
+    }
+}
+
 /// The machine's thread: runs a frame, plays its sound, shows its screen,
 /// and waits for the next one.
 struct Runner {
     shared: Arc<Shared>,
-    audio: Option<audio::Output>,
-    beeper: audio::Beeper,
+    pacer: Pacer,
     pad: gamepad::Gamepad,
-    next_frame: Instant,
-    frame: u64,
 }
 
 impl Runner {
@@ -74,12 +161,12 @@ impl Runner {
     /// from now. Returns no input for the frame it resumes on, so the button
     /// that closed the picker is not also a shot in the game.
     fn hold_for_picker(&mut self) -> gamepad::Pad {
-        while self.shared.guidance.lock().unwrap().picker_open()
+        while self.shared.game.guidance.lock().unwrap().picker_open()
             && !self.shared.quit.load(Ordering::Relaxed)
         {
             std::thread::sleep(Duration::from_millis(20));
             let pad = self.pad.poll();
-            let mut guidance = self.shared.guidance.lock().unwrap();
+            let mut guidance = self.shared.game.guidance.lock().unwrap();
             guidance.set_pad(pad.layout);
             if pad.select || pad.cancel() {
                 guidance.back();
@@ -103,47 +190,14 @@ impl Runner {
                 }
             }
         }
-        self.next_frame = Instant::now();
+        self.pacer.restart();
         gamepad::Pad::default()
     }
 
     /// Shows `memory` for a frame, plays `edges` over it, and waits until it
     /// is time for the next.
     fn present(&mut self, memory: &[u8], border: u8, edges: &[(u32, bool)]) {
-        self.beeper.play(edges, zx_spectrum::FRAME_T);
-        {
-            let mut screen = self.shared.screen.lock().unwrap();
-            let n = screen.0.len();
-            screen.0.copy_from_slice(&memory[..n]);
-            screen.1 = border;
-            screen.2 = self.frame;
-            screen.3 = false;
-        }
-        self.frame += 1;
-        // Pace by the clock, at the Spectrum's own frame rate, leaning a
-        // little on the period when the sound card's buffer strays outside
-        // two to three frames' worth, so the two clocks cannot drift apart.
-        let mut period = FRAME_PERIOD;
-        if let Some(out) = &self.audio {
-            out.push(self.beeper.samples());
-            let frame = out.rate() as usize / FRAMES_PER_SECOND as usize;
-            let queued = out.queued();
-            if queued < frame * 2 {
-                period = period.saturating_sub(Duration::from_micros(500));
-            } else if queued > frame * 3 {
-                period += Duration::from_micros(500);
-            }
-        }
-        self.beeper.clear_samples();
-        self.next_frame += period;
-        let now = Instant::now();
-        if self.next_frame > now {
-            std::thread::sleep(self.next_frame - now);
-        } else {
-            // Fallen behind: give up the lost time rather than race to
-            // catch it back.
-            self.next_frame = now;
-        }
+        self.pacer.present(&self.shared, memory, border, edges);
     }
 
     fn run(&mut self, tape: &[u8]) -> Result<(), String> {
@@ -154,7 +208,12 @@ impl Runner {
         let rooms = starquake::facts::all_rooms(&machine);
         let graph = starquake::map::Graph::new(&rooms, starquake::facts::CORE_ROOM);
         let openings = starquake::map::openings(&rooms, starquake::facts::CORE_ROOM);
-        self.shared.guidance.lock().unwrap().set_openings(openings);
+        self.shared
+            .game
+            .guidance
+            .lock()
+            .unwrap()
+            .set_openings(openings);
         let loading = zx_core::tape::load_tap(tape)?.loading_screen;
         if let Some(picture) = loading {
             let mut memory = vec![0u8; 0x1B00];
@@ -165,9 +224,9 @@ impl Runner {
                     return Ok(());
                 }
                 if self.pad.poll().select {
-                    self.shared.guidance.lock().unwrap().open();
+                    self.shared.game.guidance.lock().unwrap().open();
                 }
-                if self.shared.guidance.lock().unwrap().picker_open() {
+                if self.shared.game.guidance.lock().unwrap().picker_open() {
                     self.hold_for_picker();
                 }
                 self.present(&memory, 0, &[]);
@@ -189,6 +248,7 @@ impl Runner {
         let mut keeper = scores::Keeper::new(text.as_deref(), shipped);
         write_high_scores(&mut machine.zx.mem[..], &keeper.kept.entries);
         self.shared
+            .game
             .guidance
             .lock()
             .unwrap()
@@ -199,7 +259,12 @@ impl Runner {
         // tape's own, from the rooms read above (#80).
         tracker.door_rooms = starquake::facts::door_rooms(&rooms);
         let spots = starquake::facts::door_spots(&rooms);
-        self.shared.guidance.lock().unwrap().set_door_spots(spots);
+        self.shared
+            .game
+            .guidance
+            .lock()
+            .unwrap()
+            .set_door_spots(spots);
         let mut freeze = freeze::Freeze::default();
         // Whether the game's pause key was pressed in the last frame.
         let mut pause = false;
@@ -208,20 +273,25 @@ impl Runner {
         while !self.shared.quit.load(Ordering::Relaxed) {
             let mut pad = self.pad.poll();
             // The letters the legends show follow the pad (#101).
-            self.shared.guidance.lock().unwrap().set_pad(pad.layout);
+            self.shared
+                .game
+                .guidance
+                .lock()
+                .unwrap()
+                .set_pad(pad.layout);
             if pad.north {
-                let mut guidance = self.shared.guidance.lock().unwrap();
+                let mut guidance = self.shared.game.guidance.lock().unwrap();
                 if !guidance.picker_open() {
                     guidance.switch_piece();
                 }
             }
             if pad.select {
-                let mut guidance = self.shared.guidance.lock().unwrap();
+                let mut guidance = self.shared.game.guidance.lock().unwrap();
                 if !guidance.picker_open() {
                     guidance.open();
                 }
             }
-            if self.shared.guidance.lock().unwrap().picker_open() {
+            if self.shared.game.guidance.lock().unwrap().picker_open() {
                 pad = self.hold_for_picker();
             }
             // End this game holds the game's own keys for abandoning a game,
@@ -229,6 +299,7 @@ impl Runner {
             // has left play.
             if self
                 .shared
+                .game
                 .guidance
                 .lock()
                 .unwrap()
@@ -250,13 +321,13 @@ impl Runner {
                 pause = false;
                 self.shared.screen.lock().unwrap().3 = true;
                 std::thread::sleep(Duration::from_millis(20));
-                self.next_frame = Instant::now();
+                self.pacer.restart();
                 continue;
             }
             // Training mode holds things still only while a game is played;
             // anywhere else the machine writes nothing into the game (#8).
             machine.rules.training = match tracker.scene {
-                track::Scene::Play => self.shared.guidance.lock().unwrap().training(),
+                track::Scene::Play => self.shared.game.guidance.lock().unwrap().training(),
                 _ => Training::default(),
             };
             machine.zx.keys = input.keys;
@@ -275,10 +346,10 @@ impl Runner {
             }
             pause = machine.rules.pause_pressed;
             {
-                let mut guidance = self.shared.guidance.lock().unwrap();
+                let mut guidance = self.shared.game.guidance.lock().unwrap();
                 for &hit in &hits {
                     if let Some(scene) = tracker.follow(&machine.zx.mem[..], hit, &mut guidance) {
-                        *self.shared.scene.lock().unwrap() = scene;
+                        *self.shared.game.scene.lock().unwrap() = scene;
                     }
                 }
                 tracker.publish(&machine.zx.mem[..], &mut guidance);
@@ -316,85 +387,19 @@ impl Runner {
     }
 }
 
-fn machine_thread(tape: Vec<u8>, shared: Arc<Shared>, audio: Option<audio::Output>) {
-    let watch = shared.clone();
-    let played = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        let rate = audio.as_ref().map_or(44100, audio::Output::rate);
-        let mut runner = Runner {
-            shared,
-            audio,
-            beeper: audio::Beeper::new(rate),
-            pad: gamepad::Gamepad::new(),
-            next_frame: Instant::now(),
-            frame: 0,
-        };
-        runner.run(&tape)
-    }));
-    match played {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => {
-            eprintln!("error: {e}");
-            watch.dead.store(true, Ordering::Relaxed);
-        }
-        Err(_) => watch.dead.store(true, Ordering::Relaxed),
-    }
-    // Either way the game is over, so the window should come down with it.
-    watch.quit.store(true, Ordering::Relaxed);
-}
-
-/// The state shared between the machine and whatever is showing it.
-fn new_shared() -> Arc<Shared> {
-    Arc::new(Shared {
-        screen: Mutex::new((vec![0; zx_core::screen::BITMAP_LEN + 768], 0, 0, false)),
-        input: Mutex::new(Input::default()),
-        quit: AtomicBool::new(false),
-        dead: AtomicBool::new(false),
-        guidance: Mutex::new(guidance::Guidance::default()),
-        scene: Mutex::new(track::Scene::Loading),
-    })
-}
-
-/// The sound card, if there is one. The stream has to be held for as long
-/// as the sound should play.
-fn open_audio() -> (Option<audio::Output>, Option<cpal::Stream>) {
-    match audio::Output::start() {
-        Ok((out, stream)) => (Some(out), Some(stream)),
-        Err(e) => {
-            eprintln!("no sound: {e}");
-            (None, None)
-        }
-    }
-}
-
-/// Starts the machine on its own thread, with sound, from a checked copy of
-/// the game. Returns the sound stream, which the caller holds.
-fn launch(shared: &Arc<Shared>, tape: Vec<u8>) -> Result<Option<cpal::Stream>, String> {
-    let (audio, stream) = open_audio();
-    let machine_shared = shared.clone();
-    std::thread::Builder::new()
-        .name("machine".into())
-        .spawn(move || machine_thread(tape, machine_shared, audio))
-        .map_err(|e| e.to_string())?;
-    Ok(stream)
+/// Starquake's loop on the machine's thread.
+fn play(tape: &[u8], shared: &Arc<Shared>, pacer: Pacer) -> Result<(), String> {
+    let mut runner = Runner {
+        shared: shared.clone(),
+        pacer,
+        pad: gamepad::Gamepad::new(BUTTONS),
+    };
+    runner.run(tape)
 }
 
 /// Runs the game in a window: from `path`, or, with none, from whatever the
 /// player locates on the screen that asks for the tape.
 pub fn run(path: Option<&Path>) -> Result<(), String> {
-    let shared = new_shared();
-    let (prompt, stream) = match path {
-        Some(path) => {
-            let tape = tape::read(path)?;
-            (None, launch(&shared, tape)?)
-        }
-        None => (Some(prompt::Prompt::new()), None),
-    };
-    let launcher = shared.clone();
-    let result = video::run(
-        shared,
-        prompt,
-        Box::new(move |tape| launch(&launcher, tape)),
-    );
-    drop(stream);
-    result
+    let tape = path.map(|path| tape::read(&GAME, path)).transpose()?;
+    sidekick_frontend::run(&GAME, Shared::new(Guide::default()), tape, play)
 }

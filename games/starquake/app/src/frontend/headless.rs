@@ -9,11 +9,11 @@ use starquake::Machine;
 use starquake::facts::{ENTRY_PC, ENTRY_SP};
 
 use super::guidance::Guidance;
-use super::overlay;
 use super::panel::Panel;
-use super::text::Canvas;
 use super::track::{self, Scene, Tracker};
-use super::video::{FULL_H, FULL_W, draw};
+use sidekick_frontend::overlay;
+use sidekick_frontend::text::Canvas;
+use sidekick_frontend::video::{FULL_H, FULL_W, draw};
 
 /// Keys that carry an unattended run past the menu: `1` for the Kempston
 /// joystick, `0` to start, Enter past the intro text, and then the joystick
@@ -43,7 +43,7 @@ fn script(machine: &mut Machine, frame: u64, seed: &mut u64) {
 /// If the tape cannot be read or the folder cannot be written.
 pub fn run(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let tape = super::tape::read(path)?;
+    let tape = sidekick_frontend::tape::read(&super::GAME, path)?;
     let mut machine = Machine::from_tape(&tape, ENTRY_PC, ENTRY_SP)?;
     machine.watch = track::WATCH.to_vec();
     let mut tracker = Tracker::default();
@@ -101,7 +101,7 @@ fn window(
     scene: Scene,
     paused: bool,
 ) -> Vec<u32> {
-    let (w, h) = (overlay::WIDTH as usize, overlay::HEIGHT as usize);
+    let (w, h) = (super::OVERLAY_W as usize, overlay::HEIGHT as usize);
     let mut over = vec![0u8; w * h * 4];
     let mut canvas = Canvas {
         pixels: &mut over,
@@ -131,7 +131,7 @@ fn window(
 
 /// Writes the window's pixels as a PNG.
 fn save(pixels: &[u32], file: &Path) -> Result<(), String> {
-    let (w, h) = (overlay::WIDTH as usize, overlay::HEIGHT as usize);
+    let (w, h) = (super::OVERLAY_W as usize, overlay::HEIGHT as usize);
     std::fs::write(file, zx_core::png::encode(pixels, w, h))
         .map_err(|e| format!("{}: {e}", file.display()))
 }

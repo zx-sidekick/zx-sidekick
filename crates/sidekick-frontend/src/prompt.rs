@@ -10,16 +10,13 @@ use std::path::{Path, PathBuf};
 
 use winit::keyboard::KeyCode;
 
-use super::tape::{self, Refused, Tape};
-use super::text::{Canvas, Fonts, Rgb, Span, Weight};
+use crate::Game;
+use crate::tape::{self, Refused, Tape};
+use crate::text::{Canvas, Fonts, Rgb, Span, Weight};
 
 /// The screen's size in logical pixels: the game window's.
 pub const WIDTH: f32 = 960.0;
 pub const HEIGHT: f32 = 768.0;
-
-/// Where the game can be found, for a player who has not got it.
-const PAGE: &str = "https://worldofspectrum.net/item/0004873/";
-const PAGE_SHOWN: &str = "worldofspectrum.net/item/0004873";
 
 pub const BACKGROUND: Rgb = [0x0b, 0x0c, 0x10];
 const LABEL: Rgb = [0x6d, 0x73, 0x85];
@@ -63,6 +60,8 @@ struct Message {
 }
 
 pub struct Prompt {
+    /// The game whose tape is asked for.
+    game: &'static Game,
     fonts: Fonts,
     message: Option<Message>,
     /// A tape that passed the check but could not be kept: the main button
@@ -72,8 +71,9 @@ pub struct Prompt {
 }
 
 impl Prompt {
-    pub fn new() -> Prompt {
+    pub fn new(game: &'static Game) -> Prompt {
         Prompt {
+            game,
             fonts: Fonts::load(),
             message: None,
             unkept: None,
@@ -85,7 +85,7 @@ impl Prompt {
         canvas.clear(BACKGROUND);
         let left = 120.0;
 
-        self.spaced(canvas, left, 96.0, "STARQUAKE");
+        self.spaced(canvas, left, 96.0, self.game.heading);
         self.fonts.text(
             Some(canvas),
             left,
@@ -105,13 +105,7 @@ impl Prompt {
             168.0,
             Some(680.0),
             1.6,
-            &[span(
-                "Nothing from the original game is included. The graphics, maps and sound are read \
-                 from your own Starquake tape each time the game starts.",
-                15.0,
-                Weight::Regular,
-                BODY,
-            )],
+            &[span(self.game.about, 15.0, Weight::Regular, BODY)],
         );
 
         let top = self.zone_top();
@@ -174,7 +168,7 @@ impl Prompt {
             canvas,
             top + 126.0,
             &[
-                span("starquake.tap", 12.0, Weight::Regular, BODY),
+                span(self.game.kept, 12.0, Weight::Regular, BODY),
                 span(", or the ", 12.0, Weight::Regular, LABEL),
                 span(".zip", 12.0, Weight::Regular, BODY),
                 span(
@@ -202,7 +196,7 @@ impl Prompt {
                     Weight::Regular,
                     BODY,
                 ),
-                span("Starquake.tap.zip", 14.0, Weight::Regular, BRIGHT),
+                span(self.game.zip, 14.0, Weight::Regular, BRIGHT),
                 span(" there, then locate it here.", 14.0, Weight::Regular, BODY),
             ],
         );
@@ -228,7 +222,7 @@ impl Prompt {
             section + 96.0,
             None,
             1.0,
-            &[span(PAGE_SHOWN, 12.0, Weight::Regular, LABEL)],
+            &[span(self.game.page_shown, 12.0, Weight::Regular, LABEL)],
         );
 
         self.fonts.text(
@@ -237,12 +231,7 @@ impl Prompt {
             710.0,
             None,
             1.0,
-            &[span(
-                "Starquake \u{a9} 1985 Stephen Crow / Bubble Bus Software. Not affiliated.",
-                12.0,
-                Weight::Regular,
-                LABEL,
-            )],
+            &[span(self.game.credit, 12.0, Weight::Regular, LABEL)],
         );
         let mut right = 840.0;
         for (key, what) in [
@@ -319,10 +308,14 @@ impl Prompt {
         if let Some(tape) = self.unkept.take() {
             return Outcome::Start(tape);
         }
+        let name = self.game.name;
         let mut dialog = rfd::FileDialog::new()
-            .set_title("Locate the Starquake tape")
+            .set_title(format!("Locate the {name} tape"))
             // Some Linux dialogs match extensions case by case, hence both.
-            .add_filter("Starquake tape (.tap, .zip)", &["tap", "TAP", "zip", "ZIP"]);
+            .add_filter(
+                format!("{name} tape (.tap, .zip)"),
+                &["tap", "TAP", "zip", "ZIP"],
+            );
         #[cfg(not(target_os = "macos"))]
         {
             dialog = dialog.add_filter("All files", &["*"]);
@@ -341,8 +334,8 @@ impl Prompt {
             || path.display().to_string(),
             |n| n.to_string_lossy().into_owned(),
         );
-        match tape::load(path, starquake::facts::is_supported_tape) {
-            Ok(found) => match tape::keep(&found.bytes) {
+        match tape::load(self.game, path) {
+            Ok(found) => match tape::keep(self.game, &found.bytes) {
                 Ok(_) => Outcome::Start(found),
                 Err(why) => {
                     self.message = Some(Message {
@@ -358,17 +351,17 @@ impl Prompt {
             },
             Err(why) => {
                 self.unkept = None;
-                self.message = Some(refusal(&file, &why));
+                self.message = Some(refusal(self.game, &file, &why));
                 Outcome::Redraw
             }
         }
     }
 
     fn website(&mut self) -> Outcome {
-        if let Err(e) = open_page() {
+        if let Err(e) = open_page(self.game.page) {
             self.message = Some(Message {
                 title: "No browser could be opened".into(),
-                detail: format!("{e}. The page is at {PAGE}"),
+                detail: format!("{e}. The page is at {}", self.game.page),
             });
         }
         Outcome::Redraw
@@ -451,14 +444,15 @@ fn website_label() -> Span<'static> {
     )
 }
 
-fn refusal(file: &str, why: &Refused) -> Message {
+fn refusal(game: &Game, file: &str, why: &Refused) -> Message {
     match why {
-        Refused::NotTheTape => Message {
-            title: "That isn't the Starquake tape this version needs".into(),
+        Refused::NotTheTape { .. } => Message {
+            title: format!("That isn't the {} tape this version needs", game.name),
             detail: format!(
-                "The tape in {file} is a different dump. This version works only with the original \
-                 Bubble Bus release (SHA-1 {}\u{2026}).",
-                &starquake::facts::TAPE_SHA1[..8]
+                "The tape in {file} is a different dump. This version works only with {} \
+                 (SHA-1 {}\u{2026}).",
+                game.release,
+                &game.sha1[..8]
             ),
         },
         Refused::NoTapeInZip => Message {
@@ -482,9 +476,9 @@ fn downloads() -> Option<PathBuf> {
         .filter(|d| d.is_dir())
 }
 
-/// Opens the archive's page in the player's browser, with the system's own
-/// opener rather than a crate.
-fn open_page() -> Result<(), String> {
+/// Opens the archive's page, `page`, in the player's browser, with the
+/// system's own opener rather than a crate.
+fn open_page(page: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let opener = "open";
     #[cfg(windows)]
@@ -492,7 +486,7 @@ fn open_page() -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     let opener = "xdg-open";
     std::process::Command::new(opener)
-        .arg(PAGE)
+        .arg(page)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("{opener} could not be run: {e}"))
@@ -512,9 +506,16 @@ mod render_check {
         };
         let out = PathBuf::from(out);
         for (name, message) in [("idle", false), ("error", true)] {
-            let mut p = Prompt::new();
+            let mut p = Prompt::new(&crate::tests::GAME);
             if message {
-                p.message = Some(refusal("starquake-other.zip", &Refused::NotTheTape));
+                p.message = Some(refusal(
+                    &crate::tests::GAME,
+                    "starquake-other.zip",
+                    &Refused::NotTheTape {
+                        game: "Starquake",
+                        release: "the original Bubble Bus release",
+                    },
+                ));
             }
             let scale = 2.0;
             let (w, h) = ((WIDTH * scale) as usize, (HEIGHT * scale) as usize);
@@ -568,7 +569,7 @@ mod tests {
 
     #[test]
     fn escape_quits_and_other_keys_do_nothing() {
-        let mut p = Prompt::new();
+        let mut p = Prompt::new(&crate::tests::GAME);
         assert!(matches!(p.key(KeyCode::Escape), Outcome::Quit));
         assert!(matches!(p.key(KeyCode::KeyA), Outcome::Nothing));
         assert!(
@@ -579,7 +580,7 @@ mod tests {
 
     #[test]
     fn the_cursor_redraws_only_when_it_crosses_a_button() {
-        let mut p = Prompt::new();
+        let mut p = Prompt::new(&crate::tests::GAME);
         let (x, y, w, h) = p.button(Button::Locate);
         assert!(matches!(
             p.cursor(x + w / 2.0, y + h / 2.0),
@@ -602,7 +603,7 @@ mod tests {
 
     #[test]
     fn a_wrong_file_dropped_says_why_and_moves_the_drop_zone_down() {
-        let mut p = Prompt::new();
+        let mut p = Prompt::new(&crate::tests::GAME);
         let before = p.zone_top();
         assert!(matches!(
             p.dropped(&file("other.tap", b"another game")),
@@ -618,7 +619,7 @@ mod tests {
 
     #[test]
     fn a_zip_without_a_tape_and_a_missing_file_are_explained() {
-        let mut p = Prompt::new();
+        let mut p = Prompt::new(&crate::tests::GAME);
         let zip = file("empty.zip", b"");
         let mut w = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
         w.start_file("readme.txt", zip::write::SimpleFileOptions::default())
@@ -639,7 +640,7 @@ mod tests {
 
     #[test]
     fn the_prompt_draws_on_its_background_with_and_without_a_message() {
-        let mut p = Prompt::new();
+        let mut p = Prompt::new(&crate::tests::GAME);
         let idle = draw(&mut p);
         assert_eq!(&idle[..3], &BACKGROUND);
         assert!(

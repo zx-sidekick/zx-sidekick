@@ -80,8 +80,8 @@ impl Fonts {
             |bytes: &[u8]| Font::from_bytes(bytes, FontSettings::default()).expect("bundled font");
         Fonts {
             fonts: [
-                load(include_bytes!("../../fonts/Inter-Regular.ttf")),
-                load(include_bytes!("../../fonts/Inter-SemiBold.ttf")),
+                load(include_bytes!("../fonts/Inter-Regular.ttf")),
+                load(include_bytes!("../fonts/Inter-SemiBold.ttf")),
             ],
             layout: Layout::new(CoordinateSystem::PositiveYDown),
         }
