@@ -3,17 +3,17 @@
 # pull request, squash-merged, with the PR's title and number as its subject,
 # so the subjects are the list of what changed.
 #
-#   scripts/changelog.sh              writes CHANGELOG.md
+#   scripts/changelog.sh              writes games/starquake/CHANGELOG.md
 #   scripts/changelog.sh --notes TAG  prints TAG's list, for its release notes
 #
 # A release (vX.Y.Z) lists everything since the release before it; a
 # candidate (vX.Y.Z-rc.N) lists what is new since the tag before it, release
-# or candidate; either oldest first. CHANGELOG.md has a section for each
+# or candidate; either oldest first. games/starquake/CHANGELOG.md has a section for each
 # release, the newest release first: a candidate's changes are in the release
 # it led to.
 set -euo pipefail
 
-REPO="https://github.com/zx-sidekick/zx-sidekick-starquake"
+REPO="https://github.com/zx-sidekick/zx-sidekick"
 
 # Every version tag, oldest first, with a candidate before its release.
 tags() {
@@ -67,4 +67,4 @@ cd "$(git rev-parse --show-toplevel)"
     echo
     list "$tag"
   done < <(tags | sed -n '1!G;h;$p')
-} > CHANGELOG.md
+} > games/starquake/CHANGELOG.md

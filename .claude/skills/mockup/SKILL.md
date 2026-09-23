@@ -5,7 +5,7 @@ description: >
   a mockup of X", "show me what it would look like", "design the screen
   first", or from inside a spec whose value is how it LOOKS (a new screen, a
   layout change, colours, typography, animation). Produces a screenshot,
-  commits it under docs/mockups/ on the work branch, and embeds it in the
+  commits it under the game's docs/mockups/ on the work branch, and embeds it in the
   ticket. The maintainer
   approves the picture BEFORE any real UI is built. Trigger before writing any
   UI code for looks-driven work, even if nobody asked for a mockup.
@@ -23,7 +23,7 @@ Pick whichever shows the design fastest and most faithfully:
 
   ```bash
   cargo run --release -p zx-sidekick-starquake -- "$SK_ASSETS/starquake.tap" \
-    --headless 4000 docs/mockups/shots
+    --headless 4000 games/starquake/docs/mockups/shots
   ```
 
   What the Spectrum draws is the original game's, running unchanged, and is
@@ -47,14 +47,14 @@ render.
 
 ## Step 2: commit the image
 
-`docs/mockups/<YYYY-MM-DD>-<name>.png`, on the **work branch** (never straight
+`games/<game>/docs/mockups/<YYYY-MM-DD>-<name>.png`, on the **work branch** (never straight
 to `main`). The repo is the image host, since GitHub has no upload API for
 issue attachments.
 
 ## Step 3: embed with exactly this URL form
 
 ```markdown
-![mockup](https://github.com/zx-sidekick/zx-sidekick-starquake/raw/<branch>/docs/mockups/<file>.png)
+![mockup](https://github.com/zx-sidekick/zx-sidekick/raw/<branch>/games/<game>/docs/mockups/<file>.png)
 ```
 
 This repo is public, so `raw.githubusercontent.com` would also render. Use the

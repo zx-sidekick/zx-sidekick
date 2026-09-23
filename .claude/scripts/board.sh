@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # board.sh — the ticket state baton, on the GitHub Project's Status field.
 #
-# State lives in the Status field of the "ZX Sidekick Starquake" org Project,
+# State lives in the Status field of the "ZX Sidekick" org Project,
 # so the maintainer can drag a card (web or mobile) and Claude can set the same
 # value from the CLI — one source of truth either way. `ready to merge` is a PR
 # LABEL and is not managed here.
@@ -26,7 +26,7 @@ STATUS_FIELD_ID="PVTSSF_lADOE50vsc4Bjc-PzhiRNkA"
 # Where `state` records its own writes for the board monitor to ignore
 # (work-the-board). Transient by design — losing it costs one spurious
 # notification, never a missed maintainer move.
-SELF_SET_FILE="${BOARD_SELF_SET_FILE:-${TMPDIR:-/tmp}/zx-sidekick-starquake-board-selfset}"
+SELF_SET_FILE="${BOARD_SELF_SET_FILE:-${TMPDIR:-/tmp}/zx-sidekick-board-selfset}"
 
 # Status name -> single-select option id, looked up LIVE by name.
 #

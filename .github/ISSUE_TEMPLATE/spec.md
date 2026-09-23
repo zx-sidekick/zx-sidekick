@@ -61,7 +61,7 @@ labels: 'needs: spec'
      shown on a real headless screenshot; what the Spectrum draws is the
      original game's and is never redesigned.
      Embed it with this form:
-     ![mockup](https://github.com/zx-sidekick/zx-sidekick-starquake/raw/<branch>/docs/mockups/<file>.png)
+     ![mockup](https://github.com/zx-sidekick/zx-sidekick/raw/<branch>/games/<game>/docs/mockups/<file>.png)
      The PR that merges it repoints the embed to /raw/main/. -->
 
 ### Fidelity

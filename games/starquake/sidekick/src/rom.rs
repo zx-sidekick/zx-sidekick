@@ -4,7 +4,7 @@
 //! either by a call from the game or, for the interrupt, by the processor. The
 //! answer does what the routine does to memory and registers, charges the
 //! time it takes, and returns to the caller as the routine's own `RET` would.
-//! See `docs/rom.md` for why these three are all Starquake needs.
+//! See `games/starquake/docs/rom.md` for why these three are all Starquake needs.
 
 use zx_spectrum::{CF, Zx};
 
@@ -20,7 +20,7 @@ pub const FRAMES: u16 = 0x5C78;
 
 /// T-states the interrupt routine takes, counted from its first instruction
 /// to its `RET`. The ROM's keyboard scan makes it vary a little with what is
-/// held; this is its mean cost over play, measured against the ROM (`tools/sk-check`).
+/// held; this is its mean cost over play, measured against the ROM (`games/starquake/sk-check`).
 pub const MASK_INT_T: u32 = 882;
 
 /// Answers the routine at the program counter, if it is one of these. Returns whether it

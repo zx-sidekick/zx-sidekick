@@ -4,7 +4,7 @@
 # A binary is less useful here than it would be for most games: it still needs
 # the player's own copy of Starquake to run, and asks for one before it starts.
 # It saves them installing Rust, and that is all it saves them. See
-# docs/player/README.txt.
+# games/starquake/docs/player/README.txt.
 #
 # Linux, macOS and Windows — the same three CI builds and tests on. A target
 # is only shipped once something proves it works.
@@ -103,12 +103,12 @@ jobs:
           fi
           # The player's guide, not the repository README, which is about
           # working on the code. Plain text, because anyone can open it.
-          cp docs/player/* "$dir/"
+          cp games/starquake/docs/player/* "$dir/"
           cp LICENSE-MIT LICENSE-APACHE "$dir/"
           cp THIRD-PARTY.md "$dir/THIRD-PARTY.txt"
           # The font the program draws its own screens in travels with its
           # licence, as the OFL asks.
-          cp app/fonts/LICENSE.txt "$dir/LICENSE-Inter.txt"
+          cp games/starquake/app/fonts/LICENSE.txt "$dir/LICENSE-Inter.txt"
           if [ "$RUNNER_OS" = "Windows" ]; then
             7z a -tzip "$dir.zip" "$dir" > /dev/null
             echo "ASSET=$dir.zip" >> "$GITHUB_ENV"

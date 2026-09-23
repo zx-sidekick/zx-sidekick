@@ -249,4 +249,4 @@ Inter, under the SIL Open Font License (LICENSE-Inter.txt).
 @starquake started this project and steered it, and Claude,
 Anthropic's AI assistant, wrote it. The source code is at:
 
-  https://github.com/zx-sidekick/zx-sidekick-starquake
+  https://github.com/zx-sidekick/zx-sidekick

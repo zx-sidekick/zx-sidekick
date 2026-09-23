@@ -9,7 +9,7 @@ pub const TAPE_SHA1: &str = "65450d6f33692c2c2868c0b497037f2cfd0ef3bd";
 /// Where the game starts once its code block has loaded. The block covers all
 /// of RAM, the stack included, and the ROM's loader returns through the
 /// address the block leaves on its stack: here. Found by running the real
-/// loader with a ROM, once, in development (`docs/rom.md`).
+/// loader with a ROM, once, in development (`games/starquake/docs/rom.md`).
 pub const ENTRY_PC: u16 = 0x5E24;
 /// The stack pointer at that moment.
 pub const ENTRY_SP: u16 = 0x5E20;

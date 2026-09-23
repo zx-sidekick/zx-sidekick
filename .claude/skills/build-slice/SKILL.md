@@ -130,7 +130,7 @@ attribution line, says what is wrong, gives the recommended fix, and ends
 with the three words the maintainer can reply with:
 
 ```bash
-gh api repos/zx-sidekick/zx-sidekick-starquake/pulls/<n>/comments \
+gh api repos/zx-sidekick/zx-sidekick/pulls/<n>/comments \
   -f commit_id="$(git rev-parse HEAD)" -f path=<file> -F line=<line> -f side=RIGHT \
   -f body="$(cat finding.md)"
 ```
@@ -177,7 +177,7 @@ the maintainer's replies are part of the review.
   is ticked. If any box is still open, including one that's the maintainer's,
   the PR body must say `Part of #NN`, not `Closes #NN`; fix it now.
 - **Check the ticket's sub-issues too** before writing `Closes #NN`:
-  `gh api repos/zx-sidekick/zx-sidekick-starquake/issues/<n>/sub_issues -q '.[] | select(.state=="open") | .number'`.
+  `gh api repos/zx-sidekick/zx-sidekick/issues/<n>/sub_issues -q '.[] | select(.state=="open") | .number'`.
   Any still open (other than ones this PR closes) means `Part of #NN`:
   starquake-recompiled#76 closed its #1, the guidance levels' parent, with four still
   open (starquake-recompiled#84). A PR for
