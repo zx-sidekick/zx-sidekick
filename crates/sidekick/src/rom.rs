@@ -126,7 +126,7 @@ fn hl_hl_x_de(z: &mut Zx) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Machine;
+    type Machine = crate::Machine<()>;
 
     /// A machine about to run `routine`, called from `0x8000`.
     fn calling(routine: u16) -> Machine {

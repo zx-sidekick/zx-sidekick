@@ -7,9 +7,9 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use sidekick::Machine;
-use sidekick::map::free;
-use sidekick::starquake::{PLAY_INPUT, routine};
+use starquake::Machine;
+use starquake::facts::{PLAY_INPUT, routine};
+use starquake::map::free;
 
 use crate::{BLOB, DOWN, LEFT, RIGHT, UP};
 

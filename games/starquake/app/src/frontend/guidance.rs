@@ -8,12 +8,12 @@
 //! What each level shows is its own ticket's (#3); level 1's teleport
 //! codes are carried here from the game thread to the panel (#4).
 
-use sidekick::machine::Training;
-use sidekick::map::{Openings, RoomSet, Step};
-use sidekick::starquake::SeenTeleporter;
+use starquake::facts::SeenTeleporter;
+use starquake::map::{Openings, RoomSet, Step};
+use starquake::play::Training;
 
 /// The number of rooms on the planet.
-const ROOMS: usize = (sidekick::map::COLS * sidekick::map::ROWS) as usize;
+const ROOMS: usize = (starquake::map::COLS * starquake::map::ROWS) as usize;
 
 /// The levels, each including the ones before it (#3).
 pub const LEVELS: [&str; 7] = [
@@ -31,7 +31,7 @@ pub const LEVELS: [&str; 7] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Found {
     pub room: u16,
-    pub kind: sidekick::starquake::Kind,
+    pub kind: starquake::facts::Kind,
     /// Whether the core wants it: drawn in the piece's colour, and its
     /// room's dot left out, since the item itself says more (#36).
     pub piece: bool,

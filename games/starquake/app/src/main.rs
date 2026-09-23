@@ -66,7 +66,7 @@ fn main() {
     // places are searched.
     let folders = frontend::tape::folders();
     let path = args.first().map(PathBuf::from).or_else(|| {
-        frontend::tape::find(&folders, sidekick::starquake::is_supported_tape).map(|tape| tape.from)
+        frontend::tape::find(&folders, starquake::facts::is_supported_tape).map(|tape| tape.from)
     });
     // Without a window there is nobody to ask, so no tape is the end: said
     // on the terminal, which is where a headless run is watched from.

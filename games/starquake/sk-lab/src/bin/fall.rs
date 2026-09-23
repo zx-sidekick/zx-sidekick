@@ -7,9 +7,9 @@
 //! as Kempston bits: 1 right, 2 left, 4 down (builds a platform), 8 up;
 //! `--carry=G` puts the item drawn with graphic G in Blob's inventory first.
 
-use sidekick::starquake::routine;
 use sk_lab::search::Platforms;
 use sk_lab::{Args, carry, into_play, stand};
+use starquake::facts::routine;
 
 fn main() {
     let args = Args::parse("fall <assets-dir> <room> <x> <y> [input] [frames] [--carry=G]");

@@ -5,11 +5,11 @@
 //!
 //! `planet <assets-dir> [--half]`
 
-use sidekick::map::{COLS, ROWS};
-use sidekick::starquake::{CORE_ROOM, read_room};
 use sk_lab::raster::Image;
 use sk_lab::rooms::{Planet, lift};
 use sk_lab::{Args, into_play};
+use starquake::facts::{CORE_ROOM, read_room};
+use starquake::map::{COLS, ROWS};
 use zx_core::screen;
 
 const ROOM_W: usize = 256;

@@ -6,9 +6,9 @@
 //! at (x, y) and holds the input (1 right, 2 left) until the door screen
 //! opens; up to four items by graphic go in his inventory first.
 
-use sidekick::starquake::routine;
 use sk_lab::search::Platforms;
 use sk_lab::{Args, CODE, SEED, carry, into_play, stand};
+use starquake::facts::routine;
 
 fn main() {
     let args = Args::parse("door <assets-dir> <room> <x> <y> [input] [--carry=G,G,...]");

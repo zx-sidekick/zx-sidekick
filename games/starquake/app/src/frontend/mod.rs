@@ -21,11 +21,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use sidekick::machine::Training;
-use sidekick::starquake::{
+use sidekick::Input;
+use starquake::Machine;
+use starquake::facts::{
     ENTRY_PC, ENTRY_SP, end_game_hold, high_scores, routine, write_high_scores,
 };
-use sidekick::{Input, Machine};
+use starquake::play::Training;
 
 /// How long a Spectrum frame lasts, from the clock it is derived from
 /// rather than written out.
@@ -150,9 +151,9 @@ impl Runner {
         // Every room, for the map's openings and level 5's graph (#10): the same every game, so read
         // once, by having the game draw each room on a copy of the machine.
         // It takes about a third of a second, before the loading picture.
-        let rooms = sidekick::starquake::all_rooms(&machine);
-        let graph = sidekick::map::Graph::new(&rooms, sidekick::starquake::CORE_ROOM);
-        let openings = sidekick::map::openings(&rooms, sidekick::starquake::CORE_ROOM);
+        let rooms = starquake::facts::all_rooms(&machine);
+        let graph = starquake::map::Graph::new(&rooms, starquake::facts::CORE_ROOM);
+        let openings = starquake::map::openings(&rooms, starquake::facts::CORE_ROOM);
         self.shared.guidance.lock().unwrap().set_openings(openings);
         let loading = zx_core::tape::load_tap(tape)?.loading_screen;
         if let Some(picture) = loading {
@@ -196,8 +197,8 @@ impl Runner {
         tracker.graph = graph;
         // Which rooms hold a security door, for level 6's codes (#66): the
         // tape's own, from the rooms read above (#80).
-        tracker.door_rooms = sidekick::starquake::door_rooms(&rooms);
-        let spots = sidekick::starquake::door_spots(&rooms);
+        tracker.door_rooms = starquake::facts::door_rooms(&rooms);
+        let spots = starquake::facts::door_spots(&rooms);
         self.shared.guidance.lock().unwrap().set_door_spots(spots);
         let mut freeze = freeze::Freeze::default();
         // Whether the game's pause key was pressed in the last frame.
@@ -254,7 +255,7 @@ impl Runner {
             }
             // Training mode holds things still only while a game is played;
             // anywhere else the machine writes nothing into the game (#8).
-            machine.training = match tracker.scene {
+            machine.rules.training = match tracker.scene {
                 track::Scene::Play => self.shared.guidance.lock().unwrap().training(),
                 _ => Training::default(),
             };
@@ -262,8 +263,8 @@ impl Runner {
             machine.zx.kempston = 0;
             // The keyboard's joystick and the pad together; the machine
             // presses them as the game's chosen control method listens.
-            machine.joystick = input.joystick | pad.bits;
-            machine.start = pad.start;
+            machine.rules.joystick = input.joystick | pad.bits;
+            machine.rules.start = pad.start;
             let hits = machine.run_frame();
             // Quit the game on the title screen, answered Y (#90): the game
             // has said goodbye to Olly for its own five seconds and is about
@@ -272,7 +273,7 @@ impl Runner {
             if hits.contains(&routine::QUIT) {
                 return Ok(());
             }
-            pause = machine.pause_pressed;
+            pause = machine.rules.pause_pressed;
             {
                 let mut guidance = self.shared.guidance.lock().unwrap();
                 for &hit in &hits {

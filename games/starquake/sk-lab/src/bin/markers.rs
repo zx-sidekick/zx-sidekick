@@ -5,9 +5,9 @@
 //!
 //! `markers <assets-dir> <room>[,<room>...]`
 
-use sidekick::map::marker_cell;
-use sidekick::starquake::{at, read_room};
 use sk_lab::{Args, into_play};
+use starquake::facts::{at, read_room};
+use starquake::map::marker_cell;
 
 fn main() {
     let args = Args::parse("markers <assets-dir> <room>[,<room>...]");

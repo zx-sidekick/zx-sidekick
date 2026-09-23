@@ -1,13 +1,13 @@
 //! The energy, bridging platform and laser bars (#104, #116): what each
 //! holds as play starts, the panel's loop that draws them and sets one above
-//! [`sidekick::starquake::BAR_FULL`] back to it, and what the bridging
+//! [`starquake::facts::BAR_FULL`] back to it, and what the bridging
 //! platforms and the laser fall to when Blob lays them or fires for a while.
 //!
 //! `bars <assets-dir> [frames]`
 
-use sidekick::machine::Machine;
-use sidekick::starquake::at::{BRIDGES, ENERGY, LASER};
 use sk_lab::{Args, into_play};
+use starquake::Machine;
+use starquake::facts::at::{BRIDGES, ENERGY, LASER};
 
 /// Where the panel's bar loop starts, and the byte after its `DJNZ`.
 const DRAW: std::ops::Range<usize> = 0xD463..0xD4A4;
@@ -43,7 +43,7 @@ fn main() {
         for f in 0..frames {
             m.zx.release_all_keys();
             m.zx.kempston = if f % 2 == 0 { input } else { 0 };
-            m.zx.mem[usize::from(ENERGY)] = sidekick::starquake::BAR_FULL;
+            m.zx.mem[usize::from(ENERGY)] = starquake::facts::BAR_FULL;
             m.run_frame();
             if seen.last() != Some(&bar(&m, a)) {
                 seen.push(bar(&m, a));

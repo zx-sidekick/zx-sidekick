@@ -341,7 +341,7 @@ impl Prompt {
             || path.display().to_string(),
             |n| n.to_string_lossy().into_owned(),
         );
-        match tape::load(path, sidekick::starquake::is_supported_tape) {
+        match tape::load(path, starquake::facts::is_supported_tape) {
             Ok(found) => match tape::keep(&found.bytes) {
                 Ok(_) => Outcome::Start(found),
                 Err(why) => {
@@ -458,7 +458,7 @@ fn refusal(file: &str, why: &Refused) -> Message {
             detail: format!(
                 "The tape in {file} is a different dump. This version works only with the original \
                  Bubble Bus release (SHA-1 {}\u{2026}).",
-                &sidekick::starquake::TAPE_SHA1[..8]
+                &starquake::facts::TAPE_SHA1[..8]
             ),
         },
         Refused::NoTapeInZip => Message {

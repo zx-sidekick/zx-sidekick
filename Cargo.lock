@@ -1861,7 +1861,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "sidekick"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "zx-core",
  "zx-spectrum",
@@ -1888,6 +1888,7 @@ name = "sk-check"
 version = "0.3.0"
 dependencies = [
  "sidekick",
+ "starquake",
  "zx-core",
  "zx-spectrum",
 ]
@@ -1898,6 +1899,7 @@ version = "0.3.0"
 dependencies = [
  "flate2",
  "sidekick",
+ "starquake",
  "zx-core",
  "zx-spectrum",
 ]
@@ -1964,6 +1966,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags 2.13.2",
+]
+
+[[package]]
+name = "starquake"
+version = "0.3.0"
+dependencies = [
+ "sidekick",
+ "zx-core",
+ "zx-spectrum",
 ]
 
 [[package]]
@@ -2971,6 +2982,7 @@ dependencies = [
  "pixels",
  "rfd",
  "sidekick",
+ "starquake",
  "winit",
  "zip",
  "zx-core",

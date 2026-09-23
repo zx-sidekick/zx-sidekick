@@ -1,6 +1,6 @@
 [package]
-name = "sk-check"
-description = "Local checks of ZX Sidekick against the player's own copy of the game (and, for one, a Spectrum ROM). Never run in CI."
+name = "starquake"
+description = "Starquake's facts, its map as the game draws it, and its rules for the ZX Sidekick machine"
 version = "0.3.0"
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,6 @@ publish.workspace = true
 
 [dependencies]
 sidekick.workspace = true
-starquake.workspace = true
 zx-core.workspace = true
 zx-spectrum.workspace = true
 

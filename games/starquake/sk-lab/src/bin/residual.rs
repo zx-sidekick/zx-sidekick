@@ -8,11 +8,11 @@
 
 use std::collections::{BTreeSet, HashSet};
 
-use sidekick::map::{COLS, Room};
-use sidekick::starquake::CORE_ROOM;
 use sk_lab::exits;
 use sk_lab::rooms::Planet;
 use sk_lab::{Args, into_play, top_row};
+use starquake::facts::CORE_ROOM;
+use starquake::map::{COLS, Room};
 
 /// The parts, with doors shut, touching each edge: left, right, up, down.
 fn edge_parts(r: &Room) -> [BTreeSet<u8>; 4] {

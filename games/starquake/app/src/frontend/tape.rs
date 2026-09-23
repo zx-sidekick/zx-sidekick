@@ -220,7 +220,7 @@ fn keep_in(dir: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
 ///
 /// If the file cannot be read or is not a supported copy of the game.
 pub fn read(path: &Path) -> Result<Vec<u8>, String> {
-    load(path, sidekick::starquake::is_supported_tape)
+    load(path, starquake::facts::is_supported_tape)
         .map(|tape| tape.bytes)
         .map_err(|why| format!("{}: {why}", path.display()))
 }

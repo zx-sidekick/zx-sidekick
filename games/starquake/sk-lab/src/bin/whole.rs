@@ -10,11 +10,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::Instant;
 
-use sidekick::Machine;
 use sk_lab::exits::{self, Dump, Record};
 use sk_lab::rooms::Planet;
 use sk_lab::search::{Room, Settings};
 use sk_lab::{Args, into_play};
+use starquake::Machine;
 
 #[derive(Default)]
 struct State {

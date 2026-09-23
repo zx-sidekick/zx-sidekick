@@ -7,10 +7,10 @@
 //!
 //! `tiles <assets-dir> <room>[,<room>...] [--png] [--stack]`
 
-use sidekick::starquake::read_room;
 use sk_lab::raster::Image;
 use sk_lab::rooms::{Planet, draw};
 use sk_lab::{Args, into_play};
+use starquake::facts::read_room;
 use zx_core::screen;
 
 fn main() {

@@ -1,6 +1,6 @@
 //! What the lab tools share: the game brought into play from the player's
 //! tape, Blob stood somewhere in a room, every room's cells, and the facts
-//! the tools rest on that `sidekick::starquake` does not record yet.
+//! the tools rest on that `starquake::facts` does not record yet.
 //!
 //! Every tool takes the assets folder first, as `sk-check` does, reads
 //! `starquake.tap` from it and writes whatever it produces into it, which is
@@ -9,8 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
-use sidekick::Machine;
-use sidekick::starquake::{ENTRY_PC, ENTRY_SP, PLAY_INPUT, at, routine};
+use starquake::Machine;
+use starquake::facts::{ENTRY_PC, ENTRY_SP, PLAY_INPUT, at, routine};
 use zx_spectrum::Key;
 
 pub mod exits;

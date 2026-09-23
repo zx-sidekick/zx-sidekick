@@ -9,7 +9,7 @@
 //!   ZX Sidekick answers, compares the real routine with the answer from the
 //!   same state.
 //! - `entry`: boots a real ROM, types `LOAD ""`, feeds it the tape block by
-//!   block, and checks that the game starts where `sidekick::starquake` says.
+//!   block, and checks that the game starts where `starquake::facts` says.
 //! - `keys`: chooses each control method on the title screen in turn, starts
 //!   a game, and checks that the joystick reaches it through the machine:
 //!   every direction and fire move the picture where Blob is; that the pause
@@ -38,9 +38,9 @@
 
 use std::path::{Path, PathBuf};
 
-use sidekick::Machine;
 use sidekick::machine::{JOY_DOWN, JOY_FIRE, JOY_LEFT, JOY_RIGHT, JOY_UP};
-use sidekick::starquake::{CONTROL_METHOD, ENTRY_PC, ENTRY_SP, KEY_TABLES, PAUSE_KEY};
+use starquake::Machine;
+use starquake::facts::{CONTROL_METHOD, ENTRY_PC, ENTRY_SP, KEY_TABLES, PAUSE_KEY};
 use zx_spectrum::Key;
 
 fn read(dir: &Path, name: &str) -> Vec<u8> {
@@ -373,13 +373,13 @@ fn into_play(dir: &Path, method: u8) -> Machine {
     let key = |n: &str| Key::by_name(n).expect("a key name");
     for frame in 0..540u64 {
         m.zx.release_all_keys();
-        m.joystick = 0;
+        m.rules.joystick = 0;
         match frame {
             50..=54 => m.zx.set_key(key(&method.to_string()), true),
             100..=104 => m.zx.set_key(key("0"), true),
             // Any key takes the game past its intro text.
             330..=334 => m.zx.set_key(key("enter"), true),
-            450..=490 => m.joystick = JOY_LEFT,
+            450..=490 => m.rules.joystick = JOY_LEFT,
             _ => {}
         }
         m.run_frame();
@@ -408,7 +408,7 @@ fn after(m: &Machine, held: u8) -> Vec<Vec<u8>> {
     let mut shots = vec![];
     for frame in 0..30u64 {
         m.zx.release_all_keys();
-        m.joystick = if frame < 3 { held } else { 0 };
+        m.rules.joystick = if frame < 3 { held } else { 0 };
         m.run_frame();
         if matches!(frame, 1 | 2 | 10 | 15 | 29) {
             shots.push(play_area(&m));
@@ -423,13 +423,13 @@ fn after(m: &Machine, held: u8) -> Vec<Vec<u8>> {
 /// does not.
 fn pause_with(m: &Machine, key: Key) -> (bool, bool) {
     let mut m = m.clone();
-    m.watch = vec![sidekick::starquake::PLAY_INPUT];
+    m.watch = vec![starquake::facts::PLAY_INPUT];
     let (mut pressed, mut playing) = (0, true);
     for frame in 0..33u64 {
         m.zx.release_all_keys();
         m.zx.set_key(key, frame < 3);
         playing &= !m.run_frame().is_empty();
-        pressed += usize::from(m.pause_pressed);
+        pressed += usize::from(m.rules.pause_pressed);
     }
     (pressed == 1, playing)
 }
@@ -450,8 +450,8 @@ fn starts_from_the_controller(dir: &Path) -> bool {
             {
                 m.zx.set_key(Key::by_name(digit).expect("a key name"), true);
             }
-            m.start = (60..=67).contains(&frame);
-            m.joystick = if (330..=337).contains(&frame) {
+            m.rules.start = (60..=67).contains(&frame);
+            m.rules.joystick = if (330..=337).contains(&frame) {
                 JOY_FIRE
             } else {
                 0
@@ -566,7 +566,7 @@ fn keys_check(dir: &Path) -> bool {
 
 /// The game's routines the panel follows, by name, for the report.
 fn routine_name(addr: u16) -> &'static str {
-    use sidekick::starquake::routine;
+    use starquake::facts::routine;
     match addr {
         routine::MENU => "menu",
         routine::MAIN_LOOP => "play",
@@ -580,15 +580,15 @@ fn routine_name(addr: u16) -> &'static str {
 /// it is back at the menu. Returns the frames at which the game-over screens
 /// and the menu arrived.
 fn ends_the_game(m: &Machine) -> Option<(u64, u64)> {
-    use sidekick::starquake::{end_game_hold, routine};
+    use starquake::facts::{end_game_hold, routine};
     let mut m = m.clone();
     m.watch = vec![routine::MENU, routine::GAME_OVER];
     m.hold = Some(end_game_hold());
     let mut over = None;
     for frame in 0..4000u64 {
         m.zx.release_all_keys();
-        m.joystick = 0;
-        m.start = false;
+        m.rules.joystick = 0;
+        m.rules.start = false;
         if over.is_some() && frame % 50 < 5 {
             m.zx.set_key(Key::by_name("0").expect("a key"), true);
         }
@@ -609,7 +609,7 @@ fn ends_the_game(m: &Machine) -> Option<(u64, u64)> {
 /// The items out on the planet (#36): each is of a kind the map has an
 /// icon for, and the game places a pickup for it when its room is entered.
 fn items_check(dir: &Path) -> bool {
-    use sidekick::starquake::{CORE_ROOM, Kind, at, items_and_core, kind, routine};
+    use starquake::facts::{CORE_ROOM, Kind, at, items_and_core, kind, routine};
     let mut base = machine(dir);
     base.watch = vec![routine::MAIN_LOOP];
     let mut script = Script(0xBEEF);
@@ -624,7 +624,7 @@ fn items_check(dir: &Path) -> bool {
     // A graphic the core wants is one of its own pieces, which level 3
     // already marks; every other item on the planet has a kind.
     let piece = |graphic: u8| core.iter().any(|&slot| slot & 0x7F == graphic);
-    let out: Vec<(usize, sidekick::starquake::Item)> = items
+    let out: Vec<(usize, starquake::facts::Item)> = items
         .iter()
         .enumerate()
         .filter(|(_, i)| i.room() != CORE_ROOM)
@@ -691,12 +691,12 @@ fn items_check(dir: &Path) -> bool {
 /// With every switch off the machine writes nothing, and the play is the
 /// play the game would have had.
 fn training_check(dir: &Path, frames: u64) -> bool {
-    use sidekick::machine::Training;
-    use sidekick::starquake::{
+    use starquake::facts::{
         DANGER_MARKER, ENEMY_SLOTS, FORCE_FIELD_COUNT, FORCE_FIELD_REC, FORCE_FIELDS,
         HARMLESS_GRAPHICS, ITEM_MARKER, SLOT, SLOT_GRAPHIC, SLOT_X, SLOT_Y, at, decide,
         items_and_core, routine,
     };
+    use starquake::play::Training;
     // How long the game takes to set energy up once play starts; before
     // that the byte still holds what the loader left.
     const SETTLED: u64 = 200;
@@ -713,7 +713,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     // The same wandering play under each switch, from the same start.
     let run = |training: Training| {
         let mut m = base.clone();
-        m.training = training;
+        m.rules.training = training;
         let mut script = Script(0x51DE);
         let mut lowest = [255u8; 4];
         // The game sets energy up in its first frames, so what it is once
@@ -769,7 +769,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     // Off changes nothing; on holds what its switch names.
     let plain_drains = plain_low[0] < start[0];
     let full_holds = full_end[1] >= full_start[1] && full_end[2] >= full_start[2];
-    let energy_holds = energy_low[0] >= sidekick::starquake::BAR_FULL;
+    let energy_holds = energy_low[0] >= starquake::facts::BAR_FULL;
     // Each bar run down in play first, then its switch goes on (#104,
     // #116): the runs above start with the bars full, so they cannot tell
     // holding from filling. Blob lays bridging platforms and fires until
@@ -782,7 +782,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     let bars = |m: &Machine| bars_at.map(|a| m.zx.mem[usize::from(a)]);
     let run_down = {
         let mut m = base.clone();
-        m.training = Training {
+        m.rules.training = Training {
             energy: true,
             unharmed: true,
             ..off
@@ -800,12 +800,12 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             m.run_frame();
         }
         m.zx.kempston = 0;
-        m.training = Training {
+        m.rules.training = Training {
             unharmed: true,
             ..off
         };
         for _ in 0..400 {
-            if bars(&m)[0] < sidekick::starquake::BAR_FULL {
+            if bars(&m)[0] < starquake::facts::BAR_FULL {
                 break;
             }
             m.run_frame();
@@ -833,7 +833,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     .into_iter()
     .map(|(name, switch)| {
         let mut m = run_down.clone();
-        m.training = switch;
+        m.rules.training = switch;
         m.run_frame();
         let filled = bars(&m);
         for _ in 0..3 {
@@ -853,7 +853,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     // a flicker.
     let (takes, dipped) = {
         let mut m = run_down.clone();
-        m.training = Training {
+        m.rules.training = Training {
             energy: true,
             bridges: true,
             laser: true,
@@ -876,20 +876,20 @@ fn training_check(dir: &Path, frames: u64) -> bool {
                 }
                 low |= bars_at
                     .iter()
-                    .any(|&a| z.mem[usize::from(a)] < sidekick::starquake::BAR_FULL);
+                    .any(|&a| z.mem[usize::from(a)] < starquake::facts::BAR_FULL);
             });
             dipped += u32::from(low);
         }
         (takes, dipped)
     };
     let never_short = takes > 0 && dipped == 0;
-    let full_fills = emptied[0] < sidekick::starquake::BAR_FULL
+    let full_fills = emptied[0] < starquake::facts::BAR_FULL
         && emptied[1..] == [0, 0]
         && fills.iter().enumerate().all(|(i, (_, filled, shown))| {
             *shown
                 && (0..3).all(|b| {
                     if b == i {
-                        filled[b] >= sidekick::starquake::BAR_FULL
+                        filled[b] >= starquake::facts::BAR_FULL
                     } else {
                         // Time may take a drop from energy in that frame.
                         filled[b] <= emptied[b] && (b == 0 || filled[b] == emptied[b])
@@ -906,7 +906,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
     // with the switch off is the danger under test.
     let enter = |room: u16, unharmed: bool| {
         let mut m = base.clone();
-        m.training = Training {
+        m.rules.training = Training {
             unharmed,
             energy: true,
             ..Training::default()
@@ -1065,7 +1065,7 @@ fn training_check(dir: &Path, frames: u64) -> bool {
             }
             for _ in 0..30 {
                 stand(m, (x, y));
-                m.joystick = JOY_UP;
+                m.rules.joystick = JOY_UP;
                 m.run_frame();
             }
             Some(carried(m))
@@ -1200,11 +1200,9 @@ fn training_check(dir: &Path, frames: u64) -> bool {
 /// does, is the one a game's score is ranked against, the new entry named and in before the CORE OF HEROES screen,
 /// which is where the app keeps it.
 fn heroes_check(dir: &Path) -> bool {
-    use sidekick::starquake::{
-        HighScore, at, end_game_hold, high_scores, routine, write_high_scores,
-    };
+    use starquake::facts::{HighScore, at, end_game_hold, high_scores, routine, write_high_scores};
     let loaded = machine(dir);
-    let into_play = |mut m: sidekick::Machine| {
+    let into_play = |mut m: starquake::Machine| {
         m.watch = vec![routine::MAIN_LOOP];
         let mut script = Script(0xBEEF);
         for frame in 0..600 {
@@ -1223,7 +1221,7 @@ fn heroes_check(dir: &Path) -> bool {
     // Ends the game from `m`, pressing `0` for the screens that wait (and
     // the name), and returns the table and final score at the CORE OF
     // HEROES screen, and whether the table was the same back at the menu.
-    let end = |mut m: sidekick::Machine| -> Option<([HighScore; 8], [u8; 6], bool)> {
+    let end = |mut m: starquake::Machine| -> Option<([HighScore; 8], [u8; 6], bool)> {
         m.watch = vec![routine::GAME_OVER, routine::HEROES, routine::MENU];
         m.hold = Some(end_game_hold());
         let (mut over, mut heroes) = (false, None);
@@ -1303,7 +1301,7 @@ fn heroes_check(dir: &Path) -> bool {
 /// has the game enter that room and checks it placed a pickup whose item is
 /// one the core still wants.
 fn pieces_check(dir: &Path) -> bool {
-    use sidekick::starquake::{CORE_ROOM, at, items_and_core, missing_piece_rooms, routine};
+    use starquake::facts::{CORE_ROOM, at, items_and_core, missing_piece_rooms, routine};
     let mut base = machine(dir);
     base.watch = vec![routine::MAIN_LOOP];
     let mut script = Script(0xBEEF);
@@ -1327,7 +1325,7 @@ fn pieces_check(dir: &Path) -> bool {
         }
         // Once placed, a piece's spot lies in a part of its room, where a
         // level 5 route ends (#50).
-        let map_room = sidekick::starquake::read_room(&mut base.clone(), room);
+        let map_room = starquake::facts::read_room(&mut base.clone(), room);
         let spots_in_parts = items_and_core(&m.zx.mem[..])
             .0
             .iter()
@@ -1393,7 +1391,7 @@ fn cells(z: &zx_spectrum::Zx, row: u8, col: u8) -> [u8; 32] {
 /// three holes filled, draws each hole with the graphic `hole` gives, red
 /// while open and white once filled.
 fn graphics_check(dir: &Path) -> bool {
-    use sidekick::starquake::{
+    use starquake::facts::{
         CORE_ROOM, at, graphic, hole, items_and_core, missing_piece_rooms, routine,
     };
     let mut base = machine(dir);
@@ -1499,7 +1497,7 @@ fn graphics_check(dir: &Path) -> bool {
 /// walked into is marked visited in the game's own set within 50 frames,
 /// which is the time entering a room takes to draw.
 fn visited_check(dir: &Path) -> bool {
-    use sidekick::starquake::{at, routine};
+    use starquake::facts::{at, routine};
     let mut m = machine(dir);
     m.watch = vec![routine::MENU, routine::MAIN_LOOP, routine::GAME_OVER];
     let mut script = Script(0xBEEF);
@@ -1556,7 +1554,7 @@ fn visited_check(dir: &Path) -> bool {
     let entered = reasons.len();
     bad += reasons
         .iter()
-        .filter(|&&why| why != sidekick::starquake::entry::WALKED)
+        .filter(|&&why| why != starquake::facts::entry::WALKED)
         .count();
     let good = visits > 0 && late == 0 && bad == 0;
     println!(
@@ -1572,7 +1570,7 @@ fn visited_check(dir: &Path) -> bool {
 /// the moment a code counts as seen (#4).
 fn teleporters_check(dir: &Path) -> bool {
     use sidekick::rom::PRINT_A_2;
-    use sidekick::starquake::{BOOTH_MARKER, at, routine, teleporter_code};
+    use starquake::facts::{BOOTH_MARKER, at, routine, teleporter_code};
     let m = machine(dir);
     let entries: Vec<(u16, [u8; 5])> = (0..at::TELEPORTER_COUNT)
         .map(|i| {
@@ -1692,7 +1690,7 @@ fn teleporters_check(dir: &Path) -> bool {
                     break;
                 }
             }
-            let teleported = arrived && reason == sidekick::starquake::entry::TELEPORTED;
+            let teleported = arrived && reason == starquake::facts::entry::TELEPORTED;
             println!(
                 "  typing another teleport's code: arrived in room {to} {}, entry reason {reason} {}",
                 if arrived { "yes" } else { "no" },
@@ -1718,7 +1716,7 @@ fn teleporters_check(dir: &Path) -> bool {
 /// and returns the copy as the room is entered again when the door's screen
 /// is done; `None` if the screen never opened.
 fn walk_into_door(entered: &Machine, (x, y): (u8, u8)) -> Option<Machine> {
-    use sidekick::starquake::{at, routine};
+    use starquake::facts::{at, routine};
     [1u8, 2].into_iter().find_map(|input| {
         let mut m = entered.clone();
         m.zx.mem[usize::from(at::ENTITIES) + 5] = x;
@@ -1751,9 +1749,9 @@ fn walk_into_door(entered: &Machine, (x, y): (u8, u8)) -> Option<Machine> {
 /// only when all three are; and the screen takes nothing from what is
 /// carried.
 ///
-/// [`covered`]: sidekick::starquake::covered
+/// [`covered`]: starquake::facts::covered
 fn door_items_check(dir: &Path) -> bool {
-    use sidekick::starquake::{
+    use starquake::facts::{
         DOOR_MARKER, at, covered, door_matched, inventory, read_door_code, read_room, routine,
     };
     const ROOM: u16 = 210;
@@ -1838,10 +1836,10 @@ fn door_items_check(dir: &Path) -> bool {
 /// this game and in one with another seed, with the instructions it is
 /// entered and left at being the ones expected.
 ///
-/// [`read_door_code`]: sidekick::starquake::read_door_code
-/// [`DOOR_SCREEN`]: sidekick::starquake::routine::DOOR_SCREEN
+/// [`read_door_code`]: starquake::facts::read_door_code
+/// [`DOOR_SCREEN`]: starquake::facts::routine::DOOR_SCREEN
 fn doors_check(dir: &Path) -> bool {
-    use sidekick::starquake::{DOOR_MARKER, at, door_code, read_door_code, read_room, routine};
+    use starquake::facts::{DOOR_MARKER, at, door_code, read_door_code, read_room, routine};
     let first = into_play(dir, 1);
     // Another game: the seed is all a game's door codes differ by.
     let mut second = first.clone();
@@ -1937,7 +1935,7 @@ fn doors_check(dir: &Path) -> bool {
 /// points 256 bytes below the font (`at::FONT`), so the game prints with the letters
 /// there, and they are 96 letters with the space blank.
 fn font_check(dir: &Path) -> bool {
-    use sidekick::starquake::{at, font, routine};
+    use starquake::facts::{at, font, routine};
     let mut m = machine(dir);
     m.watch = vec![routine::MAIN_LOOP];
     let mut script = Script(0xBEEF);
@@ -1964,7 +1962,7 @@ fn font_check(dir: &Path) -> bool {
 }
 
 fn facts_check(dir: &Path) -> bool {
-    use sidekick::starquake::routine;
+    use starquake::facts::routine;
     let mut ok = true;
     let mut m = machine(dir);
     m.watch = vec![routine::MENU, routine::MAIN_LOOP, routine::GAME_OVER];
@@ -2028,7 +2026,7 @@ fn facts_check(dir: &Path) -> bool {
 /// where the window closes the program; on N it goes back to the menu and
 /// never arrives there.
 fn quit_check(dir: &Path) -> bool {
-    use sidekick::starquake::routine;
+    use starquake::facts::routine;
     let mut title = machine(dir);
     for _ in 0..250 {
         title.zx.release_all_keys();
@@ -2072,12 +2070,12 @@ fn quit_check(dir: &Path) -> bool {
 /// random from `walks` rooms, and fails if he ever leaves a room through an
 /// edge the map shows closed or crosses a wall it shows inside a room.
 fn map_check(dir: &Path, walks: usize) -> bool {
-    use sidekick::starquake::{CORE_ROOM, all_rooms, at, routine};
+    use starquake::facts::{CORE_ROOM, all_rooms, at, routine};
     let mut base = machine(dir);
     let rooms = all_rooms(&base);
-    let openings = sidekick::map::openings(&rooms, CORE_ROOM);
+    let openings = starquake::map::openings(&rooms, CORE_ROOM);
     let parts: Vec<_> = rooms.iter().map(|r| r.open.clone()).collect();
-    let graph = sidekick::map::Graph::new(&rooms, CORE_ROOM);
+    let graph = starquake::map::Graph::new(&rooms, CORE_ROOM);
     // Into play, as a player would.
     base.watch = vec![routine::MAIN_LOOP];
     let mut script = Script(0xBEEF);
@@ -2103,7 +2101,7 @@ fn map_check(dir: &Path, walks: usize) -> bool {
         let mut m = base.clone();
         // Start each walk in a different room, entered as walking in.
         let start = next(512) as u16;
-        if start != sidekick::starquake::CORE_ROOM {
+        if start != starquake::facts::CORE_ROOM {
             let z = &mut m.zx;
             z.write16(at::ROOM, start);
             z.mem[usize::from(at::ENTRY_REASON)] = 0;
@@ -2115,8 +2113,8 @@ fn map_check(dir: &Path, walks: usize) -> bool {
             z.set_interrupts(true);
         }
         let mut part = 0;
-        let mut last_place: Option<sidekick::map::Place> = None;
-        let mut pending: Option<(sidekick::map::Place, u16)> = None;
+        let mut last_place: Option<starquake::map::Place> = None;
+        let mut pending: Option<(starquake::map::Place, u16)> = None;
         for frame in 0..1500 {
             if frame % 25 == 0 {
                 m.zx.release_all_keys();
@@ -2257,11 +2255,11 @@ fn map_check(dir: &Path, walks: usize) -> bool {
 /// not (#10).
 fn passages_check(
     base: &Machine,
-    rooms: &[sidekick::map::Room],
-    openings: &[sidekick::map::Openings],
+    rooms: &[starquake::map::Room],
+    openings: &[starquake::map::Openings],
 ) -> bool {
-    use sidekick::map::COLS;
-    use sidekick::starquake::{at, routine};
+    use starquake::facts::{at, routine};
+    use starquake::map::COLS;
     let (mut walked, mut failures) = (0, 0);
     let mut joined = std::collections::BTreeSet::new();
     for (i, r) in rooms.iter().enumerate() {

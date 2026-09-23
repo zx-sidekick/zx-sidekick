@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use sidekick::starquake::{HighScore, at};
+use starquake::facts::{HighScore, at};
 
 use super::guidance::{LEVELS, Record};
 
@@ -199,7 +199,7 @@ pub fn save(path: &Path, kept: &Kept) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sidekick::machine::Training;
+    use starquake::play::Training;
 
     fn entry(name: &[u8; 3], score: &[u8; 6], percent: u8) -> HighScore {
         HighScore {
