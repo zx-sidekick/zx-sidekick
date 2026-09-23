@@ -1,7 +1,7 @@
 //! What guidance reads of the cavern being played (#153): its cells and
 //! what each is, the items, the portal, the conveyor, the guardians' paths,
 //! Willy and the air. Everything is read from memory the game keeps, laid
-//! out as [`facts::at`] says; nothing is written and none of the game's
+//! out as [`crate::facts::at`] says; nothing is written and none of the game's
 //! rules is reimplemented.
 
 use crate::facts::{AIR_CLOCK_STEP, AIR_EMPTY, at, caverns};
