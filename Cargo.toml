@@ -3,7 +3,9 @@ resolver = "3"
 members = [
     "crates/zx-core",
     "crates/zx-spectrum",
-    "games/starquake/sidekick",
+    "crates/sidekick",
+    "crates/sidekick-frontend",
+    "games/starquake/starquake",
     "games/starquake/sk-check",
     "games/starquake/sk-lab",
     "games/starquake/app",
@@ -22,7 +24,9 @@ publish = false
 [workspace.dependencies]
 zx-core = { path = "crates/zx-core" }
 zx-spectrum = { path = "crates/zx-spectrum" }
-sidekick = { path = "games/starquake/sidekick" }
+sidekick = { path = "crates/sidekick" }
+sidekick-frontend = { path = "crates/sidekick-frontend" }
+starquake = { path = "games/starquake/starquake" }
 
 # The whole game runs on an emulated processor, so even dev builds need
 # optimising to keep up with a real Spectrum.

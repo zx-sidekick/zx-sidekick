@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use sidekick::starquake::{HighScore, at};
+use starquake::facts::{HighScore, at};
 
 use super::guidance::{LEVELS, Record};
 
@@ -180,7 +180,7 @@ impl Keeper {
 
 /// Where the table is kept: beside the kept tape.
 pub fn path() -> Option<PathBuf> {
-    super::tape::app_dir().map(|d| d.join(FILE))
+    sidekick_frontend::tape::app_dir(&super::GAME).map(|d| d.join(FILE))
 }
 
 /// Writes `kept` to `path`, making its folder if need be.
@@ -199,7 +199,7 @@ pub fn save(path: &Path, kept: &Kept) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sidekick::machine::Training;
+    use starquake::play::Training;
 
     fn entry(name: &[u8; 3], score: &[u8; 6], percent: u8) -> HighScore {
         HighScore {

@@ -9,8 +9,8 @@
 //! is part of the overlay (`overlay.rs`), laid out in its units, and dims
 //! the picture only, not the panel beside it.
 
-use super::overlay::{HEIGHT, PICTURE_W};
-use super::text::{ARROWS, Canvas, Fonts, Span, Weight, palette};
+use crate::overlay::{HEIGHT, PICTURE_W};
+use crate::text::{ARROWS, Canvas, Fonts, Span, Weight, palette};
 
 /// How much the picture is darkened behind the card, out of 255.
 const DIM: u8 = 158;
@@ -20,7 +20,7 @@ const CARD_W: f32 = 440.0;
 const CARD_H: f32 = 160.0;
 
 /// Dims the picture and lays the card over its middle.
-pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: super::gamepad::Layout) {
+pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: crate::gamepad::Layout) {
     canvas.shade(0.0, 0.0, PICTURE_W, HEIGHT, [0, 0, 0], DIM);
     let cx = (PICTURE_W - CARD_W) / 2.0;
     let cy = (HEIGHT - CARD_H) / 2.0;
@@ -67,11 +67,11 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: super::gamepad::Layo
     // (#101): X on an Xbox pad, Y on a Nintendo one, the square on a
     // PlayStation one.
     x += match layout {
-        super::gamepad::Layout::PlayStation => {
-            fonts.mark_badge(canvas, x, by, h, super::text::PadMark::Square)
+        crate::gamepad::Layout::PlayStation => {
+            fonts.mark_badge(canvas, x, by, h, crate::text::PadMark::Square)
         }
-        super::gamepad::Layout::Nintendo => fonts.button_badge(canvas, x, by, h, "Y"),
-        super::gamepad::Layout::Xbox => fonts.button_badge(canvas, x, by, h, "X"),
+        crate::gamepad::Layout::Nintendo => fonts.button_badge(canvas, x, by, h, "Y"),
+        crate::gamepad::Layout::Xbox => fonts.button_badge(canvas, x, by, h, "X"),
     } + 10.0;
     fonts.word(canvas, x, by, h, "fire");
 }
@@ -79,7 +79,8 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, layout: super::gamepad::Layo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frontend::overlay::WIDTH;
+    /// The overlay's width with Starquake's panel beside the picture.
+    const WIDTH: f32 = crate::overlay::width(136);
 
     /// The overlay with the notice drawn, laid over a picture of one colour
     /// and a black panel, at `scale` device pixels per unit.
@@ -96,7 +97,7 @@ mod tests {
         draw(
             &mut Fonts::load(),
             &mut canvas,
-            crate::frontend::gamepad::Layout::Xbox,
+            crate::gamepad::Layout::Xbox,
         );
         let picture_w = (PICTURE_W * scale) as usize;
         let mut out = vec![0u8; w * h * 4];

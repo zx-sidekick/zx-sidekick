@@ -6,10 +6,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use sidekick::Machine;
-use sidekick::starquake::{PLAY_INPUT, routine};
 use sk_lab::search::{Exit, INPUTS, Room, Settings, replay};
 use sk_lab::{Args, Rng, into_play};
+use starquake::Machine;
+use starquake::facts::{PLAY_INPUT, routine};
 
 fn main() {
     let args = Args::parse(

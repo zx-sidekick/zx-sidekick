@@ -255,7 +255,7 @@ fn glyph(z: &mut Zx, glyph: &[u8; 8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Machine;
+    type Machine = crate::Machine<()>;
 
     /// A machine set up as the ROM leaves the upper screen: the channel on
     /// ordinary output, the position at the top left, white ink on black, and

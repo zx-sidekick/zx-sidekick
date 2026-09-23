@@ -54,7 +54,7 @@ maintainer's.
   - The **comments** are append-only: never edit one; post a new
     `> 🤖 **Next steps**` comment each time the state changes.
 - Read the code before writing: name real symbols
-  (`games/starquake/sidekick/src/rom.rs`, `rom::answer`, `Zx::run_frame`), not
+  (`crates/sidekick/src/rom.rs`, `rom::answer`, `Zx::run_frame`), not
   "the machine".
 - Set `Spec` while you're writing it, so the board shows it's your turn.
 

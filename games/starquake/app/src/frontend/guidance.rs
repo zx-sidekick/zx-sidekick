@@ -8,12 +8,12 @@
 //! What each level shows is its own ticket's (#3); level 1's teleport
 //! codes are carried here from the game thread to the panel (#4).
 
-use sidekick::machine::Training;
-use sidekick::map::{Openings, RoomSet, Step};
-use sidekick::starquake::SeenTeleporter;
+use starquake::facts::SeenTeleporter;
+use starquake::map::{Openings, RoomSet, Step};
+use starquake::play::Training;
 
 /// The number of rooms on the planet.
-const ROOMS: usize = (sidekick::map::COLS * sidekick::map::ROWS) as usize;
+const ROOMS: usize = (starquake::map::COLS * starquake::map::ROWS) as usize;
 
 /// The levels, each including the ones before it (#3).
 pub const LEVELS: [&str; 7] = [
@@ -31,7 +31,7 @@ pub const LEVELS: [&str; 7] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Found {
     pub room: u16,
-    pub kind: sidekick::starquake::Kind,
+    pub kind: starquake::facts::Kind,
     /// Whether the core wants it: drawn in the piece's colour, and its
     /// room's dot left out, since the item itself says more (#36).
     pub piece: bool,
@@ -250,7 +250,7 @@ pub struct Guidance {
     /// many: (1, 3) for the nearest of three, (0, 0) with none.
     piece_choice: (u8, u8),
     /// The letters the connected pad carries, for the legends (#101).
-    pad: crate::frontend::gamepad::Layout,
+    pad: sidekick_frontend::gamepad::Layout,
     /// Bumped on every change, so a watcher can tell something changed.
     version: u64,
 }
@@ -280,13 +280,13 @@ impl Guidance {
 
     /// The letters the connected pad carries, which every legend follows
     /// (#101).
-    pub fn pad(&self) -> crate::frontend::gamepad::Layout {
+    pub fn pad(&self) -> sidekick_frontend::gamepad::Layout {
         self.pad
     }
 
     /// Takes the layout from the pad, if it has changed: the version moves
     /// with it, so the window redraws the badges.
-    pub fn set_pad(&mut self, layout: crate::frontend::gamepad::Layout) {
+    pub fn set_pad(&mut self, layout: sidekick_frontend::gamepad::Layout) {
         if self.pad != layout {
             self.pad = layout;
             self.version += 1;

@@ -75,7 +75,7 @@ Example (auto-post, factual):
 > 🤖 **Comment by Claude** (AI pair-programmer working with @starquake) — posted through @starquake's account.
 
 No ROM is needed: the game enters the ROM at three addresses, and
-`rom::answer` (`games/starquake/sidekick/src/rom.rs`) answers each one itself.
+`rom::answer` (`crates/sidekick/src/rom.rs`) answers each one itself.
 `sk-check rom` compares every such call against a real ROM, and
 `games/starquake/docs/rom.md` records the evidence.
 ```

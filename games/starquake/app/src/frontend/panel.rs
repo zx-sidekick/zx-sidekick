@@ -7,14 +7,15 @@
 //! the rule on #3: a keyboard key is a squarish badge, a pad button a round
 //! one, and a direction a bare arrow.
 
-use super::gamepad;
+use super::OVERLAY_W as WINDOW_W;
 use super::guidance::{Guidance, LEVELS, SWITCHES, Setting, is_on, switches_on};
-use super::notice;
-use super::overlay::{HEIGHT as WINDOW_H, PICTURE_W, WIDTH as WINDOW_W};
-use super::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, palette};
 use super::track::Scene;
-use sidekick::map::{COLS, ROWS, Step};
-use sidekick::starquake::Kind;
+use sidekick_frontend::gamepad;
+use sidekick_frontend::notice;
+use sidekick_frontend::overlay::{HEIGHT as WINDOW_H, PICTURE_W};
+use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, palette};
+use starquake::facts::Kind;
+use starquake::map::{COLS, ROWS, Step};
 
 const PANEL: Rgb = [0x0f, 0x11, 0x17];
 const RULE: Rgb = [0x22, 0x26, 0x2f];
@@ -162,7 +163,7 @@ pub struct Panel {
     fonts: Fonts,
 }
 
-/// One of the game's 2 × 2 graphics, 32 bytes as [`sidekick::starquake::graphic`]
+/// One of the game's 2 × 2 graphics, 32 bytes as [`starquake::facts::graphic`]
 /// reads them, drawn from (`x`, `y`) at `px` units a pixel (#7, #49).
 fn cells(canvas: &mut Canvas, graphic: &[u8; 32], x: f32, y: f32, px: f32, colour: Rgb) {
     for (cell, (cy, cx)) in [(0, 0), (0, 8), (8, 0), (8, 8)].into_iter().enumerate() {
@@ -624,13 +625,13 @@ impl Panel {
                 let Some(code) = door.and_then(|room| doors.iter().find(|c| c.room == room)) else {
                     continue;
                 };
-                let lit = sidekick::starquake::covered(&code.chips, guidance.carried());
+                let lit = starquake::facts::covered(&code.chips, guidance.carried());
                 let wanted: Vec<Kind> = code
                     .chips
                     .iter()
                     .zip(lit)
                     .filter(|(_, lit)| !lit)
-                    .map(|(&chip, _)| sidekick::starquake::kind(chip))
+                    .map(|(&chip, _)| starquake::facts::kind(chip))
                     .collect();
                 if wanted.is_empty() {
                     continue;
@@ -848,7 +849,7 @@ impl Panel {
             let on = marks.iter().filter(|m| m.code == Code::Door(code.room));
             outlines(canvas, x, y, door_w, door_h, on);
             // A key code card lit once something carried answers it (#33).
-            let lit = sidekick::starquake::covered(&code.chips, guidance.carried());
+            let lit = starquake::facts::covered(&code.chips, guidance.carried());
             for (k, graphic) in code.graphics.iter().enumerate() {
                 let cx = x + 3.0 + k as f32 * (16.0 * px + 2.0);
                 let colour = if lit[k] { CODE } else { CODE_DIM };
@@ -1712,9 +1713,9 @@ mod heroes_layout {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sidekick::machine::Training;
-    use sidekick::map::{Divides, Openings, RoomSet};
-    use sidekick::starquake::SeenTeleporter;
+    use starquake::facts::SeenTeleporter;
+    use starquake::map::{Divides, Openings, RoomSet};
+    use starquake::play::Training;
 
     /// Draws the overlay in `guidance`'s state over a stand-in picture, at
     /// twice the layout's size, as 0xRRGGBB pixels.
@@ -2235,7 +2236,7 @@ mod tests {
         use crate::frontend::guidance::Found;
         let item = |room, graphic: u8| Found {
             room,
-            kind: sidekick::starquake::kind(graphic),
+            kind: starquake::facts::kind(graphic),
             piece: false,
             graphic: [0; 32],
             seen: true,
@@ -2290,7 +2291,7 @@ mod tests {
     /// this game's entry sixth: made-up names and scores.
     fn heroes() -> Guidance {
         use crate::frontend::scores::Kept;
-        use sidekick::starquake::HighScore;
+        use starquake::facts::HighScore;
         type Row = (&'static [u8; 3], &'static [u8; 6], u8, Option<u8>);
         let mut g = Guidance::default();
         g.set_level(3);
@@ -2365,13 +2366,13 @@ mod tests {
             return g;
         };
         let bytes = std::fs::read(tape).expect("the tape");
-        let m = sidekick::Machine::from_tape(
+        let m = starquake::Machine::from_tape(
             &bytes,
-            sidekick::starquake::ENTRY_PC,
-            sidekick::starquake::ENTRY_SP,
+            starquake::facts::ENTRY_PC,
+            starquake::facts::ENTRY_SP,
         )
         .expect("a machine");
-        let graphic = |n: u8| sidekick::starquake::graphic(&m.zx.mem[..], n);
+        let graphic = |n: u8| starquake::facts::graphic(&m.zx.mem[..], n);
         let rooms: [(u16, [u8; 3]); 8] = [
             (176, [11, 12, 11]),
             (187, [10, 11, 12]),
@@ -2400,7 +2401,7 @@ mod tests {
     /// which level 3 marks, and some in rooms never entered, which level 4
     /// adds (#66).
     fn made_up_items(g: &Guidance) -> Vec<crate::frontend::guidance::Found> {
-        use sidekick::starquake::Kind;
+        use starquake::facts::Kind;
         let here = g.room().unwrap_or(0);
         let shape = |i: u8| {
             let mut graphic = [0u8; 32];
@@ -2540,13 +2541,13 @@ mod tests {
         // letters, as the panel draws them in play (#49).
         let font = std::env::var_os("SQ_TAPE").map(|tape| {
             let bytes = std::fs::read(tape).expect("the tape");
-            let m = sidekick::Machine::from_tape(
+            let m = starquake::Machine::from_tape(
                 &bytes,
-                sidekick::starquake::ENTRY_PC,
-                sidekick::starquake::ENTRY_SP,
+                starquake::facts::ENTRY_PC,
+                starquake::facts::ENTRY_SP,
             )
             .expect("a machine");
-            sidekick::starquake::font(&m.zx.mem[..])
+            starquake::facts::font(&m.zx.mem[..])
                 .expect("the font")
                 .to_vec()
         });
@@ -2731,7 +2732,7 @@ mod tests {
                     g.set_core(made_up_core());
                     // Known steps: every open edge between two visited rooms,
                     // up and down both ways, as if walked both ways.
-                    let mut known = sidekick::map::Known::default();
+                    let mut known = starquake::map::Known::default();
                     for room in 0..COLS * ROWS {
                         let o = g.openings()[usize::from(room)];
                         if g.visited(room) && o.right && g.visited(room + 1) {

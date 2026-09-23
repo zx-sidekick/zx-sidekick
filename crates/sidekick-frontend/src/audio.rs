@@ -115,6 +115,12 @@ pub struct Output {
 }
 
 impl Output {
+    /// Opens the default output device and starts a stream on it, which
+    /// plays whatever is [pushed](Output::push).
+    ///
+    /// # Errors
+    ///
+    /// If there is no output device, or it takes no format we can write.
     pub fn start() -> Result<(Output, cpal::Stream), String> {
         let host = cpal::default_host();
         let device = host.default_output_device().ok_or("no output device")?;
@@ -141,6 +147,11 @@ impl Output {
         self.rate
     }
 
+    /// Queues `samples` to play.
+    ///
+    /// # Panics
+    ///
+    /// If the sound card's thread panicked while holding the queue.
     pub fn push(&self, samples: &[f32]) {
         let mut q = self.queue.lock().unwrap();
         q.extend(samples);
@@ -156,6 +167,11 @@ impl Output {
         }
     }
 
+    /// How many samples are waiting to play.
+    ///
+    /// # Panics
+    ///
+    /// If the sound card's thread panicked while holding the queue.
     pub fn queued(&self) -> usize {
         self.queue.lock().unwrap().len()
     }

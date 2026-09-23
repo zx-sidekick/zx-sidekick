@@ -64,15 +64,20 @@ fn main() {
     let headless = headless_args(&mut args);
     // A tape named on the command line is used as it is; otherwise the usual
     // places are searched.
-    let folders = frontend::tape::folders();
-    let path = args.first().map(PathBuf::from).or_else(|| {
-        frontend::tape::find(&folders, sidekick::starquake::is_supported_tape).map(|tape| tape.from)
-    });
+    let folders = sidekick_frontend::tape::folders(&frontend::GAME);
+    let path = args
+        .first()
+        .map(PathBuf::from)
+        .or_else(|| sidekick_frontend::tape::find(&frontend::GAME, &folders).map(|tape| tape.from));
     // Without a window there is nobody to ask, so no tape is the end: said
     // on the terminal, which is where a headless run is watched from.
     let required = || {
-        path.clone()
-            .unwrap_or_else(|| fatal(&frontend::tape::not_found_message(&folders), false))
+        path.clone().unwrap_or_else(|| {
+            fatal(
+                &sidekick_frontend::tape::not_found_message(&frontend::GAME, &folders),
+                false,
+            )
+        })
     };
     let windowed = headless.is_none();
     let result = match headless {

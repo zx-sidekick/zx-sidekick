@@ -13,9 +13,11 @@ the program itself. `GOAL.md` holds the aim and the hard legal rules;
 
 The processor is `rustzx-z80` from our fork
 ([zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx)), pinned to a
-commit, inside our own 48K bus (`crates/zx-spectrum`). The ROM-free machine is
-`games/starquake/sidekick`, and `games/starquake/sk-check` checks it against a
-real ROM supplied locally.
+commit, inside our own 48K bus (`crates/zx-spectrum`). The ROM-free machine every
+game runs on is `crates/sidekick`, and the window, sound, input and tape prompt
+every game shows it through are `crates/sidekick-frontend` (#141). Starquake's
+facts, map and rules for the machine are `games/starquake/starquake`, and
+`games/starquake/sk-check` checks them against a real ROM supplied locally.
 
 ## Commands
 

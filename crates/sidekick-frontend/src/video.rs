@@ -1,6 +1,6 @@
 //! The window: draws the latest frame, with its border, scaled by the GPU,
-//! and beside it the guidance panel, laid over at the window's own
-//! resolution with the picker and the pause notice.
+//! and beside it the game's panel, laid over at the window's own resolution
+//! with whatever else the game shows over the picture ([`Screen`]).
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -14,12 +14,10 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Theme, Window, WindowId};
 
-use super::Shared;
-use super::overlay::{self, Overlay};
-use super::panel::Panel;
-use super::prompt::{self, Outcome, Prompt};
-use super::text::Canvas;
-use super::track::Scene;
+use crate::overlay::{self, Overlay};
+use crate::prompt::{self, Outcome, Prompt};
+use crate::text::Canvas;
+use crate::{Game, Shared};
 use sidekick::Input;
 use zx_core::screen::{BITMAP_LEN, HEIGHT, WIDTH};
 
@@ -27,11 +25,51 @@ const BORDER: usize = 32;
 pub const FULL_W: usize = WIDTH + 2 * BORDER;
 pub const FULL_H: usize = HEIGHT + 2 * BORDER;
 const SCALE: f64 = 3.0;
-/// The guidance panel's width at the Spectrum's scale. The window is the
-/// picture and the panel side by side, a whole multiple of both, so the
-/// picture is scaled exactly as it was before the panel existed.
-pub const PANEL_W: usize = 136;
-const WINDOW_W: usize = FULL_W + PANEL_W;
+
+/// The window's width at the Spectrum's scale: the picture with its border,
+/// and the game's panel beside it, `panel_w` wide. The window is a whole
+/// multiple of both, so the picture is scaled exactly as it would be alone.
+#[must_use]
+pub const fn window_w(panel_w: usize) -> usize {
+    FULL_W + panel_w
+}
+
+/// What a game shows in the window besides its picture: a panel beside it,
+/// and anything laid over the two (a picker, the pause notice). It is the
+/// game's side of the state the machine's thread and the window share.
+pub trait Screen: Send + Sync + 'static {
+    /// The panel's width beside the picture, at the Spectrum's scale; 0 for
+    /// none.
+    const PANEL_W: usize;
+    /// Something that changes whenever what is drawn over the picture does,
+    /// so the overlay is drawn again only then.
+    type Stamp: Copy + PartialEq + Send;
+    /// What drawing needs, copied out from under the game's locks.
+    type Shown;
+    /// Draws what is shown; kept by the window between frames.
+    type Painter: Default;
+
+    /// The stamp as things stand.
+    fn stamp(&self) -> Self::Stamp;
+    /// The stamp and a copy of what is shown, if the stamp is not `since`.
+    fn shown_unless(&self, since: Option<Self::Stamp>) -> Option<(Self::Stamp, Self::Shown)>;
+    /// Draws `shown` over the picture and the panel, `paused` saying whether
+    /// the emulation is frozen.
+    fn draw(painter: &mut Self::Painter, canvas: &mut Canvas, shown: &Self::Shown, paused: bool);
+    /// Offers the game a key the window got, before it goes to the Spectrum.
+    fn key(&self, code: KeyCode) -> Key;
+}
+
+/// What the game did with a key it was offered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Key {
+    /// Not the game's: it goes to the Spectrum.
+    Pass,
+    /// Taken. With `release`, whatever the Spectrum has held is let go (a
+    /// picker has opened over it, and the game will not see the key-ups);
+    /// with `quit`, the program closes.
+    Taken { release: bool, quit: bool },
+}
 
 /// A palette colour as the opaque RGBA pixel `pixels` wants.
 fn rgba(c: u32) -> [u8; 4] {
@@ -53,12 +91,12 @@ pub fn draw(mem: &[u8], border: u8, frame: u64, out: &mut [u8]) {
     );
 }
 
-/// Draws the picture into the window's buffer, which has the panel's width
-/// beside it. The overlay covers the panel's part; it is filled here only so
-/// nothing stale shows before the overlay's first frame.
-fn draw_window(mem: &[u8], border: u8, frame: u64, out: &mut [u8]) {
+/// Draws the picture into the window's buffer, `window_w` wide, which has
+/// the panel's width beside it. The overlay covers the panel's part; it is
+/// filled here only so nothing stale shows before the overlay's first frame.
+fn draw_window(mem: &[u8], border: u8, frame: u64, out: &mut [u8], window_w: usize) {
     let edge = rgba(zx_core::screen::PALETTE[(border & 7) as usize]);
-    for row in out.as_chunks_mut::<4>().0.as_chunks_mut::<WINDOW_W>().0 {
+    for row in out.as_chunks_mut::<4>().0.chunks_exact_mut(window_w) {
         row[..FULL_W].fill(edge);
         row[FULL_W..].fill([0, 0, 0, 0xFF]);
     }
@@ -67,8 +105,8 @@ fn draw_window(mem: &[u8], border: u8, frame: u64, out: &mut [u8]) {
         &mem[BITMAP_LEN..],
         (frame / 16) % 2 == 1,
         out.as_chunks_mut::<4>().0,
-        WINDOW_W,
-        BORDER * WINDOW_W + BORDER,
+        window_w,
+        BORDER * window_w + BORDER,
         rgba,
     );
 }
@@ -95,8 +133,9 @@ fn clear_colour([r, g, b]: [u8; 3]) -> pixels::wgpu::Color {
 /// hold.
 pub type Launcher = Box<dyn FnMut(Vec<u8>) -> Result<Option<cpal::Stream>, String>>;
 
-struct App {
-    shared: Arc<Shared>,
+struct App<G: Screen> {
+    game: &'static Game,
+    shared: Arc<Shared<G>>,
     /// The screen asking for the tape, while it is up. The game has not
     /// started until it is gone.
     prompt: Option<Prompt>,
@@ -114,26 +153,26 @@ struct App {
     held: HashSet<KeyCode>,
     /// The game frame last painted, so the same one is not painted twice.
     shown: u64,
-    /// The panel, the picker and the pause notice, laid over the game at
-    /// the window's resolution.
+    /// The panel and what the game lays over the picture, at the window's
+    /// resolution.
     overlay: Option<Overlay>,
-    panel: Panel,
-    /// What the overlay was last drawn from: the guidance's version, the
-    /// scene, whether the game was paused, and the size it was drawn at.
-    /// It is redrawn only when this changes.
-    drawn: Option<(u64, Scene, bool, (u32, u32))>,
+    painter: G::Painter,
+    /// What the overlay was last drawn from: the game's stamp, whether the
+    /// game was paused, and the size it was drawn at. It is redrawn only
+    /// when this changes.
+    drawn: Option<(G::Stamp, bool, (u32, u32))>,
 }
 
 /// The whole scale a window fits at on a screen `width` by `height`
 /// logical pixels (#57): the largest whose window fits with room for the
 /// window's own frame and the taskbar or dock, and never less than one.
-fn windowed_scale(width: f64, height: f64) -> f64 {
+fn windowed_scale(width: f64, height: f64, window_w: usize) -> f64 {
     let (room_w, room_h) = (width * 0.98, height - 96.0);
-    let fit = (room_w / WINDOW_W as f64).min(room_h / FULL_H as f64);
+    let fit = (room_w / window_w as f64).min(room_h / FULL_H as f64);
     fit.floor().max(1.0)
 }
 
-impl ApplicationHandler for App {
+impl<G: Screen> ApplicationHandler for App<G> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -152,10 +191,11 @@ impl ApplicationHandler for App {
                 windowed_scale(
                     f64::from(size.width) / factor,
                     f64::from(size.height) / factor,
+                    window_w(G::PANEL_W),
                 )
             });
         let attrs = Window::default_attributes()
-            .with_title("ZX Sidekick · Starquake")
+            .with_title(self.game.title)
             // A dark title bar whatever the desktop's setting (#97). Left to
             // winit, GNOME drew it light in dark mode: on X11 the window gets
             // no dark hint unless a theme is given, and on Wayland winit asks
@@ -164,10 +204,10 @@ impl ApplicationHandler for App {
             .with_theme(Some(Theme::Dark))
             .with_fullscreen(Some(Fullscreen::Borderless(None)))
             .with_inner_size(LogicalSize::new(
-                WINDOW_W as f64 * scale,
+                window_w(G::PANEL_W) as f64 * scale,
                 FULL_H as f64 * scale,
             ))
-            .with_min_inner_size(LogicalSize::new(WINDOW_W as f64, FULL_H as f64));
+            .with_min_inner_size(LogicalSize::new(window_w(G::PANEL_W) as f64, FULL_H as f64));
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),
             Err(e) => {
@@ -220,7 +260,7 @@ impl ApplicationHandler for App {
                         self.toggle_fullscreen();
                         return;
                     }
-                    if event.state == ElementState::Pressed && self.picker_key(code) {
+                    if event.state == ElementState::Pressed && self.game_key(code) {
                         return;
                     }
                     if event.state == ElementState::Pressed {
@@ -269,11 +309,8 @@ impl ApplicationHandler for App {
             let screen = self.shared.screen.lock().unwrap();
             (screen.2, screen.3)
         };
-        let version = self.shared.guidance.lock().unwrap().version();
-        let scene = *self.shared.scene.lock().unwrap();
-        let overlay_stale = self
-            .drawn
-            .is_none_or(|(v, s, p, _)| v != version || s != scene || p != paused);
+        let stamp = self.shared.game.stamp();
+        let overlay_stale = self.drawn.is_none_or(|(s, p, _)| s != stamp || p != paused);
         if latest != self.shown || overlay_stale {
             self.shown = latest;
             if let Some(w) = &self.window {
@@ -286,7 +323,7 @@ impl ApplicationHandler for App {
     }
 }
 
-impl App {
+impl<G: Screen> App<G> {
     /// The frame buffer's size: the Spectrum's screen with its border, or,
     /// for the prompt, the window at its real pixel density so the text is
     /// sharp.
@@ -297,7 +334,7 @@ impl App {
                 (f64::from(prompt::HEIGHT) * self.scale).round() as u32,
             )
         } else {
-            (WINDOW_W as u32, FULL_H as u32)
+            (window_w(G::PANEL_W) as u32, FULL_H as u32)
         }
     }
 
@@ -309,27 +346,34 @@ impl App {
         };
         let paused = {
             let screen = self.shared.screen.lock().unwrap();
-            draw_window(&screen.0, screen.1, screen.2, p.frame_mut());
+            draw_window(
+                &screen.0,
+                screen.1,
+                screen.2,
+                p.frame_mut(),
+                window_w(G::PANEL_W),
+            );
             screen.3
         };
         let clip = p.context().scaling_renderer.clip_rect();
-        let scene = *self.shared.scene.lock().unwrap();
-        // The overlay is redrawn only when what it shows has changed, so the
-        // guidance is copied out from under its lock only then (#82): a
-        // copy is every room's openings, the items, the routes and the
-        // codes, too much to take fifty times a second for nothing.
-        let guidance = {
-            let shared = self.shared.guidance.lock().unwrap();
-            let key = (shared.version(), scene, paused, (clip.2, clip.3));
-            (self.drawn != Some(key)).then(|| (key, shared.clone()))
-        };
-        if let Some((key, guidance)) = guidance
+        // The overlay is redrawn only when what it shows has changed, so
+        // what it shows is copied out from under the game's locks only then
+        // (#82): for Starquake a copy is every room's openings, the items,
+        // the routes and the codes, too much to take fifty times a second
+        // for nothing.
+        let size = (clip.2, clip.3);
+        let since = self
+            .drawn
+            .filter(|&(_, p, s)| p == paused && s == size)
+            .map(|(stamp, _, _)| stamp);
+        let shown = self.shared.game.shown_unless(since);
+        if let Some((stamp, shown)) = shown
             && let Some(overlay) = &mut self.overlay
         {
-            let scale = clip.2 as f32 / overlay::WIDTH;
+            let scale = clip.2 as f32 / overlay::width(G::PANEL_W);
             let mut canvas = overlay.canvas(clip.2, clip.3, scale);
-            self.panel.draw(&mut canvas, &guidance, scene, paused);
-            self.drawn = Some(key);
+            G::draw(&mut self.painter, &mut canvas, &shown, paused);
+            self.drawn = Some((stamp, paused, size));
         }
         let overlay = &mut self.overlay;
         let rendered = p.render_with(|encoder, target, context| {
@@ -359,40 +403,20 @@ impl App {
         }
     }
 
-    /// The keys the guidance panel takes. Esc opens the picker and goes back,
-    /// and Tab switches the piece route; while
-    /// it is open the arrows and Enter work it, and it has the keyboard to
-    /// itself, so nothing typed into it reaches the game. Returns whether the
-    /// key was the picker's.
-    fn picker_key(&mut self, code: KeyCode) -> bool {
-        let mut guidance = self.shared.guidance.lock().unwrap();
-        let open = guidance.picker_open();
-        match code {
-            KeyCode::Escape if open => guidance.back(),
-            KeyCode::Escape => guidance.open(),
-            // Tab, no key of the Spectrum's, switches the piece route (#51).
-            KeyCode::Tab if !open => guidance.switch_piece(),
-            _ if !open => return false,
-            KeyCode::ArrowUp => guidance.focus_up(),
-            KeyCode::ArrowDown => guidance.focus_down(),
-            KeyCode::ArrowLeft => guidance.change(false),
-            KeyCode::ArrowRight => guidance.change(true),
-            KeyCode::Enter | KeyCode::NumpadEnter => {
-                guidance.enter();
-                if guidance.take(super::guidance::Action::Exit) {
-                    // The window closes on the next turn of the event loop.
-                    self.shared.quit.store(true, Ordering::Relaxed);
-                }
-            }
-            _ => {}
+    /// Offers a key to the game ([`Screen::key`]) before the Spectrum gets
+    /// it. Returns whether the game took it.
+    fn game_key(&mut self, code: KeyCode) -> bool {
+        let Key::Taken { release, quit } = self.shared.game.key(code) else {
+            return false;
+        };
+        if quit {
+            // The window closes on the next turn of the event loop.
+            self.shared.quit.store(true, Ordering::Relaxed);
         }
-        if guidance.picker_open() && !open {
-            // Opening it: whatever was held is let go, as the game will not
-            // see the key-ups.
+        if release {
             self.held.clear();
             *self.shared.input.lock().unwrap() = Input::default();
         }
-        drop(guidance);
         if let Some(w) = &self.window {
             w.request_redraw();
         }
@@ -496,10 +520,23 @@ impl App {
     }
 }
 
-pub fn run(shared: Arc<Shared>, prompt: Option<Prompt>, launch: Launcher) -> Result<(), String> {
+/// Runs the window for `game` until it closes: the prompt for its tape
+/// first if `prompt` is given, then the game, which `launch` starts.
+///
+/// # Errors
+///
+/// If the window or its surface cannot be made, or the game stopped
+/// unexpectedly.
+pub fn run<G: Screen>(
+    game: &'static Game,
+    shared: Arc<Shared<G>>,
+    prompt: Option<Prompt>,
+    launch: Launcher,
+) -> Result<(), String> {
     let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App {
+        game,
         shared,
         prompt,
         launch,
@@ -511,7 +548,7 @@ pub fn run(shared: Arc<Shared>, prompt: Option<Prompt>, launch: Launcher) -> Res
         shown: u64::MAX,
         held: HashSet::new(),
         overlay: None,
-        panel: Panel::new(),
+        painter: G::Painter::default(),
         drawn: None,
     };
     event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
@@ -528,18 +565,23 @@ pub fn run(shared: Arc<Shared>, prompt: Option<Prompt>, launch: Launcher) -> Res
 mod tests {
     #[test]
     fn the_window_opens_at_the_largest_whole_scale_that_fits() {
-        // The window is 456 by 256 Spectrum pixels a scale.
+        // With Starquake's panel the window is 456 by 256 Spectrum pixels a
+        // scale.
+        let scale = |w, h| windowed_scale(w, h, WINDOW_W);
         assert_eq!(
-            windowed_scale(1920.0, 1080.0),
+            scale(1920.0, 1080.0),
             3.0,
             "1024 tall does not fit under the chrome"
         );
-        assert_eq!(windowed_scale(2560.0, 1440.0), 5.0);
-        assert_eq!(windowed_scale(3840.0, 2160.0), 8.0);
-        assert_eq!(windowed_scale(1366.0, 768.0), 2.0);
-        assert_eq!(windowed_scale(1600.0, 900.0), 3.0);
-        assert_eq!(windowed_scale(640.0, 480.0), 1.0, "never less than one");
+        assert_eq!(scale(2560.0, 1440.0), 5.0);
+        assert_eq!(scale(3840.0, 2160.0), 8.0);
+        assert_eq!(scale(1366.0, 768.0), 2.0);
+        assert_eq!(scale(1600.0, 900.0), 3.0);
+        assert_eq!(scale(640.0, 480.0), 1.0, "never less than one");
     }
+
+    /// Starquake's window: its panel, 136 wide, beside the picture.
+    const WINDOW_W: usize = window_w(136);
 
     use super::*;
 
@@ -570,7 +612,7 @@ mod tests {
     #[test]
     fn the_window_is_the_picture_with_the_panel_beside_it() {
         let mut out = vec![0u8; WINDOW_W * FULL_H * 4];
-        draw_window(&screen(0xFF, 0o21), 4, 0, &mut out);
+        draw_window(&screen(0xFF, 0o21), 4, 0, &mut out, WINDOW_W);
         let at = |x: usize, y: usize| {
             let i = (y * WINDOW_W + x) * 4;
             <[u8; 4]>::try_from(&out[i..i + 4]).unwrap()

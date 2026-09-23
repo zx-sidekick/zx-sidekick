@@ -11,12 +11,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use sidekick::Machine;
-use sidekick::map::Openings;
-use sidekick::starquake::{CORE_ROOM, PLAY_INPUT, routine};
 use sk_lab::exits;
 use sk_lab::search::{Exit, Room, Settings};
 use sk_lab::{Args, Rng, into_play};
+use starquake::Machine;
+use starquake::facts::{CORE_ROOM, PLAY_INPUT, routine};
+use starquake::map::Openings;
 
 fn neighbours(o: &[Openings], r: u16) -> Vec<u16> {
     let x = &o[usize::from(r)];
@@ -243,7 +243,7 @@ fn main() {
     });
     let reachable: HashSet<u16> = exits::read(&text).keys().copied().collect();
     let base = into_play(&args.tape());
-    let o = sidekick::starquake::all_openings(&base);
+    let o = starquake::facts::all_openings(&base);
     let start = sk_lab::room(&base);
     let mut rng = Rng(0x5EED);
     let mut yes: Vec<u16> = reachable.iter().copied().filter(|&r| r != start).collect();

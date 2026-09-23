@@ -1,12 +1,12 @@
-//! Every room as the game draws it, read by `sidekick::starquake::read_room`
+//! Every room as the game draws it, read by `starquake::facts::read_room`
 //! on copies of the machine, with its cells kept; and the planet's graph of
 //! (room, part) nodes over them.
 
 use std::collections::{HashSet, VecDeque};
 
-use sidekick::Machine;
-use sidekick::map::{COLS, Openings, ROWS, Room, free};
-use sidekick::starquake::{CORE_ROOM, all_openings, read_room};
+use starquake::Machine;
+use starquake::facts::{CORE_ROOM, all_openings, read_room};
+use starquake::map::{COLS, Openings, ROWS, Room, free};
 
 use crate::LIFT_ATTRS;
 

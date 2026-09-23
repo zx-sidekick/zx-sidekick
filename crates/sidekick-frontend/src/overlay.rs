@@ -1,5 +1,6 @@
 //! What the host draws over the game at the window's real resolution: the
-//! guidance panel, the picker and the pause notice (#25).
+//! game's panel, and what it lays over the picture, such as Starquake's
+//! picker and the pause notice (#25).
 //!
 //! `pixels` scales the game's small buffer up to the window, which is right
 //! for the Spectrum's picture and wrong for text. So the panel, the picker
@@ -11,16 +12,21 @@
 use pixels::wgpu;
 use pixels::wgpu::util::DeviceExt;
 
-use super::text::Canvas;
-use super::video::{FULL_H, FULL_W, PANEL_W};
+use crate::text::Canvas;
+use crate::video::{FULL_H, FULL_W};
 
 /// How many of the overlay's layout units a Spectrum pixel is: the window's
 /// first size, three times the picture.
 const UNITS: f32 = 3.0;
-/// The size everything the overlay draws is laid out in, whatever size the
-/// window is: the window at its first size, 1368 by 768. The picture takes
-/// the left [`PICTURE_W`] and the panel the rest.
-pub const WIDTH: f32 = (FULL_W + PANEL_W) as f32 * UNITS;
+/// The width everything the overlay draws is laid out in, whatever size the
+/// window is, with a panel `panel_w` wide beside the picture: the window at
+/// its first size (1368, with Starquake's panel). The picture takes the left
+/// [`PICTURE_W`] and the panel the rest.
+#[must_use]
+pub const fn width(panel_w: usize) -> f32 {
+    (FULL_W + panel_w) as f32 * UNITS
+}
+/// The height it is laid out in: 768.
 pub const HEIGHT: f32 = FULL_H as f32 * UNITS;
 pub const PICTURE_W: f32 = FULL_W as f32 * UNITS;
 

@@ -3,11 +3,11 @@
 //! panel so it knows when a game starts and ends; and the teleports
 //! entered and the security door codes seen, for level 1 (#4, #49).
 
-use sidekick::map::{Graph, Known, Place, RoomSet, Step};
-use sidekick::starquake::{
+use starquake::facts::{
     CORE_ROOM, Item, SeenTeleporter, all_teleporters, at, door_code, entry, font, graphic, hole,
     inventory, items_and_core, kind, missing_pieces, read_door_code, routine, teleporter_code,
 };
+use starquake::map::{Graph, Known, Place, RoomSet, Step};
 
 use super::guidance::{DoorCode, Found, Guidance, Hole};
 
@@ -165,7 +165,7 @@ impl Tracker {
     /// which takes no time to speak of. Not before: the new game's seed,
     /// which its door codes are made from, is not written until then, and a
     /// reading taken earlier gives the last game's codes.
-    pub fn read_codes(&mut self, machine: &sidekick::Machine, guidance: &mut Guidance) {
+    pub fn read_codes(&mut self, machine: &starquake::Machine, guidance: &mut Guidance) {
         if !self.codes_due || self.scene != Scene::Play {
             return;
         }
@@ -380,7 +380,7 @@ fn holes(mem: &[u8], core: &[u8; 9], items: &[Item]) -> Vec<Hole> {
 
 #[cfg(test)]
 mod tests {
-    use sidekick::machine::Training;
+    use starquake::play::Training;
 
     use super::*;
     use crate::frontend::guidance::{Record, Setting};
@@ -422,7 +422,7 @@ mod tests {
         let mut t = Tracker::default();
         let mut g = Guidance::default();
         g.set_level(6);
-        let mut m = sidekick::Machine::blank(0x8000, 0x7000);
+        let mut m = starquake::Machine::blank(0x8000, 0x7000);
         let entry = usize::from(at::TELEPORTER_NAMES);
         m.zx.mem[entry..entry + 5].copy_from_slice(b"ABCDE");
         t.follow(&m.zx.mem[..], routine::NEW_GAME, &mut g);
@@ -629,7 +629,7 @@ mod tests {
     /// other room closed; with `split`, a wall down room 1's middle.
     fn two_rooms(split: bool) -> Graph {
         let room = |open_left: bool, open_right: bool, wall: bool| {
-            sidekick::map::Room::read(
+            starquake::map::Room::read(
                 |row, col| {
                     let edge = row == 6 || row == 23 || col == 0 || col == 31;
                     let gap = (12..14).contains(&row)
@@ -783,7 +783,7 @@ mod tests {
 
     #[test]
     fn the_items_are_every_one_out_on_the_planet_marked_seen_or_not() {
-        use sidekick::starquake::Kind;
+        use starquake::facts::Kind;
         // The core wants graphic 30; every room visited but 500.
         let core = [0x80 | 30; 9];
         let mut unvisited = RoomSet::default();

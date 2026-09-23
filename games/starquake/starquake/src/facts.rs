@@ -608,8 +608,8 @@ pub const END_GAME_KEYS: (usize, u8) = (1, 0x1F);
 /// loop until play hands over to a death or to a door, teleport or pyramid
 /// screen, which would read them as letters.
 #[must_use]
-pub fn end_game_hold() -> crate::machine::Hold {
-    crate::machine::Hold {
+pub fn end_game_hold() -> sidekick::machine::Hold {
+    sidekick::machine::Hold {
         from: routine::MAIN_LOOP,
         until: vec![routine::MODAL, routine::DEATH],
         row: END_GAME_KEYS.0,
