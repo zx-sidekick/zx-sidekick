@@ -4,11 +4,9 @@
 //! Willy lands or dies. Nothing about how he jumps is reimplemented, and the
 //! machine given is never changed.
 
-use zx_spectrum::Key;
-
 use crate::Machine;
 use crate::facts::{at, routine};
-use crate::play::Play;
+use crate::play::{Jumping, Play};
 
 /// Which way a jump goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,15 +19,6 @@ pub enum Way {
 impl Way {
     /// All three, left to right.
     pub const ALL: [Way; 3] = [Way::Left, Way::Up, Way::Right];
-
-    /// The key for its direction, if it has one.
-    fn key(self) -> Option<&'static str> {
-        match self {
-            Way::Left => Some("o"),
-            Way::Up => None,
-            Way::Right => Some("p"),
-        }
-    }
 }
 
 /// How a jump ends.
@@ -40,8 +29,8 @@ pub enum End {
 }
 
 /// A jump: the way it goes, the middle of Willy in the cavern's pixels at
-/// each step it moves, from where he stands to where it ends, and how it
-/// ends.
+/// each pass of the main loop he moves in, from where he stands to where it
+/// ends, and how it ends.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Jump {
     pub way: Way,
@@ -69,7 +58,11 @@ pub fn walking(m: &Machine) -> bool {
 /// The middle of Willy's 16 pixels square, in the cavern's pixels.
 #[must_use]
 pub fn willy(m: &Machine) -> (u8, u8) {
-    let mem = &m.zx.mem;
+    middle(&m.zx.mem[..])
+}
+
+/// [`willy`], from the machine's memory.
+fn middle(mem: &[u8]) -> (u8, u8) {
     let cell = u16::from_le_bytes([
         mem[usize::from(at::WILLY_CELL)],
         mem[usize::from(at::WILLY_CELL) + 1],
@@ -82,10 +75,6 @@ pub fn willy(m: &Machine) -> (u8, u8) {
 
 fn facing_left(m: &Machine) -> bool {
     m.zx.mem[usize::from(at::FACING)] & 1 != 0
-}
-
-fn press(m: &mut Machine, name: &str) {
-    m.zx.set_key(Key::by_name(name).expect("a key"), true);
 }
 
 /// The jumps from where Willy is, with the training switches in force in
@@ -102,77 +91,91 @@ pub fn jumps(m: &Machine) -> Vec<Jump> {
     } else {
         Way::Right
     };
-    Way::ALL
-        .iter()
-        .filter(|&&way| !walking(m) || way == Way::Up || way == ahead)
-        .filter_map(|&way| jump(m, way))
-        .collect()
+    let ways: Vec<Way> = Way::ALL
+        .into_iter()
+        .filter(|&way| !walking(m) || way == Way::Up || way == ahead)
+        .collect();
+    // Each on a thread of its own: the same work, done in a third of the
+    // time (#156).
+    std::thread::scope(|s| {
+        let running: Vec<_> = ways
+            .iter()
+            .map(|&way| s.spawn(move || jump(m, way)))
+            .collect();
+        running
+            .into_iter()
+            .filter_map(|r| r.join().ok().flatten())
+            .collect()
+    })
 }
 
-/// One jump from where Willy stands in `m`, if it starts at all. A jump
+/// One jump from where Willy is in `m`, if it starts at all. A jump
 /// against the way he faces turns him first, as a player does: the game
 /// spends the pass that turns him, and a jump pressed then would go
-/// straight up.
+/// straight up. The keys are pressed a pass at a time
+/// ([`Play::jumping`]), so how many passes the copy makes a frame changes
+/// nothing.
 #[must_use]
 pub fn jump(m: &Machine, way: Way) -> Option<Jump> {
+    run(m, way, true)
+}
+
+/// [`jump`] with the picture, the scores and the tune left in, as the check
+/// runs it to prove going without them changes nothing (#156).
+#[must_use]
+pub fn jump_shown(m: &Machine, way: Way) -> Option<Jump> {
+    run(m, way, false)
+}
+
+fn run(m: &Machine, way: Way, unseen: bool) -> Option<Jump> {
     let mut c = m.clone();
     // The copy plays nobody's keys but these, and does nothing else the
     // machine's rules might: only the switches are kept.
     c.rules = Play::default();
     c.rules.training = m.rules.training;
+    // Nobody sees or hears the copy: it goes without the picture, the
+    // scores and the tune, a third of the work (#156).
+    c.rules.unseen = unseen;
+    c.rules.jumping = Some(Jumping {
+        left: match way {
+            Way::Left => Some(true),
+            Way::Up => None,
+            Way::Right => Some(false),
+        },
+        started: false,
+    });
     c.watch = Vec::new();
     c.hold = None;
     c.zx.kempston = 0;
-    let wrong_way = match way {
-        Way::Left => !facing_left(&c),
-        Way::Right => facing_left(&c),
-        Way::Up => false,
-    };
-    let mut turning = wrong_way;
-    let turn_key = way.key().unwrap_or("space");
-    let mut path = vec![willy(&c)];
-    let mut started = false;
+    c.zx.release_all_keys();
+    // Where he is at the top of each pass, and whether he is off the
+    // ground there.
+    let mut passes: Vec<((u8, u8), bool)> = vec![(willy(&c), false)];
     for _ in 0..LONGEST {
-        c.zx.release_all_keys();
-        if turning {
-            press(&mut c, turn_key);
-        } else if !started {
-            press(&mut c, "space");
-            if let Some(k) = way.key() {
-                press(&mut c, k);
-            }
-        }
         let mut killed = false;
         c.run_frame_observing(|z| {
             let pc = z.pc();
             killed |= pc == routine::KILL || pc == routine::KILL_FALL;
+            if pc == routine::MAIN_LOOP {
+                passes.push((middle(&z.mem[..]), z.mem[usize::from(at::AIRBORNE)] != 0));
+            }
         });
         c.zx.speaker.clear();
         let air = c.zx.mem[usize::from(at::AIRBORNE)];
-        if turning {
-            turning = facing_left(&c) != (way == Way::Left);
-            // Turning may walk him a step: the jump starts where he is.
-            path = vec![willy(&c)];
-            continue;
-        }
-        if killed || air == 0xFF {
-            return Some(Jump {
-                way,
-                path,
-                end: End::Dies,
-            });
-        }
-        started |= air != 0;
-        let at = willy(&c);
-        if path.last() != Some(&at) {
-            path.push(at);
-        }
-        if started && air == 0 {
-            return Some(Jump {
-                way,
-                path,
-                end: End::Lands,
-            });
+        let dies = killed || air == 0xFF;
+        let started = c.rules.jumping.is_some_and(|j| j.started) || air != 0;
+        if dies || (started && air == 0) {
+            passes.push((willy(&c), air != 0));
+            // From the last pass on the ground before he left it.
+            let first = passes.iter().position(|&(_, up)| up).unwrap_or(1);
+            let mut path: Vec<(u8, u8)> = Vec::new();
+            for &(at, _) in &passes[first.saturating_sub(1)..] {
+                if path.last() != Some(&at) {
+                    path.push(at);
+                }
+            }
+            let end = if dies { End::Dies } else { End::Lands };
+            return Some(Jump { way, path, end });
         }
     }
     None

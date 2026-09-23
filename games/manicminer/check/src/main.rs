@@ -333,6 +333,7 @@ fn preview_check(dir: &Path) -> bool {
     let scenes: [(u8, u64); 7] = [(18, 0), (5, 0), (5, 80), (0, 100), (0, 0), (2, 0), (1, 60)];
     let (mut same, mut jumps, mut deaths, mut saved) = (0, 0, 0, 0);
     let mut walked = 0;
+    let mut unchanged = 0;
     // Each scene standing still, and again walking right (#156).
     let walking = scenes.map(|(cavern, right)| (cavern, right, true));
     for (cavern, right, walk) in scenes
@@ -348,6 +349,11 @@ fn preview_check(dir: &Path) -> bool {
             }
         }
         let found = preview::jumps(&m);
+        // Going without the picture, the scores and the tune changes
+        // nothing: the same jump, step for step (#156).
+        for j in &found {
+            unchanged += usize::from(preview::jump_shown(&m, j.way).as_ref() == Some(j));
+        }
         walked += if walk { found.len() } else { 0 };
         for j in found {
             jumps += 1;
@@ -434,8 +440,11 @@ fn preview_check(dir: &Path) -> bool {
         "facts: {same} of {jumps} previewed jumps ({deaths} of them deaths) ended the same way in play"
     );
     println!("facts: {walked} of them were from Willy walking, two a scene");
+    println!(
+        "facts: {unchanged} of them the same step for step with the picture, scores and tune left in"
+    );
     println!("facts: {saved} of the {deaths} deaths landed with safe falls on");
-    same == jumps && jumps >= 15 && deaths >= 3 && saved >= 1 && walked >= 6
+    same == jumps && unchanged == jumps && jumps >= 15 && deaths >= 3 && saved >= 1 && walked >= 6
 }
 
 /// Pressing `keys` for a frame's worth of play, as a player would.

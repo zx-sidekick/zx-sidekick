@@ -177,6 +177,22 @@ pub mod at {
     pub const SCREEN_BUFFER: u16 = 0x7000;
 }
 
+/// What a copy of the machine nobody sees or hears can go without (#156):
+/// the main loop's showing and sounding, each skipped from where it starts
+/// to where the loop goes on. Nothing skipped writes what the game plays
+/// by: the working buffers stay, and the preview check makes every jump in
+/// play without the skips and finds it ending the same way.
+pub mod unseen {
+    /// The picture copied from the working buffer to the screen (`LDIR` at
+    /// `0x87A2`).
+    pub const PICTURE: (u16, u16) = (0x87A2, 0x87AD);
+    /// The attributes copied to the screen and the scores printed.
+    pub const SHOWN: (u16, u16) = (0x87C8, 0x87EB);
+    /// The in-game tune: from its music-off test to where the loop goes on
+    /// without it (`BIT 1,(HL)` at `0x8836`, `JR NZ,$885F`).
+    pub const TUNE: (u16, u16) = (0x8836, 0x885F);
+}
+
 /// The caverns the main loop treats apart, by its compares of the cavern's
 /// number from `0x876F` (#153).
 pub mod caverns {
