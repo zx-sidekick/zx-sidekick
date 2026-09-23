@@ -5,9 +5,9 @@
 //!
 //! `bars <assets-dir> [frames]`
 
-use sk_lab::{Args, into_play};
 use starquake::Machine;
 use starquake::facts::at::{BRIDGES, ENERGY, LASER};
+use starquake_lab::{Args, into_play};
 
 /// Where the panel's bar loop starts, and the byte after its `DJNZ`.
 const DRAW: std::ops::Range<usize> = 0xD463..0xD4A4;

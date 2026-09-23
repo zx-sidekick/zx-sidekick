@@ -6,9 +6,9 @@
 
 use std::collections::BTreeMap;
 
-use sk_lab::exits;
-use sk_lab::search::{COARSE_KEY, FULL_KEY, Room, Settings};
-use sk_lab::{Args, into_play, stand};
+use starquake_lab::exits;
+use starquake_lab::search::{COARSE_KEY, FULL_KEY, Room, Settings};
+use starquake_lab::{Args, into_play, stand};
 
 fn main() {
     let args = Args::parse(

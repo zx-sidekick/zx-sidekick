@@ -81,7 +81,7 @@ pub const MENU_KEY_FROM_TITLE: u16 = 0x6024;
 /// for the panel beside it: which part of the program is running, and when
 /// End this game may hold its keys. Found by studying the program in the
 /// earlier ZX Sidekick build, and checked on the player's tape by
-/// `sk-check facts`.
+/// `starquake-check facts`.
 pub mod routine {
     /// The title screen's menu.
     pub const MENU: u16 = 0x5E81;
@@ -90,7 +90,7 @@ pub mod routine {
     /// it begins wiping its own memory from `0x7530` up, program and stack
     /// included, which on a Spectrum ends in a reset. With no ROM to reset
     /// into, arriving here is the game asking to be closed. Read from the
-    /// tape on 2026-09-17, and checked by `sk-check facts`.
+    /// tape on 2026-09-17, and checked by `starquake-check facts`.
     pub const QUIT: u16 = 0x60D6;
     /// The top of the play loop, once a frame while Blob is being played.
     pub const MAIN_LOOP: u16 = 0xA523;
@@ -113,7 +113,7 @@ pub mod routine {
     /// adds the score waiting to be added, after a pickup and as a game
     /// starts. It clears the carried items' boxes before drawing into them,
     /// so drawing it again changes only what has changed. With the bytes it
-    /// begins with, `LD A,(lives)`, which `sk-check training` checks.
+    /// begins with, `LD A,(lives)`, which `starquake-check training` checks.
     pub const PANEL: (u16, [u8; 3]) = (0xD428, [0x3A, 0xCC, 0xD2]);
     /// Where a door's screen makes the three key code cards of its code, and where
     /// that ends (#107). No table holds a door's code: from here the game
@@ -123,7 +123,7 @@ pub mod routine {
     /// screen calls it from `0xCD1F` for two items), brings each of the
     /// three bytes into the key code cards' graphics, and leaves them in the code at
     /// [`super::at::CODE`]. Found by disassembling the tape on 2026-09-21;
-    /// `sk-check facts` checks the bytes at both ends and that every door's
+    /// `starquake-check facts` checks the bytes at both ends and that every door's
     /// screen shows what this makes.
     pub const DOOR_CODE: (u16, [u8; 3]) = (0xD616, [0x2A, 0xC6, 0xD2]);
     pub const DOOR_CODE_END: (u16, [u8; 3]) = (0xD640, [0xCD, 0x8B, 0xD7]);
@@ -131,7 +131,7 @@ pub mod routine {
     pub const ENTER_ROOM: u16 = 0xA426;
     /// Where touching a security door calls [`MODAL`] for the door's screen,
     /// which shows the door's access code (#49). Checked on the player's
-    /// tape by `sk-check facts`; a teleport calls it from elsewhere.
+    /// tape by `starquake-check facts`; a teleport calls it from elsewhere.
     pub const DOOR_SCREEN: u16 = 0xCBEA;
     /// A teleport, one of the screens play hands over to. It prints
     /// the code of the teleport Blob is standing in.
@@ -148,7 +148,7 @@ pub mod routine {
 
 /// Where the game keeps what the guidance panel shows. Addresses in the
 /// original program, found in the earlier ZX Sidekick build and checked on
-/// the player's tape by `sk-check facts`.
+/// the player's tape by `starquake-check facts`.
 pub mod at {
     /// The room Blob is in, a word from 0 to 511.
     pub const ROOM: u16 = 0xD2C8;
@@ -365,7 +365,7 @@ pub const FORCE_FIELD_COUNT: usize = 4;
 /// from enemies steers the register as the instruction is reached and
 /// writes nothing: every sprite is drawn and erased from the bytes the game
 /// keeps, so nothing drawn is left behind. Each constant is the address and
-/// the instruction's bytes there, which `sk-check training` checks.
+/// the instruction's bytes there, which `starquake-check training` checks.
 pub mod decide {
     /// `CP B4` in the enemy-touch test at `0xA305`, run for each thing in
     /// the room against Blob: `LD A,(IX+8)` loads the thing's graphic page,
@@ -446,7 +446,7 @@ pub const MATCHED: u8 = 0x07;
 /// panel to light (#33). What the items do is the game's: a key code card answers
 /// one slot asking for it, the "?" card ([`Kind::AnyChip`]) one slot left
 /// over, the card ([`Kind::DoorCard`]) every slot, and a door's screen
-/// takes nothing away. The counting is ours, and `sk-check facts` holds it
+/// takes nothing away. The counting is ours, and `starquake-check facts` holds it
 /// against the flags the game's own door screen leaves.
 #[must_use]
 pub fn covered(chips: &[u8; 3], carried: &[u8]) -> [bool; 3] {
@@ -601,7 +601,7 @@ pub fn all_teleporters(mem: &[u8]) -> Vec<SeenTeleporter> {
 /// The keys that abandon a game in play when held together, the game's own
 /// way: A, S, D, F and G, the whole of the keyboard's half-row 1, as its
 /// half-row and bits. Found in the earlier ZX Sidekick build and checked on
-/// the player's tape by `sk-check facts`.
+/// the player's tape by `starquake-check facts`.
 pub const END_GAME_KEYS: (usize, u8) = (1, 0x1F);
 
 /// What End this game holds: [`END_GAME_KEYS`], from the top of the play
@@ -673,14 +673,14 @@ impl Item {
 /// `starquake/starquake-recompiled`, which was written from the tape:
 /// the codes a security door and a Cheops pyramid ask for take five
 /// numbered key code cards, a "?" card and the access card, none of which a door's
-/// screen takes away (`sk-check facts`, #33); the key switches a space lock; the packs act the moment
+/// screen takes away (`starquake-check facts`, #33); the key switches a space lock; the packs act the moment
 /// they are picked up; and a pyramid takes anything else in exchange for
 /// a core piece.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     /// A numbered key code card, `0`, `1`, `2`, `4` or `8`: what a door's code and
     /// a pyramid's code ask for, one key code card answering one slot. A door's
-    /// screen takes nothing from what is carried (`sk-check facts`, #33);
+    /// screen takes nothing from what is carried (`starquake-check facts`, #33);
     /// what a pyramid's does has not been checked.
     Chip(u8),
     /// The key code card that answers any one slot of a code.

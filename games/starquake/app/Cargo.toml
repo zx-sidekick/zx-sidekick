@@ -1,8 +1,8 @@
 [package]
 name = "zx-sidekick-starquake"
 description = "ZX Sidekick: Starquake, running your own copy of the original game. Not affiliated with the rights holders."
-# Starquake's version, the same in its four crates (app, sidekick, sk-check,
-# sk-lab); its release is tagged starquake-v<this>.
+# Starquake's version, the same in its four crates (app, sidekick, starquake-check,
+# starquake-lab); its release is tagged starquake-v<this>.
 version = "0.3.0"
 edition.workspace = true
 license.workspace = true

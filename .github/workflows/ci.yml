@@ -218,7 +218,7 @@ jobs:
           echo "$out"
           [ "$code" -eq 1 ] && grep -q "no copy of Starquake found" <<< "$out"
 
-  # The checks against the game (sk-check) are deliberately absent: they need
+  # The checks against the game (starquake-check) are deliberately absent: they need
   # the player's own copy of the game and a Spectrum ROM, which are never
   # committed and should not be uploaded to GitHub. (The Z80 conformance test
   # does run here: its corpus is nobody's copyrighted game, only a description

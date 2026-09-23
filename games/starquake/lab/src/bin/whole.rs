@@ -10,11 +10,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::Instant;
 
-use sk_lab::exits::{self, Dump, Record};
-use sk_lab::rooms::Planet;
-use sk_lab::search::{Room, Settings};
-use sk_lab::{Args, into_play};
 use starquake::Machine;
+use starquake_lab::exits::{self, Dump, Record};
+use starquake_lab::rooms::Planet;
+use starquake_lab::search::{Room, Settings};
+use starquake_lab::{Args, into_play};
 
 #[derive(Default)]
 struct State {
@@ -75,7 +75,7 @@ fn main() {
     st.lock()
         .unwrap()
         .pending
-        .insert(sk_lab::room(&base), vec![base.clone()]);
+        .insert(starquake_lab::room(&base), vec![base.clone()]);
     let cv = Condvar::new();
     let stop = AtomicBool::new(false);
     std::thread::scope(|sc| {
@@ -121,7 +121,7 @@ fn main() {
                     s.rooms.insert(room, r);
                     s.busy.remove(&room);
                     for m in new {
-                        let to = sk_lab::room(&m);
+                        let to = starquake_lab::room(&m);
                         if to >= 512 {
                             continue;
                         }

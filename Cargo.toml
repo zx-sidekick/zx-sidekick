@@ -6,8 +6,8 @@ members = [
     "crates/sidekick",
     "crates/sidekick-frontend",
     "games/starquake/starquake",
-    "games/starquake/sk-check",
-    "games/starquake/sk-lab",
+    "games/starquake/check",
+    "games/starquake/lab",
     "games/starquake/app",
 ]
 

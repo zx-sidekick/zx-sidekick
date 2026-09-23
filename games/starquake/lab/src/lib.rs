@@ -2,7 +2,7 @@
 //! tape, Blob stood somewhere in a room, every room's cells, and the facts
 //! the tools rest on that `starquake::facts` does not record yet.
 //!
-//! Every tool takes the assets folder first, as `sk-check` does, reads
+//! Every tool takes the assets folder first, as `starquake-check` does, reads
 //! `starquake.tap` from it and writes whatever it produces into it, which is
 //! ignored by git: nothing derived from the game is ever committed
 //! (`GOAL.md`, rule 1).

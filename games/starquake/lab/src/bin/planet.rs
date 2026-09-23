@@ -5,11 +5,11 @@
 //!
 //! `planet <assets-dir> [--half]`
 
-use sk_lab::raster::Image;
-use sk_lab::rooms::{Planet, lift};
-use sk_lab::{Args, into_play};
 use starquake::facts::{CORE_ROOM, read_room};
 use starquake::map::{COLS, ROWS};
+use starquake_lab::raster::Image;
+use starquake_lab::rooms::{Planet, lift};
+use starquake_lab::{Args, into_play};
 use zx_core::screen;
 
 const ROOM_W: usize = 256;
@@ -35,10 +35,10 @@ fn dim(colour: u32) -> u32 {
 fn main() {
     let args = Args::parse("planet <assets-dir> [--half]");
     let base = into_play(&args.tape());
-    let start = sk_lab::room(&base);
+    let start = starquake_lab::room(&base);
     let planet = Planet::read(&base);
-    let (bx, by) = sk_lab::blob(&base);
-    let reach = planet.reach(start, sk_lab::top_row(by), bx >> 3);
+    let (bx, by) = starquake_lab::blob(&base);
+    let reach = planet.reach(start, starquake_lab::top_row(by), bx >> 3);
     eprintln!(
         "start room {start}; {} rooms reachable from it with doors shut",
         reach.len()

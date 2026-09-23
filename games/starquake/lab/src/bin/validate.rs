@@ -6,10 +6,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use sk_lab::search::{Exit, INPUTS, Room, Settings, replay};
-use sk_lab::{Args, Rng, into_play};
 use starquake::Machine;
 use starquake::facts::{PLAY_INPUT, routine};
+use starquake_lab::search::{Exit, INPUTS, Room, Settings, replay};
+use starquake_lab::{Args, Rng, into_play};
 
 fn main() {
     let args = Args::parse(
@@ -22,12 +22,12 @@ fn main() {
     // Entries: the start, and every exit the start room's search found.
     let mut entries: Vec<Machine> = vec![base.clone()];
     let mut first = Room::default();
-    first.explore(sk_lab::room(&base), vec![base.clone()], &settings);
+    first.explore(starquake_lab::room(&base), vec![base.clone()], &settings);
     entries.extend(first.exits.values().cloned());
     let mut rng = Rng(0xC0FFEE);
     let (mut replayed, mut replay_ok, mut walk_exits, mut walk_missed) = (0, 0, 0, 0);
     for entry in entries.iter().take(only) {
-        let room = sk_lab::room(entry);
+        let room = starquake_lab::room(entry);
         let mut r = Room::default();
         let t = std::time::Instant::now();
         r.explore(room, vec![entry.clone()], &settings);
@@ -53,14 +53,14 @@ fn main() {
                 if f % (5 + rng.below(20) as usize) == 0 {
                     input = INPUTS[rng.below(9) as usize];
                 }
-                let hits = sk_lab::frame(&mut m, input, settings.platforms);
+                let hits = starquake_lab::frame(&mut m, input, settings.platforms);
                 if hits.contains(&routine::DEATH) || hits.contains(&routine::MODAL) {
                     break;
                 }
-                let now = sk_lab::room(&m);
+                let now = starquake_lab::room(&m);
                 if now != room {
-                    sk_lab::settle(&mut m, settings.platforms);
-                    let (x, y) = sk_lab::blob(&m);
+                    starquake_lab::settle(&mut m, settings.platforms);
+                    let (x, y) = starquake_lab::blob(&m);
                     *taken.entry((now, x, y)).or_default() += 1;
                     break;
                 }
@@ -69,7 +69,7 @@ fn main() {
         let missed: Vec<&Exit> = taken.keys().filter(|k| !found.contains(k)).collect();
         walk_exits += taken.len();
         walk_missed += missed.len();
-        let (x, y) = sk_lab::blob(entry);
+        let (x, y) = starquake_lab::blob(entry);
         println!(
             "room {room:3} from ({x},{y}): {} states, {took:.1?}; exits {}, replayed ok {}/{} {bad:?}; walks took {} distinct exits, missed by the search {missed:?}",
             r.seen.len(),

@@ -7,9 +7,9 @@
 //! as Kempston bits: 1 right, 2 left, 4 down (builds a platform), 8 up;
 //! `--carry=G` puts the item drawn with graphic G in Blob's inventory first.
 
-use sk_lab::search::Platforms;
-use sk_lab::{Args, carry, into_play, stand};
 use starquake::facts::routine;
+use starquake_lab::search::Platforms;
+use starquake_lab::{Args, carry, into_play, stand};
 
 fn main() {
     let args = Args::parse("fall <assets-dir> <room> <x> <y> [input] [frames] [--carry=G]");
@@ -31,8 +31,8 @@ fn main() {
     let mut trail = Vec::new();
     let mut outcome = None;
     for f in 0..frames {
-        let hits = sk_lab::frame(&mut m, input, Platforms::Unlimited);
-        let (nx, ny) = sk_lab::blob(&m);
+        let hits = starquake_lab::frame(&mut m, input, Platforms::Unlimited);
+        let (nx, ny) = starquake_lab::blob(&m);
         if f % 10 == 0 {
             trail.push(format!("({nx},{ny})"));
         }
@@ -44,8 +44,8 @@ fn main() {
             outcome = Some(format!("a door, booth or pyramid screen at frame {f}"));
             break;
         }
-        if sk_lab::room(&m) != room {
-            outcome = Some(format!("room {} at frame {f}", sk_lab::room(&m)));
+        if starquake_lab::room(&m) != room {
+            outcome = Some(format!("room {} at frame {f}", starquake_lab::room(&m)));
             break;
         }
     }

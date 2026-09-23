@@ -77,13 +77,13 @@ fi
 # Give their location with SK_ASSETS (a folder holding starquake.tap and
 # 48.rom).
 if [ -n "${SK_ASSETS:-}" ] && [ -f "$SK_ASSETS/starquake.tap" ]; then
-  run "keys (joystick in every control method)" cargo run -q --release -p sk-check --locked -- keys "$SK_ASSETS"
-  run "facts (the panel's entry points vs the game)" cargo run -q --release -p sk-check --locked -- facts "$SK_ASSETS"
-  run "training (the switches vs the game)" cargo run -q --release -p sk-check --locked -- training "$SK_ASSETS"
-  run "map (exits and walls vs walks)" cargo run -q --release -p sk-check --locked -- map "$SK_ASSETS" 60
+  run "keys (joystick in every control method)" cargo run -q --release -p starquake-check --locked -- keys "$SK_ASSETS"
+  run "facts (the panel's entry points vs the game)" cargo run -q --release -p starquake-check --locked -- facts "$SK_ASSETS"
+  run "training (the switches vs the game)" cargo run -q --release -p starquake-check --locked -- training "$SK_ASSETS"
+  run "map (exits and walls vs walks)" cargo run -q --release -p starquake-check --locked -- map "$SK_ASSETS" 60
   if [ -f "$SK_ASSETS/48.rom" ]; then
-    run "entry (real ROM loader)"  cargo run -q --release -p sk-check --locked -- entry "$SK_ASSETS"
-    run "rom (answers vs real ROM)" cargo run -q --release -p sk-check --locked -- rom "$SK_ASSETS" 6000
+    run "entry (real ROM loader)"  cargo run -q --release -p starquake-check --locked -- entry "$SK_ASSETS"
+    run "rom (answers vs real ROM)" cargo run -q --release -p starquake-check --locked -- rom "$SK_ASSETS" 6000
   else
     skipped+=("entry and rom: no 48.rom in SK_ASSETS")
   fi

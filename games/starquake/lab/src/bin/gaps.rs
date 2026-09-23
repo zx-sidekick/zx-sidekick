@@ -7,10 +7,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use sk_lab::exits;
-use sk_lab::rooms::{Cells, Planet};
-use sk_lab::{Args, into_play, top_row};
 use starquake::map::free;
+use starquake_lab::exits;
+use starquake_lab::rooms::{Cells, Planet};
+use starquake_lab::{Args, into_play, top_row};
 
 /// The free run along `line` holding cells `c` and `c + 1`, in cells.
 fn run(line: &[u8; 32], c: usize) -> usize {

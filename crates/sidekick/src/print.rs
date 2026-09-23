@@ -47,7 +47,7 @@ const P_INK9: u8 = 0x10;
 const P_PAPER9: u8 = 0x40;
 
 /// T-states a printed character takes in the ROM, and a control code or its
-/// operand. Measured against the ROM in development (`games/starquake/sk-check`).
+/// operand. Measured against the ROM in development (`games/starquake/check`).
 const GLYPH_T: u32 = 1610;
 const CODE_T: u32 = 541;
 
