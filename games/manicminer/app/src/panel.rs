@@ -2,11 +2,14 @@
 //! in its corner, and what the game shows made readable. Level 1 names the
 //! cavern and says the air in seconds, the items left and whether the
 //! portal is open; level 2 draws the cavern's cells with Willy, the items
-//! ringed and the portal outlined; level 3 adds what can hurt him. It is
-//! drawn from [`guide::read`], what the game keeps in memory, and nothing
-//! else.
+//! ringed and the portal outlined; level 3 adds what can hurt him; level 4
+//! where each jump from where he stands would land, or that it kills
+//! (#155). It is drawn from [`guide::read`], what the game keeps in memory,
+//! and from [`manicminer::preview`], the game itself run on a copy, and
+//! nothing else.
 
 use manicminer::guide::{self, COLUMNS, Cavern, Patrol, ROWS, Tile};
+use manicminer::preview::{End, Jump};
 use sidekick_frontend::overlay::{self, HEIGHT, PICTURE_W};
 use sidekick_frontend::text::{Canvas, Fonts, Rgb, Span, Weight};
 
@@ -28,6 +31,8 @@ const CONVEYOR: Rgb = [0x7f, 0xd1, 0xc7];
 const PATROL: Rgb = [0xc9, 0x8b, 0xff];
 const OPEN: Rgb = [0x6f, 0xd0, 0x8f];
 const RIM: Rgb = [0x05, 0x06, 0x08];
+const ARC: Rgb = [0x8f, 0xb4, 0xff];
+const DIES: Rgb = [0xff, 0x5a, 0x64];
 
 /// A cell of the cavern on the panel, in layout units: 32 of them fill the
 /// panel's width less its margins.
@@ -39,6 +44,8 @@ const CELL: f32 = 12.0;
 pub struct View {
     pub cavern: Option<Cavern>,
     pub air_seconds: Option<u32>,
+    /// The jumps from where Willy stands, at level 4 while he stands.
+    pub jumps: Vec<Jump>,
 }
 
 /// How many frames of the main loop running before a rate is given at all:
@@ -99,6 +106,7 @@ impl Follow {
         View {
             cavern: Some(cavern),
             air_seconds: seconds,
+            jumps: Vec::new(),
         }
     }
 }
@@ -252,6 +260,9 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, view: &View, level: u8) {
         hazards(canvas, cavern, left, cy);
     }
     marks(canvas, cavern, left, cy);
+    if level >= 4 {
+        jumps(canvas, &view.jumps, left, cy);
+    }
     key(fonts, canvas, level, left, cy + ROWS as f32 * CELL + 18.0);
 }
 
@@ -373,8 +384,44 @@ fn marks(canvas: &mut Canvas, cavern: &Cavern, left: f32, top: f32) {
     }
 }
 
-/// What each mark means, under the cavern: a line from level 2, and a
-/// second at level 3.
+/// Level 4: each jump as dots along Willy's path, every other step, ending
+/// in a ring where he lands or a cross where he dies (#155 decision 1).
+fn jumps(canvas: &mut Canvas, jumps: &[Jump], left: f32, top: f32) {
+    // A cavern pixel is an eighth of a cell.
+    let at = |(x, y): (u8, u8)| {
+        (
+            left + f32::from(x) * CELL / 8.0,
+            top + f32::from(y) * CELL / 8.0,
+        )
+    };
+    for jump in jumps {
+        for (i, &step) in jump.path.iter().enumerate().skip(1) {
+            if i % 2 == 0 {
+                let (x, y) = at(step);
+                canvas.round_rect(x - 2.0, y - 2.0, 4.0, 4.0, 2.0, ARC);
+            }
+        }
+        let Some(&last) = jump.path.last() else {
+            continue;
+        };
+        let (x, y) = at(last);
+        match jump.end {
+            End::Lands => {
+                canvas.outline(x - 8.0, y - 8.0, 16.0, 16.0, 8.0, 4.0, None, RIM);
+                canvas.outline(x - 7.0, y - 7.0, 14.0, 14.0, 7.0, 2.5, None, BRIGHT);
+            }
+            End::Dies => {
+                for (width, colour) in [(5.0, RIM), (3.0, DIES)] {
+                    canvas.line((x - 7.0, y - 7.0), (x + 7.0, y + 7.0), width, None, colour);
+                    canvas.line((x - 7.0, y + 7.0), (x + 7.0, y - 7.0), width, None, colour);
+                }
+            }
+        }
+    }
+}
+
+/// What each mark means, under the cavern: a line from level 2, a second
+/// at level 3 and a third at level 4.
 fn key(fonts: &mut Fonts, canvas: &mut Canvas, level: u8, left: f32, y: f32) {
     type Swatch = fn(&mut Canvas, f32, f32);
     let row = |fonts: &mut Fonts, canvas: &mut Canvas, y: f32, entries: &[(Swatch, &str)]| {
@@ -435,6 +482,33 @@ fn key(fonts: &mut Fonts, canvas: &mut Canvas, level: u8, left: f32, y: f32) {
                         c.round_rect(x + 10.0, y, 2.0, 12.0, 1.0, PATROL);
                     },
                     "guardian's path",
+                ),
+            ],
+        );
+    }
+    if level >= 4 {
+        row(
+            fonts,
+            canvas,
+            y + 48.0,
+            &[
+                (
+                    |c, x, y| {
+                        c.round_rect(x, y + 4.0, 4.0, 4.0, 2.0, ARC);
+                        c.round_rect(x + 8.0, y + 4.0, 4.0, 4.0, 2.0, ARC);
+                    },
+                    "a jump",
+                ),
+                (
+                    |c, x, y| c.outline(x, y, 12.0, 12.0, 6.0, 2.5, None, BRIGHT),
+                    "lands",
+                ),
+                (
+                    |c, x, y| {
+                        c.line((x, y), (x + 12.0, y + 12.0), 3.0, None, DIES);
+                        c.line((x, y + 12.0), (x + 12.0, y), 3.0, None, DIES);
+                    },
+                    "dies",
                 ),
             ],
         );

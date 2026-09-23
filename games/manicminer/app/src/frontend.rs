@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use manicminer::facts::{at, routine};
+use manicminer::preview::{self, Jump};
 use sidekick_frontend::gamepad::{self, Layout};
 use sidekick_frontend::text::{Canvas, Fonts};
 use sidekick_frontend::video::{Key, Screen};
@@ -72,6 +73,39 @@ pub struct Guide {
     cavern: Mutex<u8>,
     /// What the panel shows, and a count that moves whenever it changes.
     view: Mutex<(View, u64)>,
+    /// The last jump preview the worker finished (#155), and where Willy
+    /// stood for it.
+    jumps: Mutex<Option<(Place, Vec<Jump>)>>,
+}
+
+/// Where Willy stands, as a preview is for: the cavern, his middle and the
+/// way he faces.
+type Place = (u8, (u8, u8), u8);
+
+fn place(machine: &manicminer::Machine) -> Place {
+    (
+        machine.zx.mem[usize::from(at::CAVERN)],
+        preview::willy(machine),
+        machine.zx.mem[usize::from(at::FACING)] & 1,
+    )
+}
+
+/// The jump preview's worker (#155): three jumps take longer than a frame,
+/// so they are run beside the machine, on a copy handed over each pass
+/// while Willy stands and the last is done. It stops when the machine's
+/// thread lets go of its end of the channel.
+fn preview_worker(
+    shared: &Arc<Shared>,
+) -> std::sync::mpsc::SyncSender<(Place, manicminer::Machine)> {
+    let (send, receive) = std::sync::mpsc::sync_channel::<(Place, manicminer::Machine)>(0);
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || {
+        while let Ok((at, machine)) = receive.recv() {
+            let jumps = preview::jumps(&machine);
+            *shared.game.jumps.lock().unwrap() = Some((at, jumps));
+        }
+    });
+    send
 }
 
 impl Guide {
@@ -247,6 +281,7 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
     let mut follow = Follow::default();
     // A game is played from its first pass of the main loop to the title.
     let mut playing = false;
+    let preview_to = preview_worker(shared);
     while !shared.quit.load(Ordering::Relaxed) {
         let mut now = pad.poll();
         *shared.game.layout.lock().unwrap() = now.layout;
@@ -328,12 +363,27 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
         }
         *shared.game.cavern.lock().unwrap() = machine.zx.mem[usize::from(at::CAVERN)];
         playing = playing_after(playing, &hits, &machine.zx.mem[..]);
-        let view = follow.frame(
+        let mut view = follow.frame(
             &machine.zx.mem[..],
             since_loop == 0,
             since_loop < PLAY_FRAMES,
             playing,
         );
+        // Level 4: a preview each pass while Willy stands, when the worker
+        // is free (a copy handed over only then); shown while he stands
+        // where it was worked out.
+        let level = shared.game.picker.lock().unwrap().level();
+        if level >= 4 && playing && preview::standing(&machine) {
+            let here = place(&machine);
+            if since_loop == 0 {
+                let _busy = preview_to.try_send((here, machine.clone()));
+            }
+            if let Some((at, jumps)) = &*shared.game.jumps.lock().unwrap()
+                && *at == here
+            {
+                view.jumps.clone_from(jumps);
+            }
+        }
         {
             let mut shown = shared.game.view.lock().unwrap();
             if shown.0 != view {
@@ -390,13 +440,17 @@ pub fn headless(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), S
             since_loop.saturating_add(1)
         };
         playing = playing_after(playing, &hits, &machine.zx.mem[..]);
-        let view = follow.frame(
+        let mut view = follow.frame(
             &machine.zx.mem[..],
             passed,
             since_loop < PLAY_FRAMES,
             playing,
         );
         if frame % 250 == 249 {
+            // Worked out here, for the picture taken: no worker headless.
+            if level >= 4 && playing {
+                view.jumps = preview::jumps(&machine);
+            }
             draw(
                 &machine.zx.mem[0x4000..0x5B00],
                 machine.zx.border,
