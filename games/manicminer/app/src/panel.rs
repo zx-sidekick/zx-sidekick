@@ -69,10 +69,13 @@ pub struct Follow {
 }
 
 impl Follow {
-    /// After a frame: whether the main loop ran in it (`passed`), and
-    /// whether a game is being played (`in_game`).
-    pub fn frame(&mut self, mem: &[u8], passed: bool, in_game: bool) -> View {
-        if !in_game {
+    /// After a frame: whether the main loop ran in it (`passed`), whether
+    /// it is running at all (`looping`: not while Willy dies or the air is
+    /// counted into the score, which would slow the rate), and whether a
+    /// game is being played (`playing`: from its first pass to the title,
+    /// so the panel stays through a death).
+    pub fn frame(&mut self, mem: &[u8], passed: bool, looping: bool, playing: bool) -> View {
+        if !playing {
             self.passes.clear();
             self.cavern = None;
             return View::default();
@@ -82,9 +85,11 @@ impl Follow {
             self.passes.clear();
             self.cavern = Some(cavern.number);
         }
-        self.passes.push_back(u8::from(passed));
-        if self.passes.len() > RATE_FRAMES {
-            self.passes.pop_front();
+        if looping {
+            self.passes.push_back(u8::from(passed));
+            if self.passes.len() > RATE_FRAMES {
+                self.passes.pop_front();
+            }
         }
         let rate = (self.passes.len() >= RATE_FIRST).then(|| {
             let passes: u32 = self.passes.iter().map(|&p| u32::from(p)).sum();
@@ -463,18 +468,24 @@ mod tests {
     fn nothing_is_followed_outside_a_game() {
         let mem = vec![0u8; 0x10000];
         let mut follow = Follow::default();
-        assert_eq!(follow.frame(&mem, true, false), View::default());
+        assert_eq!(follow.frame(&mem, true, true, false), View::default());
         for i in 0..RATE_FIRST {
-            let view = follow.frame(&mem, i % 4 == 0, true);
+            let view = follow.frame(&mem, i % 4 == 0, true, true);
             assert!(view.cavern.is_some());
             assert_eq!(view.rate.is_some(), i + 1 >= RATE_FIRST);
         }
-        let rate = follow.frame(&mem, false, true).rate.unwrap();
+        let rate = follow.frame(&mem, false, true, true).rate.unwrap();
         assert!((rate - 12.4).abs() < 0.2, "{rate}");
+        // A death: the loop stops, the panel stays, the rate holds.
+        for _ in 0..200 {
+            let view = follow.frame(&mem, false, false, true);
+            assert!(view.cavern.is_some());
+            assert_eq!(view.rate, Some(rate));
+        }
         assert_eq!(
-            follow.frame(&mem, true, false),
+            follow.frame(&mem, true, true, false),
             View::default(),
-            "and it starts over"
+            "and at the title it starts over"
         );
     }
 }

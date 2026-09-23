@@ -200,6 +200,16 @@ fn hold_for_picker(shared: &Shared, pad: &mut gamepad::Gamepad, pacer: &mut Pace
     gamepad::Pad::default()
 }
 
+/// Whether a game is being played after a frame that reached `hits`: from
+/// the main loop's first pass outside the demo until the title screen.
+fn playing_after(was: bool, hits: &[u16], mem: &[u8]) -> bool {
+    if hits.contains(&routine::TITLE) {
+        false
+    } else {
+        was || (hits.contains(&routine::MAIN_LOOP) && mem[usize::from(at::DEMO)] == 0)
+    }
+}
+
 /// The caverns' names, as the game has them, from the machine's memory.
 fn cavern_names(machine: &manicminer::Machine) -> Vec<String> {
     (0..20)
@@ -235,6 +245,8 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
     let mut pause = false;
     let mut since_loop = PLAY_FRAMES;
     let mut follow = Follow::default();
+    // A game is played from its first pass of the main loop to the title.
+    let mut playing = false;
     while !shared.quit.load(Ordering::Relaxed) {
         let mut now = pad.poll();
         *shared.game.layout.lock().unwrap() = now.layout;
@@ -315,10 +327,12 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
             ending = false;
         }
         *shared.game.cavern.lock().unwrap() = machine.zx.mem[usize::from(at::CAVERN)];
+        playing = playing_after(playing, &hits, &machine.zx.mem[..]);
         let view = follow.frame(
             &machine.zx.mem[..],
             since_loop == 0,
-            since_loop < PLAY_FRAMES && machine.zx.mem[usize::from(at::DEMO)] == 0,
+            since_loop < PLAY_FRAMES,
+            playing,
         );
         {
             let mut shown = shared.game.view.lock().unwrap();
@@ -353,7 +367,7 @@ pub fn headless(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), S
     use sidekick_frontend::video::{FULL_H, FULL_W, draw};
     let tape = tape::read(&GAME, path)?;
     let mut machine = manicminer::start(&tape)?;
-    machine.watch = vec![routine::MAIN_LOOP];
+    machine.watch = vec![routine::MAIN_LOOP, routine::TITLE];
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let enter = zx_spectrum::Key::by_name("enter").expect("a key");
     let mut picker = Picker::default();
@@ -361,20 +375,27 @@ pub fn headless(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), S
     let mut fonts = Fonts::load();
     let mut follow = Follow::default();
     let mut since_loop = PLAY_FRAMES;
+    let mut playing = false;
     let mut rgba = vec![0u8; FULL_W * FULL_H * 4];
     let (w, h) = (overlay::width(PANEL_W) as usize, HEIGHT as usize);
     let mut over = vec![0u8; w * h * 4];
     for frame in 0..frames {
         machine.zx.set_key(enter, (100..300).contains(&frame));
-        let passed = !machine.run_frame().is_empty();
+        let hits = machine.run_frame();
         machine.zx.speaker.clear();
+        let passed = hits.contains(&routine::MAIN_LOOP);
         since_loop = if passed {
             0
         } else {
             since_loop.saturating_add(1)
         };
-        let in_game = since_loop < PLAY_FRAMES && machine.zx.mem[usize::from(at::DEMO)] == 0;
-        let view = follow.frame(&machine.zx.mem[..], passed, in_game);
+        playing = playing_after(playing, &hits, &machine.zx.mem[..]);
+        let view = follow.frame(
+            &machine.zx.mem[..],
+            passed,
+            since_loop < PLAY_FRAMES,
+            playing,
+        );
         if frame % 250 == 249 {
             draw(
                 &machine.zx.mem[0x4000..0x5B00],
