@@ -4,6 +4,9 @@
 /assets/*
 !/assets/README.md
 
+# Temporary files: throwaway tools, renders, logs and mockup drafts (#149).
+/.scratch/
+
 # Editor and OS clutter.
 .DS_Store
 /.idea/

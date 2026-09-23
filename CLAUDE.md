@@ -70,6 +70,10 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
   window, a sound card, a gamepad, or the player's tape (`starquake-check`).
 - The tool shell is zsh: never name a variable `status`, and run anything
   loop-shaped as a `bash` script.
+- Temporary files (throwaway tools, renders, logs, mockup drafts) go in
+  `.scratch/` at the checkout's root, which git ignores (#149). Like
+  `assets/`, it may hold what is drawn from the player's tape; it is never
+  committed.
 
 ## Invariants
 
