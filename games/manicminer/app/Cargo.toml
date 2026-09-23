@@ -3,6 +3,7 @@ name = "zx-sidekick-manicminer"
 description = "ZX Sidekick: Manic Miner, running your own copy of the original game. Not affiliated with the rights holders."
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
@@ -15,8 +16,8 @@ zx-spectrum.workspace = true
 # The window's keys, which the game's screen is offered first; and the
 # message box a fatal startup error goes in, since a program started from a
 # file manager has no console.
-winit = "0.30"
-rfd = "0.17"
+winit.workspace = true
+rfd.workspace = true
 
 [lints]
 workspace = true

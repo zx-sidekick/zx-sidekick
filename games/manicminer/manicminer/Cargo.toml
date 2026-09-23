@@ -5,6 +5,7 @@ description = "Manic Miner's facts, its rules for the ZX Sidekick machine, and t
 # manicminer-check); its release is tagged manicminer-v<this>.
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

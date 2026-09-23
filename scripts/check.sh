@@ -36,6 +36,13 @@ if command -v cargo-deny > /dev/null; then
 else
   skipped+=("the dependency policy: cargo-deny is not installed")
 fi
+# Dependencies a package names and never uses (#145). Same story:
+# `cargo install cargo-machete --version 0.9.2 --locked`, the version CI runs.
+if command -v cargo-machete > /dev/null; then
+  run "cargo-machete" cargo machete
+else
+  skipped+=("unused dependencies: cargo-machete is not installed")
+fi
 # The attributions shipped with a binary. Same story:
 # `cargo install cargo-about --locked --features cli`.
 if command -v cargo-about > /dev/null; then

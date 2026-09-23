@@ -19,6 +19,9 @@ members = [
 # same in all of them, which its release tag names (#132).
 version = "0.2.0"
 edition = "2024"
+# The pinned toolchain (rust-toolchain.toml): an older Rust stops with a
+# clear message rather than an obscure error. Bump the two together.
+rust-version = "1.98"
 license = "MIT OR Apache-2.0"
 # Nothing here belongs on crates.io: the program needs the player's own copy
 # of the game to do anything.
@@ -32,6 +35,25 @@ sidekick-frontend = { path = "crates/sidekick-frontend" }
 starquake = { path = "games/starquake/starquake" }
 manicminer = { path = "games/manicminer/manicminer" }
 
+# Everything from outside, declared once here with its version and features,
+# so a bump is one line and no two packages drift apart (#145).
+#
+# The processor, our fork of rustzx-z80, pinned to a commit.
+rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "a73772d78dec4dde9e7f308a64d9c6021e167f74" }
+# Deflate for the PNGs and the planet picture: the pure-Rust backend only.
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+# The window, its pixels, sound and gamepads.
+pixels = "0.17"
+winit = "0.30"
+cpal = "0.18"
+gilrs = "0.11"
+# Reading the tape out of the zip the archives serve it in. Deflate only,
+# through the pure-Rust zlib; the other methods and encryption stay out.
+zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# Text in the bundled Inter, and the system's own dialogs.
+fontdue = "0.9"
+rfd = "0.17"
+
 # The whole game runs on an emulated processor, so even dev builds need
 # optimising to keep up with a real Spectrum.
 [profile.dev]
@@ -39,6 +61,14 @@ opt-level = 2
 
 [profile.dev.build-override]
 opt-level = 3
+
+# What ships (#145): whole-program optimisation across crates, one unit
+# each so nothing is split away from what it could be inlined into, and no
+# symbols in the binary. Slower release builds for smaller, faster ones.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
 
 [profile.release.build-override]
 opt-level = 3

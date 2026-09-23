@@ -3,6 +3,7 @@ name = "starquake"
 description = "Starquake's facts, its map as the game draws it, and its rules for the ZX Sidekick machine"
 version = "0.3.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

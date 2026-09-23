@@ -3,13 +3,14 @@ name = "zx-core"
 description = "ZX Spectrum timing, ULA contention, screen, tape and snapshot formats, PNG output and SHA-1"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
 # Deflate for the PNGs (#81): the same crate, with the same pure-Rust
 # backend, that the app already reads tapes out of a zip with.
-flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+flate2.workspace = true
 
 [lints]
 workspace = true
