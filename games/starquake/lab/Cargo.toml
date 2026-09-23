@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 # Already built for the app's zip support; here it compresses the pictures.
-flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+flate2.workspace = true
 sidekick.workspace = true
 starquake.workspace = true
 zx-core.workspace = true

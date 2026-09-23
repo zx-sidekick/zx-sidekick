@@ -10,17 +10,17 @@ publish.workspace = true
 sidekick.workspace = true
 zx-core.workspace = true
 zx-spectrum.workspace = true
-pixels = "0.17"
-winit = "0.30"
-cpal = "0.18"
-gilrs = "0.11"
+pixels.workspace = true
+winit.workspace = true
+cpal.workspace = true
+gilrs.workspace = true
 # Reading the tape out of the zip the archives serve it in. Deflate only,
 # through the pure-Rust zlib; the other methods and encryption stay out.
-zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip.workspace = true
 # The screen that asks for the tape: text in the bundled Inter (see fonts/),
 # and the system's own open-file dialog.
-fontdue = "0.9"
-rfd = "0.17"
+fontdue.workspace = true
+rfd.workspace = true
 
 [lints]
 workspace = true

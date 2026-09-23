@@ -15,8 +15,8 @@ zx-spectrum.workspace = true
 # The window's keys, which the game's screen is offered first; and the
 # message box a fatal startup error goes in, since a program started from a
 # file manager has no console.
-winit = "0.30"
-rfd = "0.17"
+winit.workspace = true
+rfd.workspace = true
 
 [lints]
 workspace = true

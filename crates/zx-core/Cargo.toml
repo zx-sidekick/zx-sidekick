@@ -9,7 +9,7 @@ publish.workspace = true
 [dependencies]
 # Deflate for the PNGs (#81): the same crate, with the same pure-Rust
 # backend, that the app already reads tapes out of a zip with.
-flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+flate2.workspace = true
 
 [lints]
 workspace = true
