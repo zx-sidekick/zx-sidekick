@@ -22,7 +22,8 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
 ## Commands
 
 - `scripts/check.sh` is the pre-PR gate: fmt, build, tests, clippy, docs, the
-  libraries without the frontend, the dependency policy and `THIRD-PARTY.md`,
+  libraries without the frontend, the dependency policy, unused dependencies
+  (`cargo machete`) and `THIRD-PARTY.md`,
   the Fuse corpus, and, with `SK_ASSETS` pointing at a folder holding
   `starquake.tap` and `48.rom`, the checks against the game. **Gate on the
   exit code, never on grepped output.** It fails without the Fuse corpus
