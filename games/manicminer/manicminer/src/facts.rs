@@ -39,6 +39,10 @@ pub mod routine {
     pub const BONUS: u16 = 0x90AD;
     /// The next cavern is set up, once the bonus is counted.
     pub const NEXT_CAVERN: u16 = 0x8691;
+    /// Willy is killed: every death comes here (`0x8D05`), or, after a fall
+    /// too long, to the instruction after it ([`KILL_FALL`]) (#155).
+    pub const KILL: u16 = 0x8D05;
+    pub const KILL_FALL: u16 = 0x8D06;
 }
 
 /// Where the game reads keys, each at the instruction that reads the port.
@@ -112,6 +116,12 @@ pub mod at {
     pub const WILLY_CELL: u16 = 0x806C;
     /// Willy's height, in pixels doubled: 16 of it a cell (#153).
     pub const WILLY_Y: u16 = 0x8068;
+    /// Which way Willy faces: bit 0 set facing left (bit 1 set while he
+    /// moves) (#155).
+    pub const FACING: u16 = 0x806A;
+    /// Willy's animation frame, 0 to 3: two pixels right of his cell each
+    /// (#155).
+    pub const WILLY_FRAME: u16 = 0x8069;
     /// Willy's airborne state: 0 standing, 1 jumping, 2 to 11 falling
     /// safely, 12 and up too far, 255 killed.
     pub const AIRBORNE: u16 = 0x806B;
@@ -165,6 +175,22 @@ pub mod at {
     pub const EMPTY_CELLS: u16 = 0x5E00;
     /// The screen buffer the game draws into, laid out as the display file.
     pub const SCREEN_BUFFER: u16 = 0x7000;
+}
+
+/// What a copy of the machine nobody sees or hears can go without (#156):
+/// the main loop's showing and sounding, each skipped from where it starts
+/// to where the loop goes on. Nothing skipped writes what the game plays
+/// by: the working buffers stay, and the preview check makes every jump in
+/// play without the skips and finds it ending the same way.
+pub mod unseen {
+    /// The picture copied from the working buffer to the screen (`LDIR` at
+    /// `0x87A2`).
+    pub const PICTURE: (u16, u16) = (0x87A2, 0x87AD);
+    /// The attributes copied to the screen and the scores printed.
+    pub const SHOWN: (u16, u16) = (0x87C8, 0x87EB);
+    /// The in-game tune: from its music-off test to where the loop goes on
+    /// without it (`BIT 1,(HL)` at `0x8836`, `JR NZ,$885F`).
+    pub const TUNE: (u16, u16) = (0x8836, 0x885F);
 }
 
 /// The caverns the main loop treats apart, by its compares of the cavern's

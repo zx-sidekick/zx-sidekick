@@ -38,14 +38,21 @@ const ROWS: [Row; 9] = [
 ];
 
 /// Each guidance level's name, as the panel and the picker show it (#153).
-pub const LEVELS: [&str; 4] = ["Off", "On screen", "Items and portal", "What can hurt you"];
+pub const LEVELS: [&str; 5] = [
+    "Off",
+    "On screen",
+    "Items and portal",
+    "What can hurt you",
+    "Jumps",
+];
 
 /// What each level adds, which the picker says under it.
-const ADDS: [&str; 4] = [
+const ADDS: [&str; 5] = [
     "The original game, no help.",
     "Air in seconds, the items left, the portal, and the cavern.",
     "The cavern drawn beside the picture, its items and portal ringed.",
     "Nasty tiles, crumbling floor, conveyors, and each guardian's path.",
+    "Where a jump from where Willy stands would land, or that it kills.",
 ];
 
 /// The highest level.

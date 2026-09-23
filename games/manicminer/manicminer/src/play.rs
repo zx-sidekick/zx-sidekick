@@ -13,7 +13,7 @@
 
 use zx_spectrum::{CF, Key, ZF, Zx};
 
-use crate::facts::{PAUSE_KEYS, at, cheat, reads, steer};
+use crate::facts::{PAUSE_KEYS, at, cheat, reads, routine, steer, unseen};
 
 /// ENTER, which starts a game from the title screen.
 const ENTER: zx_spectrum::Key = zx_spectrum::Key::Matrix(6, 0);
@@ -57,6 +57,47 @@ pub struct Play {
     /// A key pressed for the read at the instruction before, to let go of
     /// now: its half-row and bit.
     pressed: Option<(usize, u8)>,
+    /// A copy of the machine nobody sees or hears, as the jump preview runs
+    /// (#156): the main loop's showing and sounding ([`unseen`]) are
+    /// skipped. Never set on the machine the player plays.
+    pub unseen: bool,
+    /// A jump the preview makes on a copy (#155): the keys a player would
+    /// press for it, set at the top of each pass of the main loop, so a
+    /// frame holding more than one pass never reads them twice. Never set
+    /// on the machine the player plays.
+    pub jumping: Option<Jumping>,
+}
+
+/// A jump made a pass at a time: its direction (left, right, or straight
+/// up with none), turning first if Willy faces the other way, and whether
+/// he has left the ground.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Jumping {
+    pub left: Option<bool>,
+    pub started: bool,
+}
+
+impl Jumping {
+    /// The keys for this pass, from where Willy is: none once he is off the
+    /// ground; the direction alone while he faces the other way; then jump,
+    /// with the direction.
+    fn press(&mut self, z: &mut Zx) {
+        for name in ["o", "p", "space"] {
+            z.set_key(Key::by_name(name).expect("a key"), false);
+        }
+        self.started |= z.mem[usize::from(at::AIRBORNE)] != 0;
+        if self.started {
+            return;
+        }
+        let facing_left = z.mem[usize::from(at::FACING)] & 1 != 0;
+        let direction = self.left.map(|left| if left { "o" } else { "p" });
+        if let Some(d) = direction {
+            z.set_key(Key::by_name(d).expect("a key"), true);
+        }
+        if self.left.is_none_or(|left| left == facing_left) {
+            z.set_key(Key::by_name("space").expect("a key"), true);
+        }
+    }
 }
 
 /// The half-row and bit of a digit key.
@@ -101,6 +142,19 @@ impl sidekick::Rules for Play {
     }
 
     fn at(&mut self, z: &mut Zx, pc: u16) {
+        if pc == routine::MAIN_LOOP
+            && let Some(jumping) = &mut self.jumping
+        {
+            jumping.press(z);
+        }
+        if self.unseen {
+            for (from, to) in [unseen::PICTURE, unseen::SHOWN, unseen::TUNE] {
+                if pc == from {
+                    z.set_pc(to);
+                    return;
+                }
+            }
+        }
         if let Some((row, bits)) = self.pressed.take() {
             z.keys[row] |= bits;
         }
