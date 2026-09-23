@@ -18,7 +18,7 @@ Not needed. Manic Miner calls no ROM routine and never enables interrupts. The o
 - [x] Pausing freezes the emulation, with the game's own pause keys (A to G) or Start, and the window says so (built; not yet checked by hand)
 - [x] Sound (built; not yet checked by ear)
 - [x] Tape prompt: find or drop the tape or its `.zip`, kept in the user data directory (built; not yet checked by hand)
-- [x] Training mode (#148): a picker over the picture (Esc, or Select on a pad) with five switches (endless lives, air stays full, safe falls, no harm from guardians, no harm from nasties), Go to cavern by the game's own cheat, End this game and Exit. Each switch steers the game at the one instruction it decides the thing with, and writes nothing into it (built; not yet checked by hand)
+- [x] Training mode (#148): a picker over the picture (Esc, or Select on a pad) with five switches (endless lives, air stays full, safe falls, no harm from guardians, no harm from nasties), Go to cavern by the game's own cheat, End this game and Exit. Each switch steers the game at the one instruction it decides the thing with, and writes nothing into it (checked by hand by the maintainer, 2026-09-23)
 
 ## Playing
 
