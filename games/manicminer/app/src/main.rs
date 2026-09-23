@@ -5,13 +5,14 @@
 //! runs the window: it draws the most recent frame and feeds keyboard state
 //! to the machine.
 //!
-//! Usage: `zx-sidekick-manicminer [TAPE] [--headless FRAMES [SCREENSHOT_DIR]]`
+//! Usage: `zx-sidekick-manicminer [TAPE] [--headless FRAMES [SCREENSHOT_DIR [LEVEL]]]`
 
 // As for Starquake: a release build on Windows opens no console behind the
 // window, so anything fatal goes through `fatal` below.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod frontend;
+mod panel;
 mod picker;
 
 use std::path::PathBuf;
@@ -30,17 +31,18 @@ fn fatal(message: &str, dialog: bool) -> ! {
     std::process::exit(1)
 }
 
-/// Takes `--headless [FRAMES [DIR]]` and everything after it out of `args`,
-/// and returns the frames and the folder, with their defaults. What is left
-/// in `args` is the tape, if one was named.
-fn headless_args(args: &mut Vec<String>) -> Option<(u64, PathBuf)> {
+/// Takes `--headless [FRAMES [DIR [LEVEL]]]` and everything after it out of
+/// `args`, and returns the frames, the folder and the guidance level, with
+/// their defaults. What is left in `args` is the tape, if one was named.
+fn headless_args(args: &mut Vec<String>) -> Option<(u64, PathBuf, u8)> {
     let i = args.iter().position(|a| a == "--headless")?;
     let rest: Vec<String> = args.drain(i..).skip(1).collect();
     let frames = rest.first().and_then(|f| f.parse().ok()).unwrap_or(3000);
     let dir = rest
         .get(1)
         .map_or_else(|| PathBuf::from("screenshots"), PathBuf::from);
-    Some((frames, dir))
+    let level = rest.get(2).and_then(|l| l.parse().ok()).unwrap_or(0);
+    Some((frames, dir, level))
 }
 
 fn main() {
@@ -53,14 +55,14 @@ fn main() {
         .or_else(|| sidekick_frontend::tape::find(&frontend::GAME, &folders).map(|tape| tape.from));
     let windowed = headless.is_none();
     let result = match headless {
-        Some((frames, dir)) => {
+        Some((frames, dir, level)) => {
             let path = path.unwrap_or_else(|| {
                 fatal(
                     &sidekick_frontend::tape::not_found_message(&frontend::GAME, &folders),
                     false,
                 )
             });
-            frontend::headless(&path, frames, &dir)
+            frontend::headless(&path, frames, &dir, level)
         }
         // In a window, no tape means asking for one.
         None => frontend::run(path.as_deref()),
@@ -81,14 +83,17 @@ mod tests {
     #[test]
     fn headless_takes_its_frames_and_folder_and_leaves_the_tape() {
         let mut a = args(&["manic.tap", "--headless", "120", "out"]);
-        assert_eq!(headless_args(&mut a), Some((120, PathBuf::from("out"))));
+        assert_eq!(headless_args(&mut a), Some((120, PathBuf::from("out"), 0)));
+        assert_eq!(a, ["manic.tap"]);
+        let mut a = args(&["manic.tap", "--headless", "120", "out", "3"]);
+        assert_eq!(headless_args(&mut a), Some((120, PathBuf::from("out"), 3)));
         assert_eq!(a, ["manic.tap"]);
         let mut a = args(&["manic.tap"]);
         assert_eq!(headless_args(&mut a), None);
         let mut a = args(&["--headless"]);
         assert_eq!(
             headless_args(&mut a),
-            Some((3000, PathBuf::from("screenshots")))
+            Some((3000, PathBuf::from("screenshots"), 0))
         );
     }
 }
