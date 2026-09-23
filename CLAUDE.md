@@ -152,6 +152,11 @@ answer given in chat is written back into the issue body before acting on it.
   route label**: the lane already says where it stands, so the label comes off
   in the same step as the move out of `Backlog` (@starquake, 2026-09-15). A
   parent carries none either.
+- **Which game a ticket is about is a label too**, `game: <name>` (#129): it
+  goes on when the ticket is filed and stays in every lane, since one board
+  holds every game. Work on what the games share (`crates/`, the scripts, CI,
+  the workflow) carries none. A ticket about code that still lives in a
+  game's folder is that game's until the code moves out.
 - **A ticket ported from a sibling repository goes in the lane its content puts
   it in**: open questions to `Your input`, a settled spec with a plan to
   `Your sign-off` and one without to `Plan`, a parent to `Backlog` with no
