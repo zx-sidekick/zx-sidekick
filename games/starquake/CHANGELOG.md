@@ -1,6 +1,6 @@
 # Changelog
 
-What changed in each release, from the commit messages: every line is one pull request, squash-merged into `main`, in the order they were merged. Written by `scripts/changelog.sh`, which is run when a release is tagged; do not edit it by hand. A release candidate's changes are in the release it led to.
+What changed in each release, from the commit messages: every line is one pull request, squash-merged into `main`, in the order they were merged, leaving out what touched only other games. Written by `scripts/changelog.sh starquake`, which is run when a release is tagged; do not edit it by hand. A release candidate's changes are in the release it led to.
 
 ## v0.2.0 (2026-09-22)
 
