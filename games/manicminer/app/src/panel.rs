@@ -6,8 +6,6 @@
 //! drawn from [`guide::read`], what the game keeps in memory, and nothing
 //! else.
 
-use std::collections::VecDeque;
-
 use manicminer::guide::{self, COLUMNS, Cavern, Patrol, ROWS, Tile};
 use sidekick_frontend::overlay::{self, HEIGHT, PICTURE_W};
 use sidekick_frontend::text::{Canvas, Fonts, Rgb, Span, Weight};
@@ -35,37 +33,34 @@ const RIM: Rgb = [0x05, 0x06, 0x08];
 /// panel's width less its margins.
 const CELL: f32 = 12.0;
 
-/// What the panel shows: the cavern being played, and how fast its main
-/// loop is running, or nothing outside a game.
+/// What the panel shows: the cavern being played, and the air left in
+/// seconds once the main loop's rate is known, or nothing outside a game.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct View {
     pub cavern: Option<Cavern>,
-    /// Passes of the main loop a second, once enough are counted.
-    pub rate: Option<f32>,
+    pub air_seconds: Option<u32>,
 }
 
-impl View {
-    /// The air left in whole seconds, when the rate is known.
-    #[must_use]
-    pub fn air_seconds(&self) -> Option<u32> {
-        let cavern = self.cavern.as_ref()?;
-        let rate = self.rate?;
-        Some((cavern.air_passes as f32 / rate).floor() as u32)
-    }
-}
-
-/// How many frames the main loop's rate is counted over: ten seconds.
-const RATE_FRAMES: usize = 500;
-/// How many before a rate is given at all: two seconds.
-const RATE_FIRST: usize = 100;
+/// How many frames of the main loop running before a rate is given at all:
+/// two seconds.
+const RATE_FIRST: u32 = 100;
 
 /// Follows the game frame by frame for the panel: how often the main loop
 /// comes round in the cavern being played, and what [`guide::read`] reads.
+///
+/// The rate is counted over everything since the cavern began, so it
+/// settles rather than wobbling by a pass as a moving window would; and the
+/// seconds shown never go back up while the air has not, so the figure
+/// only ever counts down (#154).
 #[derive(Default)]
 pub struct Follow {
-    /// The main loop's passes in each of the last frames, in this cavern.
-    passes: VecDeque<u8>,
+    /// Frames with the main loop running, and its passes in them, in this
+    /// cavern.
+    frames: u32,
+    passes: u32,
     cavern: Option<u8>,
+    /// The air's passes and the seconds last shown for them.
+    shown: Option<(u32, u32)>,
 }
 
 impl Follow {
@@ -76,28 +71,34 @@ impl Follow {
     /// so the panel stays through a death).
     pub fn frame(&mut self, mem: &[u8], passed: bool, looping: bool, playing: bool) -> View {
         if !playing {
-            self.passes.clear();
-            self.cavern = None;
+            *self = Follow::default();
             return View::default();
         }
         let cavern = guide::read(mem);
         if self.cavern != Some(cavern.number) {
-            self.passes.clear();
-            self.cavern = Some(cavern.number);
+            *self = Follow {
+                cavern: Some(cavern.number),
+                ..Follow::default()
+            };
         }
         if looping {
-            self.passes.push_back(u8::from(passed));
-            if self.passes.len() > RATE_FRAMES {
-                self.passes.pop_front();
-            }
+            self.frames += 1;
+            self.passes += u32::from(passed);
         }
-        let rate = (self.passes.len() >= RATE_FIRST).then(|| {
-            let passes: u32 = self.passes.iter().map(|&p| u32::from(p)).sum();
-            passes as f32 * 50.0 / self.passes.len() as f32
+        let seconds = (self.frames >= RATE_FIRST && self.passes > 0).then(|| {
+            let rate = self.passes as f32 * 50.0 / self.frames as f32;
+            let seconds = (cavern.air_passes as f32 / rate).floor() as u32;
+            match self.shown {
+                Some((passes, shown)) if cavern.air_passes <= passes => seconds.min(shown),
+                _ => seconds,
+            }
         });
+        if let Some(s) = seconds {
+            self.shown = Some((cavern.air_passes, s));
+        }
         View {
             cavern: Some(cavern),
-            rate: rate.filter(|&r| r > 0.0),
+            air_seconds: seconds,
         }
     }
 }
@@ -197,7 +198,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, view: &View, level: u8) {
     let fy = top + 76.0;
     let col = (right - left) / 3.0;
     let air = view
-        .air_seconds()
+        .air_seconds
         .map_or_else(|| "\u{2013}".to_string(), |s| format!("{s} s"));
     let (portal, portal_colour) = if cavern.portal_open {
         ("open", OPEN)
@@ -444,44 +445,47 @@ fn key(fonts: &mut Fonts, canvas: &mut Canvas, level: u8, left: f32, y: f32) {
 mod tests {
     use super::*;
 
-    fn cavern(air_passes: u32) -> Cavern {
-        Cavern {
-            air_passes,
-            ..Cavern::default()
-        }
+    /// A memory whose air has `passes` passes left.
+    fn with_air(passes: u32) -> Vec<u8> {
+        use manicminer::facts::{AIR_EMPTY, at};
+        let mut mem = vec![0u8; 0x10000];
+        // The last pass is the clock's wrap at no air left.
+        let q = passes - 1;
+        mem[usize::from(at::AIR)] = AIR_EMPTY + (q / 64) as u8;
+        mem[usize::from(at::CLOCK)] = (q % 64) as u8 * 4;
+        mem
     }
 
     #[test]
-    fn the_air_is_whole_seconds_once_the_rate_is_known() {
-        let mut view = View {
-            cavern: Some(cavern(1150)),
-            rate: None,
-        };
-        assert_eq!(view.air_seconds(), None);
-        view.rate = Some(11.5);
-        assert_eq!(view.air_seconds(), Some(100));
-        view.rate = Some(11.6);
-        assert_eq!(view.air_seconds(), Some(99), "rounded down");
-    }
-
-    #[test]
-    fn nothing_is_followed_outside_a_game() {
-        let mem = vec![0u8; 0x10000];
+    fn the_air_is_whole_seconds_once_the_rate_is_known_and_only_counts_down() {
         let mut follow = Follow::default();
+        let mut mem = with_air(1150);
         assert_eq!(follow.frame(&mem, true, true, false), View::default());
-        for i in 0..RATE_FIRST {
-            let view = follow.frame(&mem, i % 4 == 0, true, true);
+        // A pass every four frames: 12.5 a second.
+        let mut last = None;
+        for i in 0..2000u32 {
+            let passed = i % 4 == 0;
+            if passed && i > 0 {
+                mem = with_air(guide::read(&mem).air_passes - 1);
+            }
+            let view = follow.frame(&mem, passed, true, true);
             assert!(view.cavern.is_some());
-            assert_eq!(view.rate.is_some(), i + 1 >= RATE_FIRST);
+            assert_eq!(view.air_seconds.is_some(), i + 1 >= RATE_FIRST, "frame {i}");
+            if let (Some(before), Some(now)) = (last, view.air_seconds) {
+                assert!(now <= before, "frame {i}: {before} then {now}");
+            }
+            last = view.air_seconds.or(last);
         }
-        let rate = follow.frame(&mem, false, true, true).rate.unwrap();
-        assert!((rate - 12.4).abs() < 0.2, "{rate}");
-        // A death: the loop stops, the panel stays, the rate holds.
+        // 1150 passes less 500 at 12.5 a second.
+        assert_eq!(last, Some(52));
+        // A death: the loop stops, the panel and the figure stay.
         for _ in 0..200 {
             let view = follow.frame(&mem, false, false, true);
-            assert!(view.cavern.is_some());
-            assert_eq!(view.rate, Some(rate));
+            assert_eq!(view.air_seconds, last);
         }
+        // The air back up: the figure with it.
+        let view = follow.frame(&with_air(1150), false, true, true);
+        assert_eq!(view.air_seconds, Some(92));
         assert_eq!(
             follow.frame(&mem, true, true, false),
             View::default(),
