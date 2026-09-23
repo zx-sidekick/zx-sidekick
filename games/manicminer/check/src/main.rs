@@ -310,7 +310,109 @@ fn facts_check(dir: &Path) -> bool {
         if demo { "set" } else { "NOT set" },
         if game { "clear" } else { "NOT clear" }
     );
-    in_order && quit && demo && game && guide_check(dir)
+    in_order && quit && demo && game && guide_check(dir) && preview_check(dir)
+}
+
+/// A cavern with Willy walked right for `right` frames and left to stand.
+fn staged(dir: &Path, cavern: u8, right: u64, training: manicminer::play::Training) -> Machine {
+    let mut m = in_cavern(dir, cavern, training).expect("the cavern is reached");
+    hold(&mut m, &["p"], right);
+    hold(&mut m, &[], 30);
+    m
+}
+
+/// The jump preview (#155): each jump it finds, made in play by a player
+/// who holds the keys all the way through, ends the same way at the same
+/// place; and a fall the preview finds fatal lands with safe falls on.
+fn preview_check(dir: &Path) -> bool {
+    use manicminer::play::Training;
+    use manicminer::preview::{self, End, Way};
+    // The mockup's scenes and a few more, each with a jump that lands and
+    // most with one that kills.
+    let scenes: [(u8, u64); 7] = [(18, 0), (5, 0), (5, 80), (0, 100), (0, 0), (2, 0), (1, 60)];
+    let (mut same, mut jumps, mut deaths, mut saved) = (0, 0, 0, 0);
+    for (cavern, right) in scenes {
+        let m = staged(dir, cavern, right, Training::default());
+        for j in preview::jumps(&m) {
+            jumps += 1;
+            if j.end == End::Dies {
+                deaths += 1;
+                // The same jump from the same place with safe falls on: a
+                // fall too long lands.
+                let mut safe = m.clone();
+                safe.rules.training.falls = true;
+                saved +=
+                    usize::from(preview::jump(&safe, j.way).map(|j| j.end) == Some(End::Lands));
+            }
+            // In play: the direction alone until he faces it, then it and
+            // jump held until he lands or dies.
+            let mut p = m.clone();
+            let dir_key = match j.way {
+                Way::Left => Some("o"),
+                Way::Up => None,
+                Way::Right => Some("p"),
+            };
+            let faces = |p: &Machine| {
+                let left = p.zx.mem[usize::from(at::FACING)] & 1 != 0;
+                match j.way {
+                    Way::Left => left,
+                    Way::Right => !left,
+                    Way::Up => true,
+                }
+            };
+            while !faces(&p) {
+                hold(&mut p, &[dir_key.expect("a way to turn")], 1);
+            }
+            let keys: Vec<&str> = dir_key.into_iter().chain(["space"]).collect();
+            let mut started = false;
+            let mut end = None;
+            for _ in 0..300 {
+                // Jump until he is off the ground; the direction held on,
+                // though the game steers nobody in the air.
+                p.zx.release_all_keys();
+                for k in keys.iter().filter(|k| !started || **k != "space") {
+                    p.zx.set_key(key(k), true);
+                }
+                let mut killed = false;
+                p.run_frame_observing(|z| {
+                    killed |= z.pc() == routine::KILL || z.pc() == routine::KILL_FALL;
+                });
+                let air = p.zx.mem[usize::from(at::AIRBORNE)];
+                if killed || air == 0xFF {
+                    end = Some(End::Dies);
+                    break;
+                }
+                started |= air != 0;
+                if started && air == 0 {
+                    end = Some(End::Lands);
+                    break;
+                }
+            }
+            // Where he lands: the same height, and at most a step (two
+            // pixels) on, which the direction held walks him in the frame
+            // he lands.
+            let at_end = preview::willy(&p);
+            let lands_there = j
+                .path
+                .last()
+                .is_some_and(|&(x, y)| y == at_end.1 && x.abs_diff(at_end.0) <= 2);
+            if end == Some(j.end) && (j.end == End::Dies || lands_there) {
+                same += 1;
+            } else {
+                println!(
+                    "facts: cavern {cavern}, {:?}: previewed {:?} at {:?}, in play {end:?} at {at_end:?}",
+                    j.way,
+                    j.end,
+                    j.path.last()
+                );
+            }
+        }
+    }
+    println!(
+        "facts: {same} of {jumps} previewed jumps ({deaths} of them deaths) ended the same way in play"
+    );
+    println!("facts: {saved} of the {deaths} deaths landed with safe falls on");
+    same == jumps && jumps >= 15 && deaths >= 3 && saved >= 1
 }
 
 /// Pressing `keys` for a frame's worth of play, as a player would.
