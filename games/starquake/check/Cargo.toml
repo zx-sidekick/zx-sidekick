@@ -3,6 +3,7 @@ name = "starquake-check"
 description = "Local checks of ZX Sidekick against the player's own copy of the game (and, for one, a Spectrum ROM). Never run in CI."
 version = "0.3.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

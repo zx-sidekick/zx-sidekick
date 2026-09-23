@@ -5,6 +5,7 @@ description = "ZX Sidekick: Starquake, running your own copy of the original gam
 # starquake-lab); its release is tagged starquake-v<this>.
 version = "0.3.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

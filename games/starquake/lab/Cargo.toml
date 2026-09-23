@@ -3,6 +3,7 @@ name = "starquake-lab"
 description = "Tools for studying the game on the player's own tape: pictures, probes and searches. Not checks; never run in CI."
 version = "0.3.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

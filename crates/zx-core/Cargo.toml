@@ -3,6 +3,7 @@ name = "zx-core"
 description = "ZX Spectrum timing, ULA contention, screen, tape and snapshot formats, PNG output and SHA-1"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

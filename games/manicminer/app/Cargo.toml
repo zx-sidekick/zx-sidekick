@@ -3,6 +3,7 @@ name = "zx-sidekick-manicminer"
 description = "ZX Sidekick: Manic Miner, running your own copy of the original game. Not affiliated with the rights holders."
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

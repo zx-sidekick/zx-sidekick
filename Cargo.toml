@@ -19,6 +19,9 @@ members = [
 # same in all of them, which its release tag names (#132).
 version = "0.2.0"
 edition = "2024"
+# The pinned toolchain (rust-toolchain.toml): an older Rust stops with a
+# clear message rather than an obscure error. Bump the two together.
+rust-version = "1.98"
 license = "MIT OR Apache-2.0"
 # Nothing here belongs on crates.io: the program needs the player's own copy
 # of the game to do anything.

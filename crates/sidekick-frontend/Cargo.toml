@@ -3,6 +3,7 @@ name = "sidekick-frontend"
 description = "The window, sound, input and tape prompt every ZX Sidekick game shares"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
