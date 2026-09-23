@@ -46,7 +46,7 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
 - `cargo run --release -p zx-sidekick-starquake -- "$SK_ASSETS/starquake.tap"`
   plays it. Add `--headless <frames> <dir> [level]` for screenshots of real play at a guidance level.
 - Manic Miner (#142): `cargo run --release -p manicminer-check -- all "$SK_ASSETS"`
-  runs its checks (`entry`, `keys`, `facts`, `font`; `entry` and the font's
+  runs its checks (`entry`, `keys`, `facts`, `font`, `training`; `entry` and the font's
   comparison need `48.rom`), which the gate runs when `SK_ASSETS` holds
   `manic.tap`; `cargo run --release -p zx-sidekick-manicminer --
   "$SK_ASSETS/manic.tap"` plays it, with `--headless <frames> <dir>` for

@@ -97,6 +97,7 @@ if [ -n "${SK_ASSETS:-}" ] && { [ -f "$SK_ASSETS/manic.tap" ] || [ -f "$SK_ASSET
   run "manicminer keys (keyboard, Kempston, pause, Start)" cargo run -q --release -p manicminer-check --locked -- keys "$SK_ASSETS"
   run "manicminer facts (title, play, a life lost, game over, quit)" cargo run -q --release -p manicminer-check --locked -- facts "$SK_ASSETS"
   run "manicminer font (the text drawn from the ROM's character set)" cargo run -q --release -p manicminer-check --locked -- font "$SK_ASSETS"
+  run "manicminer training (the switches and going to a cavern)" cargo run -q --release -p manicminer-check --locked -- training "$SK_ASSETS"
   if [ -f "$SK_ASSETS/48.rom" ]; then
     run "manicminer entry (real ROM loader)" cargo run -q --release -p manicminer-check --locked -- entry "$SK_ASSETS"
   else

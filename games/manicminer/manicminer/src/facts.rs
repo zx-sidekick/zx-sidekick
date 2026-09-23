@@ -34,6 +34,11 @@ pub mod routine {
     pub const LOSE_LIFE: u16 = 0x8940;
     /// The game-over sequence, when none is left.
     pub const GAME_OVER: u16 = 0x8944;
+    /// A cavern is done: what is left of the air is counted into the score,
+    /// calling the air routine from `0x90B4` until it runs out.
+    pub const BONUS: u16 = 0x90AD;
+    /// The next cavern is set up, once the bonus is counted.
+    pub const NEXT_CAVERN: u16 = 0x8691;
 }
 
 /// Where the game reads keys, each at the instruction that reads the port.
@@ -52,6 +57,49 @@ pub mod reads {
 /// bits.
 pub const PAUSE_KEYS: (usize, u8) = (1, 0x1F);
 
+/// Where training mode steers the game (#148), each at the one instruction
+/// the game decides the thing with.
+pub mod steer {
+    /// `DEC (HL)` on the lives: going on at the next instruction takes none.
+    pub const LOSE_LIFE: u16 = 0x8940;
+    /// The air routine, which lowers the clock and, when it wraps, the air.
+    pub const AIR: u16 = 0x8A3C;
+    /// In the air routine, where the bar is drawn from the air and the clock
+    /// as they stand, returning "air left".
+    pub const AIR_DRAW: u16 = 0x8A52;
+    /// Where the air routine returns to from the main loop, and from the
+    /// light beam's four calls. The end-of-cavern bonus's call, from
+    /// `0x90B4`, is not among them: it counts the air down.
+    pub const AIR_FROM: [u16; 5] = [0x87EE, 0x8D8C, 0x8D8F, 0x8D92, 0x8D95];
+    /// `JP NC,$8D06` after the fall's `CP $0C`: a fall too long kills.
+    pub const FALL_KILL: u16 = 0x8BE2;
+    /// Each guardian's call to the sprite routine in its collision mode
+    /// (`C` = 1), which returns NZ on touching Willy, and the `JP NZ` after
+    /// kills: the horizontal guardians, Eugene, the vertical ones (the
+    /// Skylabs among them) and the Kong Beast.
+    pub const GUARDIAN_DRAWS: [u16; 4] = [0x8DEB, 0x8E39, 0x8F3B, 0x9206];
+    /// The nasty-tile checks' `JP Z,$8D05`.
+    pub const NASTY_KILLS: [u16; 2] = [0x9274, 0x927B];
+}
+
+/// The game's own cheat (#148): typing 6031769 in play, one digit at a
+/// time, then 6 held with keys 1 to 5 spelling a cavern in binary goes to
+/// that cavern and starts it again.
+pub mod cheat {
+    /// The code, as it is typed.
+    pub const CODE: [&str; 7] = ["6", "0", "3", "1", "7", "6", "9"];
+    /// Where the main loop reads the row 1 to 5, then 6 to 0, to follow the
+    /// code; and where, with it entered, it reads 6, then the row 1 to 5,
+    /// to teleport.
+    pub const READ_LOW: u16 = 0x88BD;
+    pub const READ_HIGH: u16 = 0x88DA;
+    pub const TELEPORT_SIX: u16 = 0x8887;
+    pub const TELEPORT_CAVERN: u16 = 0x8898;
+    /// The keyboard half-rows of 1 to 5 and of 6 to 0.
+    pub const LOW_ROW: usize = 3;
+    pub const HIGH_ROW: usize = 4;
+}
+
 /// Where the game keeps what the checks read.
 pub mod at {
     /// The cavern being played, 0 to 19.
@@ -69,6 +117,14 @@ pub mod at {
     pub const AIR: u16 = 0x80BC;
     /// The cavern's name in the working buffer, 32 characters.
     pub const CAVERN_NAME: u16 = 0x8000;
+    /// How much of the cheat has been typed: 7 once it is in.
+    pub const CHEAT_COUNT: u16 = 0x845D;
+    /// Not zero while the demo plays the caverns (it counts down each
+    /// cavern's time), zero in a game.
+    pub const DEMO: u16 = 0x845A;
+    /// The twenty caverns, 1K each from here, each with its name at offset
+    /// 512.
+    pub const CAVERNS: u16 = 0xB000;
 }
 
 /// Whether `bytes` are the tape these facts are about.
