@@ -76,9 +76,16 @@ since() {
 # pull request's number linked. Commits that touched only other games'
 # folders are not this game's.
 list() {
-  local tag=$1 game from other
+  local tag=$1 game from other born
   game=$(game_of "$tag")
   from=$(since "$tag")
+  # A game's first release starts where its folder was made: what the
+  # repository did before that was another game's, even outside games/.
+  # Starquake's first releases came before its folder, so none applies.
+  born=$(git log --diff-filter=A --format=%H -- "games/$game" | tail -1)
+  if [ -z "$from" ] && [ -n "$born" ] && git merge-base --is-ancestor "$born" "$tag"; then
+    from="$born^"
+  fi
   local paths=(.)
   for other in games/*/; do
     other=${other%/}
