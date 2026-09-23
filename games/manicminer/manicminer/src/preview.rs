@@ -53,10 +53,12 @@ pub struct Jump {
 /// take far fewer.
 const LONGEST: u32 = 300;
 
-/// Whether Willy is standing, where a jump can start.
+/// Whether Willy is standing still: on the ground and not walking (bit 1
+/// of [`at::FACING`] is set while he moves). A preview for a walking Willy
+/// would be for a place he has already left by the time it is done.
 #[must_use]
 pub fn standing(m: &Machine) -> bool {
-    m.zx.mem[usize::from(at::AIRBORNE)] == 0
+    m.zx.mem[usize::from(at::AIRBORNE)] == 0 && m.zx.mem[usize::from(at::FACING)] & 2 == 0
 }
 
 /// The middle of Willy's 16 pixels square, in the cavern's pixels.

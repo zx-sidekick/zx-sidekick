@@ -101,7 +101,7 @@ picture shows. It starts at 0 each time the program starts.
                        the conveyors run, and each guardian's path
                        with its ends. Eugene, the Kong Beast and the
                        Skylabs have no path drawn.
-  4 Jumps              While Willy stands, where a jump left,
+  4 Jumps              While Willy stands still, where a jump left,
                        straight up or right would land (a ring), or
                        that it would kill him (a cross), with the
                        training switches in force. A jump the other
