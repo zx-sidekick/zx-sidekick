@@ -92,7 +92,7 @@ else
 fi
 
 # Manic Miner's, when SK_ASSETS holds its tape (#142): all but entry need
-# only the tape, and font checks the ROM's letters too when 48.rom is there.
+# only the tape, and font compares the character set with the ROM's when 48.rom is there.
 if [ -n "${SK_ASSETS:-}" ] && { [ -f "$SK_ASSETS/manic.tap" ] || [ -f "$SK_ASSETS/manicminer.tap" ]; }; then
   run "manicminer keys (keyboard, Kempston, pause, Start)" cargo run -q --release -p manicminer-check --locked -- keys "$SK_ASSETS"
   run "manicminer facts (title, play, a life lost, game over, quit)" cargo run -q --release -p manicminer-check --locked -- facts "$SK_ASSETS"
