@@ -1,17 +1,21 @@
-# zx-sidekick-starquake
+# zx-sidekick
+
+One repository for every ZX Sidekick game (#129): the shared crates in
+`crates/`, and each game in `games/<game>/`. Starquake is the first, in
+`games/starquake/`.
 
 Starquake (Stephen Crow / Bubble Bus, 1985), the plain game, running as the
 **original program** in an emulated ZX Spectrum the player never sees. **The
 repository contains no part of the game and no ROM**: the player supplies their
 own tape at runtime, and the few ROM routines the game calls are answered by
-the program itself. `GOAL.md` holds the aim and the hard legal rules; `PLAN.md`
-the steps and what comes later.
+the program itself. `GOAL.md` holds the aim and the hard legal rules;
+`games/starquake/PLAN.md` the steps and what comes later.
 
 The processor is `rustzx-z80` from our fork
 ([zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx)), pinned to a
 commit, inside our own 48K bus (`crates/zx-spectrum`). The ROM-free machine is
-`crates/sidekick`, and `tools/sk-check` checks it against a real ROM supplied
-locally.
+`games/starquake/sidekick`, and `games/starquake/sk-check` checks it against a
+real ROM supplied locally.
 
 ## Commands
 
@@ -30,7 +34,7 @@ locally.
   teleporter booths only with the ROM).
 - `cargo run --release -p sk-lab --bin planet -- "$SK_ASSETS"` draws the whole
   planet with every room's openings into `assets/planet.png`; the other
-  `sk-lab` tools (`tools/sk-lab/README.md`) probe rooms and run the level 5
+  `sk-lab` tools (`games/starquake/sk-lab/README.md`) probe rooms and run the level 5
   search. They look, `sk-check` proves; none runs in CI or the gate.
 - `cargo test -p zx-spectrum --test fuse -- --nocapture` checks the processor
   in our bus against the Fuse Z80 corpus (needs `assets/tests.in` and
@@ -41,7 +45,7 @@ locally.
   plays it. Add `--headless <frames> <dir> [level]` for screenshots of real play at a guidance level.
 - `cargo about generate --all-features about.hbs -o THIRD-PARTY.md`
   regenerates the attributions after a dependency change.
-- `scripts/changelog.sh` rewrites `CHANGELOG.md` from the commit subjects,
+- `scripts/changelog.sh` rewrites `games/starquake/CHANGELOG.md` from the commit subjects,
   one section per release; run it after tagging a release and land it in a
   PR. `scripts/changelog.sh --notes TAG` prints one release's list, which
   `release.yml` puts at the top of its notes.
@@ -76,7 +80,8 @@ locally.
   listed by name, and bus activity 1,335 of 1,335. The gate and CI require
   exactly that; a fork update that changes it is updated on purpose.
 - **Say so when something is not checked.** What works but has not been
-  checked by hand is marked that way in `README.md`, rather than left to be
+  checked by hand is marked that way in the game's README
+  (`games/starquake/README.md`), rather than left to be
   discovered.
 
 ## How work lands
@@ -105,8 +110,8 @@ answer given in chat is written back into the issue body before acting on it.
   any other, only with `ready to merge`. A Cargo bump fails the dependency
   policy job until `THIRD-PARTY.md` is regenerated, so a pass that finds one
   failing only on that regenerates the file and pushes it onto the branch.
-- **The board is the handoff baton**: the Status field of the "ZX Sidekick
-  Starquake" org Project (https://github.com/orgs/zx-sidekick/projects/1).
+- **The board is the handoff baton**: the Status field of the "ZX Sidekick"
+  org Project (https://github.com/orgs/zx-sidekick/projects/1).
   Read and move it with `.claude/scripts/board.sh`.
 
   ```

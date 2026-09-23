@@ -308,9 +308,9 @@ real miss on mediumrogue.
 # pipefail is LOAD-BEARING: every snapshot ends in `| sort`, and without it a
 # failed `gh` returns 0 with no output, so every guard silently passes.
 set -o pipefail
-R=zx-sidekick/zx-sidekick-starquake
+R=zx-sidekick/zx-sidekick
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-SELF="${BOARD_SELF_SET_FILE:-${TMPDIR:-/tmp}/zx-sidekick-starquake-board-selfset}"
+SELF="${BOARD_SELF_SET_FILE:-${TMPDIR:-/tmp}/zx-sidekick-board-selfset}"
 GQ='{ organization(login:"zx-sidekick"){ projectV2(number:1){ items(first:100){ nodes{
   content{ ... on Issue { number } }
   fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
