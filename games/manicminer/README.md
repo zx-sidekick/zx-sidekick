@@ -19,7 +19,7 @@ Not needed. Manic Miner calls no ROM routine and never enables interrupts. The o
 - [x] Sound (built; not yet checked by ear)
 - [x] Tape prompt: find or drop the tape or its `.zip`, kept in the user data directory (built; not yet checked by hand)
 - [x] Training mode (#148): a picker over the picture (Esc, or Select on a pad) with five switches (endless lives, air stays full, safe falls, no harm from guardians, no harm from nasties), Go to cavern by the game's own cheat, End this game and Exit. Each switch steers the game at the one instruction it decides the thing with, and writes nothing into it (checked by hand by the maintainer, 2026-09-23)
-- [x] Guidance levels 1 to 3 (#153), chosen in the same picker, in a panel beside the picture: 1 the cavern, the air in seconds, the items left and whether the portal is open; 2 the cavern drawn from the game's own cells, with Willy, the items ringed (one in the Solar Power Generator cannot be seen in the picture) and the portal outlined; 3 the nasty tiles, crumbling floor, conveyors and each guardian's path. Eugene, the Kong Beast and the Skylabs have routines of their own and get no path (built; not yet checked by hand)
+- [x] Guidance levels 1 to 3 (#153), chosen in the same picker, in a panel beside the picture: 1 the cavern, the air in seconds, the items left and whether the portal is open; 2 the cavern drawn from the game's own cells, with Willy, the items ringed (one in the Solar Power Generator cannot be seen in the picture) and the portal outlined; 3 the nasty tiles, crumbling floor, conveyors and each guardian's path. Eugene, the Kong Beast and the Skylabs have routines of their own and get no path (checked by hand by the maintainer, 2026-09-23)
 
 ## Playing
 
