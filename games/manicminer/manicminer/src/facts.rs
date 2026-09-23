@@ -34,6 +34,11 @@ pub mod routine {
     pub const LOSE_LIFE: u16 = 0x8940;
     /// The game-over sequence, when none is left.
     pub const GAME_OVER: u16 = 0x8944;
+    /// A cavern is done: what is left of the air is counted into the score,
+    /// calling the air routine from `0x90B4` until it runs out.
+    pub const BONUS: u16 = 0x90AD;
+    /// The next cavern is set up, once the bonus is counted.
+    pub const NEXT_CAVERN: u16 = 0x8691;
 }
 
 /// Where the game reads keys, each at the instruction that reads the port.

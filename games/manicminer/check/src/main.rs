@@ -537,6 +537,32 @@ fn training_check(dir: &Path) -> bool {
             if good { "" } else { "  NOT AS PROMISED" }
         );
         ok &= good;
+        // The end-of-cavern bonus still counts the air down, switch or not:
+        // the cavern is left from the top of the main loop, where the bonus
+        // is entered.
+        let mut m = into_play(dir);
+        m.rules.training = Training {
+            air,
+            ..Training::default()
+        };
+        while m.zx.pc() != routine::MAIN_LOOP {
+            m.zx.step();
+        }
+        m.zx.set_pc(routine::BONUS);
+        m.watch = vec![routine::NEXT_CAVERN];
+        // The lowest the air went: the next cavern's own fills the buffer.
+        let before = m.zx.mem[usize::from(at::AIR)];
+        let mut after = before;
+        let next = (0..600).any(|_| {
+            !m.run_frame_observing(|z| after = after.min(z.mem[usize::from(at::AIR)]))
+                .is_empty()
+        });
+        let good = next && after < before;
+        println!(
+            "training: the bonus with air stays full {name}: {before} counted down to {after}{}",
+            if good { "" } else { "  NOT AS PROMISED" }
+        );
+        ok &= good;
     }
     // Every switch off: the whole of memory as a machine with no rules at
     // all leaves it, after play that meets a death.
