@@ -19,7 +19,7 @@ set -euo pipefail
 
 PROJECT_NUMBER=1
 PROJECT_OWNER=zx-sidekick
-PROJECT_REPO=zx-sidekick-starquake
+PROJECT_REPO=zx-sidekick
 PROJECT_ID="PVT_kwDOE50vsc4Bjc-P"
 STATUS_FIELD_ID="PVTSSF_lADOE50vsc4Bjc-PzhiRNkA"
 
