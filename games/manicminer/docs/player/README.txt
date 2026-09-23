@@ -98,7 +98,9 @@ the picker without changing anything.
   Go to cavern         Choose a cavern and press Enter or A: the game
                        goes there with its own cheat and starts that
                        cavern again. The cheat's boot appears beside
-                       your lives, as it always did.
+                       your lives, as it always did. Chosen at the
+                       title screen, your next game starts there.
 
-End this game goes back to the title screen, and Exit Manic Miner
-closes the program; each asks you to press Enter or A a second time.
+The switches work only in a game, never in the demo. End this game goes
+back to the title screen from a game, and Exit Manic Miner closes the
+program; each asks you to press Enter or A a second time.

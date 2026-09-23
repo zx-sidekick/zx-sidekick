@@ -299,7 +299,18 @@ fn facts_check(dir: &Path) -> bool {
         "facts: CAPS SHIFT and SPACE {} to the title",
         if quit { "went back" } else { "did NOT go back" }
     );
-    in_order && quit
+    // The demo: the main loop runs in it too, told from a game by DEMO.
+    let mut m = machine(dir);
+    m.watch = vec![routine::MAIN_LOOP];
+    let demo =
+        (0..4_000).any(|_| !m.run_frame().is_empty() && m.zx.mem[usize::from(at::DEMO)] != 0);
+    let game = into_play(dir).zx.mem[usize::from(at::DEMO)] == 0;
+    println!(
+        "facts: the demo byte is {} in the demo and {} in a game",
+        if demo { "set" } else { "NOT set" },
+        if game { "clear" } else { "NOT clear" }
+    );
+    in_order && quit && demo && game
 }
 
 /// The cavern's name, as the game prints it on the screen, is drawn letter

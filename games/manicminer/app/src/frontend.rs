@@ -215,6 +215,9 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
     // Whether End this game is holding the game's own quit keys, CAPS SHIFT
     // and SPACE, until it is back at the title screen.
     let mut ending = false;
+    // A cavern to go to, waiting for a game: the demo reads the cheat's keys
+    // too, and must not take it.
+    let mut going = None;
     let mut freeze = freeze::Freeze::default();
     // Whether the game's pause key was pressed in the last frame, and how
     // long since its main loop ran.
@@ -233,19 +236,37 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
             let mut picker = shared.game.picker.lock().unwrap();
             (picker.take(), picker.training())
         };
+        // A game, not the title screen or the demo: what the picker does to
+        // a game waits for one, as Starquake's does.
+        let in_game = since_loop < PLAY_FRAMES && machine.zx.mem[usize::from(at::DEMO)] == 0;
         match action {
             Some(Action::Exit) => return Ok(()),
-            Some(Action::EndGame) => {
+            Some(Action::EndGame) if in_game => {
                 ending = true;
                 freeze.thaw();
             }
             Some(Action::GoTo(cavern)) => {
-                machine.rules.go_to = Some(cavern);
+                going = Some(cavern);
                 freeze.thaw();
             }
-            None => {}
+            Some(Action::EndGame) | None => {}
         }
-        machine.rules.training = training;
+        // Handed to the machine in a game, and taken back if the game ends
+        // before the cheat is typed.
+        if in_game {
+            if let Some(cavern) = going.take() {
+                machine.rules.go_to = Some(cavern);
+            }
+        } else if let Some(cavern) = machine.rules.go_to.take() {
+            going = Some(cavern);
+        }
+        // Training steers only a game; anywhere else the machine does
+        // nothing the game would not.
+        machine.rules.training = if in_game {
+            training
+        } else {
+            manicminer::play::Training::default()
+        };
         let pad = now;
         let input = *shared.input.lock().unwrap();
         let joystick = input.joystick | pad.bits;

@@ -114,6 +114,9 @@ pub mod at {
     pub const CAVERN_NAME: u16 = 0x8000;
     /// How much of the cheat has been typed: 7 once it is in.
     pub const CHEAT_COUNT: u16 = 0x845D;
+    /// Not zero while the demo plays the caverns (it counts down each
+    /// cavern's time), zero in a game.
+    pub const DEMO: u16 = 0x845A;
     /// The twenty caverns, 1K each from here, each with its name at offset
     /// 512.
     pub const CAVERNS: u16 = 0xB000;
