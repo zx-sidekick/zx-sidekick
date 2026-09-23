@@ -45,9 +45,16 @@ real ROM supplied locally.
   plays it. Add `--headless <frames> <dir> [level]` for screenshots of real play at a guidance level.
 - `cargo about generate --all-features about.hbs -o THIRD-PARTY.md`
   regenerates the attributions after a dependency change.
-- `scripts/changelog.sh` rewrites `games/starquake/CHANGELOG.md` from the commit subjects,
-  one section per release; run it after tagging a release and land it in a
-  PR. `scripts/changelog.sh --notes TAG` prints one release's list, which
+- **Releasing a game** (#132): its version is in its crates' `Cargo.toml`, the
+  same in all of them; its tag is `GAME-vX.Y.Z`, or `GAME-vX.Y.Z-rc.N` for a
+  candidate, published as a pre-release. Starquake's releases from before the
+  monorepo are the plain `vX.Y.Z` tags. `release.yml` builds on
+  `starquake-v*`, and the archives keep their names
+  (`zx-sidekick-starquake-vX.Y.Z-<target>`).
+- `scripts/changelog.sh GAME` rewrites `games/GAME/CHANGELOG.md` from the
+  commit subjects, one section per release, leaving out commits that touched
+  only other games; run it after tagging a release and land it in a PR.
+  `scripts/changelog.sh --notes TAG` prints one release's list, which
   `release.yml` puts at the top of its notes.
 - `cargo llvm-cov --workspace --summary-only` measures test coverage (needs
   `cargo install cargo-llvm-cov` and `rustup component add llvm-tools`). The
