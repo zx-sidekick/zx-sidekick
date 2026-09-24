@@ -122,9 +122,9 @@ Checked in the fork before it was brought in, and not re-run here (harnesses not
 
 `tests/integration/emulate.rs` uses only upstream's interface and passes unchanged on upstream `master`, which shows `emulate()` behaves as upstream's does outside the corrections in patch 5.
 
-## Offering a patch upstream
+## Upstream
 
-Upstream is quiet, but each patch is written so it can be offered: apply the change to a checkout of [rustzx/rustzx](https://github.com/rustzx/rustzx) under `rustzx-z80/`, where these paths are the same. Opening a pull request there acts publicly, so it is the maintainer's call. If upstream releases every patch here, this crate can go back to being a crates.io dependency.
+Nothing here is offered upstream (@starquake, 24 September 2026). Our goals for this crate differ from RustZX's: we change the processor together with the games that run on it, and check it in our own machine, rather than keeping a general-purpose emulator. The patches are MIT, as upstream's code is, and RustZX or anyone else is welcome to take them from here. The fork they were carried in, [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx), is archived.
 
 ## Licence
 
