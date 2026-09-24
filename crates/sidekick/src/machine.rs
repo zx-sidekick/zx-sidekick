@@ -5,10 +5,10 @@
 //! copy, and answering the few ROM routines a game calls. What a game does
 //! differently (how its keys are read, what pauses it, what training mode
 //! holds still) is its [`Rules`], which the machine asks at each frame and
-//! each instruction.
+//! at the instructions they name.
 
 use zx_core::snapshot::Snapshot;
-use zx_spectrum::Zx;
+use zx_spectrum::{Breakpoints, Next, Zx};
 
 use crate::rom;
 
@@ -57,7 +57,8 @@ pub struct Hold {
 }
 
 /// What a game does to the machine that no other game does: asked before
-/// each frame, at each instruction before it runs, and after each frame.
+/// each frame, at the instructions it names before they run, and after each
+/// frame.
 /// Each step may read and steer the machine; with nothing to do, a game's
 /// rules are `()`.
 pub trait Rules {
@@ -85,42 +86,43 @@ impl Rules for () {
     }
 }
 
-/// Which of the 65,536 addresses anything asks about as a frame runs: the
-/// watches, a hold's ends, and the rules' addresses, a bit each, so the
-/// question at each instruction is one bit test rather than a list search.
-/// Built again only when what it was built from changes.
+/// Which addresses anything asks about as a frame runs: the watches, a
+/// hold's ends and the rules' addresses; and where a run stops, which is
+/// those and the ROM routines answered. Built again only when what it was
+/// built from changes.
 #[derive(Clone)]
 struct Marks {
-    bits: Box<[u64; 1024]>,
+    asked: Box<Breakpoints>,
+    stops: Box<Breakpoints>,
     from: (Vec<u16>, Option<Hold>, Option<Vec<u16>>),
 }
 
 impl Marks {
     fn new(watch: &[u16], hold: Option<&Hold>, rules: Option<&[u16]>) -> Marks {
-        let mut bits = Box::new([0u64; 1024]);
         let hold_ends = hold
             .into_iter()
             .flat_map(|h| std::iter::once(h.from).chain(h.until.iter().copied()));
-        for at in watch
-            .iter()
-            .copied()
-            .chain(hold_ends)
-            .chain(rules.unwrap_or(&[]).iter().copied())
-        {
-            bits[usize::from(at >> 6)] |= 1 << (at & 63);
+        let asked: Box<Breakpoints> = Box::new(
+            watch
+                .iter()
+                .copied()
+                .chain(hold_ends)
+                .chain(rules.unwrap_or(&[]).iter().copied())
+                .collect(),
+        );
+        let mut stops = asked.clone();
+        for at in ROM_ANSWERED {
+            stops.insert(at);
         }
         Marks {
-            bits,
+            asked,
+            stops,
             from: (watch.to_vec(), hold.cloned(), rules.map(<[u16]>::to_vec)),
         }
     }
 
     fn built_from(&self, watch: &[u16], hold: Option<&Hold>, rules: Option<&[u16]>) -> bool {
         self.from.0 == watch && self.from.1.as_ref() == hold && self.from.2.as_deref() == rules
-    }
-
-    fn marked(&self, at: u16) -> bool {
-        self.bits[usize::from(at >> 6)] >> (at & 63) & 1 != 0
     }
 }
 
@@ -147,6 +149,9 @@ pub struct Machine<R> {
 /// only if an answer were ever missed, and then the processor stops there
 /// instead of running into empty memory.
 const JUMP_TO_ITSELF: [u8; 2] = [0x18, 0xFE];
+
+/// The ROM routines [`answer`] answers, where a frame's run stops.
+const ROM_ANSWERED: [u16; 3] = [rom::MASK_INT, rom::PRINT_A_2, rom::HL_HL_X_DE];
 
 /// Answers a ROM routine at the program counter, with no ROM present. The
 /// interrupt is a step of its own ([`Zx::step`]), so it arrives here at
@@ -197,7 +202,7 @@ impl<R: Rules + Default> Machine<R> {
             ram,
         };
         let mut zx = Zx::new(&snap, None);
-        for at in [rom::MASK_INT, rom::PRINT_A_2, rom::HL_HL_X_DE] {
+        for at in ROM_ANSWERED {
             zx.mem[usize::from(at)..usize::from(at) + 2].copy_from_slice(&JUMP_TO_ITSELF);
         }
         Machine {
@@ -278,17 +283,24 @@ impl<R: Rules> Machine<R> {
     }
 
     /// Runs one 50 Hz frame: the game's [`Rules`] are asked before it, at
-    /// each instruction and after it, and the ROM routines the game calls
-    /// are answered. Presses and lets go the keys of a [`Hold`] as the
-    /// program reaches its ends, and returns the [watched](Machine::watch)
-    /// addresses the program arrived at, in order.
+    /// its addresses and the instruction after each, and after it, and the
+    /// ROM routines the game calls are answered. Presses and lets go the
+    /// keys of a [`Hold`] as the program reaches its ends, and returns the
+    /// [watched](Machine::watch) addresses the program arrived at, in order.
+    ///
+    /// In between, the processor runs on its own ([`Next::Run`]): nothing is
+    /// asked at an instruction nobody asks about.
     pub fn run_frame(&mut self) -> Vec<u16> {
-        self.run_frame_observing(|_| {})
+        self.run(None)
     }
 
     /// [`Machine::run_frame`], with `see` shown the machine before each
     /// instruction, for checks that follow what the game does.
     pub fn run_frame_observing(&mut self, mut see: impl FnMut(&Zx)) -> Vec<u16> {
+        self.run(Some(&mut see))
+    }
+
+    fn run(&mut self, mut see: Option<&mut dyn FnMut(&Zx)>) -> Vec<u16> {
         let Machine {
             zx,
             watch,
@@ -298,7 +310,10 @@ impl<R: Rules> Machine<R> {
             rules,
         } = self;
         rules.before_frame(zx);
+        // Rules asked everywhere, or an observer, take the frame a step at
+        // a time.
         let every = rules.addresses().is_none();
+        let each_step = every || see.is_some();
         if !marks
             .as_ref()
             .is_some_and(|m| m.built_from(watch, hold.as_ref(), rules.addresses()))
@@ -313,13 +328,15 @@ impl<R: Rules> Machine<R> {
             zx.keys[held.row] |= held.bits;
         }
         let mut pressing = holding.is_some();
-        // Whether the last instruction was one asked about: the rules are
-        // asked at the one after it too.
+        // Whether the last place asked about was marked: the rules are asked
+        // at the instruction after it too, so it is taken a step on its own.
         let mut after = false;
-        zx.run_frame(|z| {
-            see(z);
+        zx.run_frame(&marks.stops, |z| {
+            if let Some(see) = see.as_mut() {
+                see(z);
+            }
             let pc = z.pc();
-            let marked = marks.marked(pc);
+            let marked = marks.asked.contains(pc);
             if let Some(hold) = hold.as_ref() {
                 if marked {
                     if pc == hold.from {
@@ -340,8 +357,17 @@ impl<R: Rules> Machine<R> {
                 rules.at(z, pc);
             }
             after = marked;
+            // Held keys the rules let go of here are pressed again before
+            // the next instruction, so that is taken a step on its own.
+            let let_go = pressing && hold.as_ref().is_some_and(|h| z.keys[h.row] & h.bits != 0);
             // Only the ROM's addresses can be answered.
-            z.pc() < 0x4000 && answer(z)
+            if z.pc() < 0x4000 && answer(z) {
+                Next::Ask
+            } else if each_step || marked || let_go {
+                Next::Step
+            } else {
+                Next::Run
+            }
         });
         *holding = if pressing { hold.clone() } else { None };
         self.rules.after_frame(&mut self.zx);
@@ -450,6 +476,41 @@ mod tests {
         for pc in [0x8000, 0x8001, 0x8002, 0x8003] {
             assert!(m.rules.asked.contains(&pc), "{pc:04x}");
         }
+    }
+
+    /// Rules asked at 0x8001 that let go of A to G at the instruction
+    /// after it.
+    #[derive(Default)]
+    struct LetsGo;
+
+    impl Rules for LetsGo {
+        fn addresses(&self) -> Option<&[u16]> {
+            Some(&[0x8001])
+        }
+        fn at(&mut self, z: &mut Zx, pc: u16) {
+            if pc == 0x8002 {
+                z.keys[ASDFG.0] |= ASDFG.1;
+            }
+        }
+    }
+
+    #[test]
+    fn held_keys_the_rules_let_go_of_are_down_again_at_the_next_instruction() {
+        let (row, bits) = ASDFG;
+        let mut m = super::Machine::<LetsGo>::blank(0x8000, 0xC000);
+        // NOP; NOP; NOP; LD A,0xFD; IN A,(0xFE); LD (0x9000),A; JR 0x8000.
+        m.zx.mem[0x8000..0x800C].copy_from_slice(&[
+            0x00, 0x00, 0x00, 0x3E, 0xFD, 0xDB, 0xFE, 0x32, 0x00, 0x90, 0x18, 0xF4,
+        ]);
+        m.zx.mem[0x9000] = 0xFF;
+        m.hold = Some(Hold {
+            from: 0x8000,
+            until: vec![],
+            row,
+            bits,
+        });
+        m.run_frame();
+        assert_eq!(m.zx.mem[0x9000] & bits, 0, "read with the keys down");
     }
 
     #[test]
@@ -566,7 +627,7 @@ mod tests {
         let z = &m.zx;
         assert_eq!((z.pc(), z.sp()), (0x8000, 0x7FF0));
         assert_eq!(&z.mem[0x8000..0x8002], &[0xAB, 0xCD]);
-        for at in [rom::MASK_INT, rom::PRINT_A_2, rom::HL_HL_X_DE] {
+        for at in ROM_ANSWERED {
             assert_eq!(
                 &z.mem[usize::from(at)..usize::from(at) + 2],
                 &JUMP_TO_ITSELF
