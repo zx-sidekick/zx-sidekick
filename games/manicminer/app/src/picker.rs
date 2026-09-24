@@ -9,7 +9,7 @@
 use manicminer::play::Training;
 use sidekick_frontend::gamepad::Layout;
 use sidekick_frontend::overlay::{self, HEIGHT};
-use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight};
+use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, span};
 
 use crate::frontend::PANEL_W;
 
@@ -292,15 +292,6 @@ const SWITCH_HEAD: f32 = 22.0;
 /// A row's height, and the space it takes.
 const PITCH: f32 = 34.0;
 
-fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
-    Span {
-        text,
-        size,
-        weight,
-        colour,
-    }
-}
-
 /// A pad button in the legend: its letter, or the PlayStation's mark.
 enum Badge {
     Button(&'static str),
@@ -354,12 +345,12 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
         canvas.round_rect(rx + 2.0, top + 2.0, rw - 4.0, PITCH - 8.0, 6.0, SELECTED);
     };
     level_box(fonts, canvas, p, rx, y + 56.0, rw, focus == Row::Level);
-    spaced(
-        fonts,
+    fonts.spaced(
         canvas,
         rx + 14.0,
         y + 56.0 + LEVEL_BOX + 16.0,
         "TRAINING",
+        11.0,
         LABEL,
     );
     let mut top = y + switches_top;
@@ -536,16 +527,6 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
     fonts.word(canvas, hx + 2.0, hy, hh, "cancel");
 }
 
-/// A small label with its letters spread out, as Starquake's panel has.
-fn spaced(fonts: &mut Fonts, canvas: &mut Canvas, mut x: f32, y: f32, text: &str, colour: Rgb) {
-    let mut buf = [0u8; 4];
-    for c in text.chars() {
-        let s = span(c.encode_utf8(&mut buf), 11.0, Weight::SemiBold, colour);
-        fonts.text(Some(canvas), x, y, None, 1.0, std::slice::from_ref(&s));
-        x += fonts.advance(c, 11.0, Weight::SemiBold) + 11.0 * 0.14;
-    }
-}
-
 /// The guidance level, as Starquake's picker shows it: the number and its
 /// name between arrows, a notch a level, and what the level adds.
 fn level_box(
@@ -562,12 +543,12 @@ fn level_box(
         canvas.round_rect(x, y, w, LEVEL_BOX, 10.0, ACCENT);
         canvas.round_rect(x + 2.0, y + 2.0, w - 4.0, LEVEL_BOX - 4.0, 8.0, SELECTED);
     }
-    spaced(
-        fonts,
+    fonts.spaced(
         canvas,
         x + 16.0,
         y + 14.0,
         "GUIDANCE LEVEL",
+        11.0,
         if focused { LABEL_FOCUSED } else { LABEL },
     );
     let arrow = |on: bool| match (on, focused) {

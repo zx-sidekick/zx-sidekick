@@ -11,7 +11,7 @@
 use manicminer::guide::{self, COLUMNS, Cavern, Patrol, ROWS, Tile};
 use manicminer::preview::{End, Jump};
 use sidekick_frontend::overlay::{self, HEIGHT, PICTURE_W};
-use sidekick_frontend::text::{Canvas, Fonts, Rgb, Span, Weight};
+use sidekick_frontend::text::{Canvas, Fonts, Rgb, Weight, span};
 
 use crate::frontend::PANEL_W;
 use crate::picker::LEVELS;
@@ -111,32 +111,6 @@ impl Follow {
     }
 }
 
-fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
-    Span {
-        text,
-        size,
-        weight,
-        colour,
-    }
-}
-
-/// A small label with its letters spread out, as Starquake's panel has.
-fn spaced(fonts: &mut Fonts, canvas: &mut Canvas, mut x: f32, y: f32, text: &str, colour: Rgb) {
-    let mut buf = [0u8; 4];
-    for c in text.chars() {
-        let s = span(c.encode_utf8(&mut buf), 11.0, Weight::SemiBold, colour);
-        fonts.text(Some(canvas), x, y, None, 1.0, std::slice::from_ref(&s));
-        x += fonts.advance(c, 11.0, Weight::SemiBold) + 11.0 * 0.14;
-    }
-}
-
-fn spaced_width(fonts: &Fonts, text: &str) -> f32 {
-    text.chars()
-        .map(|c| fonts.advance(c, 11.0, Weight::SemiBold) + 11.0 * 0.14)
-        .sum::<f32>()
-        - 11.0 * 0.14
-}
-
 /// Draws the panel at guidance `level` beside the picture.
 pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, view: &View, level: u8) {
     let window_w = overlay::width(PANEL_W);
@@ -146,14 +120,14 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, view: &View, level: u8) {
     canvas.round_rect(PICTURE_W, 0.0, 1.0, HEIGHT, 0.0, RULE);
 
     // The level in the corner opposite the label, with its name under it.
-    spaced(fonts, canvas, left, 26.0, "GUIDANCE", LABEL);
+    fonts.spaced(canvas, left, 26.0, "GUIDANCE", 11.0, LABEL);
     let title = if level == 0 {
         "OFF".to_string()
     } else {
         format!("LEVEL {level}")
     };
-    let tw = spaced_width(fonts, &title);
-    spaced(fonts, canvas, right - tw, 26.0, &title, BRIGHT);
+    let tw = fonts.spaced_width(&title, 11.0);
+    fonts.spaced(canvas, right - tw, 26.0, &title, 11.0, BRIGHT);
     if level == 0 {
         return;
     }
@@ -185,12 +159,12 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, view: &View, level: u8) {
 
     // The cavern: its number and name.
     let top = 86.0;
-    spaced(
-        fonts,
+    fonts.spaced(
         canvas,
         left,
         top,
         &format!("CAVERN {} OF 20", cavern.number + 1),
+        11.0,
         LABEL,
     );
     fonts.text(
@@ -224,7 +198,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, view: &View, level: u8) {
     ];
     for (i, (label, value, colour)) in figures.iter().enumerate() {
         let x = left + col * i as f32;
-        spaced(fonts, canvas, x, fy, label, LABEL);
+        fonts.spaced(canvas, x, fy, label, 11.0, LABEL);
         fonts.text(
             Some(canvas),
             x,
@@ -253,7 +227,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, view: &View, level: u8) {
         );
         return;
     }
-    spaced(fonts, canvas, left, my, "THE CAVERN", LABEL);
+    fonts.spaced(canvas, left, my, "THE CAVERN", 11.0, LABEL);
     let cy = my + 22.0;
     cells(canvas, cavern, level, left, cy);
     if level >= 3 {
