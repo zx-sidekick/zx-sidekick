@@ -106,10 +106,16 @@ impl Args {
         self.dir.join(name)
     }
 
-    /// The tape, read from the folder; exits when it cannot be.
+    /// The tape, read from the folder; exits when it cannot be, or when it
+    /// is not the tape these facts are about.
     #[must_use]
     pub fn tape(&self) -> Vec<u8> {
-        read(&self.dir, "starquake.tap")
+        let bytes = read(&self.dir, "starquake.tap");
+        if !starquake::facts::is_supported_tape(&bytes) {
+            eprintln!("starquake.tap is not the tape this version supports");
+            std::process::exit(2);
+        }
+        bytes
     }
 }
 

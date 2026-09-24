@@ -28,6 +28,9 @@
 //!   piece placed in it when the game enters it; and that the pieces and
 //!   the core's holes are drawn from the graphics table as the core column
 //!   reads it.
+//! - `training [frames]`: checks each training switch holds what it
+//!   promises in play and leaves the rest alone, and that with every switch
+//!   off the machine writes nothing into the game.
 //! - `map [walks]`: has the game draw every room and reads the map from
 //!   them, then walks Blob at random through play from many rooms and checks
 //!   that he never leaves a room through an edge the map shows closed, and
@@ -50,8 +53,19 @@ fn read(dir: &Path, name: &str) -> Vec<u8> {
     })
 }
 
+/// The tape, which must be the one these facts are about: another release
+/// would load and then fail in confusing ways, or give other numbers.
+fn tape(dir: &Path) -> Vec<u8> {
+    let bytes = read(dir, "starquake.tap");
+    if !starquake::facts::is_supported_tape(&bytes) {
+        eprintln!("starquake.tap is not the tape this version supports");
+        std::process::exit(2);
+    }
+    bytes
+}
+
 fn machine(dir: &Path) -> Machine {
-    Machine::from_tape(&read(dir, "starquake.tap"), ENTRY_PC, ENTRY_SP).unwrap_or_else(|e| {
+    Machine::from_tape(&tape(dir), ENTRY_PC, ENTRY_SP).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(2);
     })
@@ -272,7 +286,9 @@ fn rom_check(dir: &Path, frames: u64) -> bool {
         "rom: {}/{total} calls match the real ROM ({skipped} more not compared: an interrupt landed inside)",
         total - failures
     );
-    failures == 0 && total > 0
+    // Every routine compared at least once: a script that stopped reaching
+    // play would compare only the interrupts, and must not pass.
+    failures == 0 && stats.iter().all(|s| s.0 > 0)
 }
 
 /// Boots a Spectrum with the real ROM, types `LOAD ""` on the keyboard, and
@@ -283,7 +299,7 @@ fn entry_check(dir: &Path) -> bool {
     const LD_BYTES: u16 = 0x0556;
     /// Where LD-BYTES sends its own return, pushed before it loads.
     const SA_LD_RET: u16 = 0x053F;
-    let tap = read(dir, "starquake.tap");
+    let tap = tape(dir);
     let mut blocks = Vec::new();
     let mut i = 0;
     while i + 2 <= tap.len() {
@@ -2400,7 +2416,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "usage: starquake-check rom|entry|keys|facts|map|shot <assets-dir> [frames] [out-dir]"
+                "usage: starquake-check rom|entry|keys|facts|training|map|shot <assets-dir> [frames] [out-dir]"
             );
             std::process::exit(2);
         }
