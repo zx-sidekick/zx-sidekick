@@ -243,6 +243,16 @@ impl<G: Screen> ApplicationHandler for App<G> {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        // F11 leaves or enters fullscreen on every screen, the tape prompt
+        // too, where the player may want the desktop to find the file.
+        if let WindowEvent::KeyboardInput { event: key, .. } = &event
+            && key.state == ElementState::Pressed
+            && !key.repeat
+            && key.physical_key == PhysicalKey::Code(KeyCode::F11)
+        {
+            self.toggle_fullscreen();
+            return;
+        }
         if self.prompt.is_some() {
             self.prompt_event(event_loop, event);
             return;
@@ -324,14 +334,27 @@ impl<G: Screen> ApplicationHandler for App<G> {
 }
 
 impl<G: Screen> App<G> {
+    /// How many pixels a unit of the prompt's layout takes: the screen's
+    /// density, but never more than lets the whole prompt fit the window,
+    /// which a small or scaled-up screen would otherwise crop.
+    fn prompt_scale(&self) -> f64 {
+        let fit = self.window.as_ref().map_or(self.scale, |w| {
+            let size = w.inner_size();
+            (f64::from(size.width) / f64::from(prompt::WIDTH))
+                .min(f64::from(size.height) / f64::from(prompt::HEIGHT))
+        });
+        self.scale.min(fit).max(0.25)
+    }
+
     /// The frame buffer's size: the Spectrum's screen with its border, or,
     /// for the prompt, the window at its real pixel density so the text is
     /// sharp.
     fn buffer_size(&self) -> (u32, u32) {
         if self.prompt.is_some() {
+            let s = self.prompt_scale();
             (
-                (f64::from(prompt::WIDTH) * self.scale).round() as u32,
-                (f64::from(prompt::HEIGHT) * self.scale).round() as u32,
+                (f64::from(prompt::WIDTH) * s).round() as u32,
+                (f64::from(prompt::HEIGHT) * s).round() as u32,
             )
         } else {
             (window_w(G::PANEL_W) as u32, FULL_H as u32)
@@ -424,6 +447,7 @@ impl<G: Screen> App<G> {
     }
 
     fn prompt_event(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) {
+        let scale = self.prompt_scale();
         let Some(prompt) = &mut self.prompt else {
             return;
         };
@@ -442,7 +466,7 @@ impl<G: Screen> App<G> {
                     let (x, y) = p
                         .window_pos_to_pixel((position.x as f32, position.y as f32))
                         .unwrap_or_else(|(x, y)| (x.max(0) as usize, y.max(0) as usize));
-                    let s = self.scale as f32;
+                    let s = scale as f32;
                     prompt.cursor(x as f32 / s, y as f32 / s)
                 }
                 None => Outcome::Nothing,
@@ -454,8 +478,12 @@ impl<G: Screen> App<G> {
             } => prompt.clicked(),
             WindowEvent::DroppedFile(path) => prompt.dropped(&path),
             WindowEvent::Resized(size) => {
+                // The prompt is drawn to fit: a buffer larger than the
+                // window would be cropped, not shrunk.
+                let (w, h) = self.buffer_size();
                 if let Some(p) = &mut self.pixels {
                     let _ = p.resize_surface(size.width, size.height);
+                    let _ = p.resize_buffer(w, h);
                 }
                 Outcome::Redraw
             }
@@ -474,7 +502,7 @@ impl<G: Screen> App<G> {
                         pixels: p.frame_mut(),
                         width: w as usize,
                         height: h as usize,
-                        scale: self.scale as f32,
+                        scale: scale as f32,
                     };
                     prompt.draw(&mut canvas);
                     if let Err(e) = p.render() {
@@ -526,7 +554,11 @@ impl<G: Screen> App<G> {
 /// # Errors
 ///
 /// If the window or its surface cannot be made, or the game stopped
-/// unexpectedly.
+/// unexpectedly, with why.
+///
+/// # Panics
+///
+/// If the machine's thread panicked while holding the reason it stopped.
 pub fn run<G: Screen>(
     game: &'static Game,
     shared: Arc<Shared<G>>,
@@ -556,7 +588,13 @@ pub fn run<G: Screen>(
         return Err(e);
     }
     if app.shared.dead.load(Ordering::Relaxed) {
-        return Err("the game stopped unexpectedly; see the panic above".into());
+        return Err(app
+            .shared
+            .why
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap_or_else(|| "the game stopped unexpectedly".into()));
     }
     Ok(())
 }

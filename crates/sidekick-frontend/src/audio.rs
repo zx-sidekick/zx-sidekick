@@ -2,6 +2,7 @@
 //! playing them.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -89,6 +90,7 @@ fn build<T>(
     config: cpal::StreamConfig,
     channels: usize,
     queue: Arc<Mutex<VecDeque<f32>>>,
+    lost: Arc<AtomicBool>,
 ) -> Result<cpal::Stream, String>
 where
     T: cpal::SizedSample + cpal::FromSample<f32>,
@@ -102,7 +104,10 @@ where
                     frame.fill(T::from_sample(q.pop_front().unwrap_or(0.0)));
                 }
             },
-            |e| eprintln!("sound error: {e}"),
+            move |e| {
+                eprintln!("sound error: {e}");
+                lost.store(true, Ordering::Relaxed);
+            },
             None,
         )
         .map_err(|e| e.to_string())
@@ -112,6 +117,9 @@ where
 pub struct Output {
     queue: Arc<Mutex<VecDeque<f32>>>,
     rate: u32,
+    /// Set when the stream reports an error, such as the device being
+    /// unplugged: it takes no more samples.
+    lost: Arc<AtomicBool>,
 }
 
 impl Output {
@@ -129,22 +137,34 @@ impl Output {
         let channels = config.channels as usize;
         let rate = config.sample_rate;
         let queue = Arc::new(Mutex::new(VecDeque::<f32>::new()));
+        let lost = Arc::new(AtomicBool::new(false));
         // The device decides the sample format. CoreAudio converts from f32
         // for us, but WASAPI in shared mode and ALSA `hw:` devices that
         // default to 16-bit reject an f32 stream outright, which showed up as
         // "no sound" and a silent game.
         let stream = match supported.sample_format() {
-            cpal::SampleFormat::F32 => build::<f32>(&device, config, channels, queue.clone())?,
-            cpal::SampleFormat::I16 => build::<i16>(&device, config, channels, queue.clone())?,
-            cpal::SampleFormat::U16 => build::<u16>(&device, config, channels, queue.clone())?,
+            cpal::SampleFormat::F32 => {
+                build::<f32>(&device, config, channels, queue.clone(), lost.clone())?
+            }
+            cpal::SampleFormat::I16 => {
+                build::<i16>(&device, config, channels, queue.clone(), lost.clone())?
+            }
+            cpal::SampleFormat::U16 => {
+                build::<u16>(&device, config, channels, queue.clone(), lost.clone())?
+            }
             other => return Err(format!("sample format {other} is not supported")),
         };
         stream.play().map_err(|e| e.to_string())?;
-        Ok((Output { queue, rate }, stream))
+        Ok((Output { queue, rate, lost }, stream))
     }
 
     pub fn rate(&self) -> u32 {
         self.rate
+    }
+
+    /// Whether the stream has failed, and plays nothing more.
+    pub fn lost(&self) -> bool {
+        self.lost.load(Ordering::Relaxed)
     }
 
     /// Queues `samples` to play.

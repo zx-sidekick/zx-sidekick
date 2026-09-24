@@ -77,6 +77,9 @@ pub struct Shared<G> {
     /// Set when the machine's thread stopped without being asked to, so the
     /// window can report it rather than sitting on a frozen picture.
     pub dead: AtomicBool,
+    /// Why it stopped, for the message the player sees: a program started
+    /// from a file manager has no console to read it in.
+    pub why: Mutex<Option<String>>,
     /// The game's own part: what its panel shows, which both sides use.
     pub game: G,
 }
@@ -90,6 +93,7 @@ impl<G> Shared<G> {
             input: Mutex::new(Input::default()),
             quit: AtomicBool::new(false),
             dead: AtomicBool::new(false),
+            why: Mutex::new(None),
             game,
         })
     }
@@ -148,6 +152,12 @@ impl Pacer {
         // little on the period when the sound card's buffer strays outside
         // two to three frames' worth, so the two clocks cannot drift apart.
         let mut period = FRAME_PERIOD;
+        // A sound device that has gone (headphones unplugged) takes no more
+        // samples, and its queue would stay full and slow every frame: pace
+        // by the clock alone from then on.
+        if self.audio.as_ref().is_some_and(audio::Output::lost) {
+            self.audio = None;
+        }
         if let Some(out) = &self.audio {
             out.push(self.beeper.samples());
             let frame = out.rate() as usize / FRAMES_PER_SECOND as usize;
@@ -189,9 +199,20 @@ fn machine_thread<G>(
         Ok(Ok(())) => {}
         Ok(Err(e)) => {
             eprintln!("error: {e}");
+            *shared.why.lock().unwrap() = Some(e);
             shared.dead.store(true, Ordering::Relaxed);
         }
-        Err(_) => shared.dead.store(true, Ordering::Relaxed),
+        Err(panic) => {
+            // The panic has printed itself where there is a console; the
+            // message is kept for the dialog where there is not.
+            let said = panic
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "no reason given".into());
+            *shared.why.lock().unwrap() = Some(format!("the game stopped unexpectedly: {said}"));
+            shared.dead.store(true, Ordering::Relaxed);
+        }
     }
     // Either way the game is over, so the window should come down with it.
     shared.quit.store(true, Ordering::Relaxed);

@@ -68,6 +68,8 @@ pub struct Prompt {
     /// starts the game with it instead.
     unkept: Option<Tape>,
     hover: Option<Button>,
+    /// Where the pointer last was, in the prompt's layout units.
+    pointer: Option<(f32, f32)>,
 }
 
 impl Prompt {
@@ -78,10 +80,15 @@ impl Prompt {
             message: None,
             unkept: None,
             hover: None,
+            pointer: None,
         }
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) {
+        // The highlight follows the buttons when a message moves them.
+        if self.pointer.is_some() {
+            self.hover = self.under_pointer();
+        }
         canvas.clear(BACKGROUND);
         let left = 120.0;
 
@@ -271,11 +278,18 @@ impl Prompt {
         }
     }
 
-    pub fn cursor(&mut self, x: f32, y: f32) -> Outcome {
-        let over = [Button::Locate, Button::Website].into_iter().find(|&b| {
+    /// The button under the pointer, where the buttons are now.
+    fn under_pointer(&mut self) -> Option<Button> {
+        let (x, y) = self.pointer?;
+        [Button::Locate, Button::Website].into_iter().find(|&b| {
             let (bx, by, w, h) = self.button(b);
             x >= bx && x < bx + w && y >= by && y < by + h
-        });
+        })
+    }
+
+    pub fn cursor(&mut self, x: f32, y: f32) -> Outcome {
+        self.pointer = Some((x, y));
+        let over = self.under_pointer();
         if over == self.hover {
             return Outcome::Nothing;
         }
@@ -283,7 +297,10 @@ impl Prompt {
         Outcome::Redraw
     }
 
+    /// A click, on whatever is under the pointer now: a message appearing
+    /// moves the buttons, so what was hovered before may no longer be there.
     pub fn clicked(&mut self) -> Outcome {
+        self.hover = self.under_pointer();
         match self.hover {
             Some(Button::Locate) => self.locate(),
             Some(Button::Website) => self.website(),
@@ -636,6 +653,23 @@ mod tests {
             p.message.as_ref().unwrap().title,
             "That file could not be read"
         );
+    }
+
+    #[test]
+    fn a_click_acts_on_what_is_under_the_pointer_now() {
+        let mut p = Prompt::new(&crate::tests::GAME);
+        let (x, y, w, h) = p.button(Button::Locate);
+        p.cursor(x + w / 2.0, y + h / 2.0);
+        assert!(p.hover == Some(Button::Locate));
+        // A refusal appears and moves the buttons down, the pointer staying
+        // where it was: a click there is no longer on Locate.
+        p.message = Some(Message {
+            title: "t".into(),
+            detail: "d".into(),
+        });
+        let (_, moved, _, _) = p.button(Button::Locate);
+        assert!(moved > y + h / 2.0, "the button moved");
+        assert!(matches!(p.clicked(), Outcome::Nothing));
     }
 
     #[test]
