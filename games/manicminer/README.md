@@ -14,7 +14,7 @@ Not needed. Manic Miner calls no ROM routine and never enables interrupts. The o
 
 - [x] The game runs from your tape with no ROM, from the title and its tune to game over
 - [x] Its text in the Spectrum's own letters, from the ROM's character set
-- [x] Keyboard, and the Kempston joystick the game finds by itself: the arrows with Left Control, or a gamepad with A or X to jump (built; not yet checked by hand)
+- [x] Keyboard, and the Kempston joystick the game finds by itself: the arrows with Left Control, or a gamepad with the bottom or left face button to jump (A or X on an Xbox pad, B or Y on a Nintendo one) (built; not yet checked by hand)
 - [x] Pausing freezes the emulation, with the game's own pause keys (A to G) or Start, and the window says so (built; not yet checked by hand)
 - [x] Sound (built; not yet checked by ear)
 - [x] Tape prompt: find or drop the tape or its `.zip`, kept in the user data directory (built; not yet checked by hand)

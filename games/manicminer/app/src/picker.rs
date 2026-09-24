@@ -139,7 +139,7 @@ impl Picker {
         self.training
     }
 
-    /// The guidance level in force, 0 to 3.
+    /// The guidance level in force, 0 to 4.
     pub fn level(&self) -> u8 {
         self.level
     }
@@ -369,7 +369,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
         let focused = focus == Row::Switch(i);
         if focused {
             highlight(canvas, top);
-            says = Some(*does);
+            says = Some((*does).to_string());
         }
         let colour = if focused { TITLE } else { VALUE_DIM };
         fonts.text(
@@ -407,7 +407,10 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
     let focused = focus == Row::Cavern;
     if focused {
         highlight(canvas, top);
-        says = Some("Enter or A goes there with the game's own cheat, starting that cavern again.");
+        says = Some(format!(
+            "Enter or {} goes there with the game's own cheat, starting that cavern again.",
+            layout.confirm_name()
+        ));
     }
     let colour = if focused { TITLE } else { VALUE_DIM };
     fonts.text(
@@ -450,7 +453,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
     // What the highlighted row does, on a line of its own under them all,
     // so choosing a row never moves the rest.
     if let Some(does) = says {
-        let s = [span(does, 12.0, Weight::Regular, HINT_KEY)];
+        let s = [span(&does, 12.0, Weight::Regular, HINT_KEY)];
         let tw = fonts.measure(&s);
         fonts.text(Some(canvas), rx + (rw - tw) / 2.0, top + 2.0, None, 1.0, &s);
     }
@@ -458,16 +461,17 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
     // The actions: pressed once, a row turns red and asks again.
     canvas.round_rect(x + 1.0, y + rule, w - 2.0, 1.0, 0.0, RULE);
     let mut ay = y + rule + 8.0;
+    let ok = layout.confirm_name();
     for (row, label, again) in [
         (
             Row::EndGame,
             "End this game",
-            "Press Enter or A again to end it",
+            format!("Press Enter or {ok} again to end it"),
         ),
         (
             Row::Exit,
             "Exit Manic Miner",
-            "Press Enter or A again to exit",
+            format!("Press Enter or {ok} again to exit"),
         ),
     ] {
         let rh = action_h(row);
@@ -502,7 +506,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
                 ay + 31.0,
                 None,
                 1.0,
-                &[span(again, 12.0, Weight::Regular, DANGER_TEXT)],
+                &[span(&again, 12.0, Weight::Regular, DANGER_TEXT)],
             );
         }
         ay += rh + 4.0;

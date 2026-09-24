@@ -1298,9 +1298,16 @@ impl Panel {
         canvas.round_rect(x + 1.0, y + rule, w - 2.0, 1.0, 0.0, RULE);
         for &row in &actions {
             let rh = action_h(row);
+            let ok = guidance.pad().confirm_name();
             let (label, again) = match row {
-                Setting::EndGame => ("End this game", "Press Enter or A again to end it"),
-                _ => ("Exit Starquake", "Press Enter or A again to exit"),
+                Setting::EndGame => (
+                    "End this game",
+                    format!("Press Enter or {ok} again to end it"),
+                ),
+                _ => (
+                    "Exit Starquake",
+                    format!("Press Enter or {ok} again to exit"),
+                ),
             };
             let armed = guidance.armed() == Some(row);
             let focused = guidance.focus() == row;
@@ -1333,7 +1340,7 @@ impl Panel {
                     ay + 31.0,
                     None,
                     1.0,
-                    &[span(again, 12.0, Weight::Regular, DANGER_TEXT)],
+                    &[span(&again, 12.0, Weight::Regular, DANGER_TEXT)],
                 );
             }
             ay += rh + 4.0;

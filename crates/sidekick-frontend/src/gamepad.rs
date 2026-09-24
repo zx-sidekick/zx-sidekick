@@ -60,6 +60,16 @@ impl Layout {
     pub fn confirms_east(self) -> bool {
         self == Layout::Nintendo
     }
+
+    /// The confirm button's name in a sentence, as this pad has it printed:
+    /// A on an Xbox or a Nintendo pad, the cross on a PlayStation one.
+    #[must_use]
+    pub fn confirm_name(self) -> &'static str {
+        match self {
+            Layout::PlayStation => "cross",
+            Layout::Xbox | Layout::Nintendo => "A",
+        }
+    }
 }
 
 /// How far a stick must move before it counts as a direction.
@@ -286,5 +296,12 @@ mod tests {
         );
         presses(&mut pad, y, y);
         assert!(!pad.north, "a held top button is one switch");
+    }
+
+    #[test]
+    fn the_confirm_button_is_named_as_the_pad_has_it() {
+        assert_eq!(Layout::Xbox.confirm_name(), "A");
+        assert_eq!(Layout::Nintendo.confirm_name(), "A");
+        assert_eq!(Layout::PlayStation.confirm_name(), "cross");
     }
 }

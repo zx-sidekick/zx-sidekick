@@ -84,8 +84,9 @@ GUIDANCE AND TRAINING
 
 Esc, or Select on a gamepad, opens the picker over the game, which
 waits while it is open. Up and down choose a row; left and right
-change it; Enter or A keeps what you chose, and Esc, B or Select closes
-the picker without changing anything.
+change it; Enter or A (the cross on a PlayStation pad) keeps what you
+chose, and Esc, B (the circle) or Select closes the picker without
+changing anything.
 
 The guidance level at the top chooses what the panel beside the
 picture shows. It starts at 0 each time the program starts.
