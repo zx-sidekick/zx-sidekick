@@ -13,37 +13,17 @@ use super::track::Scene;
 use sidekick_frontend::gamepad;
 use sidekick_frontend::notice;
 use sidekick_frontend::overlay::{HEIGHT as WINDOW_H, PICTURE_W};
+use sidekick_frontend::text::palette::{
+    ACCENT, ACCENT_DIM, ARROW, BRIGHT, DANGER, DANGER_FILL, DANGER_TEXT, DANGER_TITLE, DIALOG, DIM,
+    FOCUS_TITLE as TITLE, HINT_KEY, LABEL, LABEL_FOCUSED, NOTCH, ON_TEXT, PANEL, PAUSED, QUIET,
+    RULE, SELECTED, SOFT, SWITCH_OFF, SWITCH_ON, VALUE_DIM,
+};
 use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, palette, span};
 use starquake::facts::Kind;
 use starquake::map::{COLS, ROWS, Step};
 
-const PANEL: Rgb = [0x0f, 0x11, 0x17];
-const RULE: Rgb = [0x22, 0x26, 0x2f];
-const LABEL: Rgb = [0x6d, 0x73, 0x85];
-const BRIGHT: Rgb = [0xe6, 0xe8, 0xee];
-const QUIET: Rgb = [0x5a, 0x60, 0x72];
-const SOFT: Rgb = [0xaa, 0xb0, 0xbf];
-const DIM: Rgb = [0x08, 0x09, 0x0c];
-const DIALOG: Rgb = [0x10, 0x12, 0x18];
-const SELECTED: Rgb = [0x1b, 0x20, 0x30];
-const ACCENT: Rgb = [0x8f, 0xb4, 0xff];
-const ARROW: Rgb = [0x4a, 0x51, 0x63];
-const HINT_KEY: Rgb = [0xa9, 0xaf, 0xbe];
-const SWITCH_ON: Rgb = [0x2f, 0x6f, 0x4f];
-const SWITCH_OFF: Rgb = [0x2a, 0x2f, 0x3b];
-const ON_TEXT: Rgb = [0xea, 0xff, 0xf2];
-const TITLE: Rgb = [0xf2, 0xf3, 0xf7];
-const VALUE_DIM: Rgb = [0xc9, 0xcd, 0xd8];
-const ACCENT_DIM: Rgb = [0x5e, 0x7f, 0xb8];
-const NOTCH: Rgb = [0x26, 0x2b, 0x37];
-const LABEL_FOCUSED: Rgb = [0xa9, 0xc5, 0xff];
 const BUTTON_LINE: Rgb = [0x3a, 0x3f, 0x4c];
-const DANGER: Rgb = [0xe0, 0x67, 0x6f];
-const DANGER_FILL: Rgb = [0x2a, 0x16, 0x18];
-const DANGER_TITLE: Rgb = [0xf3, 0xc6, 0xca];
-const DANGER_TEXT: Rgb = [0xe0, 0xa3, 0xa8];
 const TRAINING: Rgb = [0xf5, 0xb8, 0x4b];
-const PAUSED: Rgb = [0x5d, 0x63, 0x72];
 const CODE: Rgb = [0x7f, 0xd1, 0xc7];
 const FLOOR: Rgb = [0x22, 0x2c, 0x45];
 /// A room level 6 draws that has never been walked through: the same shape,

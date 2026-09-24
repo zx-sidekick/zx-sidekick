@@ -11,21 +11,15 @@
 use manicminer::guide::{self, COLUMNS, Cavern, Patrol, ROWS, Tile};
 use manicminer::preview::{End, Jump};
 use sidekick_frontend::overlay::{self, HEIGHT, PICTURE_W};
+use sidekick_frontend::text::palette::{BRIGHT, DANGER, LABEL, PANEL, QUIET, RULE, SOFT};
 use sidekick_frontend::text::{Canvas, Fonts, Rgb, Weight, span};
 
 use crate::frontend::PANEL_W;
 use crate::picker::LEVELS;
 
-const PANEL: Rgb = [0x0f, 0x11, 0x17];
-const RULE: Rgb = [0x22, 0x26, 0x2f];
-const LABEL: Rgb = [0x6d, 0x73, 0x85];
-const BRIGHT: Rgb = [0xe6, 0xe8, 0xee];
-const SOFT: Rgb = [0xaa, 0xb0, 0xbf];
-const QUIET: Rgb = [0x5a, 0x60, 0x72];
 const CELLS: Rgb = [0x14, 0x17, 0x1f];
 const FLOOR: Rgb = [0x2c, 0x38, 0x58];
 const WALL: Rgb = [0x4a, 0x50, 0x62];
-const DANGER: Rgb = [0xe0, 0x67, 0x6f];
 const CRUMBLE: Rgb = [0xf5, 0xb8, 0x4b];
 const CONVEYOR: Rgb = [0x7f, 0xd1, 0xc7];
 const PATROL: Rgb = [0xc9, 0x8b, 0xff];

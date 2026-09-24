@@ -25,6 +25,58 @@ pub mod palette {
     pub const BADGE: Rgb = [0x1c, 0x1f, 0x27];
     pub const BADGE_LINE: Rgb = [0x3a, 0x3e, 0x4a];
     pub const BADGE_TEXT: Rgb = [0xd0, 0xd4, 0xdc];
+
+    // The games' own screens, the panel and the picker, alike in both (#177).
+    /// The panel beside the picture.
+    pub const PANEL: Rgb = [0x0f, 0x11, 0x17];
+    /// A thin line between parts of a screen.
+    pub const RULE: Rgb = [0x22, 0x26, 0x2f];
+    /// A small spaced label.
+    pub const LABEL: Rgb = [0x6d, 0x73, 0x85];
+    /// Text that matters.
+    pub const BRIGHT: Rgb = [0xe6, 0xe8, 0xee];
+    /// Text beside it, softer.
+    pub const SOFT: Rgb = [0xaa, 0xb0, 0xbf];
+    /// Text that only explains.
+    pub const QUIET: Rgb = [0x5a, 0x60, 0x72];
+    /// The shade laid over the picture behind a dialog.
+    pub const DIM: Rgb = [0x08, 0x09, 0x0c];
+    /// A dialog's face.
+    pub const DIALOG: Rgb = [0x10, 0x12, 0x18];
+    /// The highlighted row's face.
+    pub const SELECTED: Rgb = [0x1b, 0x20, 0x30];
+    /// The highlight's edge.
+    pub const ACCENT: Rgb = [0x8f, 0xb4, 0xff];
+    /// A notch reached, when its row is not highlighted.
+    pub const ACCENT_DIM: Rgb = [0x5e, 0x7f, 0xb8];
+    /// An arrow that would do something, unhighlighted.
+    pub const ARROW: Rgb = [0x4a, 0x51, 0x63];
+    /// What the highlighted row does, and the keys' words.
+    pub const HINT_KEY: Rgb = [0xa9, 0xaf, 0xbe];
+    /// A notch not reached, or an arrow that does nothing.
+    pub const NOTCH: Rgb = [0x26, 0x2b, 0x37];
+    /// The highlighted box's label.
+    pub const LABEL_FOCUSED: Rgb = [0xa9, 0xc5, 0xff];
+    /// A switch's On, filled.
+    pub const SWITCH_ON: Rgb = [0x2f, 0x6f, 0x4f];
+    /// A switch's Off, filled.
+    pub const SWITCH_OFF: Rgb = [0x2a, 0x2f, 0x3b];
+    /// The word on a filled On.
+    pub const ON_TEXT: Rgb = [0xea, 0xff, 0xf2];
+    /// A highlighted row's name.
+    pub const FOCUS_TITLE: Rgb = [0xf2, 0xf3, 0xf7];
+    /// A row's name and value, unhighlighted.
+    pub const VALUE_DIM: Rgb = [0xc9, 0xcd, 0xd8];
+    /// A choice not chosen.
+    pub const PAUSED: Rgb = [0x5d, 0x63, 0x72];
+    /// An action pressed once: its edge.
+    pub const DANGER: Rgb = [0xe0, 0x67, 0x6f];
+    /// Its face.
+    pub const DANGER_FILL: Rgb = [0x2a, 0x16, 0x18];
+    /// Its name.
+    pub const DANGER_TITLE: Rgb = [0xf3, 0xc6, 0xca];
+    /// What it asks.
+    pub const DANGER_TEXT: Rgb = [0xe0, 0xa3, 0xa8];
 }
 
 /// The four arrows, in the order a legend lists them.
