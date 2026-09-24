@@ -73,6 +73,9 @@ gives it one:
                        title screen starts a game. Over USB or
                        Bluetooth.
 
+F11, or Control-Command-F on a Mac (which keeps F11 for itself), leaves
+fullscreen, or goes back to it. The game starts fullscreen.
+
 Pausing, with Start or with the game's own pause keys (A to G), stops
 the game where it is and the window says so. Any key, a direction, jump
 or Start goes on. The keys H to Enter turn the music on and off, as the

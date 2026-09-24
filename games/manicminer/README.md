@@ -28,7 +28,7 @@ Not needed. Manic Miner calls no ROM routine and never enables interrupts. The o
 cargo run --release -p zx-sidekick-manicminer
 ```
 
-The game starts fullscreen, and F11 leaves it for a window. `--headless FRAMES [DIR [LEVEL]]` runs without a window, ENTER held on the title screen to start a game, and writes a PNG of the window every 250 frames: the picture, and the panel at guidance level `LEVEL` (0 unless given).
+The game starts fullscreen, and F11 (Control-Command-F on a Mac, where F11 never reaches a program) leaves it for a window. `--headless FRAMES [DIR [LEVEL]]` runs without a window, ENTER held on the title screen to start a game, and writes a PNG of the window every 250 frames: the picture, and the panel at guidance level `LEVEL` (0 unless given).
 
 ## How it is checked
 
