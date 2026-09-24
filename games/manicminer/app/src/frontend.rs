@@ -295,12 +295,17 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
             let mut picker = shared.game.picker.lock().unwrap();
             (picker.take(), picker.training())
         };
-        // A game, not the title screen or the demo: what the picker does to
-        // a game waits for one, as Starquake's does.
-        let in_game = since_loop < PLAY_FRAMES && machine.zx.mem[usize::from(at::DEMO)] == 0;
+        // What the picker does to a game waits for one, as Starquake's
+        // does. `playing` runs from a game's first pass to the title, through a
+        // death or the air counted into the score; `in_game` is the part
+        // with its main loop running, where the cheat's keys are read and
+        // the switches steer. Neither is ever true in the demo (#153).
+        let in_game = playing && since_loop < PLAY_FRAMES;
         match action {
             Some(Action::Exit) => return Ok(()),
-            Some(Action::EndGame) if in_game => {
+            // Ended whenever a game is on, the bonus count too: CAPS SHIFT
+            // and SPACE are read on its main loop's next pass.
+            Some(Action::EndGame) if playing => {
                 ending = true;
                 freeze.thaw();
             }
@@ -336,7 +341,9 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
             keys: input.keys,
             joystick,
         };
-        if freeze.poll(held, pause, since_loop < PLAY_FRAMES) {
+        // Only a game freezes: the demo reads the pause keys too, and
+        // pausing it left a paused demo where the player wanted a game.
+        if freeze.poll(held, pause, in_game) {
             pause = false;
             shared.screen.lock().unwrap().3 = true;
             std::thread::sleep(Duration::from_millis(20));
