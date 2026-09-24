@@ -68,6 +68,21 @@ jobs:
           fi
           echo "GAME=$game" >> "$GITHUB_ENV"
 
+      # A tag names a version: every crate of the game must carry it, or the
+      # program would report another. A candidate's -rc.N is the tag's alone.
+      - name: The tag matches the crates' version
+        if: github.ref_type == 'tag'
+        run: |
+          want="${GITHUB_REF_NAME#"$GAME"-v}"
+          want="${want%%-rc.*}"
+          for manifest in games/"$GAME"/*/Cargo.toml; do
+            have=$(grep -m1 '^version = ' "$manifest" | cut -d'"' -f2)
+            if [ "$have" != "$want" ]; then
+              echo "::error::$manifest says $have, the tag $GITHUB_REF_NAME says $want"
+              exit 1
+            fi
+          done
+
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.98.1"

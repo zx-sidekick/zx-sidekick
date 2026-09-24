@@ -27,9 +27,12 @@ jobs:
             exit 1
           fi
 
+      # Tapes, snapshots, ROMs, and what holds them: a zipped tape (which
+      # the program itself reads), an RZX recording (a whole snapshot and
+      # the play after it), a screen dump, a disk image.
       - name: No game dumps anywhere in the tree
         run: |
-          stray=$(git ls-files | grep -iE '\.(tap|tzx|z80|sna|rom|szx)$' || true)
+          stray=$(git ls-files | grep -iE '\.(tap|tzx|z80|sna|rom|szx|zip|rzx|scr|dsk)$' || true)
           if [ -n "$stray" ]; then
             echo "::error::Game or ROM dumps must never be committed:"
             echo "$stray"
@@ -187,11 +190,12 @@ jobs:
             exit 1
           fi
 
-  # The Intel Mac binary is only built by the release, cross-compiled on
-  # Apple silicon since GitHub has no Intel macOS runners left. Building it
+  # The Intel Mac binaries are only built by the release, cross-compiled on
+  # Apple silicon since GitHub has no Intel macOS runners left. Building them
   # here as well means a change that breaks only that target shows up on its
   # pull request rather than when a version is tagged. The tests already run
-  # natively on the other three, so this builds and checks that it starts.
+  # natively on the other three, so this builds every game's program and
+  # checks that each starts.
   intel-mac:
     name: build for Intel Mac
     runs-on: macos-latest
@@ -209,22 +213,29 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --release --locked -p zx-sidekick-starquake --target x86_64-apple-darwin
+        run: >-
+          cargo build --release --locked --target x86_64-apple-darwin
+          -p zx-sidekick-starquake -p zx-sidekick-manicminer
 
-      # The same check as the release's: from an empty folder, headless, it
+      # The same check as the release's: from an empty folder, headless, each
       # must say it found no tape and exit 1, which runs the x86_64 binary
       # under Rosetta.
       - name: Smoke test
         run: |
-          bin="$PWD/target/x86_64-apple-darwin/release/zx-sidekick-starquake"
-          empty=$(mktemp -d)
-          cd "$empty"
-          set +e
-          out=$(HOME="$empty" XDG_DATA_HOME="$empty" "$bin" --headless 1 "$empty/shots" 2>&1)
-          code=$?
-          set -e
-          echo "$out"
-          [ "$code" -eq 1 ] && grep -q "no copy of Starquake found" <<< "$out"
+          for game in starquake manicminer; do
+            bin="$PWD/target/x86_64-apple-darwin/release/zx-sidekick-$game"
+            empty=$(mktemp -d)
+            set +e
+            out=$(cd "$empty" && HOME="$empty" XDG_DATA_HOME="$empty" "$bin" --headless 1 "$empty/shots" 2>&1)
+            code=$?
+            set -e
+            echo "$out"
+            # In a loop, a failed `&&` does not stop the script: say so.
+            if [ "$code" -ne 1 ] || ! grep -q "no copy of .* found" <<< "$out"; then
+              echo "::error::zx-sidekick-$game did not start as it should"
+              exit 1
+            fi
+          done
 
   # The checks against the game (starquake-check) are deliberately absent: they need
   # the player's own copy of the game and a Spectrum ROM, which are never
