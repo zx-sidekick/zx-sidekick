@@ -289,9 +289,9 @@ fn a_frame_runs_until_its_time_is_used_and_carries_the_rest() {
     let mut z = machine(&[0x18, 0xFE]);
     z.interrupts = false;
     let mut asked = 0;
-    z.run_frame(|_| {
+    z.run_frame(&Breakpoints::new(), |_| {
         asked += 1;
-        false
+        Next::Step
     });
     assert_eq!(z.frame, 1);
     assert!(z.bus.t < 12, "carried {} T-states", z.bus.t);
@@ -302,11 +302,52 @@ fn a_frame_runs_until_its_time_is_used_and_carries_the_rest() {
 fn a_hook_that_handles_the_instruction_is_not_stepped_over() {
     let mut z = machine(&[0x18, 0xFE]);
     z.interrupts = false;
-    z.run_frame(|z| {
+    z.run_frame(&Breakpoints::new(), |z| {
         z.bus.t += 1000;
-        z.bus.t < 5000
+        if z.bus.t < 5000 {
+            Next::Ask
+        } else {
+            Next::Step
+        }
     });
     assert_eq!(z.pc(), 0x8000);
+}
+
+#[test]
+fn a_run_is_asked_about_only_where_it_stops() {
+    // INC A; INC A; INC A; JR -5 (back to the first), with interrupts off.
+    let mut z = machine(&[0x3C, 0x3C, 0x3C, 0x18, 0xFB]);
+    z.interrupts = false;
+    let stops: Breakpoints = [0x8002].into_iter().collect();
+    let mut asked = Vec::new();
+    z.run_frame(&stops, |z| {
+        asked.push(z.pc());
+        Next::Run
+    });
+    assert_eq!(asked[0], 0x8000, "at the frame's start");
+    assert!(asked.len() > 1);
+    assert!(asked[1..].iter().all(|&pc| pc == 0x8002), "{asked:x?}");
+    assert_eq!(z.frame, 1);
+}
+
+#[test]
+fn a_run_stops_after_the_interrupt() {
+    // JR $, with MASK-INT at 0x0038 as EI; RET.
+    let mut z = machine(&[0x18, 0xFE]);
+    z.low_writable = true;
+    z.mem[0x38] = 0xFB;
+    z.mem[0x39] = 0xC9;
+    z.set_interrupts(true);
+    let mut asked = Vec::new();
+    z.run_frame(&Breakpoints::new(), |z| {
+        asked.push(z.pc());
+        Next::Run
+    });
+    // The handler is short enough to return while the line is still up,
+    // so the interrupt can be taken again; each time, the run stops there.
+    assert_eq!(asked[0], 0x8000);
+    assert!(asked.len() > 1);
+    assert!(asked[1..].iter().all(|&pc| pc == 0x0038), "{asked:x?}");
 }
 
 #[test]

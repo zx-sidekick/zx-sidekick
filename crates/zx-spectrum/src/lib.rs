@@ -17,7 +17,7 @@ use zx_core::timing::contention;
 
 pub use keys::Key;
 pub use rustzx_z80;
-pub use rustzx_z80::Step;
+pub use rustzx_z80::{Breakpoints, Step, Stop};
 pub use zx_core::timing::FRAME_T;
 
 /// Flag bits of F.
@@ -180,6 +180,18 @@ impl Z80Bus for Bus {
 pub struct Zx {
     cpu: Z80,
     pub bus: Bus,
+}
+
+/// What a frame's hook asks for next, where [`Zx::run_frame`] asked it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Next {
+    /// The hook dealt with the program counter itself: ask again where it
+    /// is now.
+    Ask,
+    /// Take one step, an instruction or the interrupt, then ask again.
+    Step,
+    /// Run to the next stop, then ask again.
+    Run,
 }
 
 impl Deref for Zx {
@@ -381,26 +393,45 @@ impl Zx {
         self.cpu.step(&mut self.bus)
     }
 
-    /// Runs one 50 Hz frame. `hook` is asked before each instruction, and
-    /// when it returns true it has dealt with the program counter itself.
-    pub fn run_frame(&mut self, mut hook: impl FnMut(&mut Zx) -> bool) {
+    /// Runs one 50 Hz frame. `hook` is asked at the frame's start and
+    /// wherever the run stops, and says what comes next ([`Next`]); a run
+    /// stops at each of `stops` an instruction arrives at, after an
+    /// interrupt, and at the frame's end.
+    pub fn run_frame(&mut self, stops: &Breakpoints, mut hook: impl FnMut(&mut Zx) -> Next) {
         while self.bus.t < FRAME_T {
-            if hook(self) {
-                continue;
+            match hook(self) {
+                Next::Ask => {}
+                Next::Step => {
+                    self.step();
+                }
+                Next::Run => {
+                    let _ = self.run_to(stops);
+                }
             }
-            self.step();
         }
         self.bus.t -= FRAME_T;
         self.bus.frame += 1;
+    }
+
+    /// Runs until an instruction arrives at one of `stops`, an interrupt is
+    /// taken, or the frame's time is used, and says which: the processor's
+    /// own loop (zx-sidekick/rustzx#8).
+    fn run_to(&mut self, stops: &Breakpoints) -> Stop {
+        self.cpu.run_until(&mut self.bus, stops, |b| b.t >= FRAME_T)
     }
 
     /// Runs, frame by frame, until execution reaches one of `targets` (after
     /// at least one instruction). Returns `false` if that takes more than
     /// `max_frames` frames.
     pub fn run_until_any(&mut self, targets: &[u16], max_frames: u32) -> bool {
+        let stops: Breakpoints = targets.iter().copied().collect();
         let mut frames = 0;
-        let mut first = true;
         loop {
+            let arrived = match self.run_to(&stops) {
+                Stop::Limit => false,
+                Stop::Breakpoint(_) => true,
+                Stop::Interrupt => stops.contains(self.pc()),
+            };
             if self.bus.t >= FRAME_T {
                 self.bus.t -= FRAME_T;
                 self.bus.frame += 1;
@@ -409,11 +440,9 @@ impl Zx {
                     return false;
                 }
             }
-            if !first && targets.contains(&self.pc()) {
+            if arrived {
                 return true;
             }
-            first = false;
-            self.step();
         }
     }
 
