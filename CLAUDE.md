@@ -48,7 +48,7 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
   plays it. Add `--headless <frames> <dir> [level]` for screenshots of real play at a guidance level.
 - Manic Miner (#142): `cargo run --release -p manicminer-check -- all "$SK_ASSETS"`
   runs its checks (`entry`, `keys`, `facts`, `font`, `training`; `entry` and the font's
-  comparison need `48.rom`), which the gate runs when `SK_ASSETS` holds
+  comparison need `48.rom`, and `all` says `entry` was not run without it), which the gate runs when `SK_ASSETS` holds
   `manic.tap`; `cargo run --release -p zx-sidekick-manicminer --
   "$SK_ASSETS/manic.tap"` plays it, with `--headless <frames> <dir> [level]`
   for screenshots of the window with the guidance panel (#153).
@@ -58,8 +58,8 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
   same in all of them; its tag is `GAME-vX.Y.Z`, or `GAME-vX.Y.Z-rc.N` for a
   candidate, published as a pre-release. Starquake's releases from before the
   monorepo are the plain `vX.Y.Z` tags. `release.yml` builds on
-  `starquake-v*`, and the archives keep their names
-  (`zx-sidekick-starquake-vX.Y.Z-<target>`).
+  `starquake-v*` and `manicminer-v*`, and names each archive after its
+  game (`zx-sidekick-<game>-vX.Y.Z-<target>`).
 - `scripts/changelog.sh GAME` rewrites `games/GAME/CHANGELOG.md` from the
   commit subjects, one section per release, leaving out commits that touched
   only other games; run it after tagging a release and land it in a PR.

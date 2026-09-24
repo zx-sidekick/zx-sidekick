@@ -47,12 +47,17 @@ fi
 # `cargo install cargo-about --locked --features cli`.
 if command -v cargo-about > /dev/null; then
   echo "=== third-party attributions"
-  cargo about generate --all-features about.hbs -o "${TMPDIR:-/tmp}/THIRD-PARTY.md" 2> /dev/null
-  if diff -q THIRD-PARTY.md "${TMPDIR:-/tmp}/THIRD-PARTY.md" > /dev/null; then
+  # A fresh file each run, and cargo-about's own failure counted: a file
+  # left by an earlier run must never stand in for this one.
+  generated=$(mktemp)
+  if ! cargo about generate --all-features about.hbs -o "$generated" 2> /dev/null; then
+    failed+=("THIRD-PARTY.md: cargo about generate failed")
+  elif diff -q THIRD-PARTY.md "$generated" > /dev/null; then
     echo "THIRD-PARTY.md is current"
   else
     failed+=("THIRD-PARTY.md is stale: cargo about generate --all-features about.hbs -o THIRD-PARTY.md")
   fi
+  rm -f "$generated"
 else
   skipped+=("THIRD-PARTY.md: cargo-about is not installed")
 fi
@@ -93,6 +98,7 @@ if [ -n "${SK_ASSETS:-}" ] && [ -f "$SK_ASSETS/starquake.tap" ]; then
     run "rom (answers vs real ROM)" cargo run -q --release -p starquake-check --locked -- rom "$SK_ASSETS" 6000
   else
     skipped+=("entry and rom: no 48.rom in SK_ASSETS")
+    skipped+=("facts: the teleport booths were not walked into, no 48.rom in SK_ASSETS")
   fi
 else
   skipped+=("the checks against the game: SK_ASSETS is not set, or has no starquake.tap")
@@ -109,6 +115,7 @@ if [ -n "${SK_ASSETS:-}" ] && { [ -f "$SK_ASSETS/manic.tap" ] || [ -f "$SK_ASSET
     run "manicminer entry (real ROM loader)" cargo run -q --release -p manicminer-check --locked -- entry "$SK_ASSETS"
   else
     skipped+=("Manic Miner's entry: no 48.rom in SK_ASSETS")
+    skipped+=("manicminer font: the character set was not compared with the ROM's, no 48.rom in SK_ASSETS")
   fi
 else
   skipped+=("Manic Miner's checks: SK_ASSETS is not set, or has no manic.tap")

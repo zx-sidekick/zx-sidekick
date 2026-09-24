@@ -310,7 +310,10 @@ fn facts_check(dir: &Path) -> bool {
         if demo { "set" } else { "NOT set" },
         if game { "clear" } else { "NOT clear" }
     );
-    in_order && quit && demo && game && guide_check(dir) && preview_check(dir)
+    // Every part runs and reports, whatever an earlier one found.
+    let guide = guide_check(dir);
+    let preview = preview_check(dir);
+    in_order && quit && demo && game && guide && preview
 }
 
 /// A cavern with Willy walked right for `right` frames and left to stand.
@@ -619,7 +622,12 @@ fn font_check(dir: &Path) -> bool {
             );
             ok &= same;
         }
-        Ok(_) => println!("font: 48.rom is not the ROM this version knows; not compared"),
+        Ok(_) => {
+            // A ROM that is there but not the 48K's is a mistake to say out
+            // loud, not a comparison to leave out.
+            println!("font: 48.rom is NOT the 48K ROM this version knows");
+            ok = false;
+        }
         Err(_) => println!("font: no 48.rom to compare the character set with"),
     }
     let m = into_play(dir);
@@ -903,8 +911,16 @@ fn main() {
         "font" => font_check(dir),
         "training" => training_check(dir),
         "all" => {
+            // entry needs the ROM's own loader; without it, it is left out
+            // and says so, as the gate does.
+            let entry = if dir.join("48.rom").exists() {
+                entry_check(dir)
+            } else {
+                println!("entry: NOT RUN, no 48.rom in {}", dir.display());
+                true
+            };
             let results = [
-                entry_check(dir),
+                entry,
                 keys_check(dir),
                 facts_check(dir),
                 font_check(dir),
