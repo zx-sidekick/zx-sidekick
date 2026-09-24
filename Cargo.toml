@@ -39,7 +39,7 @@ manicminer = { path = "games/manicminer/manicminer" }
 # so a bump is one line and no two packages drift apart (#145).
 #
 # The processor, our fork of rustzx-z80, pinned to a commit.
-rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "eac068fdd012d1ecded062f77e754fc039370ca0" }
+rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "29926112ebbde20ec067fec584054ae0f1f053ff" }
 # Deflate for the PNGs and the planet picture: the pure-Rust backend only.
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 # The window, its pixels, sound and gamepads.

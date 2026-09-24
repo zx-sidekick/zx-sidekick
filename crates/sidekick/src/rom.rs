@@ -45,10 +45,9 @@ pub fn answer(z: &mut Zx) -> bool {
     }
 }
 
-/// Returns from a routine: pops the program counter.
+/// Returns from a routine, as its `RET` does.
 fn ret(z: &mut Zx) {
-    let pc = z.pop();
-    z.set_pc(pc);
+    z.ret();
 }
 
 /// Counts the frame, then `EI; RET`.
