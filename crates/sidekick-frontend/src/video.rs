@@ -11,7 +11,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::window::{Fullscreen, Theme, Window, WindowId};
 
 use crate::overlay::{self, Overlay};
@@ -151,6 +151,8 @@ struct App<G: Screen> {
     /// from. winit only synthesises key-ups on focus loss on some platforms,
     /// so this is cleared when the window stops listening.
     held: HashSet<KeyCode>,
+    /// The modifier keys down now, for the Mac's fullscreen shortcut.
+    modifiers: ModifiersState,
     /// The game frame last painted, so the same one is not painted twice.
     shown: u64,
     /// The panel and what the game lays over the picture, at the window's
@@ -161,6 +163,17 @@ struct App<G: Screen> {
     /// game was paused, and the size it was drawn at. It is redrawn only
     /// when this changes.
     drawn: Option<(G::Stamp, bool, (u32, u32))>,
+}
+
+/// Whether `code`, with `modifiers` down, leaves or enters fullscreen: F11,
+/// and on a Mac, where F11 never reaches a program (it is a media key
+/// without Fn, and Show Desktop with it), the Mac's own Control-Command-F
+/// (#183).
+fn fullscreen_key(code: KeyCode, modifiers: ModifiersState, macos: bool) -> bool {
+    code == KeyCode::F11
+        || (macos
+            && code == KeyCode::KeyF
+            && modifiers.contains(ModifiersState::CONTROL | ModifiersState::SUPER))
 }
 
 /// The whole scale a window fits at on a screen `width` by `height`
@@ -243,12 +256,17 @@ impl<G: Screen> ApplicationHandler for App<G> {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
-        // F11 leaves or enters fullscreen on every screen, the tape prompt
-        // too, where the player may want the desktop to find the file.
+        if let WindowEvent::ModifiersChanged(modifiers) = &event {
+            self.modifiers = modifiers.state();
+        }
+        // The fullscreen key leaves or enters fullscreen on every screen,
+        // the tape prompt too, where the player may want the desktop to
+        // find the file.
         if let WindowEvent::KeyboardInput { event: key, .. } = &event
             && key.state == ElementState::Pressed
             && !key.repeat
-            && key.physical_key == PhysicalKey::Code(KeyCode::F11)
+            && let PhysicalKey::Code(code) = key.physical_key
+            && fullscreen_key(code, self.modifiers, cfg!(target_os = "macos"))
         {
             self.toggle_fullscreen();
             return;
@@ -266,10 +284,6 @@ impl<G: Screen> ApplicationHandler for App<G> {
                 if let PhysicalKey::Code(code) = event.physical_key
                     && !event.repeat
                 {
-                    if event.state == ElementState::Pressed && code == KeyCode::F11 {
-                        self.toggle_fullscreen();
-                        return;
-                    }
                     if event.state == ElementState::Pressed && self.game_key(code) {
                         return;
                     }
@@ -580,6 +594,7 @@ pub fn run<G: Screen>(
         error: None,
         shown: u64::MAX,
         held: HashSet::new(),
+        modifiers: ModifiersState::empty(),
         overlay: None,
         painter: G::Painter::default(),
         drawn: None,
@@ -602,6 +617,25 @@ pub fn run<G: Screen>(
 
 #[cfg(test)]
 mod tests {
+    use winit::keyboard::{KeyCode, ModifiersState};
+
+    use super::{fullscreen_key, windowed_scale};
+
+    #[test]
+    fn f11_everywhere_and_control_command_f_on_a_mac() {
+        let none = ModifiersState::empty();
+        let both = ModifiersState::CONTROL | ModifiersState::SUPER;
+        assert!(fullscreen_key(KeyCode::F11, none, false));
+        assert!(fullscreen_key(KeyCode::F11, none, true));
+        assert!(fullscreen_key(KeyCode::KeyF, both, true));
+        assert!(!fullscreen_key(KeyCode::KeyF, both, false), "not off a Mac");
+        assert!(!fullscreen_key(KeyCode::KeyF, ModifiersState::SUPER, true));
+        assert!(
+            !fullscreen_key(KeyCode::KeyF, none, true),
+            "the Spectrum's F"
+        );
+    }
+
     #[test]
     fn the_window_opens_at_the_largest_whole_scale_that_fits() {
         // With Starquake's panel the window is 456 by 256 Spectrum pixels a

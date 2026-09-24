@@ -198,9 +198,10 @@ and up tell you things you could not have known.
                                                 zap rays cost no energy
                                                 and cannot kill
 
-  F11                  Leave fullscreen, or go back to it. The game
-                       starts fullscreen; the window it leaves you with
-                       is as large as your screen allows.
+  F11, or              Leave fullscreen, or go back to it. The game
+  Control-Command-F    starts fullscreen; the window it leaves you with
+  on a Mac             is as large as your screen allows. A Mac keeps
+                       F11 for itself.
   Esc, or Select       Open the guidance picker. The game waits while
   on a gamepad         it is open.
   Tab, or the top      At levels 5 and 6, switch the route to a missing
