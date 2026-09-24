@@ -9,6 +9,11 @@
 use manicminer::play::Training;
 use sidekick_frontend::gamepad::Layout;
 use sidekick_frontend::overlay::{self, HEIGHT};
+use sidekick_frontend::text::palette::{
+    ACCENT, ACCENT_DIM, ARROW, BRIGHT, DANGER, DANGER_FILL, DANGER_TEXT, DANGER_TITLE, DIALOG, DIM,
+    FOCUS_TITLE as TITLE, HINT_KEY, LABEL, LABEL_FOCUSED, NOTCH, ON_TEXT, PAUSED, RULE, SELECTED,
+    SWITCH_OFF, SWITCH_ON, VALUE_DIM,
+};
 use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, span};
 
 use crate::frontend::PANEL_W;
@@ -279,29 +284,7 @@ impl sidekick_frontend::picker::Picker for Picker {
     }
 }
 
-const DIM: Rgb = [0x08, 0x09, 0x0c];
-const DIALOG: Rgb = [0x10, 0x12, 0x18];
 const LINE: Rgb = [0x2a, 0x2f, 0x3b];
-const RULE: Rgb = [0x22, 0x26, 0x2f];
-const LABEL: Rgb = [0x6d, 0x73, 0x85];
-const BRIGHT: Rgb = [0xe6, 0xe8, 0xee];
-const SELECTED: Rgb = [0x1b, 0x20, 0x30];
-const ACCENT: Rgb = [0x8f, 0xb4, 0xff];
-const ARROW: Rgb = [0x4a, 0x51, 0x63];
-const HINT_KEY: Rgb = [0xa9, 0xaf, 0xbe];
-const SWITCH_ON: Rgb = [0x2f, 0x6f, 0x4f];
-const SWITCH_OFF: Rgb = [0x2a, 0x2f, 0x3b];
-const ON_TEXT: Rgb = [0xea, 0xff, 0xf2];
-const TITLE: Rgb = [0xf2, 0xf3, 0xf7];
-const VALUE_DIM: Rgb = [0xc9, 0xcd, 0xd8];
-const PAUSED: Rgb = [0x5d, 0x63, 0x72];
-const DANGER: Rgb = [0xe0, 0x67, 0x6f];
-const DANGER_FILL: Rgb = [0x2a, 0x16, 0x18];
-const DANGER_TITLE: Rgb = [0xf3, 0xc6, 0xca];
-const DANGER_TEXT: Rgb = [0xe0, 0xa3, 0xa8];
-const LABEL_FOCUSED: Rgb = [0xa9, 0xc5, 0xff];
-const ACCENT_DIM: Rgb = [0x5e, 0x7f, 0xb8];
-const NOTCH: Rgb = [0x26, 0x2b, 0x37];
 
 /// The guidance level's box, as tall as Starquake's.
 const LEVEL_BOX: f32 = 184.0;
