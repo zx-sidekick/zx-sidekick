@@ -14,6 +14,7 @@ pub mod gamepad;
 pub mod input;
 pub mod notice;
 pub mod overlay;
+pub mod picker;
 pub mod prompt;
 pub mod tape;
 pub mod text;
@@ -81,6 +82,10 @@ pub struct Shared<G> {
     /// Why it stopped, for the message the player sees: a program started
     /// from a file manager has no console to read it in.
     pub why: Mutex<Option<String>>,
+    /// Set by the window when it loses the focus, and taken by the game's
+    /// loop, which pauses a game in play then (#25): switching away should
+    /// not leave Blob or Willy to die unattended.
+    pub unfocused: AtomicBool,
     /// The game's own part: what its panel shows, which both sides use.
     pub game: G,
 }
@@ -95,6 +100,7 @@ impl<G> Shared<G> {
             quit: AtomicBool::new(false),
             dead: AtomicBool::new(false),
             why: Mutex::new(None),
+            unfocused: AtomicBool::new(false),
             game,
         })
     }

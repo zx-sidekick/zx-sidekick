@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sidekick_frontend::video::{Key, Screen};
-use sidekick_frontend::{Game, Pacer, freeze, gamepad, overlay, tape, text::Canvas};
+use sidekick_frontend::{Game, Pacer, freeze, gamepad, overlay, picker, tape, text::Canvas};
 use starquake::Machine;
 use starquake::facts::{
     ENTRY_PC, ENTRY_SP, end_game_hold, high_scores, routine, write_high_scores,
@@ -123,20 +123,14 @@ impl Screen for Guide {
         let open = guidance.picker_open();
         let mut quit = false;
         match code {
-            KeyCode::Escape if open => guidance.back(),
-            KeyCode::Escape => guidance.open(),
+            KeyCode::Escape if !open => guidance.open(),
             // Tab, no key of the Spectrum's, switches the piece route (#51).
             KeyCode::Tab if !open => guidance.switch_piece(),
             _ if !open => return Key::Pass,
-            KeyCode::ArrowUp => guidance.focus_up(),
-            KeyCode::ArrowDown => guidance.focus_down(),
-            KeyCode::ArrowLeft => guidance.change(false),
-            KeyCode::ArrowRight => guidance.change(true),
-            KeyCode::Enter | KeyCode::NumpadEnter => {
-                guidance.enter();
+            _ => {
+                picker::key(&mut *guidance, code);
                 quit = guidance.take(guidance::Action::Exit);
             }
-            _ => {}
         }
         // Opening it: whatever was held is let go, as the game will not see
         // the key-ups.
@@ -158,8 +152,8 @@ impl Runner {
     /// taking the gamepad's side of it: up and down choose a row, left and
     /// right change a setting, A does the highlighted thing, and B or Select
     /// goes back. No time passes for the game, so its pacing starts again
-    /// from now. Returns no input for the frame it resumes on, so the button
-    /// that closed the picker is not also a shot in the game.
+    /// from now. The button that closed the picker is kept from the
+    /// game until it is let go, so it is not also a shot or a platform.
     fn hold_for_picker(&mut self) -> gamepad::Pad {
         while self.shared.game.guidance.lock().unwrap().picker_open()
             && !self.shared.quit.load(Ordering::Relaxed)
@@ -168,29 +162,14 @@ impl Runner {
             let pad = self.pad.poll();
             let mut guidance = self.shared.game.guidance.lock().unwrap();
             guidance.set_pad(pad.layout);
-            if pad.select || pad.cancel() {
-                guidance.back();
-            }
-            if pad.up {
-                guidance.focus_up();
-            }
-            if pad.down {
-                guidance.focus_down();
-            }
-            if pad.left {
-                guidance.change(false);
-            }
-            if pad.right {
-                guidance.change(true);
-            }
-            if pad.confirm() {
-                guidance.enter();
-                if guidance.take(guidance::Action::Exit) {
-                    self.shared.quit.store(true, Ordering::Relaxed);
-                }
+            picker::pad(&mut *guidance, &pad);
+            if guidance.take(guidance::Action::Exit) {
+                self.shared.quit.store(true, Ordering::Relaxed);
             }
         }
         self.pacer.restart();
+        // The button that closed it, still held, is kept from the game.
+        self.pad.hold_back_held();
         gamepad::Pad::default()
     }
 
@@ -317,6 +296,11 @@ impl Runner {
                 keys: input.keys,
                 joystick: input.joystick | pad.bits,
             };
+            // The window switched away from pauses a game in play, as the
+            // pause key does.
+            if self.shared.unfocused.swap(false, Ordering::Relaxed) {
+                pause = true;
+            }
             if freeze.poll(held, pause, tracker.scene == track::Scene::Play) {
                 pause = false;
                 self.shared.screen.lock().unwrap().3 = true;
