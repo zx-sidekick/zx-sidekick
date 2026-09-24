@@ -61,6 +61,14 @@ pub struct Hold {
 /// Each step may read and steer the machine; with nothing to do, a game's
 /// rules are `()`.
 pub trait Rules {
+    /// The addresses [`Rules::at`] does anything at, or `None` for every
+    /// instruction. With a list, the machine asks only there and at the
+    /// instruction just after each, where a key pressed for one read can be
+    /// let go (#187): asking at every instruction was most of a frame's
+    /// time.
+    fn addresses(&self) -> Option<&[u16]> {
+        None
+    }
     /// Before a frame is run.
     fn before_frame(&mut self, _z: &Zx) {}
     /// At `pc`, before the instruction there runs, after the machine's own
@@ -71,7 +79,50 @@ pub trait Rules {
 }
 
 /// No rules: the game runs as the machine runs it.
-impl Rules for () {}
+impl Rules for () {
+    fn addresses(&self) -> Option<&[u16]> {
+        Some(&[])
+    }
+}
+
+/// Which of the 65,536 addresses anything asks about as a frame runs: the
+/// watches, a hold's ends, and the rules' addresses, a bit each, so the
+/// question at each instruction is one bit test rather than a list search.
+/// Built again only when what it was built from changes.
+#[derive(Clone)]
+struct Marks {
+    bits: Box<[u64; 1024]>,
+    from: (Vec<u16>, Option<Hold>, Option<Vec<u16>>),
+}
+
+impl Marks {
+    fn new(watch: &[u16], hold: Option<&Hold>, rules: Option<&[u16]>) -> Marks {
+        let mut bits = Box::new([0u64; 1024]);
+        let hold_ends = hold
+            .into_iter()
+            .flat_map(|h| std::iter::once(h.from).chain(h.until.iter().copied()));
+        for at in watch
+            .iter()
+            .copied()
+            .chain(hold_ends)
+            .chain(rules.unwrap_or(&[]).iter().copied())
+        {
+            bits[usize::from(at >> 6)] |= 1 << (at & 63);
+        }
+        Marks {
+            bits,
+            from: (watch.to_vec(), hold.cloned(), rules.map(<[u16]>::to_vec)),
+        }
+    }
+
+    fn built_from(&self, watch: &[u16], hold: Option<&Hold>, rules: Option<&[u16]>) -> bool {
+        self.from.0 == watch && self.from.1.as_ref() == hold && self.from.2.as_deref() == rules
+    }
+
+    fn marked(&self, at: u16) -> bool {
+        self.bits[usize::from(at >> 6)] >> (at & 63) & 1 != 0
+    }
+}
 
 /// The emulated machine, running a game by its [`Rules`].
 #[derive(Clone)]
@@ -84,6 +135,8 @@ pub struct Machine<R> {
     /// The hold whose keys are down now, if any: a hold put in its place
     /// starts from its own `from`, with these keys let go.
     holding: Option<Hold>,
+    /// The addresses asked about, as last built.
+    marks: Option<Marks>,
     /// What the game does differently.
     pub rules: R,
 }
@@ -152,6 +205,7 @@ impl<R: Rules + Default> Machine<R> {
             watch: Vec::new(),
             hold: None,
             holding: None,
+            marks: None,
             rules: R::default(),
         }
     }
@@ -240,34 +294,54 @@ impl<R: Rules> Machine<R> {
             watch,
             hold,
             holding,
+            marks,
             rules,
         } = self;
         rules.before_frame(zx);
+        let every = rules.addresses().is_none();
+        if !marks
+            .as_ref()
+            .is_some_and(|m| m.built_from(watch, hold.as_ref(), rules.addresses()))
+        {
+            *marks = None;
+        }
+        let marks: &Marks =
+            marks.get_or_insert_with(|| Marks::new(watch, hold.as_ref(), rules.addresses()));
         let mut hits = Vec::new();
         // A hold put in place of the one whose keys are down lets them go.
         if let Some(held) = holding.take_if(|held| hold.as_ref() != Some(&*held)) {
             zx.keys[held.row] |= held.bits;
         }
         let mut pressing = holding.is_some();
+        // Whether the last instruction was one asked about: the rules are
+        // asked at the one after it too.
+        let mut after = false;
         zx.run_frame(|z| {
             see(z);
             let pc = z.pc();
-            if watch.contains(&pc) {
-                hits.push(pc);
-            }
+            let marked = marks.marked(pc);
             if let Some(hold) = hold.as_ref() {
-                if pc == hold.from {
-                    pressing = true;
-                } else if hold.until.contains(&pc) {
-                    pressing = false;
-                    z.keys[hold.row] |= hold.bits;
+                if marked {
+                    if pc == hold.from {
+                        pressing = true;
+                    } else if hold.until.contains(&pc) {
+                        pressing = false;
+                        z.keys[hold.row] |= hold.bits;
+                    }
                 }
                 if pressing {
                     z.keys[hold.row] &= !hold.bits;
                 }
             }
-            rules.at(z, pc);
-            answer(z)
+            if marked && watch.contains(&pc) {
+                hits.push(pc);
+            }
+            if every || marked || after {
+                rules.at(z, pc);
+            }
+            after = marked;
+            // Only the ROM's addresses can be answered.
+            z.pc() < 0x4000 && answer(z)
         });
         *holding = if pressing { hold.clone() } else { None };
         self.rules.after_frame(&mut self.zx);
@@ -328,6 +402,54 @@ mod tests {
         m.zx.mem[0x8000] = 0x00;
         m.zx.mem[0x8001..0x8003].copy_from_slice(&JUMP_TO_ITSELF);
         m
+    }
+
+    /// Rules that note every address they are asked at.
+    #[derive(Default)]
+    struct Noted {
+        asked: Vec<u16>,
+        only: Option<&'static [u16]>,
+    }
+
+    impl Rules for Noted {
+        fn addresses(&self) -> Option<&[u16]> {
+            self.only
+        }
+        fn at(&mut self, _z: &mut Zx, pc: u16) {
+            self.asked.push(pc);
+        }
+    }
+
+    /// NOP at 0x8000 to 0x8002, then JR back to 0x8000.
+    fn three_nops_round() -> super::Machine<Noted> {
+        let mut m = super::Machine::<Noted>::blank(0x8000, 0xC000);
+        m.zx.mem[0x8000..0x8005].copy_from_slice(&[0x00, 0x00, 0x00, 0x18, 0xFB]);
+        m
+    }
+
+    #[test]
+    fn rules_with_addresses_are_asked_there_and_at_the_instruction_after() {
+        let mut m = three_nops_round();
+        m.rules.only = Some(&[0x8001]);
+        m.run_frame();
+        assert!(!m.rules.asked.is_empty());
+        assert!(
+            m.rules.asked.iter().all(|&pc| pc == 0x8001 || pc == 0x8002),
+            "only 8001 and the instruction after it"
+        );
+        assert_eq!(
+            m.rules.asked.iter().filter(|&&pc| pc == 0x8001).count(),
+            m.rules.asked.iter().filter(|&&pc| pc == 0x8002).count()
+        );
+    }
+
+    #[test]
+    fn rules_without_addresses_are_asked_at_every_instruction() {
+        let mut m = three_nops_round();
+        m.run_frame();
+        for pc in [0x8000, 0x8001, 0x8002, 0x8003] {
+            assert!(m.rules.asked.contains(&pc), "{pc:04x}");
+        }
     }
 
     #[test]

@@ -50,7 +50,25 @@ pub struct Play {
     start_game: bool,
 }
 
+/// Every address [`Play`]'s `at` does anything at (#187): the key reads,
+/// the play loop's top, and training mode's steer points.
+const ADDRESSES: [u16; 9] = [
+    starquake::PLAY_INPUT,
+    starquake::CONTROLS_INPUT,
+    starquake::routine::MAIN_LOOP,
+    starquake::MENU_INPUT,
+    starquake::MENU_KEY,
+    starquake::decide::ENEMY_KILL.0,
+    starquake::decide::PATCH_KILL.0,
+    starquake::decide::FIELD_KILL.0,
+    starquake::decide::BAR_TAKE.0,
+];
+
 impl sidekick::Rules for Play {
+    fn addresses(&self) -> Option<&[u16]> {
+        Some(&ADDRESSES)
+    }
+
     /// What training mode holds still is read before the frame and put back
     /// after it, so the game runs its own way in between (#8).
     fn before_frame(&mut self, z: &Zx) {

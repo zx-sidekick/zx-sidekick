@@ -99,6 +99,20 @@ impl Z80Bus for Bus {
         self.t += clk as u32;
     }
 
+    /// Clocks with no memory request, one at a time where each may be held
+    /// up by the screen, all at once where none can be: above 0x7FFF or
+    /// below 0x4000 nothing is contended (#187). Manic Miner's block copies
+    /// spent much of a frame here.
+    fn wait_loop(&mut self, addr: u16, clk: usize) {
+        if self.events.is_none() && !contended(addr) {
+            self.t += clk as u32;
+            return;
+        }
+        for _ in 0..clk {
+            self.wait_no_mreq(addr, 1);
+        }
+    }
+
     fn wait_internal(&mut self, clk: usize) {
         self.t += clk as u32;
     }
