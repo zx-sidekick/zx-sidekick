@@ -41,17 +41,11 @@
 
 use std::path::{Path, PathBuf};
 
+use sidekick::check::{key, read_asset as read};
 use sidekick::machine::{JOY_DOWN, JOY_FIRE, JOY_LEFT, JOY_RIGHT, JOY_UP};
 use starquake::Machine;
 use starquake::facts::{CONTROL_METHOD, ENTRY_PC, ENTRY_SP, KEY_TABLES, PAUSE_KEY};
 use zx_spectrum::Key;
-
-fn read(dir: &Path, name: &str) -> Vec<u8> {
-    std::fs::read(dir.join(name)).unwrap_or_else(|e| {
-        eprintln!("cannot read {}: {e}", dir.join(name).display());
-        std::process::exit(2);
-    })
-}
 
 /// The tape, which must be the one these facts are about: another release
 /// would load and then fail in confusing ways, or give other numbers.
@@ -79,7 +73,6 @@ impl Script {
     fn apply(&mut self, m: &mut Machine, frame: u64) {
         let z = &mut m.zx;
         z.release_all_keys();
-        let key = |n| Key::by_name(n).expect("a key name");
         match frame {
             100..=104 => z.set_key(key("1"), true),
             150..=154 => z.set_key(key("0"), true),
@@ -296,87 +289,28 @@ fn rom_check(dir: &Path, frames: u64) -> bool {
 /// turn. The last block covers all of RAM, the stack included, so the
 /// loader's closing `RET` goes wherever the block says: the game's start.
 fn entry_check(dir: &Path) -> bool {
-    const LD_BYTES: u16 = 0x0556;
-    /// Where LD-BYTES sends its own return, pushed before it loads.
-    const SA_LD_RET: u16 = 0x053F;
-    let tap = tape(dir);
-    let mut blocks = Vec::new();
-    let mut i = 0;
-    while i + 2 <= tap.len() {
-        let len = usize::from(tap[i]) | usize::from(tap[i + 1]) << 8;
-        blocks.push(tap[i + 2..i + 2 + len].to_vec());
-        i += 2 + len;
-    }
-    let mut m = Machine::blank(0, 0).with_rom(&read(dir, "48.rom"));
-    let z = &mut m.zx;
-    let key = |n| Key::by_name(n).expect("a key name");
-    // Dismiss the copyright message, then LOAD "" and ENTER; later a key to
-    // go past the loader's PAUSE.
-    let typing: [(u64, &[&str]); 12] = [
-        (150, &["enter"]),
-        (160, &[]),
-        (200, &["j"]),
-        (210, &[]),
-        (230, &["symbol", "p"]),
-        (240, &[]),
-        (260, &["symbol", "p"]),
-        (270, &[]),
-        (290, &["enter"]),
-        (300, &[]),
-        (500, &["space"]),
-        (510, &[]),
-    ];
-    let mut typed = 0;
-    let mut next = 0;
-    while z.frame < 3000 {
-        while typed < typing.len() && typing[typed].0 <= z.frame {
-            z.release_all_keys();
-            for k in typing[typed].1 {
-                z.set_key(key(k), true);
-            }
-            typed += 1;
-        }
-        if z.pc() == LD_BYTES && next < blocks.len() {
-            let block = &blocks[next];
-            next += 1;
-            let (len, dest) = (z.de() as usize, z.ix());
-            z.set_sp(z.sp().wrapping_sub(2));
-            z.write16(z.sp(), SA_LD_RET);
-            let n = len.min(block.len() - 2);
-            if block[0] == z.a() {
-                for k in 0..n {
-                    let at = dest.wrapping_add(k as u16);
-                    if at >= 0x4000 {
-                        z.mem[at as usize] = block[1 + k];
-                    }
+    // After LOAD "", a key to go past the loader's PAUSE.
+    let more: sidekick::check::Typing = &[(500, &["space"]), (510, &[])];
+    match sidekick::check::through_rom(&tape(dir), &read(dir, "48.rom"), more, None) {
+        Ok(at) => {
+            let ok = (at.pc, at.sp) == (ENTRY_PC, ENTRY_SP);
+            println!(
+                "entry: the loader returns to {:04x} with the stack at {:04x}{}",
+                at.pc,
+                at.sp,
+                if ok {
+                    ", as recorded"
+                } else {
+                    "; NOT as recorded"
                 }
-            }
-            z.set_ix(dest.wrapping_add(n as u16));
-            z.set_de(0);
-            z.set_f(z.f() | zx_spectrum::CF);
-            let pc = z.pop();
-            z.set_pc(pc);
-            if next == blocks.len() {
-                let (pc, sp) = (z.pc(), z.sp());
-                let ok = (pc, sp) == (ENTRY_PC, ENTRY_SP);
-                println!(
-                    "entry: the loader returns to {pc:04x} with the stack at {sp:04x}{}",
-                    if ok {
-                        ", as recorded"
-                    } else {
-                        "; NOT as recorded"
-                    }
-                );
-                return ok;
-            }
+            );
+            ok
         }
-        let _ = z.run_until_any(&[LD_BYTES], 1);
+        Err(e) => {
+            println!("entry: {e}");
+            false
+        }
     }
-    println!(
-        "entry: the tape never finished loading ({next} of {} blocks)",
-        blocks.len()
-    );
-    false
 }
 
 /// Chooses control method `method` on the title screen, starts a game, and
@@ -386,7 +320,6 @@ fn entry_check(dir: &Path) -> bool {
 /// the ship, where a shot goes nowhere, and the checks say so.
 fn into_play(dir: &Path, method: u8) -> Machine {
     let mut m = machine(dir);
-    let key = |n: &str| Key::by_name(n).expect("a key name");
     for frame in 0..540u64 {
         m.zx.release_all_keys();
         m.rules.joystick = 0;
@@ -496,7 +429,6 @@ fn starts_from_the_controller(dir: &Path) -> bool {
 /// count as the pause key.
 fn pause_after_redefining(dir: &Path) -> bool {
     let mut ok = true;
-    let key = |n: &str| Key::by_name(n).expect("a key name");
     for method in 1..=5u8 {
         let mut m = machine(dir);
         for frame in 0..1100u64 {
@@ -1983,7 +1915,6 @@ fn facts_check(dir: &Path) -> bool {
     let mut m = machine(dir);
     m.watch = vec![routine::MENU, routine::MAIN_LOOP, routine::GAME_OVER];
     let mut order: Vec<u16> = vec![];
-    let key = |n: &str| Key::by_name(n).expect("a key name");
     for frame in 0..540u64 {
         m.zx.release_all_keys();
         match frame {
@@ -2368,18 +2299,16 @@ fn shots(dir: &Path, frames: u64, out: &Path) {
         script.apply(&mut m, frame);
         m.run_frame();
         if frame % (frames / 8).max(1) == 0 || frame + 1 == frames {
-            let z = &m.zx;
-            let pixels: Vec<u32> = (0..256 * 192)
-                .map(|p| {
-                    let (x, y) = (p % 256, p / 256);
-                    let byte = z.mem[0x4000 + zx_core::screen::line_offset(y) + x / 8];
-                    let attr = z.mem[0x5800 + (y / 8) * 32 + x / 8];
-                    let ink = byte & (0x80 >> (x % 8)) != 0;
-                    let colour = if ink { attr & 7 } else { (attr >> 3) & 7 };
-                    let bright = if attr & 0x40 != 0 { 8 } else { 0 };
-                    zx_core::screen::PALETTE[colour as usize + bright]
-                })
-                .collect();
+            let mut pixels = vec![0u32; 256 * 192];
+            zx_core::screen::render(
+                &m.zx.mem[0x4000..0x5800],
+                &m.zx.mem[0x5800..0x5B00],
+                false,
+                &mut pixels,
+                256,
+                0,
+                |c| c,
+            );
             let path = out.join(format!("frame{frame:05}.png"));
             std::fs::write(&path, zx_core::png::encode(&pixels, 256, 192)).expect("write");
             println!("{}", path.display());

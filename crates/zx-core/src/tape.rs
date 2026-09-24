@@ -106,6 +106,28 @@ pub fn load_tap(bytes: &[u8]) -> Result<Tape, String> {
     })
 }
 
+/// The blocks of a `.tap` as they are on the tape, each with its flag
+/// first and its checksum last, for feeding a real ROM's loader.
+///
+/// # Errors
+///
+/// If a block runs off the end of the file, or is too short to hold a flag
+/// and a checksum.
+pub fn blocks(bytes: &[u8]) -> Result<Vec<&[u8]>, String> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + 2 <= bytes.len() {
+        let len = bytes[i] as usize | (bytes[i + 1] as usize) << 8;
+        i += 2;
+        if len < 2 || i + len > bytes.len() {
+            return Err(format!("truncated tape block at {i:#x}"));
+        }
+        out.push(&bytes[i..i + len]);
+        i += len;
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,6 +247,22 @@ mod tests {
         bytes.extend(block(DATA, &[1, 2, 3]));
         let err = load_tap(&bytes).err().unwrap();
         assert!(err.contains("corrupt"), "{err}");
+    }
+
+    #[test]
+    fn a_tape_splits_into_its_blocks_and_a_short_one_is_an_error() {
+        let bytes = code(0x8000, &[1, 2, 3]);
+        let found = blocks(&bytes).unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[1], &[DATA, 1, 2, 3, DATA ^ 1 ^ 2 ^ 3][..]);
+        assert!(
+            blocks(&bytes[..bytes.len() - 1]).is_err(),
+            "runs off the end"
+        );
+        assert!(
+            blocks(&[1, 0, 0xFF]).is_err(),
+            "too short for flag and checksum"
+        );
     }
 
     #[test]

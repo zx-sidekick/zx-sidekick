@@ -14,6 +14,7 @@
 use zx_spectrum::{CF, Key, ZF, Zx};
 
 use crate::facts::{PAUSE_KEYS, at, cheat, reads, routine, steer, unseen};
+use crate::preview::Way;
 
 /// ENTER, which starts a game from the title screen.
 const ENTER: zx_spectrum::Key = zx_spectrum::Key::Matrix(6, 0);
@@ -68,12 +69,11 @@ pub struct Play {
     pub jumping: Option<Jumping>,
 }
 
-/// A jump made a pass at a time: its direction (left, right, or straight
-/// up with none), turning first if Willy faces the other way, and whether
-/// he has left the ground.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// A jump made a pass at a time: its way, turning first if Willy faces the
+/// other way, and whether he has left the ground.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Jumping {
-    pub left: Option<bool>,
+    pub way: Way,
     pub started: bool,
 }
 
@@ -90,11 +90,10 @@ impl Jumping {
             return;
         }
         let facing_left = z.mem[usize::from(at::FACING)] & 1 != 0;
-        let direction = self.left.map(|left| if left { "o" } else { "p" });
-        if let Some(d) = direction {
+        if let Some(d) = self.way.key() {
             z.set_key(Key::by_name(d).expect("a key"), true);
         }
-        if self.left.is_none_or(|left| left == facing_left) {
+        if self.way.faced(facing_left) {
             z.set_key(Key::by_name("space").expect("a key"), true);
         }
     }

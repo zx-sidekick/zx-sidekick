@@ -19,6 +19,28 @@ pub enum Way {
 impl Way {
     /// All three, left to right.
     pub const ALL: [Way; 3] = [Way::Left, Way::Up, Way::Right];
+
+    /// The key a player holds for its direction, if it has one: O for
+    /// left, P for right.
+    #[must_use]
+    pub fn key(self) -> Option<&'static str> {
+        match self {
+            Way::Left => Some("o"),
+            Way::Up => None,
+            Way::Right => Some("p"),
+        }
+    }
+
+    /// Whether Willy, facing left or not, faces this way: straight up
+    /// needs no turn.
+    #[must_use]
+    pub fn faced(self, facing_left: bool) -> bool {
+        match self {
+            Way::Left => facing_left,
+            Way::Up => true,
+            Way::Right => !facing_left,
+        }
+    }
 }
 
 /// How a jump ends.
@@ -137,11 +159,7 @@ fn run(m: &Machine, way: Way, unseen: bool) -> Option<Jump> {
     // scores and the tune, a third of the work (#156).
     c.rules.unseen = unseen;
     c.rules.jumping = Some(Jumping {
-        left: match way {
-            Way::Left => Some(true),
-            Way::Up => None,
-            Way::Right => Some(false),
-        },
+        way,
         started: false,
     });
     c.watch = Vec::new();

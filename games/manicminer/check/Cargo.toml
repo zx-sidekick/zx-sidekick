@@ -11,7 +11,6 @@ publish.workspace = true
 manicminer.workspace = true
 sidekick.workspace = true
 zx-core.workspace = true
-zx-spectrum.workspace = true
 
 [lints]
 workspace = true
