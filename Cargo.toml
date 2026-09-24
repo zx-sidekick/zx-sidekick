@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/rustzx-z80",
     "crates/zx-core",
     "crates/zx-spectrum",
     "crates/sidekick",
@@ -28,6 +29,7 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+rustzx-z80 = { path = "crates/rustzx-z80" }
 zx-core = { path = "crates/zx-core" }
 zx-spectrum = { path = "crates/zx-spectrum" }
 sidekick = { path = "crates/sidekick" }
@@ -37,9 +39,6 @@ manicminer = { path = "games/manicminer/manicminer" }
 
 # Everything from outside, declared once here with its version and features,
 # so a bump is one line and no two packages drift apart (#145).
-#
-# The processor, our fork of rustzx-z80, pinned to a commit.
-rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "29926112ebbde20ec067fec584054ae0f1f053ff" }
 # Deflate for the PNGs and the planet picture: the pure-Rust backend only.
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 # The window, its pixels, sound and gamepads.

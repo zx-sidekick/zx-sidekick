@@ -11,12 +11,12 @@ Classic ZX Spectrum games played from your own copy: the original program runs, 
 
 - **What is in this repository:** an emulated Spectrum (the screen, sound and keyboard around a Z80 processor), the window, and *facts* about Starquake: the tape's checksum, where the game starts, and memory addresses.
 - **What is not:** any part of any game (no tapes, snapshots, graphics, maps or text extracted into files), any translation of its program into another language, and the Spectrum ROM, with one exception: the ROM's character set, 768 bytes that Manic Miner prints its text with, included under Amstrad's permission for emulators (#142). Amstrad have kindly given their permission for the redistribution of their copyrighted material but retain that copyright. Continuous integration fails if a game or ROM file is ever committed.
-- **The processor:** `rustzx-z80` (MIT, [RustZX](https://github.com/rustzx/rustzx)), from our fork [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx).
+- **The processor:** `rustzx-z80` (MIT, [RustZX](https://github.com/rustzx/rustzx)), with our patches, in `crates/rustzx-z80` under its own licence; brought in from our fork [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx).
 - **Reused code:** our own generic code from starquake-recompiled and the earlier ZX Sidekick build, listed in `REUSED.md`.
 
 ## How it is checked
 
-CI builds and tests everything that needs no game data, on Linux, macOS and Windows, and fails if a game or ROM file is ever committed. `scripts/check.sh` runs that and, with `SK_ASSETS` pointing at a folder holding your `starquake.tap` and a `48.rom`, the checks against each game itself, which its README lists ([Starquake](games/starquake/README.md#how-it-is-checked)). Measured on 14 September 2026 on `rustzx-z80` at the fork's commit `a73772d`, and again on 24 September 2026 at `eac068f` and at `2992611`, with the same results:
+CI builds and tests everything that needs no game data, on Linux, macOS and Windows, and fails if a game or ROM file is ever committed. `scripts/check.sh` runs that and, with `SK_ASSETS` pointing at a folder holding your `starquake.tap` and a `48.rom`, the checks against each game itself, which its README lists ([Starquake](games/starquake/README.md#how-it-is-checked)). Measured on 14 September 2026 on `rustzx-z80` at the fork's commit `a73772d`, and again on 24 September 2026 at `eac068f` and at `2992611`, and with it in `crates/rustzx-z80`, with the same results:
 
 - **The processor**, against the Fuse project's Z80 test corpus rather than our own work: 1,329 of 1,335 cases match exactly, and the other 6 (`37_1`, `3f`, `cb4e`, `cb5e`, `cb6e`, `cb76`) differ only in the undocumented bits 3 and 5 of F after `SCF`, `CCF` and `BIT n,(HL)`, where `rustzx-z80` follows later research into real chips; bus activity matches in all 1,335.
 

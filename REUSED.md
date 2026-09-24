@@ -31,7 +31,8 @@ It is generic Spectrum, ROM-behaviour or frontend code, and the way of working a
 | `stroke` in `games/starquake/app/src/frontend/panel.rs`, used for the route | the earlier build | none |
 | `crates/sidekick-frontend/fonts/` | the earlier build (from starquake-recompiled's `games/starquake/fonts/`) | none (Inter, under the SIL Open Font License) |
 | `.github/workflows/ci.yml`, `scripts/check.sh` | the earlier build | without the guidance's local checks (`facts`, `map`) |
-| `Cargo.toml`, each crate's `Cargo.toml` | the earlier build | the processor from our fork pinned to a commit, and descriptions without the guidance |
+| `Cargo.toml`, each crate's `Cargo.toml` | the earlier build | descriptions without the guidance |
+| `crates/rustzx-z80` | [RustZX](https://github.com/rustzx/rustzx)'s `rustzx-z80` 0.16.0 (MIT, Vladyslav Nikonov and the RustZX contributors), with our patches, from our fork zx-sidekick/rustzx at `2992611` (#193) | its `Cargo.toml` standalone; zexall (GPL) read from `assets/` rather than bundled; the fork's `ZX-SIDEKICK.md` as its README |
 | `CLAUDE.md`, `.claude/skills/*`, `.claude/scripts/board.sh`, `.github/ISSUE_TEMPLATE/spec.md` | recompiled | adapted: this project's board (an org Project), its checks and hard rules in place of the differential suites, the gate at `scripts/check.sh`, and qualified references to recompiled's issues |
 | the `dependencies` and `intel-mac` jobs and the documentation step in `.github/workflows/ci.yml` | recompiled | the binary's name; the frontend-free check reads the dependency tree (`scripts/no-frontend.sh`), since this project has no frontend feature |
 | `.github/rulesets/main.json` | recompiled's `main: require CI` ruleset, read from its API | the checks named for this repository; applied to it as `main: require CI` |
