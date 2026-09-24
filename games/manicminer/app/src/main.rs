@@ -17,33 +17,7 @@ mod picker;
 
 use std::path::PathBuf;
 
-/// Reports a fatal startup problem on stderr and, in a window, in a message
-/// box too, since a program started from a file manager has no console.
-fn fatal(message: &str, dialog: bool) -> ! {
-    eprintln!("{message}");
-    if dialog {
-        rfd::MessageDialog::new()
-            .set_level(rfd::MessageLevel::Error)
-            .set_title("ZX Sidekick")
-            .set_description(message)
-            .show();
-    }
-    std::process::exit(1)
-}
-
-/// Takes `--headless [FRAMES [DIR [LEVEL]]]` and everything after it out of
-/// `args`, and returns the frames, the folder and the guidance level, with
-/// their defaults. What is left in `args` is the tape, if one was named.
-fn headless_args(args: &mut Vec<String>) -> Option<(u64, PathBuf, u8)> {
-    let i = args.iter().position(|a| a == "--headless")?;
-    let rest: Vec<String> = args.drain(i..).skip(1).collect();
-    let frames = rest.first().and_then(|f| f.parse().ok()).unwrap_or(3000);
-    let dir = rest
-        .get(1)
-        .map_or_else(|| PathBuf::from("screenshots"), PathBuf::from);
-    let level = rest.get(2).and_then(|l| l.parse().ok()).unwrap_or(0);
-    Some((frames, dir, level))
-}
+use sidekick_frontend::cli::{fatal, headless_args};
 
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -69,31 +43,5 @@ fn main() {
     };
     if let Err(e) = result {
         fatal(&format!("error: {e}"), windowed);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn args(list: &[&str]) -> Vec<String> {
-        list.iter().map(ToString::to_string).collect()
-    }
-
-    #[test]
-    fn headless_takes_its_frames_and_folder_and_leaves_the_tape() {
-        let mut a = args(&["manic.tap", "--headless", "120", "out"]);
-        assert_eq!(headless_args(&mut a), Some((120, PathBuf::from("out"), 0)));
-        assert_eq!(a, ["manic.tap"]);
-        let mut a = args(&["manic.tap", "--headless", "120", "out", "3"]);
-        assert_eq!(headless_args(&mut a), Some((120, PathBuf::from("out"), 3)));
-        assert_eq!(a, ["manic.tap"]);
-        let mut a = args(&["manic.tap"]);
-        assert_eq!(headless_args(&mut a), None);
-        let mut a = args(&["--headless"]);
-        assert_eq!(
-            headless_args(&mut a),
-            Some((3000, PathBuf::from("screenshots"), 0))
-        );
     }
 }

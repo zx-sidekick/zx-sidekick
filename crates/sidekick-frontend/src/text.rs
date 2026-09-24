@@ -44,6 +44,21 @@ pub struct Span<'a> {
     pub colour: Rgb,
 }
 
+/// A run of `text` at `size`, `weight` and `colour`, as every screen writes
+/// one.
+#[must_use]
+pub fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
+    Span {
+        text,
+        size,
+        weight,
+        colour,
+    }
+}
+
+/// The room between a spaced label's letters, as a share of its size.
+const SPACING: f32 = 0.14;
+
 /// An RGBA frame drawn at `scale` device pixels per logical pixel, so what
 /// is laid out in logical pixels comes out sharp on a high-density screen.
 pub struct Canvas<'a> {
@@ -72,6 +87,34 @@ pub enum PadMark {
 }
 
 impl Fonts {
+    /// A small label with its letters spread out, which the layout cannot
+    /// do itself, in semibold at `size`, from (`x`, `y`).
+    pub fn spaced(
+        &mut self,
+        canvas: &mut Canvas,
+        mut x: f32,
+        y: f32,
+        text: &str,
+        size: f32,
+        colour: Rgb,
+    ) {
+        let mut buf = [0u8; 4];
+        for c in text.chars() {
+            let s = span(c.encode_utf8(&mut buf), size, Weight::SemiBold, colour);
+            self.text(Some(canvas), x, y, None, 1.0, std::slice::from_ref(&s));
+            x += self.advance(c, size, Weight::SemiBold) + size * SPACING;
+        }
+    }
+
+    /// How wide [`Fonts::spaced`] draws `text` at `size`.
+    #[must_use]
+    pub fn spaced_width(&self, text: &str, size: f32) -> f32 {
+        text.chars()
+            .map(|c| self.advance(c, size, Weight::SemiBold) + size * SPACING)
+            .sum::<f32>()
+            - size * SPACING
+    }
+
     /// # Panics
     ///
     /// If the bundled font files do not parse, which would be a broken build.

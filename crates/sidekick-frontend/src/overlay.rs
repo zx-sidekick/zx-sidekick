@@ -30,6 +30,30 @@ pub const fn width(panel_w: usize) -> f32 {
 pub const HEIGHT: f32 = FULL_H as f32 * UNITS;
 pub const PICTURE_W: f32 = FULL_W as f32 * UNITS;
 
+/// The window as it looks at its first size, for a headless picture: the
+/// Spectrum's `picture` (RGBA, with its border) scaled up on the left, and
+/// the premultiplied RGBA `over` it, `w` by `h`, laid on top, as 0xRRGGBB
+/// pixels.
+#[must_use]
+pub fn composite(picture: &[u8], over: &[u8], w: usize, h: usize) -> Vec<u32> {
+    let k = h / FULL_H;
+    (0..w * h)
+        .map(|i| {
+            let (x, y) = (i % w, i / w);
+            let under = if x < FULL_W * k {
+                let at = ((y / k) * FULL_W + x / k) * 4;
+                [picture[at], picture[at + 1], picture[at + 2]]
+            } else {
+                [0; 3]
+            };
+            let o = &over[i * 4..i * 4 + 4];
+            let alpha = u32::from(o[3]);
+            let channel = |c: usize| u32::from(o[c]) + u32::from(under[c]) * (255 - alpha) / 255;
+            channel(0) << 16 | channel(1) << 8 | channel(2)
+        })
+        .collect()
+}
+
 struct Target {
     texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,

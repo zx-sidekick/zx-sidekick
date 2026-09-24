@@ -13,7 +13,7 @@ use super::track::Scene;
 use sidekick_frontend::gamepad;
 use sidekick_frontend::notice;
 use sidekick_frontend::overlay::{HEIGHT as WINDOW_H, PICTURE_W};
-use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, palette};
+use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, palette, span};
 use starquake::facts::Kind;
 use starquake::map::{COLS, ROWS, Step};
 
@@ -743,11 +743,7 @@ impl Panel {
     /// How wide a spaced label is (#49), so the codes' rail is never
     /// narrower than its own headings.
     fn spaced_width(&mut self, label: &str) -> f32 {
-        label
-            .chars()
-            .map(|c| self.fonts.advance(c, 11.0, Weight::SemiBold) + 11.0 * 0.14)
-            .sum::<f32>()
-            - 11.0 * 0.14
+        self.fonts.spaced_width(label, 11.0)
     }
 
     /// A spaced label ending at `right`, for the codes' rail (#49).
@@ -1556,19 +1552,13 @@ impl Panel {
     fn spaced_colour(
         &mut self,
         canvas: &mut Canvas,
-        mut x: f32,
+        x: f32,
         y: f32,
         text: &str,
         size: f32,
         colour: Rgb,
     ) {
-        let mut buf = [0u8; 4];
-        for c in text.chars() {
-            let s = span(c.encode_utf8(&mut buf), size, Weight::SemiBold, colour);
-            self.fonts
-                .text(Some(canvas), x, y, None, 1.0, std::slice::from_ref(&s));
-            x += self.fonts.advance(c, size, Weight::SemiBold) + size * 0.14;
-        }
+        self.fonts.spaced(canvas, x, y, text, size, colour);
     }
 }
 
@@ -1666,15 +1656,6 @@ fn walked_steps(here: u16, route: Option<&[Step]>) -> Vec<(u16, u16)> {
         from = step.room;
     }
     steps
-}
-
-fn span(text: &str, size: f32, weight: Weight, colour: Rgb) -> Span<'_> {
-    Span {
-        text,
-        size,
-        weight,
-        colour,
-    }
 }
 
 #[cfg(test)]

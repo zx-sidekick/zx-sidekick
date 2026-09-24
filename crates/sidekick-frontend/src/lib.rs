@@ -8,6 +8,7 @@
 //! thread ([`launch`]), and paces the frames with a [`Pacer`].
 
 pub mod audio;
+pub mod cli;
 pub mod freeze;
 pub mod gamepad;
 pub mod input;

@@ -468,24 +468,7 @@ pub fn headless(path: &Path, frames: u64, dir: &Path, level: u8) -> Result<(), S
             };
             canvas.clear_transparent();
             panel::draw(&mut fonts, &mut canvas, &view, picker.level());
-            // The picture scaled up on the left, the overlay laid over it.
-            let k = h / FULL_H;
-            let pixels: Vec<u32> = (0..w * h)
-                .map(|i| {
-                    let (x, y) = (i % w, i / w);
-                    let under = if x < FULL_W * k {
-                        let at = ((y / k) * FULL_W + x / k) * 4;
-                        [rgba[at], rgba[at + 1], rgba[at + 2]]
-                    } else {
-                        [0; 3]
-                    };
-                    let o = &over[i * 4..i * 4 + 4];
-                    let alpha = u32::from(o[3]);
-                    let channel =
-                        |c: usize| u32::from(o[c]) + u32::from(under[c]) * (255 - alpha) / 255;
-                    channel(0) << 16 | channel(1) << 8 | channel(2)
-                })
-                .collect();
+            let pixels = overlay::composite(&rgba, &over, w, h);
             let file = dir.join(format!("frame-{frame:05}.png"));
             std::fs::write(&file, zx_core::png::encode(&pixels, w, h))
                 .map_err(|e| format!("{}: {e}", file.display()))?;
