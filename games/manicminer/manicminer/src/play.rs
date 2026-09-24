@@ -135,7 +135,39 @@ impl Play {
     }
 }
 
+/// Every address [`Play`]'s `at` does anything at (#187): the main loop's
+/// top, what an unseen copy skips, the cheat's reads, the training
+/// switches' steer points, the pause read and the title's ENTER reads.
+/// What is pressed or kept for one read is let go at the instruction after
+/// it, which the machine asks at too.
+const ADDRESSES: [u16; 20] = [
+    routine::MAIN_LOOP,
+    unseen::PICTURE.0,
+    unseen::SHOWN.0,
+    unseen::TUNE.0,
+    cheat::READ_LOW,
+    cheat::READ_HIGH,
+    cheat::TELEPORT_SIX,
+    cheat::TELEPORT_CAVERN,
+    steer::LOSE_LIFE,
+    steer::AIR,
+    steer::FALL_KILL,
+    steer::GUARDIAN_DRAWS[0],
+    steer::GUARDIAN_DRAWS[1],
+    steer::GUARDIAN_DRAWS[2],
+    steer::GUARDIAN_DRAWS[3],
+    steer::NASTY_KILLS[0],
+    steer::NASTY_KILLS[1],
+    reads::PAUSE,
+    reads::TITLE_ENTER,
+    reads::TUNE_ENTER,
+];
+
 impl sidekick::Rules for Play {
+    fn addresses(&self) -> Option<&[u16]> {
+        Some(&ADDRESSES)
+    }
+
     fn before_frame(&mut self, _z: &Zx) {
         self.pause_pressed = false;
     }
