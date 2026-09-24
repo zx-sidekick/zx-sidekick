@@ -11,10 +11,6 @@ updates:
     schedule:
       interval: weekly
     labels: [dependencies]
-    # The processor is our fork, pinned to a commit. Moving it is checked
-    # against the Fuse corpus and starquake-check on purpose, never by a bot.
-    ignore:
-      - dependency-name: rustzx-z80
     # Most of our crates are 0.x, where Dependabot's "minor" (0.30 -> 0.31)
     # is a breaking change in Cargo. So only patch updates share a PR; each
     # bigger one gets its own, since it can need code changes.
