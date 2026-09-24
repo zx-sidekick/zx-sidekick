@@ -134,6 +134,10 @@ pub fn find(game: &Game, folders: &[PathBuf]) -> Option<Tape> {
     None
 }
 
+/// The most a file, or a tape inside a zip, is read of before it is
+/// refused: far more than any tape.
+const MOST: u64 = 16 * 1024 * 1024;
+
 /// Reads the tape in `path`: the file itself, or, for a zip, the first
 /// `.tap` inside it that the game's `accept` takes, whatever that is called.
 ///
@@ -146,6 +150,14 @@ pub fn load(game: &Game, path: &Path) -> Result<Tape, Refused> {
         game: game.name,
         release: game.release,
     };
+    // A tape is tens of kilobytes; a file far larger is never one, and
+    // reading a video dropped by mistake would freeze the window.
+    let size = fs::metadata(path)
+        .map_err(|e| Refused::Unreadable(format!("cannot read {}: {e}", path.display())))?
+        .len();
+    if size > MOST {
+        return Err(not_the_tape);
+    }
     let bytes = fs::read(path)
         .map_err(|e| Refused::Unreadable(format!("cannot read {}: {e}", path.display())))?;
     let from = path.to_path_buf();
@@ -170,7 +182,7 @@ pub fn load(game: &Game, path: &Path) -> Result<Tape, Refused> {
         let is_tap = Path::new(entry.name())
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("tap"));
-        if !is_tap || !entry.is_file() {
+        if !is_tap || !entry.is_file() || entry.size() > MOST {
             continue;
         }
         any_tape = true;
@@ -279,6 +291,16 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn a_file_far_larger_than_a_tape_is_refused_unread() {
+        let dir = folder("large");
+        let path = dir.join("film.tap");
+        // Sparse: 17 MB long without writing them.
+        fs::File::create(&path).unwrap().set_len(MOST + 1).unwrap();
+        assert_eq!(load(&GAME, &path).err(), Some(NOT_THE_TAPE));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     fn zip_with(path: &Path, entries: &[(&str, &[u8])]) {
