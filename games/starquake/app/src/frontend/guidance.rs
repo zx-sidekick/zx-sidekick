@@ -825,6 +825,25 @@ impl Guidance {
     }
 }
 
+/// The picker's keys and buttons, as every game's picker takes them.
+impl sidekick_frontend::picker::Picker for Guidance {
+    fn back(&mut self) {
+        Guidance::back(self);
+    }
+    fn focus_up(&mut self) {
+        Guidance::focus_up(self);
+    }
+    fn focus_down(&mut self) {
+        Guidance::focus_down(self);
+    }
+    fn change(&mut self, up: bool) {
+        Guidance::change(self, up);
+    }
+    fn enter(&mut self) {
+        Guidance::enter(self);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

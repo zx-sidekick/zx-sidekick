@@ -156,6 +156,12 @@ pub struct Gamepad {
     buttons: Buttons,
     /// The picker's buttons at the last poll, to tell a press from a hold.
     was: Held,
+    /// Joystick bits, and Start, kept from the game until they are let go:
+    /// what was held as a picker closed (#25).
+    held_back: u8,
+    start_held_back: bool,
+    /// Whether the next poll starts holding back whatever is down.
+    hold_back_next: bool,
 }
 
 impl Gamepad {
@@ -165,6 +171,9 @@ impl Gamepad {
                 gilrs: Some(gilrs),
                 buttons,
                 was: [false; 8],
+                held_back: 0,
+                start_held_back: false,
+                hold_back_next: false,
             },
             Err(e) => {
                 eprintln!("no gamepad support: {e}");
@@ -172,6 +181,9 @@ impl Gamepad {
                     gilrs: None,
                     buttons,
                     was: [false; 8],
+                    held_back: 0,
+                    start_held_back: false,
+                    hold_back_next: false,
                 }
             }
         }
@@ -232,7 +244,26 @@ impl Gamepad {
         }
         presses(&mut pad, now, self.was);
         self.was = now;
+        self.hold_back(&mut pad);
         pad
+    }
+
+    /// From the next poll, keeps whatever is held then from the game until
+    /// each is let go: the button that closed a picker is not also a jump,
+    /// a platform, or a press that ends a pause (#25).
+    pub fn hold_back_held(&mut self) {
+        self.hold_back_next = true;
+    }
+
+    fn hold_back(&mut self, pad: &mut Pad) {
+        if std::mem::take(&mut self.hold_back_next) {
+            self.held_back = pad.bits;
+            self.start_held_back = pad.start;
+        }
+        self.held_back &= pad.bits;
+        self.start_held_back &= pad.start;
+        pad.bits &= !self.held_back;
+        pad.start &= !self.start_held_back;
     }
 }
 
@@ -303,5 +334,40 @@ mod tests {
         assert_eq!(Layout::Xbox.confirm_name(), "A");
         assert_eq!(Layout::Nintendo.confirm_name(), "A");
         assert_eq!(Layout::PlayStation.confirm_name(), "cross");
+    }
+
+    #[test]
+    fn what_was_held_as_a_picker_closed_waits_to_be_let_go() {
+        let mut g = Gamepad {
+            gilrs: None,
+            buttons: Buttons {
+                south: 0x10,
+                west: 0x10,
+            },
+            was: [false; 8],
+            held_back: 0,
+            start_held_back: false,
+            hold_back_next: false,
+        };
+        let held = |bits, start| Pad {
+            bits,
+            start,
+            ..Pad::default()
+        };
+        g.hold_back_held();
+        // A (fire) and Start still down: kept from the game.
+        let mut pad = held(0x10, true);
+        g.hold_back(&mut pad);
+        assert_eq!((pad.bits, pad.start), (0, false));
+        // Right pressed as well: that one is new, and gets through.
+        let mut pad = held(0x11, true);
+        g.hold_back(&mut pad);
+        assert_eq!((pad.bits, pad.start), (0x01, false));
+        // Let go, then pressed again: a press of its own.
+        let mut pad = held(0, false);
+        g.hold_back(&mut pad);
+        let mut pad = held(0x10, true);
+        g.hold_back(&mut pad);
+        assert_eq!((pad.bits, pad.start), (0x10, true));
     }
 }

@@ -260,6 +260,25 @@ impl Picker {
     }
 }
 
+/// The picker's keys and buttons, as every game's picker takes them.
+impl sidekick_frontend::picker::Picker for Picker {
+    fn back(&mut self) {
+        Picker::back(self);
+    }
+    fn focus_up(&mut self) {
+        Picker::focus_up(self);
+    }
+    fn focus_down(&mut self) {
+        Picker::focus_down(self);
+    }
+    fn change(&mut self, up: bool) {
+        Picker::change(self, up);
+    }
+    fn enter(&mut self) {
+        Picker::enter(self);
+    }
+}
+
 const DIM: Rgb = [0x08, 0x09, 0x0c];
 const DIALOG: Rgb = [0x10, 0x12, 0x18];
 const LINE: Rgb = [0x2a, 0x2f, 0x3b];

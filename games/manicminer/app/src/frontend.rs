@@ -184,15 +184,7 @@ impl Screen for Guide {
             return Key::Pass;
         }
         let mut picker = self.picker.lock().unwrap();
-        match code {
-            KeyCode::Escape => picker.back(),
-            KeyCode::ArrowUp => picker.focus_up(),
-            KeyCode::ArrowDown => picker.focus_down(),
-            KeyCode::ArrowLeft => picker.change(false),
-            KeyCode::ArrowRight => picker.change(true),
-            KeyCode::Enter | KeyCode::NumpadEnter => picker.enter(),
-            _ => {}
-        }
+        sidekick_frontend::picker::key(&mut *picker, code);
         Key::Taken {
             release: false,
             quit: picker.exiting(),
@@ -203,34 +195,18 @@ impl Screen for Guide {
 /// Holds the game while the picker is open, taking the pad's side of it: up
 /// and down choose a row, left and right change it, A does the highlighted
 /// thing, and B or Select goes back. No time passes for the game, so its
-/// pacing starts again from now. Returns no input for the frame it resumes
-/// on, so the button that closed the picker is not also a jump.
+/// pacing starts again from now. The button that closed the picker is kept
+/// from the game until it is let go, so it is not also a jump.
 fn hold_for_picker(shared: &Shared, pad: &mut gamepad::Gamepad, pacer: &mut Pacer) -> gamepad::Pad {
     while shared.game.picker.lock().unwrap().is_open() && !shared.quit.load(Ordering::Relaxed) {
         std::thread::sleep(Duration::from_millis(20));
         let now = pad.poll();
         *shared.game.layout.lock().unwrap() = now.layout;
-        let mut picker = shared.game.picker.lock().unwrap();
-        if now.select || now.cancel() {
-            picker.back();
-        }
-        if now.up {
-            picker.focus_up();
-        }
-        if now.down {
-            picker.focus_down();
-        }
-        if now.left {
-            picker.change(false);
-        }
-        if now.right {
-            picker.change(true);
-        }
-        if now.confirm() {
-            picker.enter();
-        }
+        sidekick_frontend::picker::pad(&mut *shared.game.picker.lock().unwrap(), &now);
     }
     pacer.restart();
+    // The button that closed it, still held, is kept from the game.
+    pad.hold_back_held();
     gamepad::Pad::default()
 }
 
@@ -341,6 +317,11 @@ fn play(tape: &[u8], shared: &Arc<Shared>, mut pacer: Pacer) -> Result<(), Strin
             keys: input.keys,
             joystick,
         };
+        // The window switched away from pauses a game in play, as the pause
+        // key does.
+        if shared.unfocused.swap(false, Ordering::Relaxed) {
+            pause = true;
+        }
         // Only a game freezes: the demo reads the pause keys too, and
         // pausing it left a paused demo where the player wanted a game.
         if freeze.poll(held, pause, in_game) {

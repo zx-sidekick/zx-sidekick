@@ -287,6 +287,7 @@ impl<G: Screen> ApplicationHandler for App<G> {
             WindowEvent::Focused(false) => {
                 self.held.clear();
                 *self.shared.input.lock().unwrap() = Input::default();
+                self.shared.unfocused.store(true, Ordering::Relaxed);
             }
             WindowEvent::Resized(size) => {
                 if let Some(p) = &mut self.pixels {
