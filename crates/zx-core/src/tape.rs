@@ -21,22 +21,14 @@ pub struct Tape {
     pub loading_screen: Option<Vec<u8>>,
 }
 
-impl Tape {
-    /// Full 64K address space with the RAM in place and zeros for the ROM.
-    pub fn memory(&self) -> Vec<u8> {
-        let mut mem = vec![0u8; 0x4000];
-        mem.extend_from_slice(&self.ram);
-        mem
-    }
-}
-
 /// Loads every code block on a `.tap`, in the order the Spectrum would.
 ///
 /// # Errors
 ///
 /// If a block runs off the end of the file or fails its checksum, or if the
-/// tape places nothing in RAM. A block that would load outside RAM is
-/// skipped rather than rejected, so one stray block does not lose the tape.
+/// tape places nothing in RAM. The part of a block that would load outside
+/// RAM is lost, as it is on a Spectrum, whose loader writes each byte and
+/// the ROM keeps none; the rest loads.
 pub fn load_tap(bytes: &[u8]) -> Result<Tape, String> {
     let mut ram = vec![0u8; 0xC000];
     let mut loading_screen = None;
@@ -56,6 +48,16 @@ pub fn load_tap(bytes: &[u8]) -> Result<Tape, String> {
         }
         let block = &bytes[i..i + len];
         i += len;
+        // The last byte is a checksum: the flag and every other byte XORed
+        // together. A bit-flipped header would load in the wrong place.
+        let sum = block[..len - 1].iter().fold(0u8, |a, b| a ^ b);
+        if sum != block[len - 1] {
+            return Err(format!(
+                "tape block at {:#x} is corrupt (checksum {:#04x}, expected {sum:#04x})",
+                i - len,
+                block[len - 1]
+            ));
+        }
 
         match block[0] {
             HEADER if len >= 19 => {
@@ -70,31 +72,22 @@ pub fn load_tap(bytes: &[u8]) -> Result<Tape, String> {
                     continue;
                 };
                 let data = &block[1..len - 1];
-                // The last byte is a checksum: the flag and every data byte
-                // XORed together. A bit-flipped tape used to load in silence.
-                let sum = block[..len - 1].iter().fold(0u8, |a, b| a ^ b);
-                if sum != block[len - 1] {
-                    return Err(format!(
-                        "tape block at {start:#06x} is corrupt (checksum {:#04x}, expected {sum:#04x})",
-                        block[len - 1]
-                    ));
-                }
                 blocks += 1;
                 let n = length.min(data.len());
                 let at = start as usize;
-                // A block that loads into the ROM is not something a Spectrum
-                // would honour either. Skip it rather than throw away a tape
-                // whose game blocks have already loaded.
-                if at < 0x4000 || at + n > 0x10000 {
-                    continue;
-                }
                 // The loading picture goes to the screen first, and the game
                 // lands on top of it later.
                 if at == SCREEN_ADDR as usize && n == SCREEN_LEN && loading_screen.is_none() {
                     loading_screen = Some(data[..n].to_vec());
                 }
-                ram[at - 0x4000..at - 0x4000 + n].copy_from_slice(&data[..n]);
-                loaded += n;
+                // Only what lands in RAM stays: the bytes below 0x4000 go to
+                // the ROM, and those past 0xFFFF wrap round into it.
+                let from = at.max(0x4000);
+                let to = (at + n).min(0x10000);
+                if from < to {
+                    ram[from - 0x4000..to - 0x4000].copy_from_slice(&data[from - at..to - at]);
+                    loaded += to - from;
+                }
             }
             _ => pending = None,
         }
@@ -149,10 +142,6 @@ mod tests {
         let tape = load_tap(&code(0x8000, &[1, 2, 3])).unwrap();
         assert_eq!(&tape.ram[0x4000..0x4003], &[1, 2, 3]);
         assert!(tape.loading_screen.is_none());
-        let mem = tape.memory();
-        assert_eq!(mem.len(), 0x10000);
-        assert_eq!(&mem[0x8000..0x8003], &[1, 2, 3]);
-        assert!(mem[..0x4000].iter().all(|&b| b == 0));
     }
 
     #[test]
@@ -214,12 +203,28 @@ mod tests {
     }
 
     #[test]
-    fn a_block_past_the_end_of_memory_is_skipped() {
+    fn a_block_past_the_end_of_memory_loads_what_fits() {
         let mut bytes = code(0xFFFE, &[1, 2, 3]);
         bytes.extend(code(0x8000, &[9]));
         let tape = load_tap(&bytes).unwrap();
-        assert_eq!(tape.ram[0xBFFE], 0);
+        assert_eq!(&tape.ram[0xBFFE..], &[1, 2]);
         assert_eq!(tape.ram[0x4000], 9);
+    }
+
+    #[test]
+    fn a_block_starting_in_the_rom_loads_its_part_in_ram() {
+        let tape = load_tap(&code(0x3FFE, &[1, 2, 3, 4])).unwrap();
+        assert_eq!(&tape.ram[..2], &[3, 4]);
+    }
+
+    #[test]
+    fn a_header_with_a_bad_checksum_is_an_error() {
+        let mut bytes = header(CODE, 3, 0x8000);
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0xFF;
+        bytes.extend(block(DATA, &[1, 2, 3]));
+        let err = load_tap(&bytes).err().unwrap();
+        assert!(err.contains("corrupt"), "{err}");
     }
 
     #[test]
