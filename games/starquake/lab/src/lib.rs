@@ -18,10 +18,8 @@ pub mod raster;
 pub mod rooms;
 pub mod search;
 
-/// Blob's energy, 127 as play starts (#8).
-pub const ENERGY: u16 = 0xD2CD;
-/// The platform bar, `0x32` as play starts; building one takes 2 (#8).
-pub const PLATFORMS: u16 = 0xD2CE;
+/// Blob's energy and the platform bar, as the game's facts name them (#8).
+pub use starquake::facts::at::{BRIDGES as PLATFORMS, ENERGY};
 /// The energy drain counter's offset in Blob's slot: it rises by one a frame
 /// and enemy contact pushes it past its threshold (#8).
 pub const DRAIN: usize = 0x18;

@@ -12,16 +12,10 @@ use manicminer::facts::{
     ENTRY_PC, ENTRY_SP, FONT, PAUSE_KEYS, ROM_SHA1, at, is_supported_tape, routine,
 };
 use manicminer::{JOY_FIRE, JOY_RIGHT, Machine};
-use zx_spectrum::Key;
+use sidekick::check::{key, read_asset as read};
 
 /// The names the tape goes by in the assets folder.
 const TAPES: [&str; 2] = ["manicminer.tap", "manic.tap"];
-
-/// Reads `name` from `dir`, or stops with why not.
-fn read(dir: &Path, name: &str) -> Vec<u8> {
-    std::fs::read(dir.join(name))
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.join(name).display()))
-}
 
 /// The supported tape in `dir`, by either of its names.
 fn tape(dir: &Path) -> Vec<u8> {
@@ -40,10 +34,6 @@ fn tape(dir: &Path) -> Vec<u8> {
 /// The game as the program starts it.
 fn machine(dir: &Path) -> Machine {
     manicminer::start(&tape(dir)).expect("the tape loads")
-}
-
-fn key(name: &str) -> Key {
-    Key::by_name(name).expect("a key name")
 }
 
 /// Runs `frames` frames, returning every watched address reached, in order.
@@ -84,85 +74,27 @@ fn cell(m: &Machine) -> u16 {
 /// BASIC loader through to its `RANDOMIZE USR`, which must arrive where the
 /// program starts the game, with the stack recorded.
 fn entry_check(dir: &Path) -> bool {
-    const LD_BYTES: u16 = 0x0556;
-    /// Where LD-BYTES sends its own return, pushed before it loads.
-    const SA_LD_RET: u16 = 0x053F;
-    let tap = tape(dir);
-    let mut blocks = Vec::new();
-    let mut i = 0;
-    while i + 2 <= tap.len() {
-        let len = usize::from(tap[i]) | usize::from(tap[i + 1]) << 8;
-        blocks.push(tap[i + 2..i + 2 + len].to_vec());
-        i += 2 + len;
-    }
-    let mut m = Machine::blank(0, 0).with_rom(&read(dir, "48.rom"));
-    let z = &mut m.zx;
-    // Dismiss the copyright message, then LOAD "" and ENTER.
-    let typing: [(u64, &[&str]); 10] = [
-        (150, &["enter"]),
-        (160, &[]),
-        (200, &["j"]),
-        (210, &[]),
-        (230, &["symbol", "p"]),
-        (240, &[]),
-        (260, &["symbol", "p"]),
-        (270, &[]),
-        (290, &["enter"]),
-        (300, &[]),
-    ];
-    let mut typed = 0;
-    let mut next = 0;
-    while z.frame < 3000 {
-        while typed < typing.len() && typing[typed].0 <= z.frame {
-            z.release_all_keys();
-            for k in typing[typed].1 {
-                z.set_key(key(k), true);
-            }
-            typed += 1;
-        }
-        if z.pc() == LD_BYTES {
-            let block = &blocks[next];
-            next += 1;
-            let (len, dest) = (z.de() as usize, z.ix());
-            z.set_sp(z.sp().wrapping_sub(2));
-            z.write16(z.sp(), SA_LD_RET);
-            let n = len.min(block.len() - 2);
-            if block[0] == z.a() {
-                for k in 0..n {
-                    let at = dest.wrapping_add(k as u16);
-                    if at >= 0x4000 {
-                        z.mem[at as usize] = block[1 + k];
-                    }
+    // Every block in, the loader's BASIC goes on to its USR.
+    match sidekick::check::through_rom(&tape(dir), &read(dir, "48.rom"), &[], Some(ENTRY_PC)) {
+        Ok(at) => {
+            let ok = (at.pc, at.sp) == (ENTRY_PC, ENTRY_SP);
+            println!(
+                "entry: the loader goes to {:04x} with the stack at {:04x}{}",
+                at.pc,
+                at.sp,
+                if ok {
+                    ", as recorded"
+                } else {
+                    "; NOT as recorded"
                 }
-            }
-            z.set_ix(dest.wrapping_add(n as u16));
-            z.set_de(0);
-            z.set_f(z.f() | zx_spectrum::CF);
-            let pc = z.pop();
-            z.set_pc(pc);
-            if next == blocks.len() {
-                // Every block is in: the loader's BASIC goes on to its USR.
-                let arrived = z.run_until_any(&[ENTRY_PC], 500);
-                let (pc, sp) = (z.pc(), z.sp());
-                let ok = arrived && (pc, sp) == (ENTRY_PC, ENTRY_SP);
-                println!(
-                    "entry: the loader goes to {pc:04x} with the stack at {sp:04x}{}",
-                    if ok {
-                        ", as recorded"
-                    } else {
-                        "; NOT as recorded"
-                    }
-                );
-                return ok;
-            }
+            );
+            ok
         }
-        let _ = z.run_until_any(&[LD_BYTES], 1);
+        Err(e) => {
+            println!("entry: {e}");
+            false
+        }
     }
-    println!(
-        "entry: the tape never finished loading ({next} of {} blocks)",
-        blocks.len()
-    );
-    false
 }
 
 /// The keyboard and the Kempston joystick each move Willy and make him
@@ -372,19 +304,8 @@ fn preview_check(dir: &Path) -> bool {
             // In play: the direction alone until he faces it, then it and
             // jump held until he lands or dies.
             let mut p = m.clone();
-            let dir_key = match j.way {
-                Way::Left => Some("o"),
-                Way::Up => None,
-                Way::Right => Some("p"),
-            };
-            let faces = |p: &Machine| {
-                let left = p.zx.mem[usize::from(at::FACING)] & 1 != 0;
-                match j.way {
-                    Way::Left => left,
-                    Way::Right => !left,
-                    Way::Up => true,
-                }
-            };
+            let dir_key = j.way.key();
+            let faces = |p: &Machine| j.way.faced(p.zx.mem[usize::from(at::FACING)] & 1 != 0);
             while !faces(&p) {
                 hold(&mut p, &[dir_key.expect("a way to turn")], 1);
             }

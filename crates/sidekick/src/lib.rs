@@ -7,6 +7,7 @@
 //! game's own crate says which tape it is, where it starts, and what its
 //! [`Rules`] do at each instruction (#141).
 
+pub mod check;
 pub mod machine;
 pub mod print;
 pub mod rom;
