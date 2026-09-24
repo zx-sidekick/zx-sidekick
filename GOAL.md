@@ -15,7 +15,7 @@ Starquake (Stephen Crow / Bubble Bus, 1985), the plain game, running as the **or
 
 ## The processor
 
-`rustzx-z80` from our fork, [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx), pinned to a commit. The fork's patches (`Clone`, `Z80::step`) are adopted later, as a change of their own; this build uses the API as in 0.16.0.
+`rustzx-z80` (MIT, [RustZX](https://github.com/rustzx/rustzx)) with our patches, in `crates/rustzx-z80` under its own licence, brought in from our fork [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx) (#193). It is checked in our bus against the Fuse corpus, never taken on its own word.
 
 ## Done
 

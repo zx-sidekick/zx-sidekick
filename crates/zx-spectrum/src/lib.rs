@@ -174,8 +174,8 @@ impl Z80Bus for Bus {
 
 /// The machine: the processor and its bus. It dereferences to the bus, so
 /// `z.mem`, `z.keys` and the rest read as they did. A clone is an
-/// independent machine: the processor derives `Clone` in our fork of
-/// `rustzx-z80`.
+/// independent machine: the processor derives `Clone` (one of our patches
+/// to `rustzx-z80`).
 #[derive(Clone)]
 pub struct Zx {
     cpu: Z80,

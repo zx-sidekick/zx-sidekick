@@ -11,9 +11,10 @@ own tape at runtime, and the few ROM routines the game calls are answered by
 the program itself. `GOAL.md` holds the aim and the hard legal rules;
 `games/starquake/PLAN.md` the steps and what comes later.
 
-The processor is `rustzx-z80` from our fork
-([zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx)), pinned to a
-commit, inside our own 48K bus (`crates/zx-spectrum`). The ROM-free machine every
+The processor is `rustzx-z80` (`crates/rustzx-z80`, MIT): RustZX's Z80 with
+our patches, brought in from our fork
+([zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx)) (#193), inside
+our own 48K bus (`crates/zx-spectrum`). The ROM-free machine every
 game runs on is `crates/sidekick`, and the window, sound, input and tape prompt
 every game shows it through are `crates/sidekick-frontend` (#141). Starquake's
 facts, map and rules for the machine are `games/starquake/starquake`, and
@@ -92,7 +93,7 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
 - **The checks against the game are the contract.** `starquake-check entry` must find
   the loader returning where the game is started, `starquake-check rom` must find
   every compared ROM call answered as the real ROM does (20,326 of 20,326 when
-  the fork was pinned), `starquake-check keys` must find the joystick reaching the
+  the processor was brought in), `starquake-check keys` must find the joystick reaching the
   game and the pause key taken from it in all five control methods, and
   `starquake-check facts` must find the entry points the guidance panel follows and
   End this game ending a game, and `starquake-check training` must find each training
@@ -102,7 +103,9 @@ facts, map and rules for the machine are `games/starquake/starquake`, and
 - **The processor is not self-certified.** It is checked in our bus against
   the Fuse corpus: 1,329 of 1,335 cases exact, the 6 undocumented-flag cases
   listed by name, and bus activity 1,335 of 1,335. The gate and CI require
-  exactly that; a fork update that changes it is updated on purpose.
+  exactly that; a processor change that moves it is updated on purpose.
+  Its own tests run in the gate too; zexall, from `assets/`, runs with
+  `cargo test --release -p rustzx-z80 -- --include-ignored`.
 - **Say so when something is not checked.** What works but has not been
   checked by hand is marked that way in the game's README
   (`games/starquake/README.md`), rather than left to be
