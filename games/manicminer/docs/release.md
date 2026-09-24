@@ -6,6 +6,6 @@ The game's text is in the Spectrum's own letters: the program includes the ROM's
 
 **macOS:** the binary is not signed, so macOS blocks it the first time you run it. In Terminal, in the folder you extracted, run `xattr -d com.apple.quarantine zx-sidekick-manicminer`. Or try to open it once, then allow it under System Settings, Privacy & Security.
 
-**Gamepads** and the arrow keys are the Kempston joystick, which the game finds by itself: move, and A or X to jump. Start pauses, and starts a game on the title screen.
+**Gamepads** and the arrow keys are the Kempston joystick, which the game finds by itself: move, and the bottom or left face button to jump (A or X on an Xbox pad). Start pauses, and starts a game on the title screen.
 
 `THIRD-PARTY.txt` in the archive lists the libraries built into the program and their licences.
