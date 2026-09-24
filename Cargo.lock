@@ -1790,7 +1790,7 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 [[package]]
 name = "rustzx-z80"
 version = "0.16.0"
-source = "git+https://github.com/zx-sidekick/rustzx?rev=eac068fdd012d1ecded062f77e754fc039370ca0#eac068fdd012d1ecded062f77e754fc039370ca0"
+source = "git+https://github.com/zx-sidekick/rustzx?rev=29926112ebbde20ec067fec584054ae0f1f053ff#29926112ebbde20ec067fec584054ae0f1f053ff"
 
 [[package]]
 name = "safe_arch"

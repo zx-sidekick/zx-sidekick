@@ -16,7 +16,7 @@ Classic ZX Spectrum games played from your own copy: the original program runs, 
 
 ## How it is checked
 
-CI builds and tests everything that needs no game data, on Linux, macOS and Windows, and fails if a game or ROM file is ever committed. `scripts/check.sh` runs that and, with `SK_ASSETS` pointing at a folder holding your `starquake.tap` and a `48.rom`, the checks against each game itself, which its README lists ([Starquake](games/starquake/README.md#how-it-is-checked)). Measured on 14 September 2026 on `rustzx-z80` at the fork's commit `a73772d`, and again on 24 September 2026 at `eac068f`, with the same results:
+CI builds and tests everything that needs no game data, on Linux, macOS and Windows, and fails if a game or ROM file is ever committed. `scripts/check.sh` runs that and, with `SK_ASSETS` pointing at a folder holding your `starquake.tap` and a `48.rom`, the checks against each game itself, which its README lists ([Starquake](games/starquake/README.md#how-it-is-checked)). Measured on 14 September 2026 on `rustzx-z80` at the fork's commit `a73772d`, and again on 24 September 2026 at `eac068f` and at `2992611`, with the same results:
 
 - **The processor**, against the Fuse project's Z80 test corpus rather than our own work: 1,329 of 1,335 cases match exactly, and the other 6 (`37_1`, `3f`, `cb4e`, `cb5e`, `cb6e`, `cb76`) differ only in the undocumented bits 3 and 5 of F after `SCF`, `CCF` and `BIT n,(HL)`, where `rustzx-z80` follows later research into real chips; bus activity matches in all 1,335.
 

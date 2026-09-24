@@ -356,17 +356,21 @@ impl Zx {
         self.bus.write_internal(addr.wrapping_add(1), hi);
     }
 
+    /// Pushes `v`, as `PUSH` does, untimed: the processor's own
+    /// (zx-sidekick/rustzx#9).
     pub fn push(&mut self, v: u16) {
-        let sp = self.sp().wrapping_sub(2);
-        self.set_sp(sp);
-        self.write16(sp, v);
+        self.cpu.push(&mut self.bus, v);
     }
 
+    /// Pops a word, as `POP` does, untimed: the processor's own.
     pub fn pop(&mut self) -> u16 {
-        let sp = self.sp();
-        let v = self.read16(sp);
-        self.set_sp(sp.wrapping_add(2));
-        v
+        self.cpu.pop(&mut self.bus)
+    }
+
+    /// Returns from a routine, as `RET` does, untimed: the program counter
+    /// popped, and MEMPTR and the rest as the instruction leaves them.
+    pub fn ret(&mut self) {
+        self.cpu.ret(&mut self.bus);
     }
 
     /// Takes the interrupt if it is due, as a step of its own, or else runs
@@ -416,12 +420,12 @@ impl Zx {
     /// `ADD HL,rr` on two values: the sum, with H, the undocumented bits 3
     /// and 5 and C set from it, and S, Z and P/V kept.
     pub fn add16(&mut self, a: u16, b: u16) -> u16 {
-        let wide = u32::from(a) + u32::from(b);
-        let r = wide as u16;
-        let h = (((a ^ b ^ r) >> 8) as u8) & HF;
-        let f = self.f();
-        self.set_f((f & (SF | ZF | PF)) | ((r >> 8) as u8 & (XF | YF)) | h | (wide >> 16) as u8);
-        r
+        // The processor's own arithmetic (zx-sidekick/rustzx#5), stored as
+        // a routine's last instruction leaves F: not as the add itself,
+        // which a following SCF or CCF would see (the Z80's Q).
+        let (sum, f) = rustzx_z80::alu::add16_flags(self.f(), a, b);
+        self.set_f(f);
+        sum
     }
 
     /// `RL` on a value, as the CB-prefixed instruction sets the flags.
