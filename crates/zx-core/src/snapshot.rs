@@ -33,12 +33,3 @@ pub struct Snapshot {
     /// Contents of 0x4000..=0xFFFF.
     pub ram: Vec<u8>,
 }
-
-impl Snapshot {
-    /// Full 64K address space with the RAM in place and zeros for the ROM.
-    pub fn memory(&self) -> Vec<u8> {
-        let mut mem = vec![0u8; 0x4000];
-        mem.extend_from_slice(&self.ram);
-        mem
-    }
-}

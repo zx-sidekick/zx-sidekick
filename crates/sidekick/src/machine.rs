@@ -81,8 +81,9 @@ pub struct Machine<R> {
     pub watch: Vec<u16>,
     /// A hold in force, if any; see [`Hold`].
     pub hold: Option<Hold>,
-    /// Whether the hold's keys are down now.
-    holding: bool,
+    /// The hold whose keys are down now, if any: a hold put in its place
+    /// starts from its own `from`, with these keys let go.
+    holding: Option<Hold>,
     /// What the game does differently.
     pub rules: R,
 }
@@ -150,7 +151,7 @@ impl<R: Rules + Default> Machine<R> {
             zx,
             watch: Vec::new(),
             hold: None,
-            holding: false,
+            holding: None,
             rules: R::default(),
         }
     }
@@ -187,6 +188,11 @@ impl<R: Rules> Machine<R> {
     /// and no interrupts. Returns whether it got there within `max`
     /// instructions. For having the game do something on a copy of the
     /// machine, such as entering a room. The game's rules are not asked.
+    ///
+    /// Stopped at `stop`, the return address pushed for the call is still on
+    /// the stack, the clock can be far past a frame, and interrupts are off:
+    /// a caller that goes on to [`Machine::run_frame`] sets `zx.t` to 0 and
+    /// turns interrupts back on first.
     pub fn call(&mut self, addr: u16, stop: u16, max: u64) -> bool {
         self.call_observing(addr, stop, max, |_| {})
     }
@@ -238,6 +244,11 @@ impl<R: Rules> Machine<R> {
         } = self;
         rules.before_frame(zx);
         let mut hits = Vec::new();
+        // A hold put in place of the one whose keys are down lets them go.
+        if let Some(held) = holding.take_if(|held| hold.as_ref() != Some(&*held)) {
+            zx.keys[held.row] |= held.bits;
+        }
+        let mut pressing = holding.is_some();
         zx.run_frame(|z| {
             see(z);
             let pc = z.pc();
@@ -246,21 +257,19 @@ impl<R: Rules> Machine<R> {
             }
             if let Some(hold) = hold.as_ref() {
                 if pc == hold.from {
-                    *holding = true;
+                    pressing = true;
                 } else if hold.until.contains(&pc) {
-                    *holding = false;
+                    pressing = false;
                     z.keys[hold.row] |= hold.bits;
                 }
-                if *holding {
+                if pressing {
                     z.keys[hold.row] &= !hold.bits;
                 }
             }
             rules.at(z, pc);
             answer(z)
         });
-        if hold.is_none() {
-            *holding = false;
-        }
+        *holding = if pressing { hold.clone() } else { None };
         self.rules.after_frame(&mut self.zx);
         hits
     }
@@ -377,6 +386,29 @@ mod tests {
         // Not held before the program gets to where it starts.
         let mut m = nop_then_loop();
         m.hold = Some(hold(0x9000, 0x9001));
+        m.run_frame();
+        assert_eq!(m.zx.keys, [0xFF; 8]);
+    }
+
+    #[test]
+    fn a_hold_put_in_place_of_another_lets_its_keys_go() {
+        let (row, bits) = ASDFG;
+        let mut m = nop_then_loop();
+        m.hold = Some(Hold {
+            from: 0x8000,
+            until: vec![],
+            row,
+            bits,
+        });
+        m.run_frame();
+        assert_ne!(m.zx.keys[row] & bits, bits, "held");
+        // Another hold, from an address never reached: nothing held.
+        m.hold = Some(Hold {
+            from: 0x9000,
+            until: vec![],
+            row: 0,
+            bits: 1,
+        });
         m.run_frame();
         assert_eq!(m.zx.keys, [0xFF; 8]);
     }

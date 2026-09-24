@@ -60,8 +60,10 @@ impl Zx {
                     self.keys[row as usize] |= mask;
                 }
             }
-            Key::Matrix(..) => {}
-            Key::Kempston(bit) => {
+            // The port has five bits, as the matrix has five keys a row: a
+            // bit past them, from a keymap built by hand, does nothing
+            // rather than overflowing the shift.
+            Key::Kempston(bit) if bit < 5 => {
                 let mask = 1 << bit;
                 if pressed {
                     self.kempston |= mask;
@@ -69,6 +71,8 @@ impl Zx {
                     self.kempston &= !mask;
                 }
             }
+            // A key past its row or port, from a keymap built by hand.
+            Key::Matrix(..) | Key::Kempston(_) => {}
         }
     }
 }

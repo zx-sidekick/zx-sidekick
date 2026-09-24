@@ -399,23 +399,6 @@ impl Zx {
         }
     }
 
-    /// Calls the routine at `addr` from nowhere, with interrupts off, and runs
-    /// it until it reaches `stop` or returns. Returns whether it did within
-    /// `max` instructions.
-    pub fn call_until(&mut self, addr: u16, stop: u16, max: u64) -> bool {
-        let sp = self.sp();
-        self.push(0);
-        self.set_pc(addr);
-        self.set_interrupts(false);
-        for _ in 0..max {
-            if self.pc() == stop || (self.pc() == 0 && self.sp() == sp) {
-                return true;
-            }
-            self.step();
-        }
-        false
-    }
-
     /// `ADD HL,rr` on two values: the sum, with H, the undocumented bits 3
     /// and 5 and C set from it, and S, Z and P/V kept.
     pub fn add16(&mut self, a: u16, b: u16) -> u16 {

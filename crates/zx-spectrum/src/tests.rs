@@ -336,21 +336,6 @@ fn running_to_an_address_gives_up_after_its_frames() {
 }
 
 #[test]
-fn calling_a_routine_runs_it_to_its_return_or_a_stop() {
-    // 0x9000: INC A; RET. 0x9100: INC A; JR $.
-    let mut z = machine(&[]);
-    z.mem[0x9000..0x9002].copy_from_slice(&[0x3C, 0xC9]);
-    z.mem[0x9100..0x9103].copy_from_slice(&[0x3C, 0x18, 0xFE]);
-    z.set_interrupts(true);
-    assert!(z.call_until(0x9000, 0xFFFF, 10));
-    assert_eq!((z.a(), z.sp(), z.pc(), z.iff1()), (1, 0xC000, 0, false));
-    z.set_sp(0xC000);
-    assert!(z.call_until(0x9100, 0x9101, 10));
-    assert_eq!(z.a(), 2);
-    assert!(!z.call_until(0x9101, 0xFFFF, 100), "never returns");
-}
-
-#[test]
 fn a_clone_runs_on_its_own() {
     let mut z = machine(&[0x3C, 0x3C]);
     z.interrupts = false;
@@ -411,4 +396,14 @@ fn rl_and_rla_set_the_flags_as_the_processor_does() {
             assert_eq!((z.a(), z.f()), (cpu.a(), cpu.f()), "RLA {v:02x} f={f:02x}");
         }
     }
+}
+
+#[test]
+fn a_kempston_bit_past_the_port_does_nothing() {
+    let mut z = machine(&[]);
+    z.set_key(Key::Kempston(8), true);
+    z.set_key(Key::Kempston(5), true);
+    assert_eq!(z.kempston, 0);
+    z.set_key(Key::Kempston(4), true);
+    assert_eq!(z.kempston, 0x10);
 }

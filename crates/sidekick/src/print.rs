@@ -220,7 +220,7 @@ fn glyph(z: &mut Zx, glyph: &[u8; 8]) {
     }
     if row >= 24 {
         // Off the bottom: the ROM would scroll. No game here prints there;
-        // keep the column moving so a caller never waits on it.
+        // park at the bottom line, and draw and scroll nothing.
         set_position(z, 23, col.min(31));
         return;
     }
