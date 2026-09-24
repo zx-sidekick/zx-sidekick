@@ -547,9 +547,14 @@ impl Guidance {
     }
 
     /// Asks for the piece route to switch to the next of the nearest missing
-    /// pieces (#51), which the tracker takes on its next frame.
+    /// pieces (#51), which the tracker takes on its next frame. Only where
+    /// the route is shown, at level 5 and up: below it a press changes
+    /// nothing the player can see, and must not change the route they meet
+    /// on raising the level.
     pub fn switch_piece(&mut self) {
-        self.switch_piece = true;
+        if self.level >= 5 {
+            self.switch_piece = true;
+        }
     }
 
     /// Whether a switch was asked for since the last call.
@@ -612,8 +617,12 @@ impl Guidance {
             || self.room.is_some()
             || self.pieces != empty
             || !self.core.is_empty()
+            || !self.items.is_empty()
         {
             self.visited.clear();
+            // The items found were the last game's too: the title screen's
+            // empty map shows none of them.
+            self.items.clear();
             self.room = None;
             self.pieces = empty;
             self.core.clear();
@@ -809,6 +818,9 @@ impl Guidance {
         };
         self.chosen_piece = None;
         self.switch_piece = false;
+        // The last game's row in the table is not this one's: the score
+        // screens before CORE OF HEROES must not mark it (#47).
+        self.this_game = None;
         self.version += 1;
     }
 }
@@ -824,6 +836,27 @@ mod tests {
             *b = true;
         }
         it
+    }
+
+    #[test]
+    fn a_new_game_marks_no_row_as_this_one() {
+        let mut g = Guidance {
+            this_game: Some(3),
+            ..Guidance::default()
+        };
+        g.new_game();
+        assert_eq!(g.this_game(), None);
+    }
+
+    #[test]
+    fn a_route_is_switched_only_where_it_is_shown() {
+        let mut g = Guidance::default();
+        g.set_level(4);
+        g.switch_piece();
+        assert!(!g.take_switch(), "no route shown at level 4");
+        g.set_level(5);
+        g.switch_piece();
+        assert!(g.take_switch());
     }
 
     #[test]

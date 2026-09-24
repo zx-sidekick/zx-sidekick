@@ -99,9 +99,10 @@ impl Tracker {
                 ]));
             }
             routine::NEW_GAME | routine::MENU => {
+                // The title screen shows no codes, and a new game makes new
+                // door codes (#66).
+                guidance.forget_all_codes();
                 if hit == routine::NEW_GAME {
-                    // A new game makes new door codes (#66).
-                    guidance.forget_all_codes();
                     self.codes_due = true;
                 }
                 self.seen.clear();
@@ -767,7 +768,11 @@ mod tests {
         let end = |g: &Guidance| g.route().and_then(|r| r.last()).map(|s| s.room);
         t.publish(&mem, &mut g);
         assert_eq!((end(&g), g.piece_choice()), (Some(101), (1, 3)));
+        // Asked for where the route is shown, at level 5; followed here over
+        // the ways walked, which this test has instead of the whole map.
+        g.set_level(5);
         g.switch_piece();
+        g.set_level(4);
         t.publish(&mem, &mut g);
         assert_eq!((end(&g), g.piece_choice()), (Some(102), (2, 3)));
         t.publish(&mem, &mut g);
