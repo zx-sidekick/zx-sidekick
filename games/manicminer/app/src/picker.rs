@@ -9,6 +9,7 @@
 use manicminer::play::Training;
 use sidekick_frontend::gamepad::Layout;
 use sidekick_frontend::overlay::{self, HEIGHT};
+use sidekick_frontend::picker::State;
 use sidekick_frontend::text::palette::{
     ACCENT, ACCENT_DIM, ARROW, BRIGHT, DANGER, DANGER_FILL, DANGER_TEXT, DANGER_TITLE, DIALOG, DIM,
     FOCUS_TITLE as TITLE, HINT_KEY, LABEL, LABEL_FOCUSED, NOTCH, ON_TEXT, PAUSED, RULE, SELECTED,
@@ -19,9 +20,10 @@ use sidekick_frontend::text::{Canvas, Fonts, PadMark, Rgb, Span, Weight, span};
 use crate::frontend::PANEL_W;
 
 /// The picker's rows, top to bottom.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Row {
     /// The guidance level.
+    #[default]
     Level,
     /// One of the five switches, by its place in [`SWITCHES`].
     Switch(usize),
@@ -105,9 +107,9 @@ pub enum Action {
 /// The picker's state, which the window and the machine's thread share.
 #[derive(Clone, Debug, Default)]
 pub struct Picker {
-    open: bool,
-    /// The highlighted row, by its place in [`ROWS`].
-    focus: usize,
+    /// Open or closed, the highlighted row, the action pressed once, and
+    /// the version, as every game's picker keeps them (#178).
+    state: State<Row>,
     /// The guidance level and switches in force, and those chosen in the
     /// picker, not yet kept.
     level: u8,
@@ -118,11 +120,7 @@ pub struct Picker {
     cavern: u8,
     /// The caverns' names, as the game has them, read from the tape.
     names: Vec<String>,
-    /// An action pressed once, waiting for its second press.
-    armed: Option<Row>,
     requested: Option<Action>,
-    /// Moves whenever anything the picker shows does, so the window redraws.
-    version: u64,
 }
 
 impl Picker {
@@ -132,11 +130,12 @@ impl Picker {
     }
 
     pub fn is_open(&self) -> bool {
-        self.open
+        self.state.is_open()
     }
 
+    /// Moves whenever anything the picker shows does, so the window redraws.
     pub fn version(&self) -> u64 {
-        self.version
+        self.state.version()
     }
 
     /// The switches in force.
@@ -152,7 +151,7 @@ impl Picker {
     /// Starts at guidance `level` (headless, which has no picker).
     pub fn set_level(&mut self, level: u8) {
         self.level = level.min(TOP_LEVEL);
-        self.version += 1;
+        self.state.touch();
     }
 
     /// Keeps what is chosen in the picker.
@@ -164,13 +163,10 @@ impl Picker {
     /// Opens the picker on the switches in force, with Go to cavern showing
     /// the cavern being played, `cavern`.
     pub fn open(&mut self, cavern: u8) {
-        self.open = true;
         self.picked_level = self.level;
         self.picked = self.training;
         self.cavern = cavern.min(19);
-        self.focus = 0;
-        self.armed = None;
-        self.version += 1;
+        self.state.open(ROWS[0]);
     }
 
     /// Esc, B or Select: closes it, keeping nothing chosen in it.
@@ -179,9 +175,7 @@ impl Picker {
     }
 
     fn close(&mut self) {
-        self.open = false;
-        self.armed = None;
-        self.version += 1;
+        self.state.close();
     }
 
     pub fn focus_up(&mut self) {
@@ -194,16 +188,13 @@ impl Picker {
 
     /// Moving away from an action pressed once cancels it.
     fn move_focus(&mut self, by: isize) {
-        let to = (self.focus as isize + by).clamp(0, ROWS.len() as isize - 1);
-        self.focus = to as usize;
-        self.armed = None;
-        self.version += 1;
+        self.state.move_focus(&ROWS, by);
     }
 
     /// Left and right: the level down or up, a switch off or on, or the
     /// cavern down or up, in the picker only until it is kept.
     pub fn change(&mut self, up: bool) {
-        match ROWS[self.focus] {
+        match self.state.focus() {
             Row::Level => {
                 self.picked_level = if up {
                     (self.picked_level + 1).min(TOP_LEVEL)
@@ -221,14 +212,14 @@ impl Picker {
             }
             Row::EndGame | Row::Exit => return,
         }
-        self.version += 1;
+        self.state.touch();
     }
 
     /// Enter or A. On the level or a switch it keeps what is chosen and
     /// closes the picker; on Go to cavern it keeps them and goes there; on
     /// an action the first press asks for a second, and the second does it.
     pub fn enter(&mut self) {
-        match ROWS[self.focus] {
+        match self.state.focus() {
             Row::Level | Row::Switch(_) => {
                 self.keep();
                 self.close();
@@ -239,16 +230,13 @@ impl Picker {
                 self.close();
             }
             row @ (Row::EndGame | Row::Exit) => {
-                if self.armed == Some(row) {
+                if self.state.press(row) {
                     self.requested = Some(if row == Row::Exit {
                         Action::Exit
                     } else {
                         Action::EndGame
                     });
                     self.close();
-                } else {
-                    self.armed = Some(row);
-                    self.version += 1;
                 }
             }
         }
@@ -312,7 +300,13 @@ fn pad_badges(layout: Layout) -> (Badge, Badge) {
 pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) {
     let (ww, wh) = (overlay::width(PANEL_W), HEIGHT);
     canvas.shade(0.0, 0.0, ww, wh, DIM, 184);
-    let action_h = |row: Row| if p.armed == Some(row) { 54.0 } else { 40.0 };
+    let action_h = |row: Row| {
+        if p.state.armed() == Some(row) {
+            54.0
+        } else {
+            40.0
+        }
+    };
     let actions_h = action_h(Row::EndGame) + 4.0 + action_h(Row::Exit);
     let switches_top = 56.0 + LEVEL_BOX + 16.0 + SWITCH_HEAD;
     let rule = switches_top + 6.0 * PITCH + 18.0 + 6.0;
@@ -341,7 +335,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
     );
 
     let (rx, rw) = (x + 12.0, w - 24.0);
-    let focus = ROWS[p.focus];
+    let focus = p.state.focus();
     let highlight = |canvas: &mut Canvas, top: f32| {
         canvas.round_rect(rx, top, rw, PITCH - 4.0, 8.0, ACCENT);
         canvas.round_rect(rx + 2.0, top + 2.0, rw - 4.0, PITCH - 8.0, 6.0, SELECTED);
@@ -468,7 +462,7 @@ pub fn draw(fonts: &mut Fonts, canvas: &mut Canvas, p: &Picker, layout: Layout) 
         ),
     ] {
         let rh = action_h(row);
-        let armed = p.armed == Some(row);
+        let armed = p.state.armed() == Some(row);
         let focused = focus == row;
         if armed {
             canvas.round_rect(rx, ay, rw, rh, 10.0, DANGER);

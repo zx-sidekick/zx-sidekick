@@ -8,6 +8,7 @@
 //! What each level shows is its own ticket's (#3); level 1's teleport
 //! codes are carried here from the game thread to the panel (#4).
 
+use sidekick_frontend::picker::State;
 use starquake::facts::SeenTeleporter;
 use starquake::map::{Openings, RoomSet, Step};
 use starquake::play::Training;
@@ -177,17 +178,15 @@ pub struct Guidance {
     level: u8,
     training: Training,
     record: Record,
-    picker: bool,
+    /// Open or closed, the highlighted row, the action pressed once, and
+    /// the picker's version, as every game's picker keeps them (#178).
+    picker: State<Setting>,
     /// The level and the training switches the picker shows, which take
     /// effect only when kept with Enter or A.
     picked: (u8, Training),
     /// "This will show on your score", asked when leaving the picker would
     /// add to the record, and which answer is highlighted.
     asking: bool,
-    /// The row the picker has highlighted.
-    focus: Setting,
-    /// An action pressed once, waiting for the second press.
-    armed: Option<Setting>,
     /// Whether a game is being played, which is when it can be ended.
     playing: bool,
     /// An action confirmed and not yet carried out.
@@ -271,11 +270,12 @@ impl Guidance {
     }
 
     pub fn picker_open(&self) -> bool {
-        self.picker
+        self.picker.is_open()
     }
 
+    /// Moves whenever anything the panel or the picker shows does.
     pub fn version(&self) -> u64 {
-        self.version
+        self.version + self.picker.version()
     }
 
     /// The letters the connected pad carries, which every legend follows
@@ -294,11 +294,11 @@ impl Guidance {
     }
 
     pub fn focus(&self) -> Setting {
-        self.focus
+        self.picker.focus()
     }
 
     pub fn armed(&self) -> Option<Setting> {
-        self.armed
+        self.picker.armed()
     }
 
     /// The level and training mode chosen in the picker, not yet in effect.
@@ -648,23 +648,20 @@ impl Guidance {
     /// Whether a game is being played, as the game thread sees it.
     pub fn set_playing(&mut self, playing: bool) {
         self.playing = playing;
-        if !playing && self.focus == Setting::EndGame {
-            self.focus = Setting::Exit;
+        if !playing && self.picker.focus() == Setting::EndGame {
+            self.picker.set_focus(Setting::Exit);
         }
-        if self.armed == Some(Setting::EndGame) {
-            self.armed = None;
+        if self.picker.armed() == Some(Setting::EndGame) {
+            self.picker.disarm();
         }
         self.version += 1;
     }
 
     /// Opens the picker on its top row.
     pub fn open(&mut self) {
-        self.picker = true;
         self.picked = (self.level, self.training);
         self.asking = false;
-        self.focus = Setting::Level;
-        self.armed = None;
-        self.version += 1;
+        self.picker.open(Setting::Level);
     }
 
     /// Esc, B or Select. With the question up, back to the picker.
@@ -683,7 +680,7 @@ impl Guidance {
     fn leave(&mut self) {
         if self.raises_record() {
             self.asking = true;
-            self.armed = None;
+            self.picker.disarm();
             self.version += 1;
         } else {
             self.keep();
@@ -700,9 +697,8 @@ impl Guidance {
     /// record takes the settings in effect, so passing through a level on
     /// the way to another does not count as having used it.
     pub fn close(&mut self) {
-        self.picker = false;
+        self.picker.close();
         self.asking = false;
-        self.armed = None;
         self.record.highest = self.record.highest.max(self.level);
         self.record.training = merged(self.record.training, self.training);
         self.version += 1;
@@ -719,7 +715,7 @@ impl Guidance {
             self.keep();
             return;
         }
-        let action = match self.focus {
+        let action = match self.picker.focus() {
             Setting::EndGame => Action::EndGame,
             Setting::Exit => Action::Exit,
             // A setting: keep what is chosen and leave the picker.
@@ -728,15 +724,12 @@ impl Guidance {
                 return;
             }
         };
-        if self.armed == Some(self.focus) {
+        if self.picker.press(self.picker.focus()) {
             self.requested = Some(action);
             // An action is not a decision about the settings: what was
             // chosen and not kept is dropped, so an ended game's score note
             // cannot pick it up by accident.
             self.close();
-        } else {
-            self.armed = Some(self.focus);
-            self.version += 1;
         }
     }
 
@@ -755,11 +748,7 @@ impl Guidance {
             return;
         }
         let rows = self.rows();
-        let at = rows.iter().position(|&r| r == self.focus).unwrap_or(0) as isize;
-        let to = (at + by).clamp(0, rows.len() as isize - 1) as usize;
-        self.focus = rows[to];
-        self.armed = None;
-        self.version += 1;
+        self.picker.move_focus(&rows, by);
     }
 
     /// Takes the confirmed action, if there is one and it is `which`.
@@ -780,7 +769,7 @@ impl Guidance {
             return;
         }
         let max = LEVELS.len() as u8 - 1;
-        match (self.focus, up) {
+        match (self.picker.focus(), up) {
             (Setting::Level, true) => self.picked.0 = (self.picked.0 + 1).min(max),
             (Setting::Level, false) => self.picked.0 = self.picked.0.saturating_sub(1),
             (Setting::EndGame | Setting::Exit, _) => return,
