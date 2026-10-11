@@ -86,6 +86,7 @@ fn passed_is_readable_at_the_sync_stop() {
     let mut machine = booted();
     machine.watch(&[INTERRUPT]);
     machine.set_sync(Some(INTERRUPT));
-    while machine.run().expect("a run") != Stop::Sync {}
+    let synced = (0..4).any(|_| machine.run().expect("a run") == Stop::Sync);
+    assert!(synced, "the sync address stops within two frames");
     assert_eq!(machine.passed(), [INTERRUPT]);
 }
