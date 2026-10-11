@@ -20,6 +20,10 @@ updates:
     schedule:
       interval: weekly
     labels: [dependencies]
+    ignore:
+      # Its ref is the toolchain version, pinned for the lint job so a new clippy lint can't
+      # fail every PR at once; it moves by hand (ci.yml). The test job's @stable is unaffected.
+      - dependency-name: dtolnay/rust-toolchain
     groups:
       actions:
         patterns: ['*']
