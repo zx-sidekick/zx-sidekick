@@ -1,9 +1,11 @@
 //! The types `rustzx-core` asks its host for, for a machine with no window and no sound device.
 
 use crate::watch::Watch;
+use rustzx_core::error::IoError;
 use rustzx_core::{
     host::{
-        BufferCursor, FrameBuffer, FrameBufferSource, Host, HostContext, Stopwatch, StubIoExtender,
+        BufferCursor, DataRecorder, FrameBuffer, FrameBufferSource, Host, HostContext, Stopwatch,
+        StubIoExtender,
     },
     zx::video::colors::{ZXBrightness, ZXColor},
 };
@@ -80,5 +82,15 @@ impl Stopwatch for WallClock {
 
     fn measure(&self) -> Duration {
         self.0.elapsed()
+    }
+}
+
+/// Collects what the core writes, for snapshots kept in memory.
+pub(crate) struct Bytes<'a>(pub(crate) &'a mut Vec<u8>);
+
+impl DataRecorder for Bytes<'_> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, IoError> {
+        self.0.extend_from_slice(buf);
+        Ok(buf.len())
     }
 }

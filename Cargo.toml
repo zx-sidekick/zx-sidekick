@@ -15,6 +15,7 @@ repository = "https://github.com/zx-sidekick/zx-sidekick"
 # "Working on the engine" in ZX-SIDEKICK.md.
 [workspace.dependencies]
 rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "479f9f22484473f61b0b4210952041b9ac4c15d0", features = ["embedded-roms", "ay", "zlib"] }
+thiserror = "2.0.21"
 rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "479f9f22484473f61b0b4210952041b9ac4c15d0" }
 
 # The strictest useful setting: clippy's pedantic, nursery and cargo groups, plus the
@@ -31,6 +32,8 @@ nursery = { level = "warn", priority = -1 }
 cargo = { level = "warn", priority = -1 }
 # rustzx-core's own dependencies pull in three versions of syn; updating them is a fork patch.
 multiple_crate_versions = "allow"
+# Contradicts rustc's `unreachable_pub`, which asks for `pub(crate)` where this asks for `pub`.
+redundant_pub_crate = "allow"
 allow_attributes_without_reason = "warn"
 clone_on_ref_ptr = "warn"
 dbg_macro = "warn"
