@@ -1,0 +1,19 @@
+[package]
+name = "sidekick-def"
+description = "ZX Sidekick's game definitions: format 1, read from TOML or JSON, checked, and its JSON Schema"
+publish = false
+
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

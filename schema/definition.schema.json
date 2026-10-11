@@ -1,0 +1,1669 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ZX Sidekick game definition, format 1",
+  "description": "A game definition.",
+  "type": "object",
+  "properties": {
+    "actions": {
+      "description": "Things a button or key can do.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Action"
+      }
+    },
+    "cheats": {
+      "description": "Training switches.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Cheat"
+      }
+    },
+    "game": {
+      "description": "Which game this is.",
+      "$ref": "#/$defs/Game"
+    },
+    "guidance": {
+      "description": "The guidance levels.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Guidance"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "high_scores": {
+      "description": "The game's high-score table.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HighScores"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "media": {
+      "description": "The dumps supported.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Media"
+      }
+    },
+    "pad": {
+      "description": "What a pad does, by state (`default` for every state).",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Pad"
+      }
+    },
+    "panel": {
+      "description": "The panel's widgets, in order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Widget"
+      }
+    },
+    "persist": {
+      "description": "Lists kept between games.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Persist"
+      }
+    },
+    "run": {
+      "description": "How the game is run.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Run"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema": {
+      "description": "The format, 1.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "script": {
+      "description": "The definition's script.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Script"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "situations": {
+      "description": "How a crafted situation enters play.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Situations"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "states": {
+      "description": "Moments of the game, checked in order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/State"
+      }
+    },
+    "text_entry": {
+      "description": "Typing a word the game asks for, with a pad.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TextEntry"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "values": {
+      "description": "Named facts about the game's memory.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Value"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "game",
+    "media"
+  ],
+  "$defs": {
+    "Action": {
+      "description": "`[[actions]]`: something a button or key does beyond a key or a direction.",
+      "type": "object",
+      "properties": {
+        "frames": {
+          "description": "How many frames it lasts.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "host_key": {
+          "description": "A key the Spectrum doesn't have that also does it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Its name. `end-game` is the menu's \"End this game\".",
+          "type": "string"
+        },
+        "joystick": {
+          "description": "Joystick directions or fire held while it lasts.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "keys": {
+          "description": "Keys held while it lasts.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "label": {
+          "description": "Its text where shown.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "description": "Why and how it works.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "patch_for_frame": {
+          "description": "Patches applied while it lasts, then undone.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Patch"
+          }
+        },
+        "script": {
+          "description": "A function of the script to call.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tap": {
+          "description": "Keys pressed for `frames` frames.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "Add": {
+      "description": "Where a kept list's entries come from.",
+      "anyOf": [
+        {
+          "description": "`\"script\"`: the script returns them.",
+          "$ref": "#/$defs/ScriptWord"
+        },
+        {
+          "description": "A value read while the game is in a state.",
+          "type": "object",
+          "properties": {
+            "in_state": {
+              "description": "The state.",
+              "type": "string"
+            },
+            "value": {
+              "description": "The value.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "value",
+            "in_state"
+          ]
+        }
+      ]
+    },
+    "Address": {
+      "description": "A 16-bit address: a number from 0 to 65535, or a \"0x\" hex string.",
+      "oneOf": [
+        {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^(0[xX][0-9A-Fa-f]{1,4}|[0-9]{1,5})$"
+        }
+      ]
+    },
+    "Amount": {
+      "description": "A number, or a value's full amount.",
+      "anyOf": [
+        {
+          "description": "This number.",
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "description": "`\"max\"`: the value's `max`.",
+          "$ref": "#/$defs/Max"
+        }
+      ]
+    },
+    "Bytes": {
+      "description": "Bytes in hex, separated by spaces: \"CD 40 75\".",
+      "type": "string",
+      "pattern": "^\\s*([0-9A-Fa-f]{2}(\\s+[0-9A-Fa-f]{2})*)?\\s*$"
+    },
+    "Charset": {
+      "description": "How a `text` value's codes map to letters.",
+      "anyOf": [
+        {
+          "description": "`\"ascii\"`.",
+          "$ref": "#/$defs/NamedCharset"
+        },
+        {
+          "description": "A table of the game's own.",
+          "type": "object",
+          "properties": {
+            "chars": {
+              "description": "The letters, in code order.",
+              "type": "string"
+            },
+            "first": {
+              "description": "The code of the first letter in `chars`.",
+              "type": "integer",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "first",
+            "chars"
+          ]
+        }
+      ]
+    },
+    "Cheat": {
+      "description": "`[[cheats]]`: a training switch.",
+      "type": "object",
+      "properties": {
+        "hold": {
+          "description": "Values that may not go down while it's on.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany3"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Its text in the menu.",
+          "type": "string"
+        },
+        "marks_score": {
+          "description": "Whether a game played with it on is a training game.",
+          "type": "boolean"
+        },
+        "note": {
+          "description": "Why and how it works.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "patch": {
+          "description": "Patches applied while it's on.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Patch"
+          }
+        },
+        "set": {
+          "description": "Values written at each sync point while it's on.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany2"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ]
+    },
+    "Count": {
+      "description": "How many: a number, or the value that holds it.",
+      "anyOf": [
+        {
+          "description": "A fixed number.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        {
+          "description": "The value that holds it.",
+          "type": "string"
+        }
+      ]
+    },
+    "Field": {
+      "description": "A field of a table's records, or of a high-score entry.",
+      "type": "object",
+      "properties": {
+        "bits": {
+          "description": "Only these bits: true when they're set.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "charset": {
+          "description": "For `text`: how codes map to letters.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Charset"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "len": {
+          "description": "Its length, for the multi-byte types.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "offset": {
+          "description": "Its offset within the record.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "type": {
+          "description": "What kind of value it is.",
+          "$ref": "#/$defs/ValueType"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "offset",
+        "type"
+      ]
+    },
+    "Game": {
+      "description": "`[game]`: which game this is.",
+      "type": "object",
+      "properties": {
+        "authors": {
+          "description": "Who wrote it.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "description": "Unique, lowercase letters, digits, `-` and `_`: names the data folder and the file.",
+          "type": "string"
+        },
+        "machine": {
+          "description": "The Spectrum it runs on.",
+          "$ref": "#/$defs/Machine"
+        },
+        "notice": {
+          "description": "Replaces the standard \"not affiliated\" notice; keep its meaning.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publisher": {
+          "description": "Who published it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "In plain text, as the game is known.",
+          "type": "string"
+        },
+        "year": {
+          "description": "The year it was published.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "machine"
+      ]
+    },
+    "Guidance": {
+      "description": "`[guidance]`: the guidance levels.",
+      "type": "object",
+      "properties": {
+        "levels": {
+          "description": "From 0 (no help) up.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Level"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "HighScores": {
+      "description": "`[high_scores]`: the game's table.",
+      "type": "object",
+      "properties": {
+        "addr": {
+          "description": "Where the table starts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Address"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "count": {
+          "description": "How many entries.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "name": {
+          "description": "The entry's name.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Field"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "score": {
+          "description": "The entry's score.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Field"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stride": {
+          "description": "Bytes from one entry to the next.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Joystick": {
+      "description": "What a pad's directions drive.",
+      "oneOf": [
+        {
+          "description": "The Kempston joystick.",
+          "type": "string",
+          "const": "kempston"
+        },
+        {
+          "description": "Sinclair joystick 1 (keys 6–0).",
+          "type": "string",
+          "const": "sinclair1"
+        },
+        {
+          "description": "Sinclair joystick 2 (keys 1–5).",
+          "type": "string",
+          "const": "sinclair2"
+        },
+        {
+          "description": "The cursor keys (5–8, 0 to fire).",
+          "type": "string",
+          "const": "cursor"
+        },
+        {
+          "description": "The game's own keys, named in `[pad]`.",
+          "type": "string",
+          "const": "keys"
+        }
+      ]
+    },
+    "Level": {
+      "description": "A guidance level.",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "What it adds, in a line.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description"
+      ]
+    },
+    "Machine": {
+      "description": "The Spectrum a game runs on.",
+      "oneOf": [
+        {
+          "description": "The 48K.",
+          "type": "string",
+          "const": "48k"
+        },
+        {
+          "description": "The 128K.",
+          "type": "string",
+          "const": "128k"
+        }
+      ]
+    },
+    "Mask": {
+      "description": "Where sprites keep their masks.",
+      "oneOf": [
+        {
+          "description": "No mask.",
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "description": "A mask byte before each byte.",
+          "type": "string",
+          "const": "interleaved"
+        },
+        {
+          "description": "The mask after the picture.",
+          "type": "string",
+          "const": "after"
+        }
+      ]
+    },
+    "Max": {
+      "description": "The word `max`.",
+      "oneOf": [
+        {
+          "description": "The value's `max`.",
+          "type": "string",
+          "const": "max"
+        }
+      ]
+    },
+    "Media": {
+      "description": "`[[media]]`: a dump the definition supports.",
+      "type": "object",
+      "properties": {
+        "download": {
+          "description": "Where the player can get it legally.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "download_label": {
+          "description": "The download link's text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "files": {
+          "description": "File names it's distributed under, matched in any case.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "format": {
+          "description": "The tape's format.",
+          "$ref": "#/$defs/TapeFormat"
+        },
+        "name": {
+          "description": "How the tape prompt names the dump.",
+          "type": "string"
+        },
+        "sha1": {
+          "description": "The SHA-1 of the tape file itself (not a zip around it), 40 hex digits.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "NamedCharset": {
+      "description": "A charset with a name.",
+      "oneOf": [
+        {
+          "description": "ASCII.",
+          "type": "string",
+          "const": "ascii"
+        }
+      ]
+    },
+    "OneOrMany": {
+      "description": "One of something, or a list of them.",
+      "anyOf": [
+        {
+          "description": "Just one.",
+          "$ref": "#/$defs/Address"
+        },
+        {
+          "description": "A list.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Address"
+          }
+        }
+      ]
+    },
+    "OneOrMany2": {
+      "description": "One of something, or a list of them.",
+      "anyOf": [
+        {
+          "description": "Just one.",
+          "$ref": "#/$defs/Set"
+        },
+        {
+          "description": "A list.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Set"
+          }
+        }
+      ]
+    },
+    "OneOrMany3": {
+      "description": "One of something, or a list of them.",
+      "anyOf": [
+        {
+          "description": "Just one.",
+          "type": "string"
+        },
+        {
+          "description": "A list.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "Pad": {
+      "description": "`[pad.*]`: what each part of a pad does in a state (`default` for all states).",
+      "type": "object",
+      "properties": {
+        "dpad": {
+          "description": "The D-pad.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "east": {
+          "description": "The right face button.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "l1": {
+          "description": "The left shoulder.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "l2": {
+          "description": "The left trigger.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "north": {
+          "description": "The top face button.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "r1": {
+          "description": "The right shoulder.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "r2": {
+          "description": "The right trigger.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "select": {
+          "description": "Select (always the guidance menu).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "south": {
+          "description": "The bottom face button.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start": {
+          "description": "Start.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stick": {
+          "description": "The left stick.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "west": {
+          "description": "The left face button.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "PadTable": {
+      "description": "Keys, a tap, or an action.",
+      "type": "object",
+      "properties": {
+        "action": {
+          "description": "An action's id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "frames": {
+          "description": "How many frames a tap lasts.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "keys": {
+          "description": "Keys held as long as the button is.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tap": {
+          "description": "Keys pressed for `frames` frames, however long the button is held.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PadTarget": {
+      "description": "What a part of a pad does.",
+      "anyOf": [
+        {
+          "description": "`joystick`, `up`, `down`, `left`, `right`, `fire`, `menu`, `none`, or an action's id.",
+          "type": "string"
+        },
+        {
+          "description": "Keys, a tap, or an action.",
+          "$ref": "#/$defs/PadTable"
+        }
+      ]
+    },
+    "Patch": {
+      "description": "Bytes written over the game's, checked first.",
+      "type": "object",
+      "properties": {
+        "addr": {
+          "description": "Where.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Address"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bank": {
+          "description": "On a 128K, the RAM bank for an address from 0xC000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "bytes": {
+          "description": "The bytes written.",
+          "$ref": "#/$defs/Bytes"
+        },
+        "expect": {
+          "description": "The bytes that must be there first.",
+          "$ref": "#/$defs/Bytes"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bytes",
+        "expect"
+      ]
+    },
+    "Persist": {
+      "description": "`[persist.*]`: a list kept between games.",
+      "type": "object",
+      "properties": {
+        "add": {
+          "description": "Where its entries come from.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Add"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "file": {
+          "description": "Its file in the game's data folder.",
+          "type": "string"
+        },
+        "label": {
+          "description": "What the list holds, for \"Forget the …\".",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "file"
+      ]
+    },
+    "Run": {
+      "description": "`[run]`: how the game is run.",
+      "type": "object",
+      "properties": {
+        "hold_loading_screen": {
+          "description": "Whether the loading screen stays until a key is pressed.",
+          "type": "boolean"
+        },
+        "joystick": {
+          "description": "What the pad's directions drive in play.",
+          "$ref": "#/$defs/Joystick",
+          "default": "kempston"
+        },
+        "sync": {
+          "description": "The top of the game's main loop, reached once per frame of play.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Address"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Script": {
+      "description": "`[script]`: the definition's script.",
+      "type": "object",
+      "properties": {
+        "file": {
+          "description": "Its file, within the definition's folder or zip.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "file"
+      ]
+    },
+    "ScriptWord": {
+      "description": "The word `script`.",
+      "oneOf": [
+        {
+          "description": "The script.",
+          "type": "string",
+          "const": "script"
+        }
+      ]
+    },
+    "Set": {
+      "description": "A value to set, and what to.",
+      "type": "object",
+      "properties": {
+        "to": {
+          "description": "A number, or `\"max\"`.",
+          "$ref": "#/$defs/Amount"
+        },
+        "value": {
+          "description": "The value's name.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "to"
+      ]
+    },
+    "Situations": {
+      "description": "`[situations]`: how a crafted situation enters play.",
+      "type": "object",
+      "properties": {
+        "enter": {
+          "description": "The routine that starts play in the current room.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Address"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "State": {
+      "description": "`[[states]]`: a moment of the game. The first that matches is the game's state.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Its name. `title`, `play`, `paused` and `game_over` mean something to the program.",
+          "type": "string"
+        },
+        "pc": {
+          "description": "Matches if the processor executed one of these during the frame.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "when": {
+          "description": "Matches if this test of a value holds.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Test"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "TapeFormat": {
+      "description": "A tape's format.",
+      "oneOf": [
+        {
+          "description": "`.tap`.",
+          "type": "string",
+          "const": "tap"
+        },
+        {
+          "description": "`.tzx`.",
+          "type": "string",
+          "const": "tzx"
+        }
+      ]
+    },
+    "Test": {
+      "description": "A test of a value, or a combination of tests.",
+      "type": "object",
+      "properties": {
+        "all": {
+          "description": "All of these tests hold.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Test"
+          }
+        },
+        "any": {
+          "description": "Any of these tests holds.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Test"
+          }
+        },
+        "at_least": {
+          "description": "It's at least this.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "at_most": {
+          "description": "It's at most this.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "bits": {
+          "description": "All these bits are set.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "equals": {
+          "description": "It equals this.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "in": {
+          "description": "It's one of these.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "not": {
+          "description": "It doesn't equal this.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "value": {
+          "description": "The value tested.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TextEntry": {
+      "description": "`[text_entry]`: typing a word the game asks for, with a pad.",
+      "type": "object",
+      "properties": {
+        "card_row": {
+          "description": "The character row the card's top sits at.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "choices": {
+          "description": "The kept list offered as choices.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "choices_from_level": {
+          "description": "The guidance level from which choices are offered.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "key_down_frames": {
+          "description": "Frames each letter's key is held.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "key_up_frames": {
+          "description": "Frames between letters, with no key held.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "length": {
+          "description": "How many letters.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "letters": {
+          "description": "The letters allowed.",
+          "type": "string"
+        },
+        "state": {
+          "description": "The state in which the game asks.",
+          "type": "string"
+        },
+        "title_choose": {
+          "description": "The card's title when choosing.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title_spell": {
+          "description": "The card's title when spelling.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "letters",
+        "length"
+      ]
+    },
+    "Value": {
+      "description": "`[values.*]`: a named fact about the game's memory.",
+      "type": "object",
+      "properties": {
+        "addr": {
+          "description": "Where it starts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Address"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bank": {
+          "description": "On a 128K, the RAM bank (0–7) for an address from 0xC000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "charset": {
+          "description": "For `text`: how codes map to letters.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Charset"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "colors": {
+          "description": "For sprites: a value giving each picture's ink.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "count": {
+          "description": "For tables, fonts and sprites: how many there are, or the value that says.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "description": "What it is, for authors.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fields": {
+          "description": "For tables: each record's fields.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Field"
+          }
+        },
+        "first": {
+          "description": "For fonts: the code of the first character.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "height": {
+          "description": "For fonts and sprites: the height in pixels.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "len": {
+          "description": "Its length in bytes, for the multi-byte types.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "mask": {
+          "description": "For sprites: where their masks are.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mask"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max": {
+          "description": "Its full amount, for meters and cheats that fill it.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "stride": {
+          "description": "For tables and sprites: bytes from one to the next.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "type": {
+          "description": "What kind of value it is.",
+          "$ref": "#/$defs/ValueType"
+        },
+        "width": {
+          "description": "For fonts and sprites: the width in pixels.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "writable": {
+          "description": "Whether cheats, scripts and crafted situations may write it.",
+          "type": "boolean"
+        },
+        "zero": {
+          "description": "For `digits`: the code of the digit 0 (0x30 when not given).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ]
+    },
+    "ValueRef": {
+      "description": "A reference to a value.",
+      "type": "object",
+      "properties": {
+        "value": {
+          "description": "The value's name.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ]
+    },
+    "ValueType": {
+      "description": "What kind of value a value is.",
+      "oneOf": [
+        {
+          "description": "One unsigned byte.",
+          "type": "string",
+          "const": "u8"
+        },
+        {
+          "description": "One signed byte.",
+          "type": "string",
+          "const": "i8"
+        },
+        {
+          "description": "A little-endian word.",
+          "type": "string",
+          "const": "u16"
+        },
+        {
+          "description": "A big-endian word.",
+          "type": "string",
+          "const": "u16be"
+        },
+        {
+          "description": "`len` bytes, two decimal digits each.",
+          "type": "string",
+          "const": "bcd"
+        },
+        {
+          "description": "`len` bytes, one digit each, counting from `zero`.",
+          "type": "string",
+          "const": "digits"
+        },
+        {
+          "description": "`len` bytes of bits; bit 0 of the first byte is item 0.",
+          "type": "string",
+          "const": "bitset"
+        },
+        {
+          "description": "`len` raw bytes.",
+          "type": "string",
+          "const": "bytes"
+        },
+        {
+          "description": "`len` bytes of text in `charset`.",
+          "type": "string",
+          "const": "text"
+        },
+        {
+          "description": "Records of `fields`, `count` of them, `stride` apart.",
+          "type": "string",
+          "const": "table"
+        },
+        {
+          "description": "The game's font.",
+          "type": "string",
+          "const": "font"
+        },
+        {
+          "description": "The game's pictures.",
+          "type": "string",
+          "const": "sprites"
+        }
+      ]
+    },
+    "Widget": {
+      "description": "`[[panel]]`: a widget in the panel.",
+      "type": "object",
+      "properties": {
+        "columns": {
+          "description": "For `icon-grid`: pictures a row.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "empty": {
+          "description": "What it says when there's nothing to show.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "font": {
+          "description": "A `font` value its words are drawn in.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from_level": {
+          "description": "The guidance level from which it shows.",
+          "type": "integer",
+          "format": "uint32",
+          "default": 0,
+          "minimum": 0
+        },
+        "kind": {
+          "description": "What it draws.",
+          "$ref": "#/$defs/WidgetKind"
+        },
+        "pictures": {
+          "description": "A `sprites` value its pictures come from.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "`value:<name>`, `persist:<list>` or `script:<result>`.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Its heading.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "source"
+      ]
+    },
+    "WidgetKind": {
+      "description": "What a widget draws.",
+      "oneOf": [
+        {
+          "description": "A line of text.",
+          "type": "string",
+          "const": "text"
+        },
+        {
+          "description": "A number.",
+          "type": "string",
+          "const": "counter"
+        },
+        {
+          "description": "A bar.",
+          "type": "string",
+          "const": "meter"
+        },
+        {
+          "description": "Short words in the game's font.",
+          "type": "string",
+          "const": "chip-list"
+        },
+        {
+          "description": "Pictures, bright, dim or outlined.",
+          "type": "string",
+          "const": "icon-grid"
+        },
+        {
+          "description": "Groups of pictures, each dim until answered.",
+          "type": "string",
+          "const": "card-set"
+        },
+        {
+          "description": "Places on a grid, with walls, markers and routes.",
+          "type": "string",
+          "const": "map-grid"
+        }
+      ]
+    }
+  }
+}

@@ -33,6 +33,7 @@ joystick = "kempston"
 addr = 0x8F21
 type = "u8"
 max = 5
+writable = true
 
 [[cheats]]
 id = "endless-lives"
@@ -72,7 +73,7 @@ ZX Sidekick finds definitions in `games/` beside the program and in `games/` in 
 
 ## Conventions
 
-- **TOML or JSON.** Both describe the same structure; every example here is TOML. In JSON, an address may be a number or a string such as `"0x8F21"`, since JSON has no hex numbers. `sidekick convert FILE` turns one into the other. The JSON Schema in `schema/definition.schema.json` lets editors check both as you type.
+- **TOML or JSON.** Both describe the same structure; every example here is TOML. In JSON, an address may be a number or a string such as `"0x8F21"`, since JSON has no hex numbers; TOML takes either too. A converted definition writes addresses as such strings, so they stay readable. `sidekick convert FILE` turns one into the other. The JSON Schema in `schema/definition.schema.json` lets editors check both as you type.
 - **`schema = 1`** comes first in every definition.
 - **Addresses** are 16-bit, as the processor sees them. On a 128K, an address at `0xC000` or above may add `bank = n` (0–7) to mean that bank, wherever it's paged.
 - **Names** (`id`s, value names, state names) are lowercase letters, digits, `-` and `_`. Everything else refers to them by name, never by address.
@@ -437,7 +438,7 @@ A script can't touch files, the network or the clock, and each call has an opera
 
 `sidekick check DEF [TAPE]` reports, without starting the game:
 
-- anything the schema doesn't allow, with the line;
+- anything the schema doesn't allow (an unknown key is an error, so a typo can't hide), with the line;
 - names used but not defined, and addresses out of range;
 - given the tape: that its SHA-1 is one of `[[media]]`'s, and, once the game has loaded, that each patch's `expect` bytes are there.
 
