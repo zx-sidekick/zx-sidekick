@@ -1,0 +1,329 @@
+# Starquake, ZX Sidekick's reference definition.
+#
+# A draft: its shape is complete, but every fact still to be found is a commented-out line marked
+# TODO, so this parses but won't pass `sidekick check` yet. Facts are found under CLAUDE.md's
+# rules and written up in docs/re/starquake.md; docs/games/starquake.md says what each is for.
+# Facts only: nothing of the game's code, graphics, maps or text belongs in this file.
+
+schema = 1
+
+[game]
+id = "starquake"
+title = "Starquake"
+year = 1985
+publisher = "Bubble Bus Software"
+authors = ["Stephen Crow"]
+machine = "48k"
+
+[[media]]
+name = "Starquake (Bubble Bus Software), as distributed by World of Spectrum"
+# sha1 = TODO: from the downloaded tape
+files = ["starquake.tap", "Starquake.tap.zip"]
+download = "https://worldofspectrum.net/item/0004873"
+download_label = "World of Spectrum"
+
+[run]
+# sync = TODO: the top of the main loop
+hold_loading_screen = true
+joystick = "kempston"
+
+# States, checked in this order; the first that matches is the game's state.
+
+[[states]]
+name = "paused"
+# when = TODO
+
+[[states]]
+name = "booth"
+# pc = TODO: where the booth reads the code
+
+[[states]]
+name = "game_over"
+# pc = TODO
+
+[[states]]
+name = "play"
+# pc = TODO: the main loop's top (the same as [run] sync)
+
+[[states]]
+name = "title"
+# pc = TODO
+
+# Values. Each needs its address and type confirmed.
+
+[values.room]
+type = "u8"
+# addr = TODO
+description = "The room BLOB is in"
+
+[values.blob_x]
+type = "u8"
+# addr = TODO
+
+[values.blob_y]
+type = "u8"
+# addr = TODO
+
+[values.lives]
+type = "u8"
+writable = true
+# addr = TODO
+# max = TODO
+
+[values.energy]
+type = "u8"
+writable = true
+# addr = TODO
+# max = TODO
+
+[values.platforms]
+type = "u8"
+writable = true
+# addr = TODO
+# max = TODO
+
+[values.laser]
+type = "u8"
+writable = true
+# addr = TODO
+# max = TODO
+
+[values.visited]
+type = "bitset"
+# addr = TODO
+# len = TODO
+description = "Rooms visited, kept by the game for its first-visit bonus"
+
+[values.paused_flag]
+type = "u8"
+# addr = TODO
+
+[values.booth_code]
+type = "text"
+len = 5
+# addr = TODO
+# charset = TODO
+description = "The code of the booth BLOB is in, as the booth shows it"
+
+[values.items]
+type = "table"
+# addr = TODO
+# count = TODO
+# stride = TODO
+# fields.room = TODO
+# fields.x = TODO
+# fields.y = TODO
+# fields.picture = TODO
+# fields.colour = TODO
+# fields.carried = TODO
+
+[values.inventory]
+type = "bytes"
+# addr = TODO
+# len = TODO
+
+[values.core_slots]
+type = "table"
+# addr = TODO
+count = 9
+# stride = TODO
+# fields.wants = TODO: the picture the slot wants
+# fields.filled = TODO
+
+[values.teleports]
+type = "table"
+# addr = TODO
+# count = TODO
+# stride = TODO
+# fields.room = TODO
+# fields.code = TODO
+
+[values.doors]
+type = "table"
+# addr = TODO
+# count = TODO
+# stride = TODO
+# fields.room = TODO
+# fields.cards = TODO: the three cards it asks for
+
+[values.map]
+type = "bytes"
+# addr = TODO
+# len = TODO
+description = "The room map, read once by the script's on_load"
+
+[values.font]
+type = "font"
+# addr = TODO
+# first = TODO
+# count = TODO
+width = 8
+height = 8
+
+[values.item_pictures]
+type = "sprites"
+# addr = TODO
+# count = TODO
+# width = TODO
+# height = TODO
+
+# Training switches.
+
+[[cheats]]
+id = "full-energy"
+label = "Full energy"
+set = { value = "energy", to = "max" }
+
+[[cheats]]
+id = "full-platforms"
+label = "Full bridging platforms"
+set = { value = "platforms", to = "max" }
+
+[[cheats]]
+id = "full-laser"
+label = "Full laser"
+set = { value = "laser", to = "max" }
+
+[[cheats]]
+id = "endless-lives"
+label = "Endless lives"
+hold = "lives"
+
+[[cheats]]
+id = "no-harm"
+label = "No harm from enemies"
+# patch = TODO: where the game decides an enemy has hurt BLOB, or a write that undoes the hit
+note = "Stops enemies taking energy or lives."
+
+# The pad.
+
+[pad.default]
+dpad = "joystick"
+stick = "joystick"
+west = "fire"
+south = "build"
+east = "pick-up"
+north = "next-route"
+start = { tap = ["P"], frames = 2 }
+
+[pad.title]
+# start = TODO: the key that starts a game from the title screen
+
+[[actions]]
+id = "end-game"
+label = "End this game"
+tap = ["A", "S", "D", "F", "G"]
+frames = 5
+
+[[actions]]
+id = "pick-up"
+label = "Pick up or swap"
+joystick = ["up"]
+# patch_for_frame = TODO: skip boarding the hover platform, so up only picks up
+note = "Up, meaning only pick up or swap."
+
+[[actions]]
+id = "build"
+label = "Build a platform"
+joystick = ["down"]
+# patch_for_frame = TODO: skip flying down, so down only builds
+note = "Down, meaning only build."
+
+[[actions]]
+id = "next-route"
+label = "Next route"
+script = "next_route"
+host_key = "Tab"
+
+# Typing a teleport code with a pad.
+
+[text_entry]
+state = "booth"
+letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+length = 5
+# card_row = TODO: just under the booth's code line
+title_choose = "Choose a code"
+title_spell = "Spell a code"
+choices = "teleport-codes"
+choices_from_level = 1
+key_down_frames = 1
+key_up_frames = 1
+
+[persist.teleport-codes]
+label = "teleport codes"
+file = "teleporter-codes.txt"
+add = "script"
+
+[high_scores]
+# addr = TODO: the CORE OF HEROES
+# count = TODO
+# stride = TODO
+# name = TODO
+# score = TODO
+
+# Guidance: levels 0 to 6, then the panel's widgets.
+
+[[guidance.levels]]
+name = "Off"
+description = "No guidance. Press Esc or Select to choose a level."
+
+[[guidance.levels]]
+name = "Codes and the core"
+description = "The teleport codes you've seen, the doors' cards, and the core's pieces."
+
+[[guidance.levels]]
+name = "The map you have walked"
+description = "A map of the rooms you've visited."
+
+[[guidance.levels]]
+name = "What you have seen"
+description = "Core pieces still needed, in the rooms you have walked through."
+
+[[guidance.levels]]
+name = "What you have not"
+description = "Items in the rooms you haven't reached."
+
+[[guidance.levels]]
+name = "Routes"
+description = "The shortest way to the nearest missing piece, and to the core."
+
+[[guidance.levels]]
+name = "Everything"
+description = "Every code, every door's cards, and the whole planet."
+
+[[panel]]
+kind = "icon-grid"
+title = "CORE"
+from_level = 1
+columns = 3
+pictures = "item_pictures"
+source = "script:core"
+
+[[panel]]
+kind = "chip-list"
+title = "TELEPORTS"
+from_level = 1
+font = "font"
+source = "script:teleports"
+empty = "None yet"
+
+[[panel]]
+kind = "card-set"
+title = "DOORS"
+from_level = 1
+pictures = "item_pictures"
+font = "font"
+source = "script:doors"
+empty = "None yet"
+
+[[panel]]
+kind = "map-grid"
+from_level = 2
+pictures = "item_pictures"
+source = "script:map"
+
+[situations]
+# enter = TODO: the routine that starts play in the current room
+
+[script]
+file = "scripts/starquake.rhai"

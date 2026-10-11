@@ -1,0 +1,17 @@
+[package]
+name = "sidekick-core"
+description = "ZX Sidekick's emulated machine and everything it reads and writes between frames"
+publish = false
+
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustzx-core.workspace = true
+rustzx-z80.workspace = true
+
+[lints]
+workspace = true

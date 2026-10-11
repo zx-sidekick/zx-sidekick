@@ -1,0 +1,25 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+license = "MIT"
+edition = "2021"
+rust-version = "1.87"
+repository = "https://github.com/zx-sidekick/zx-sidekick"
+
+# The machine comes from the zx-sidekick fork of RustZX. Both crates are pinned to the same
+# commit, so rustzx-core is built on the patched processor. Bump the rev after each patch lands
+# there; never follow the branch. To work on the fork alongside this repository, see
+# "Working on the engine" in ZX-SIDEKICK.md.
+[workspace.dependencies]
+rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "29926112ebbde20ec067fec584054ae0f1f053ff", features = ["embedded-roms", "ay", "zlib"] }
+rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "29926112ebbde20ec067fec584054ae0f1f053ff" }
+
+# As in the fork's rustzx-z80: no unsafe code, and clippy's pedantic lints (CI denies warnings).
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }

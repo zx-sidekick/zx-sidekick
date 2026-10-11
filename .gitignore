@@ -1,0 +1,13 @@
+# Build output
+/target/
+
+# Game, ROM and mockup material never enters the repository (see CLAUDE.md)
+/assets/*
+!/assets/README.md
+/starquake-emulated-mockups/
+/.scratch/
+
+# A local override of the rustzx fork, for working on both at once
+/.cargo/config.toml
+
+.DS_Store
