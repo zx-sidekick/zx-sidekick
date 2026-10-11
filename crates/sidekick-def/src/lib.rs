@@ -6,10 +6,12 @@
 //! reference; [`schema`] is its JSON Schema.
 
 mod check;
+mod library;
 mod scalars;
 mod sections;
 
 pub use check::Problem;
+pub use library::{tapes_in, Identified, Library, LoadError, LoadProblem, Package, Tape};
 pub use scalars::{Address, Bytes, OneOrMany};
 pub use sections::*;
 
