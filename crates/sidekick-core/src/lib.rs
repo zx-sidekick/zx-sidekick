@@ -6,14 +6,20 @@
 //! ROM, run a frame at a time, stopping at a game's sync address on the way. The named values,
 //! cheats, input mapping and saves described in `ZX-SIDEKICK.md` are built on top of this.
 
+mod error;
 mod host;
 mod watch;
 
+pub use error::Error;
 pub use host::{HeadlessHost, Picture};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
 pub use rustzx_z80::Regs;
 
-use rustzx_core::{EmulationMode, EmulationStopReason, Emulator, RustzxSettings};
+use host::Bytes;
+use rustzx_core::{
+    host::{BufferCursor, Snapshot, SnapshotRecorder},
+    EmulationMode, EmulationStopReason, Emulator, RustzxSettings,
+};
 use std::time::Duration;
 use watch::Watch;
 
@@ -42,6 +48,7 @@ pub enum Stop {
 #[derive(Clone)]
 pub struct Machine {
     emulator: Emulator<HeadlessHost>,
+    model: Model,
     /// The last `run` returned at a frame's end, so the next begins a new frame.
     frame_ended: bool,
     /// The watch's addresses passed, as of the last `run` (the core lends its debug interface
@@ -54,7 +61,7 @@ impl Machine {
     ///
     /// # Errors
     /// If the core fails to build the machine.
-    pub fn new(model: Model) -> Result<Self, rustzx_core::error::Error> {
+    pub fn new(model: Model) -> Result<Self, Error> {
         let settings = RustzxSettings {
             machine: model,
             emulation_mode: EmulationMode::FrameCount(1),
@@ -73,6 +80,7 @@ impl Machine {
         emulator.set_debug_interface(Watch::new());
         Ok(Self {
             emulator,
+            model,
             frame_ended: false,
             passed: Vec::new(),
         })
@@ -102,7 +110,7 @@ impl Machine {
     ///
     /// # Errors
     /// If the core reports an emulation error (for example a malformed tape block).
-    pub fn run(&mut self) -> Result<Stop, rustzx_core::error::Error> {
+    pub fn run(&mut self) -> Result<Stop, Error> {
         if std::mem::take(&mut self.frame_ended) {
             self.watch_mut().new_frame();
         }
@@ -124,7 +132,7 @@ impl Machine {
     ///
     /// # Errors
     /// If the core reports an emulation error (for example a malformed tape block).
-    pub fn run_frame(&mut self) -> Result<(), rustzx_core::error::Error> {
+    pub fn run_frame(&mut self) -> Result<(), Error> {
         while self.run()? != Stop::FrameEnd {}
         Ok(())
     }
@@ -163,6 +171,38 @@ impl Machine {
     #[must_use]
     pub fn ram_bank(&self, bank: u8) -> Option<&[u8]> {
         self.emulator.ram_bank(bank)
+    }
+
+    /// The whole machine as a standard SZX snapshot: memory, processor, paging, AY registers,
+    /// border and beeper. Not the tape, and not the AY's tone and envelope position, which SZX
+    /// has no place for.
+    ///
+    /// # Errors
+    /// If the core fails to write it.
+    pub fn save_szx(&mut self) -> Result<Vec<u8>, Error> {
+        let mut szx = Vec::new();
+        self.emulator
+            .save_snapshot(SnapshotRecorder::Szx(Bytes(&mut szx)))?;
+        Ok(szx)
+    }
+
+    /// Puts the machine in the state an SZX snapshot holds. The next `run` starts a new frame.
+    ///
+    /// # Errors
+    /// If the snapshot is for another model, or the core can't read it.
+    pub fn load_szx(&mut self, szx: &[u8]) -> Result<(), Error> {
+        let model = match szx.get(6) {
+            Some(1) => Model::Sinclair48K,
+            Some(2) => Model::Sinclair128K,
+            _ => return Err(Error::UnknownModel),
+        };
+        if model != self.model {
+            return Err(Error::OtherModel);
+        }
+        self.emulator
+            .load_snapshot(Snapshot::Szx(BufferCursor::new(szx.to_vec())))?;
+        self.frame_ended = true;
+        Ok(())
     }
 
     /// The picture as it was at the end of the last frame (the screen area, without the border).
