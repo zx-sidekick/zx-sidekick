@@ -14,8 +14,8 @@ repository = "https://github.com/zx-sidekick/zx-sidekick"
 # there; never follow the branch. To work on the fork alongside this repository, see
 # "Working on the engine" in ZX-SIDEKICK.md.
 [workspace.dependencies]
-rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "29926112ebbde20ec067fec584054ae0f1f053ff", features = ["embedded-roms", "ay", "zlib"] }
-rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "29926112ebbde20ec067fec584054ae0f1f053ff" }
+rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "84b327e65fc9d8fd66ec0d2477aa88853a1a7315", features = ["embedded-roms", "ay", "zlib"] }
+rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "84b327e65fc9d8fd66ec0d2477aa88853a1a7315" }
 
 # As in the fork's rustzx-z80: no unsafe code, and clippy's pedantic lints (CI denies warnings).
 [workspace.lints.rust]

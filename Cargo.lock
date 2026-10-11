@@ -17,7 +17,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 [[package]]
 name = "aym"
 version = "0.16.0"
-source = "git+https://github.com/zx-sidekick/rustzx?rev=29926112ebbde20ec067fec584054ae0f1f053ff#29926112ebbde20ec067fec584054ae0f1f053ff"
+source = "git+https://github.com/zx-sidekick/rustzx?rev=84b327e65fc9d8fd66ec0d2477aa88853a1a7315#84b327e65fc9d8fd66ec0d2477aa88853a1a7315"
 dependencies = [
  "libm",
  "num-traits",
@@ -180,7 +180,7 @@ dependencies = [
 [[package]]
 name = "rustzx-core"
 version = "0.16.0"
-source = "git+https://github.com/zx-sidekick/rustzx?rev=29926112ebbde20ec067fec584054ae0f1f053ff#29926112ebbde20ec067fec584054ae0f1f053ff"
+source = "git+https://github.com/zx-sidekick/rustzx?rev=84b327e65fc9d8fd66ec0d2477aa88853a1a7315#84b327e65fc9d8fd66ec0d2477aa88853a1a7315"
 dependencies = [
  "aym",
  "bitflags",
@@ -195,7 +195,7 @@ dependencies = [
 [[package]]
 name = "rustzx-z80"
 version = "0.16.0"
-source = "git+https://github.com/zx-sidekick/rustzx?rev=29926112ebbde20ec067fec584054ae0f1f053ff#29926112ebbde20ec067fec584054ae0f1f053ff"
+source = "git+https://github.com/zx-sidekick/rustzx?rev=84b327e65fc9d8fd66ec0d2477aa88853a1a7315#84b327e65fc9d8fd66ec0d2477aa88853a1a7315"
 
 [[package]]
 name = "sidekick-core"

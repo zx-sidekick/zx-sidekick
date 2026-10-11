@@ -1,9 +1,9 @@
 //! The types `rustzx-core` asks its host for, for a machine with no window and no sound device.
 
+use crate::watch::Watch;
 use rustzx_core::{
     host::{
-        BufferCursor, FrameBuffer, FrameBufferSource, Host, HostContext, Stopwatch,
-        StubDebugInterface, StubIoExtender,
+        BufferCursor, FrameBuffer, FrameBufferSource, Host, HostContext, Stopwatch, StubIoExtender,
     },
     zx::video::colors::{ZXBrightness, ZXColor},
 };
@@ -18,7 +18,7 @@ impl Host for HeadlessHost {
     type FrameBuffer = Picture;
     type EmulationStopwatch = WallClock;
     type IoExtender = StubIoExtender;
-    type DebugInterface = StubDebugInterface;
+    type DebugInterface = Watch;
 }
 
 pub struct HeadlessContext;
