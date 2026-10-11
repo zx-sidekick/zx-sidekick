@@ -1,0 +1,20 @@
+[package]
+name = "sidekick"
+description = "ZX Sidekick: play original ZX Spectrum games from your own copy, with a pad, training switches and guidance"
+publish = false
+
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+clap.workspace = true
+sidekick-def.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
