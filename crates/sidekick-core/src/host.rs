@@ -55,6 +55,22 @@ impl Picture {
     pub fn color(&self, x: usize, y: usize) -> u8 {
         self.pixels[x + y * self.width]
     }
+
+    /// Every pixel, row by row: 0–7 normal, 8–15 bright.
+    #[must_use]
+    pub fn pixels(&self) -> &[u8] {
+        &self.pixels
+    }
+
+    /// Copies `border` into this picture, and `screen` onto it with its top left at
+    /// (`x`, `y`). The three must fit: this picture is the border's size.
+    pub(crate) fn compose(&mut self, border: &Self, screen: &Self, x: usize, y: usize) {
+        self.pixels.copy_from_slice(&border.pixels);
+        for (row, line) in screen.pixels.chunks_exact(screen.width).enumerate() {
+            let start = (y + row) * self.width + x;
+            self.pixels[start..start + screen.width].copy_from_slice(line);
+        }
+    }
 }
 
 impl FrameBuffer for Picture {
