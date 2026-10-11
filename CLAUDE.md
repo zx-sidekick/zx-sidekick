@@ -85,7 +85,8 @@ A required context that no job produces blocks every PR.
 
 ## Rust
 
-- **No `unsafe`**, and clippy's pedantic lints, for every crate (`[workspace.lints]` in `Cargo.toml`); CI denies warnings. A lint allowed has its reason on the line.
+- **The strictest useful lints** for every crate (`[workspace.lints]` in `Cargo.toml`): no `unsafe`, `missing_docs`, clippy's pedantic, nursery and cargo groups, and the restriction lints that suit this code (`unwrap_used` outside tests, `print_stdout`, `todo`, `dbg_macro` and others). CI denies warnings. A lint allowed has its reason beside it, in `Cargo.toml` or on the attribute (`#[expect(…, reason = "…")]`).
+- **The latest versions of dependencies.** A new dependency comes in at its latest release; Dependabot keeps them there. One held back has its reason in `Cargo.toml` or `.github/dependabot.yml`.
 - `sidekick-core` and `sidekick-def` have no frontend dependencies, so they build and test anywhere, headless.
 - Every public item has a doc comment, kept to what a reader needs.
 - Errors are returned, never ignored; `unwrap` and `expect` only in tests, or with the invariant that makes them safe in the message.
@@ -96,6 +97,7 @@ A required context that no job produces blocks every PR.
 Every change comes with tests. Write a test instead of a one-off check script: a scripted run verifies once and is thrown away; a test catches the regression forever. Screenshots are for looking, never for assuring behaviour.
 
 - **Unit tests** in a `#[cfg(test)] mod tests` beside the code; **integration tests** in the crate's `tests/`, through its public interface.
+- **Tests run in parallel, so they stay fast.** Each builds its own machine and shares no state with another; nothing serialises them. Split a slow test rather than letting one dominate the run.
 - **No game in CI**: tests that need a tape read it from `assets/` and skip, saying so, when it's missing. CI runs everything else; the ROM tests run everywhere, since the ROM comes with `rustzx-core`.
 - **Golden images** of the program's own drawing are committed; a game's picture never is (tests use a plain stand-in).
 - **A flaky test is a bug to file**, not to rerun past.
