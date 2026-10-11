@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       # Pinned, as in the rustzx fork: pedantic lints are on, so a new clippy lint
       # can't fail every PR at once. Move it on purpose.
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: dtolnay/rust-toolchain@1.120.0
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
