@@ -144,6 +144,7 @@ start = {{ keys = ["START"] }}
 
 [pad.menu]
 south = "fire"
+select = "fire"
 "#
     );
     let def = Definition::from_toml(&text).expect("it parses");
@@ -155,6 +156,7 @@ south = "fire"
         "pad.default.west: \"jump\" isn't a direction, fire, menu, none or an action",
         "pad.default.start: \"START\" isn't a Spectrum key",
         "pad.menu: no state named \"menu\"",
+        "pad.menu.select: select always opens the guidance menu",
     ] {
         assert!(
             problems.iter().any(|p| p == expected),

@@ -361,6 +361,10 @@ impl Checker<'_> {
             }
             for (part, target) in pad.parts() {
                 let path = format!("pad.{state}.{part}");
+                if part == "select" && *target != PadTarget::Named("menu".to_owned()) {
+                    self.report(&path, "select always opens the guidance menu");
+                    continue;
+                }
                 match target {
                     PadTarget::Named(name) => {
                         let ok = match name.as_str() {
