@@ -289,6 +289,12 @@ impl Library {
         (library, problems)
     }
 
+    /// Adds a package, replacing any game with its id.
+    pub fn insert(&mut self, package: Package) {
+        self.games
+            .insert(package.definition.game.id.clone(), package);
+    }
+
     /// A game, by its id.
     #[must_use]
     pub fn get(&self, id: &str) -> Option<&Package> {

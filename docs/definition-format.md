@@ -436,11 +436,15 @@ A script can't touch files, the network or the clock, and each call has an opera
 
 ## Checking a definition
 
-`sidekick check DEF [TAPE]` reports, without starting the game:
+`sidekick check DEF [TAPE]` reports, without starting the game, one problem a line as `path: message`:
 
 - anything the schema doesn't allow (an unknown key is an error, so a typo can't hide), with the line;
-- names used but not defined, and addresses out of range;
-- given the tape: that its SHA-1 is one of `[[media]]`'s, and, once the game has loaded, that each patch's `expect` bytes are there.
+- what's still missing (an address not found yet), names used but not defined, and values used in ways their type doesn't allow;
+- given a tape, or a zip of tapes: whether it's one of `[[media]]`'s dumps, by SHA-1.
+
+It exits 0 with no problems, 1 with problems, and 2 when something couldn't be read. Checking each patch's `expect` bytes in the loaded game comes with `sidekick author`.
+
+`sidekick convert FILE [-o OUT]` turns a TOML definition into JSON, or a JSON one into TOML.
 
 `sidekick author TAPE [DEF]` runs the game with the definition's values live on screen, a cheat finder, a program-counter sampler, watchpoints and breakpoints, and copies what you find as TOML (`ZX-SIDEKICK.md` §15). Edit the definition while the game runs and it's reloaded at the next frame.
 
