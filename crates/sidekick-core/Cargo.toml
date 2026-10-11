@@ -12,7 +12,6 @@ repository.workspace = true
 [dependencies]
 rustzx-core.workspace = true
 rustzx-z80.workspace = true
-thiserror.workspace = true
 
 [lints]
 workspace = true
