@@ -17,7 +17,8 @@ pub use rustzx_z80::Regs;
 
 use host::Bytes;
 use rustzx_core::{
-    host::{BufferCursor, Snapshot, SnapshotRecorder},
+    host::{BufferCursor, FrameBuffer, FrameBufferSource, Snapshot, SnapshotRecorder},
+    zx::video::BorderSize,
     EmulationMode, EmulationStopReason, Emulator, RustzxSettings,
 };
 use std::time::Duration;
@@ -28,6 +29,9 @@ use watch::Watch;
 const FRAME_HOST_LIMIT: Duration = Duration::from_millis(100);
 
 const WATCH_SET: &str = "the watch is set when the machine is built";
+
+/// The picture's border: 32 pixels on every side of the 256×192 screen, 320×256 in all.
+const BORDER: BorderSize = BorderSize::Tall;
 
 /// Sample rate the beeper and AY are mixed at.
 pub const SAMPLE_RATE: usize = 44_100;
@@ -54,6 +58,8 @@ pub struct Machine {
     /// The watch's addresses passed, as of the last `run` (the core lends its debug interface
     /// mutably only).
     passed: Vec<u16>,
+    /// The border and screen together, as of the last frame's end.
+    picture: Picture,
 }
 
 impl Machine {
@@ -68,6 +74,7 @@ impl Machine {
             tape_fastload_enabled: true,
             kempston_enabled: true,
             mouse_enabled: false,
+            border_size: BORDER,
             ay_mode: rustzx_core::zx::sound::ay::ZXAYMode::ABC,
             ay_enabled: matches!(model, Model::Sinclair128K),
             beeper_enabled: true,
@@ -83,6 +90,7 @@ impl Machine {
             model,
             frame_ended: false,
             passed: Vec::new(),
+            picture: Picture::new(320, BORDER.height(), FrameBufferSource::Border, ()),
         })
     }
 
@@ -119,6 +127,12 @@ impl Machine {
             // `FrameCount(1)` never times out; a timeout would only mean a slow host.
             EmulationStopReason::Completed | EmulationStopReason::Timeout => {
                 self.frame_ended = true;
+                self.picture.compose(
+                    self.emulator.border_buffer(),
+                    self.emulator.screen_buffer(),
+                    32,
+                    BORDER.canvas_y(),
+                );
                 // The mixer fills a frame's worth of samples; nothing plays them headless.
                 while self.emulator.next_audio_sample().is_some() {}
                 Stop::FrameEnd
@@ -205,10 +219,11 @@ impl Machine {
         Ok(())
     }
 
-    /// The picture as it was at the end of the last frame (the screen area, without the border).
+    /// The picture as it was at the end of the last frame: 320×256, the 256×192 screen with
+    /// 32 pixels of border on every side, border colour changes drawn where they happened.
     #[must_use]
-    pub fn picture(&self) -> &Picture {
-        self.emulator.screen_buffer()
+    pub const fn picture(&self) -> &Picture {
+        &self.picture
     }
 
     fn watch_mut(&mut self) -> &mut Watch {
