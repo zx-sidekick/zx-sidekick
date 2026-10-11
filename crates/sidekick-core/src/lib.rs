@@ -11,6 +11,7 @@ mod watch;
 
 pub use host::{HeadlessHost, Picture};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
+pub use rustzx_z80::Regs;
 
 use rustzx_core::{EmulationMode, EmulationStopReason, Emulator, RustzxSettings};
 use std::time::Duration;
@@ -135,6 +136,30 @@ impl Machine {
     #[must_use]
     pub fn peek16(&self, addr: u16) -> u16 {
         u16::from_le_bytes([self.peek(addr), self.peek(addr.wrapping_add(1))])
+    }
+
+    /// Writes a byte as the processor would: the ROM is left alone, and a write to display
+    /// memory reaches the picture. No time passes.
+    pub fn write(&mut self, addr: u16, value: u8) {
+        self.emulator.write(addr, value);
+    }
+
+    /// The processor's registers.
+    #[must_use]
+    pub fn registers(&self) -> &Regs {
+        &self.emulator.cpu().regs
+    }
+
+    /// The processor's registers, to change between frames.
+    pub fn registers_mut(&mut self) -> &mut Regs {
+        &mut self.emulator.cpu_mut().regs
+    }
+
+    /// A 16K RAM bank, whether paged in or not: 0 to 7 on a 128K, 0 to 2 on a 48K (from
+    /// `0x4000` up). `None` past the last.
+    #[must_use]
+    pub fn ram_bank(&self, bank: u8) -> Option<&[u8]> {
+        self.emulator.ram_bank(bank)
     }
 
     /// The picture as it was at the end of the last frame (the screen area, without the border).
