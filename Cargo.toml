@@ -17,7 +17,10 @@ repository = "https://github.com/zx-sidekick/zx-sidekick"
 schemars = "1.2.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha1 = "0.11.0"
+tempfile = "3.27.0"
 toml = "1.1.8"
+zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
 rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "8872f9409d9ebb4936b22a473fd67f39bd099b00", features = ["embedded-roms", "ay", "zlib", "precise-border"] }
 rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "8872f9409d9ebb4936b22a473fd67f39bd099b00" }
 
