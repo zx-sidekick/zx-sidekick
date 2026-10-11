@@ -62,7 +62,7 @@ What ZX Sidekick needs from it that isn't there yet. Each is a small patch to th
 2. **Writing and inspecting the machine.** *(Done: fork patch 13.)* `Machine::write` leaves the ROM alone and reaches the picture; `registers`/`registers_mut` and `ram_bank` read and set the rest.
 3. **`Emulator: Clone`**, for in-memory states and for reading facts on copies of the machine. *(Done: fork patch 14; `Machine` is `Clone`.)*
 4. **Saving SZX.** *(Done: fork patch 15, which also fixed three loader faults.)* `Machine::save_szx` and `load_szx`; saving a 48K SNA pushes the program counter onto the game's own stack, so SZX is the save format. SZX holds the AY's registers but not its tone and envelope position, so a loaded AY restarts from its registers.
-5. **A 320×256 picture** (the mockups' border) as a setting, beside the core's 320×240.
+5. **A 320×256 picture** (the mockups' border) as a setting, beside the core's 320×240. *(Done: fork patch 16; `Machine::picture` is the composed 320×256, with the precise border on.)*
 6. **Sound that follows emulated time.** Some games' sound effects hold the game while they play, so a frame can last much longer than 1/50 s. Check the mixer keeps every sample of such a frame, so effects aren't cut short.
 7. **TZX** later (upstream TODO #56); `.tap` covers the first games.
 
