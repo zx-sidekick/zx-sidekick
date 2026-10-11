@@ -23,7 +23,7 @@ impl Watch {
         }
     }
 
-    pub fn set_sync(&mut self, sync: Option<u16>) {
+    pub const fn set_sync(&mut self, sync: Option<u16>) {
         self.sync = sync;
     }
 

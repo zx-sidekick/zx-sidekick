@@ -17,9 +17,33 @@ repository = "https://github.com/zx-sidekick/zx-sidekick"
 rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "84b327e65fc9d8fd66ec0d2477aa88853a1a7315", features = ["embedded-roms", "ay", "zlib"] }
 rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "84b327e65fc9d8fd66ec0d2477aa88853a1a7315" }
 
-# As in the fork's rustzx-z80: no unsafe code, and clippy's pedantic lints (CI denies warnings).
+# The strictest useful setting: clippy's pedantic, nursery and cargo groups, plus the
+# restriction lints that suit this code. CI denies warnings. A lint allowed has its reason beside it.
 [workspace.lints.rust]
 unsafe_code = "forbid"
+missing_docs = "warn"
+unused_qualifications = "warn"
+unreachable_pub = "warn"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# rustzx-core's own dependencies pull in three versions of syn; updating them is a fork patch.
+multiple_crate_versions = "allow"
+allow_attributes_without_reason = "warn"
+clone_on_ref_ptr = "warn"
+dbg_macro = "warn"
+get_unwrap = "warn"
+if_then_some_else_none = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+rc_buffer = "warn"
+redundant_type_annotations = "warn"
+str_to_string = "warn"
+string_lit_chars_any = "warn"
+todo = "warn"
+try_err = "warn"
+unimplemented = "warn"
+unneeded_field_pattern = "warn"
+unwrap_used = "warn"
