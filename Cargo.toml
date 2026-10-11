@@ -14,8 +14,8 @@ repository = "https://github.com/zx-sidekick/zx-sidekick"
 # there; never follow the branch. To work on the fork alongside this repository, see
 # "Working on the engine" in ZX-SIDEKICK.md.
 [workspace.dependencies]
-rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "84b327e65fc9d8fd66ec0d2477aa88853a1a7315", features = ["embedded-roms", "ay", "zlib"] }
-rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "84b327e65fc9d8fd66ec0d2477aa88853a1a7315" }
+rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "55a1c97ea3b17c8929d46869ad01df7c5bab4b82", features = ["embedded-roms", "ay", "zlib"] }
+rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "55a1c97ea3b17c8929d46869ad01df7c5bab4b82" }
 
 # The strictest useful setting: clippy's pedantic, nursery and cargo groups, plus the
 # restriction lints that suit this code. CI denies warnings. A lint allowed has its reason beside it.
