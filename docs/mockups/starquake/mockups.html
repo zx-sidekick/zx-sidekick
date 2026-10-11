@@ -1,0 +1,376 @@
+<!doctype html>
+<!--
+  ZX Sidekick's reference mockups, recreated without anything of the game's: the game's picture
+  is a plain stand-in, its item pictures are generic stand-in icons, and its font is a stand-in
+  pixel font. The program itself draws the real ones, read from the player's tape.
+
+  Each mockup is this page with its name after the #, rendered at its size by
+  scripts/render-mockups.sh, e.g. mockups.html#play-level5 at 1368×768.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ZX Sidekick mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Silkscreen&display=block" rel="stylesheet">
+<style>
+  :root {
+    --window: #000;
+    --panel: #121318;
+    --panel-line: #23252c;
+    --label: #6b6f7a;
+    --text: #e8e9ec;
+    --muted: #9a9ea8;
+    --faint: #6b6f7a;
+    --tile: #1d2027;
+    --card: #15171c;
+    --card-line: #2b2e36;
+    --accent: #8fb4ff;
+    --teal: #6fd6c4;
+    --teal-bg: #1d3532;
+    --pink: #e879b0;
+    --gold: #f0b14a;
+    --dot: #23262d;
+    --wall: #4a5060;
+    --red: #e5484d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1368px; height: 768px; overflow: hidden; background: var(--window); }
+  body { font-family: Inter, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; position: relative; }
+  .abs { position: absolute; }
+  .pixel { font-family: Silkscreen, monospace; }
+
+  /* The game's picture, a stand-in: the Spectrum's 320x256 at x3 */
+  .picture { left: 0; top: 0; width: 960px; height: 768px; background: #000; }
+  .screen { left: 96px; top: 96px; width: 768px; height: 576px; background: #16181d;
+    background-image: repeating-linear-gradient(135deg, transparent 0 22px, #1a1c22 22px 24px); }
+  .screen .tag { position: absolute; left: 0; right: 0; top: 268px; text-align: center; font-size: 13px; color: #4a4f5b; letter-spacing: .02em; }
+  .dim .screen { filter: brightness(.55); }
+
+  /* The panel */
+  .panel { left: 960px; top: 0; width: 408px; height: 768px; background: var(--panel); border-left: 1px solid var(--panel-line); }
+  .label { font-size: 11px; font-weight: 500; letter-spacing: .12em; color: var(--label); text-transform: uppercase; }
+  .level { font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--text); text-align: right; }
+  .levelname { font-size: 12px; color: #c4c7ce; text-align: right; }
+  .none { font-size: 13px; color: var(--faint); text-align: right; }
+  .tile { width: 36px; height: 36px; border-radius: 4px; background: var(--tile); display: grid; place-items: center; }
+  .tile.carried { outline: 1.5px solid #e8e9ec; outline-offset: -1.5px; }
+  .tile.dim canvas { opacity: .35; }
+  .chip { height: 22px; padding: 0 8px; border-radius: 3px; background: var(--teal-bg); color: var(--teal); font-size: 14px; line-height: 22px; text-align: center; }
+  .chip.chosen { outline: 1.5px solid var(--accent); }
+  .chip.route1 { outline: 1.5px solid var(--pink); }
+  .chip.route2 { outline: 1.5px solid var(--gold); }
+  .center { text-align: center; font-size: 13px; color: var(--faint); line-height: 22px; }
+
+  /* Cards over the picture */
+  .card { background: var(--card); border: 1px solid var(--card-line); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+  .hint { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .key { border: 1px solid #50545e; border-radius: 3px; padding: 0 5px; font-size: 12px; font-weight: 600; color: var(--text); line-height: 18px; }
+  .pad { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #50545e; font-size: 10px; font-weight: 600; display: inline-grid; place-items: center; color: var(--text); }
+  .rule { border-top: 1px solid var(--card-line); }
+  .letter { width: 48px; height: 52px; border-radius: 6px; border: 1px solid #50545e; background: #1c1f26; display: grid; place-items: center; font-size: 24px; font-weight: 500; }
+  .letter.lit { border-color: var(--accent); background: #232a38; }
+  .note { left: 416px; top: 692px; width: 128px; height: 35px; border-radius: 18px; background: #1b1d23; border: 1px solid #2f323a; font-size: 14px; font-weight: 500; display: grid; place-items: center; }
+  .pin { width: 48px; height: 40px; font-size: 14px; font-weight: 600; color: #1b1308; display: grid; place-items: center; }
+</style>
+</head>
+<body>
+<script>
+const W = (html) => document.body.insertAdjacentHTML('beforeend', html);
+const el = (cls, x, y, w, h, inner = '', style = '') =>
+  `<div class="abs ${cls}" style="left:${x}px;top:${y}px;${w ? `width:${w}px;` : ''}${h ? `height:${h}px;` : ''}${style}">${inner}</div>`;
+
+// Stand-in pictures: symmetric 8x8 patterns drawn from a seed, plainly not the game's.
+function icon(seed, px, color = '#e8e9ec') {
+  const c = document.createElement('canvas');
+  c.width = c.height = 8 * px;
+  const g = c.getContext('2d');
+  g.fillStyle = color;
+  let s = seed * 2654435761 >>> 0;
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
+    s = (s * 1103515245 + 12345) >>> 0;
+    const on = (s >>> 16) & 1 || (x === 3 && y > 1 && y < 6);
+    if (on && !(y === 0 && x === 0)) { g.fillRect(x * px, y * px, px, px); g.fillRect((7 - x) * px, y * px, px, px); }
+  }
+  return c.toDataURL();
+}
+const img = (seed, px, color) => `<img src="${icon(seed, px, color)}" style="image-rendering:pixelated;display:block">`;
+
+const LEVELS = ['Off', 'Codes and the core', 'The map you have walked', 'What you have seen',
+  'What you have not', 'Routes', 'Everything'];
+const CODES = ['LUMEN', 'TOPAZ', 'NIVEN', 'ORBIT', 'CIRRO', 'VAPOR', 'BRISK', 'MOLTO',
+  'JUNIP', 'KESTR', 'PLUME', 'RAVEN', 'SOLAR', 'TUNDR', 'WISPY'];
+
+function picture(opts = {}) {
+  W(`<div class="abs picture ${opts.dim ? 'dim' : ''}">${el('screen', 96, 96, 768, 576,
+    `<div class="tag">${opts.tag || "The game's picture, from your tape"}</div>`)}</div>`);
+}
+
+function panelHead(level) {
+  W(el('panel', 960, 0, 408, 768));
+  W(el('label', 984, 27, 0, 0, 'Guidance'));
+  if (level === 0) {
+    W(el('level', 1243, 27, 100, 0, 'OFF'));
+    W(el('center', 960, 338, 408, 0, 'No guidance.<br>Press Esc or Select to choose a level.'));
+    return;
+  }
+  W(el('level', 1143, 27, 200, 0, `LEVEL ${level}`));
+  W(el('levelname', 1043, 43, 300, 0, LEVELS[level]));
+}
+
+function core(opts = {}) {
+  W(el('label', 984, 71, 0, 0, 'Core'));
+  for (let i = 0; i < 9; i++) {
+    const x = 984 + (i % 3) * 42, y = 92 + Math.floor(i / 3) * 42;
+    const cls = ['tile', i === (opts.carried ?? 0) ? 'carried' : '', (opts.dim || []).includes(i) ? 'dim' : ''].join(' ');
+    W(el(cls, x, y, 36, 36, img(opts.seeds ? opts.seeds[i] : i + 1, 4)));
+  }
+}
+
+function teleports(codes, opts = {}) {
+  W(el('label', 1243, 71, 100, 0, 'Teleports', 'text-align:right'));
+  if (!codes.length) {
+    W(el('none', 1143, 93, 200, 0, 'None yet'));
+    return 135;
+  }
+  codes.forEach((code, i) => {
+    const cls = ['chip pixel', opts.chosen === i ? 'chosen' : '', opts.route1 === i ? 'route1' : '', opts.route2 === i ? 'route2' : ''].join(' ');
+    W(el(cls, 1271, 93 + i * 23, 72, 22, code));
+  });
+  return 93 + codes.length * 23 + 18;
+}
+
+function doors(y, rows) {
+  W(el('label', 1243, y, 100, 0, 'Doors', 'text-align:right'));
+  if (!rows) { W(el('none', 1143, y + 22, 200, 0, 'None yet')); return; }
+  for (let r = 0; r < rows; r++) {
+    W(el('pixel', 1265, y + 22 + r * 23, 12, 18, `${r + 1}`, 'font-size:14px;color:var(--teal)'));
+    for (let c = 0; c < 3; c++) {
+      W(el('tile', 1280 + c * 22, y + 20 + r * 23, 20, 20, img(40 + r * 3 + c, 2, '#6fd6c4'),
+        `background:var(--teal-bg);opacity:${(r + c) % 3 ? .45 : 1}`));
+    }
+  }
+}
+
+// The map: 16 x 32 rooms, 15 px a room, as in the reference.
+const MX = 984, MY = 232, R = 15;
+function mapDots() {
+  let dots = '';
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 16; x++)
+    dots += `<div class="abs" style="left:${MX + x * R + 6}px;top:${MY + y * R + 6}px;width:3px;height:3px;border-radius:50%;background:var(--dot)"></div>`;
+  W(dots);
+}
+function room(x, y, inner) { W(el('', MX + x * R, MY + y * R, R, R, inner, 'display:grid;place-items:center')); }
+function player(x, y) {
+  room(x, y, `<div style="width:9px;height:9px;border:2px solid #fff;border-radius:2px"></div>`);
+  W(el('', MX + x * R, MY + y * R - 3, R, 2, '', 'background:#8a90a0'));
+}
+function item(x, y, seed, color) { room(x, y, img(seed, 1, color)); }
+function teleport(x, y, ring) {
+  room(x, y, `<div style="width:7px;height:7px;transform:rotate(45deg);background:var(--teal);${ring ? 'outline:1.5px solid var(--accent);outline-offset:2px' : ''}"></div>`);
+}
+function route(points, color) {
+  const pts = points.map(([x, y]) => `${MX + x * R + 7.5},${MY + y * R + 7.5}`).join(' ');
+  W(`<svg class="abs" style="left:0;top:0" width="1368" height="768"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="2 3"/></svg>`);
+}
+function walls() {
+  // A walled maze stand-in: every room's edges drawn where a seeded coin says there's no opening.
+  let s = 7, lines = '';
+  const rnd = () => ((s = (s * 1103515245 + 12345) >>> 0) >>> 16) % 100;
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 16; x++) {
+    const X = MX + x * R, Y = MY + y * R;
+    if (rnd() < 45) lines += `<line x1="${X + R}" y1="${Y}" x2="${X + R}" y2="${Y + R}"/>`;
+    if (rnd() < 45) lines += `<line x1="${X}" y1="${Y + R}" x2="${X + R}" y2="${Y + R}"/>`;
+  }
+  W(`<svg class="abs" style="left:0;top:0" width="1368" height="768"><rect x="${MX}" y="${MY}" width="${16 * R}" height="${32 * R}" fill="#1a1d25" stroke="var(--wall)"/><g stroke="var(--wall)" stroke-width="1">${lines}</g></svg>`);
+}
+
+const SEEN = [[0, 1, 11], [2, 5, 14], [6, 7, 12], [12, 14, 15], [7, 1, 16], [10, 11, 17]];
+const UNSEEN = [[0, 22, 18], [4, 23, 19], [6, 26, 20], [14, 29, 21], [2, 30, 22], [6, 31, 23], [11, 19, 24], [9, 14, 25]];
+
+function play(level) {
+  picture();
+  panelHead(level);
+  if (level === 0) return;
+  core();
+  let y;
+  if (level === 6) {
+    y = teleports(CODES, { route1: 2, route2: 5 });
+    doors(y, 8);
+  } else {
+    y = teleports([]);
+    doors(y, 0);
+  }
+  if (level === 1) { W(el('center', 960, 418, 408, 0, 'The map appears at level 2.')); return; }
+  if (level === 6) walls(); else mapDots();
+  player(8, 1);
+  if (level >= 3) SEEN.forEach(([x, y, s]) => item(x, y, s, '#e879b0'));
+  if (level >= 4) UNSEEN.forEach(([x, y, s]) => item(x, y, s, '#e879b0'));
+  if (level >= 5) {
+    route([[8, 1], [8, 0], [10, 0], [10, 2], [8, 2], [8, 3]], 'var(--pink)');
+    route([[8, 1], [7, 1], [7, 6], [6, 6], [6, 7], [8, 7], [8, 13], [6, 13], [6, 14], [9, 14], [9, 12]], 'var(--gold)');
+    W(el('label', 1124, 191, 0, 0, '<span style="color:#c4c7ce;letter-spacing:0;text-transform:none;font-size:12px">Item 1/3</span>'));
+    W(el('', 1124, 206, 50, 2, '', 'background:var(--pink)'));
+    W(el('label', 1193, 191, 0, 0, '<span style="color:#c4c7ce;letter-spacing:0;text-transform:none;font-size:12px">Core</span>'));
+    W(el('', 1193, 206, 34, 2, '', 'background:var(--gold)'));
+  }
+  if (level >= 6) UNSEEN.slice(0, 4).forEach(([x, y]) => teleport(x + 1, y - 2));
+  if (level === 5) {
+    W(el('pin', 456, 28, 48, 40, 'item', 'background:var(--pink);clip-path:polygon(50% 0,100% 30%,100% 100%,0 100%,0 30%)'));
+    W(el('pin', 456, 700, 48, 40, 'core', 'background:var(--gold);clip-path:polygon(0 0,100% 0,100% 70%,50% 100%,0 70%)'));
+  }
+  if (level === 6) {
+    W(el('pin', 434, 700, 48, 40, 'item', 'background:var(--pink);clip-path:polygon(0 0,100% 0,100% 70%,50% 100%,0 70%)'));
+    W(el('pin', 478, 700, 48, 40, 'core', 'background:var(--gold);clip-path:polygon(0 0,100% 0,100% 70%,50% 100%,0 70%)'));
+  }
+}
+
+function hints(x, y, items) {
+  const html = items.map(([keys, text]) => `<span class="hint">${keys}<span>${text}</span></span>`).join('<span style="width:14px"></span>');
+  W(el('', x, y, 0, 0, `<div style="display:flex;align-items:center;white-space:nowrap">${html}</div>`));
+}
+
+const MOCKUPS = {
+  'play-level0': () => play(0), 'play-level1': () => play(1), 'play-level2': () => play(2),
+  'play-level3': () => play(3), 'play-level4': () => play(4), 'play-level5': () => play(5),
+  'play-level6': () => play(6),
+
+  'paused': () => {
+    picture({ dim: true });
+    panelHead(2); core(); doors(teleports([]), 0); mapDots(); player(8, 1);
+    W(el('card', 261, 305, 438, 158));
+    W(el('', 288, 327, 0, 0, '<span style="font-size:24px;font-weight:700">Paused</span>'));
+    W(el('', 288, 365, 0, 0, '<span style="font-size:15px;color:#c4c7ce">Move or fire to go on.</span>'));
+    W(el('rule', 262, 412, 436, 1));
+    hints(288, 429, [['← ↑ → ↓', 'move'], ['<span class="key">Alt</span>/<span class="pad">X</span>', 'fire']]);
+  },
+
+  'menu': () => {
+    picture({ dim: true });
+    panelHead(3); core(); doors(teleports([]), 0); mapDots(); player(8, 1);
+    W(el('', 960, 0, 408, 768, '', 'background:rgba(0,0,0,.45)'));
+    W(el('card', 425, 37, 518, 694));
+    W(el('', 452, 57, 0, 0, '<span style="font-size:20px;font-weight:600">Guidance</span>'));
+    W(el('', 794, 64, 0, 0, '<span style="font-size:12px;color:var(--muted)">The game is paused</span>'));
+    W(el('', 437, 93, 494, 182, '', 'border:1.5px solid var(--accent);border-radius:8px;background:#1a1f2b'));
+    W(el('label', 452, 108, 0, 0, '<span style="color:var(--accent)">Guidance level</span>'));
+    W(el('', 452, 152, 0, 0, '<span style="color:var(--accent);font-size:16px">◀</span>'));
+    W(el('', 900, 152, 0, 0, '<span style="color:var(--accent);font-size:16px">▶</span>'));
+    W(el('', 437, 124, 494, 0, '<div style="text-align:center;font-size:40px;font-weight:600">3</div>'));
+    W(el('', 437, 172, 494, 0, '<div style="text-align:center;font-size:17px;font-weight:500">What you have seen</div>'));
+    for (let i = 0; i < 6; i++) W(el('', 452 + i * 78, 208, 72, 7, '', `border-radius:4px;background:${i < 3 ? 'var(--accent)' : '#2e323c'}`));
+    W(el('', 452, 222, 0, 0, '<span style="font-size:11px;color:var(--faint)">less help</span>'));
+    W(el('', 859, 222, 0, 0, '<span style="font-size:11px;color:var(--faint)">more help</span>'));
+    W(el('', 437, 245, 494, 0, '<div style="text-align:center;font-size:13px;color:#c4c7ce">Core pieces still needed, in the rooms you have walked through.</div>'));
+    W(el('label', 452, 291, 0, 0, 'Training mode'));
+    ['Full energy', 'Full bridging platforms', 'Full laser', 'Endless lives', 'No harm from enemies'].forEach((t, i) => {
+      W(el('', 452, 317 + i * 34, 0, 0, `<span style="font-size:14px;font-weight:500;color:#d6d8dd">${t}</span>`));
+      W(el('', 872, 314 + i * 34, 44, 22, '<div style="text-align:center;font-size:13px;line-height:22px;font-weight:500">Off</div>', 'background:#2a2d35;border-radius:4px'));
+    });
+    W(el('rule', 426, 488, 516, 1));
+    W(el('', 452, 508, 0, 0, '<span style="font-size:15px;font-weight:500">Back to the game</span>'));
+    [['Save', 'F5', 1], ['Load', 'F9', .45], ['Open a save…', '', 1]].forEach(([t, k, o], i) => {
+      W(el('', 437 + i * 168, 541, 160, 39, `<div style="text-align:center;font-size:15px;font-weight:500;line-height:37px;opacity:${o}">${t} <span style="font-size:12px;color:var(--faint);font-weight:400;margin-left:6px">${k}</span></div>`, 'border:1px solid #3a3e48;border-radius:6px'));
+    });
+    W(el('', 452, 596, 0, 0, '<span style="font-size:15px;font-weight:500">End this game</span>'));
+    W(el('', 452, 640, 0, 0, '<span style="font-size:15px;font-weight:500">Exit Starquake</span>'));
+    W(el('rule', 426, 680, 516, 1));
+    hints(452, 697, [['↑↓', 'choose'], ['←→', 'change'], ['<span class="key">Enter</span>/<span class="pad">A</span>', 'OK'], ['<span class="key">Esc</span>/<span class="pad">B</span>', 'cancel']]);
+  },
+
+  'booth-choose': () => {
+    picture({ tag: "The game's picture, from your tape: the booth asks for a code" });
+    panelHead(2); core({ seeds: [31, 32, 33, 34, 35, 36, 37, 38, 39], carried: -1 });
+    doors(teleports(CODES.slice(0, 4), { chosen: 1 }), 0);
+    mapDots(); player(8, 1); teleport(2, 4, true); teleport(15, 1); teleport(6, 9);
+    W(el('card', 251, 589, 458, 162));
+    W(el('', 274, 607, 0, 0, '<span style="font-size:17px;font-weight:500">Choose a code</span>'));
+    W(el('', 649, 610, 0, 0, '<span style="font-size:13px;color:var(--muted)">2 of 4</span>'));
+    [...'TOPAZ'].forEach((c, i) => W(el('letter', 340 + i * 58, 636, 48, 52, c, 'border-color:var(--accent)')));
+    W(el('rule', 252, 708, 456, 1));
+    hints(274, 721, [['↑←', 'previous'], ['→↓', 'next'], ['<span class="pad">A</span>', 'enter'], ['<span class="pad">X</span>', 'spell it']]);
+  },
+
+  'booth-spell': () => {
+    picture({ tag: "The game's picture, from your tape: the booth asks for a code" });
+    panelHead(1); core({ seeds: [31, 32, 33, 34, 35, 36, 37, 38, 39], carried: -1 });
+    doors(teleports(CODES.slice(0, 4)), 0);
+    W(el('center', 960, 418, 408, 0, 'The map appears at level 2.'));
+    W(el('card', 251, 589, 458, 162));
+    W(el('', 274, 607, 0, 0, '<span style="font-size:17px;font-weight:500">Spell the code</span>'));
+    [...'TOMAZ'].forEach((c, i) => W(el(`letter ${i === 2 ? 'lit' : ''}`, 340 + i * 58, 636, 48, 52, c)));
+    W(el('rule', 252, 708, 456, 1));
+    hints(274, 721, [['↑↓', 'letter'], ['←→', 'place'], ['<span class="pad">A</span>', 'enter'], ['<span class="pad">B</span>', 'clear'], ['<span class="pad">X</span>', 'choose']]);
+  },
+
+  'saved-note': () => {
+    picture();
+    panelHead(2); core(); doors(teleports([]), 0); mapDots(); player(8, 1);
+    W(el('note', 416, 692, 128, 35, 'Game saved'));
+  },
+
+  'offer': () => {
+    picture({ dim: true, tag: "The game's picture, from your tape: the title screen" });
+    panelHead(0);
+    W(el('card', 211, 300, 538, 168));
+    W(el('', 238, 321, 0, 0, '<span style="font-size:21px;font-weight:600">Continue where you left off?</span>'));
+    W(el('', 238, 360, 0, 0, '<span style="font-size:15px;color:#c4c7ce">The game you were playing when Starquake closed was saved.</span>'));
+    W(el('rule', 212, 417, 536, 1));
+    hints(238, 434, [['<span class="key">Enter</span>/<span class="pad">A</span>', 'continue'], ['<span class="key">Esc</span>/<span class="pad">B</span>', 'start afresh']]);
+  },
+
+  'game-over': () => {
+    picture({ tag: "The game's picture, from your tape: game over" });
+    W(el('panel', 960, 0, 408, 768));
+    W(el('label', 984, 27, 0, 0, 'This game'));
+    W(el('', 984, 300, 0, 0, '<span style="font-size:13px;color:var(--muted)">Played with</span>'));
+    W(el('', 984, 322, 0, 0, '<span style="font-size:21px;font-weight:500">Guidance up to level 3</span>'));
+    W(el('', 984, 356, 0, 0, '<span style="font-size:13px;color:#c4c7ce">What you have seen</span>'));
+    W(el('label', 984, 425, 0, 0, 'Core of heroes'));
+    const rows = [['ANN', 'level 3 · What you have seen', 1], ['BOB', 'no guidance'], ['CAT', 'from the tape'],
+      ['DAN', 'level 5 · Routes · loaded'], ['EVE', 'from the tape'], ['FAY', 'from the tape'],
+      ['GUS', 'level 1 · Codes and the core'], ['HAL', 'from the tape']];
+    rows.forEach(([n, t, me], i) => {
+      W(el('', 984, 451 + i * 23, 0, 0, `<span style="font-size:15px;font-weight:${me ? 600 : 500};color:${me ? 'var(--text)' : '#c4c7ce'}">${i + 1} ${n}</span>`));
+      W(el('', 1060, 452 + i * 23, 0, 0, `<span style="font-size:14px;color:${me ? 'var(--text)' : '#9a9ea8'}">${t}</span>`));
+    });
+  },
+};
+
+function tapePrompt(wrong) {
+  document.documentElement.style.width = document.body.style.width = '960px';
+  W(el('', 0, 0, 960, 768, '', 'background:#0b0c0f'));
+  W(el('label', 120, 97, 0, 0, 'Starquake'));
+  W(el('', 120, 118, 0, 0, '<span style="font-size:31px;font-weight:600">This needs your copy of the game</span>'));
+  W(el('', 120, 167, 660, 0, '<div style="font-size:16px;line-height:24px;color:#c4c7ce">Nothing from the original game is included. Starquake runs from your own tape, here in an emulated Spectrum, each time it starts.</div>'));
+  let y = 250;
+  if (wrong) {
+    W(el('', 120, 236, 720, 90, '', 'background:#2a1416;border:1px solid #6a2a2e;border-radius:8px'));
+    W(el('', 138, 252, 18, 18, '<div style="text-align:center;font-size:12px;font-weight:700;color:#2a1416;line-height:18px">!</div>', 'background:var(--red);border-radius:50%'));
+    W(el('', 166, 249, 0, 0, '<span style="font-size:15px;font-weight:600">That isn\'t the Starquake tape this version needs</span>'));
+    W(el('', 166, 273, 650, 0, '<div style="font-size:13px;line-height:20px;color:#d9b4b6">The tape in starquake-other.zip is a different dump. This version works only with the original Bubble Bus release (SHA-1 65450d6f…).</div>'));
+    y = 336;
+  }
+  W(el('', 120, y, 720, 164, '', 'border:1.5px dashed #3a3e48;border-radius:12px;background:#10121a'));
+  W(el('', 383, y + 36, 194, 44, '<div style="text-align:center;font-size:16px;font-weight:600;color:#0b0c0f;line-height:44px">Locate the tape...</div>', 'background:var(--accent);border-radius:6px'));
+  W(el('', 120, y + 98, 720, 0, '<div style="text-align:center;font-size:15px;color:var(--muted)">or drop it onto this window</div>'));
+  W(el('', 120, y + 126, 720, 0, '<div style="text-align:center;font-size:12px;color:var(--faint)"><span style="color:#c4c7ce">starquake.tap</span>, or the <span style="color:#c4c7ce">.zip</span> it was downloaded in, in any upper or lower case</div>'));
+  const d = y + 214;
+  W(el('label', 120, d, 0, 0, "Don't have it?"));
+  W(el('', 120, d + 22, 490, 0, '<div style="font-size:15px;line-height:22px;color:#c4c7ce">World of Spectrum keeps Spectrum software available, and removes titles whose rights holders object. Download <span style="color:var(--text)">Starquake.tap.zip</span> there, then locate it here.</div>'));
+  W(el('', 120, d + 94, 0, 0, '<span style="font-size:13px;color:var(--faint)">worldofspectrum.net/item/0004873</span>'));
+  W(el('', 616, d + 36, 224, 38, '<div style="text-align:center;font-size:15px;font-weight:500;line-height:36px">Open World of Spectrum ↗</div>', 'border:1px solid #3a3e48;border-radius:6px;background:#15171c'));
+  W(el('', 120, 711, 0, 0, '<span style="font-size:12px;color:var(--faint)">Starquake © 1985 Stephen Crow / Bubble Bus Software. Not affiliated.</span>'));
+  hints(584, 709, [['<span class="key">Enter</span>', 'locate'], ['<span class="key">W</span>', 'website'], ['<span class="key">Esc</span>', 'quit']]);
+}
+MOCKUPS['tape-prompt'] = () => tapePrompt(false);
+MOCKUPS['tape-prompt-wrong-dump'] = () => tapePrompt(true);
+
+Promise.all(['400 16px Inter', '500 16px Inter', '600 16px Inter', '700 16px Inter', '16px Silkscreen']
+  .map((font) => document.fonts.load(font))).then(() => {
+  const name = location.hash.slice(1) || 'play-level5';
+  MOCKUPS[name]();
+});
+</script>
+</body>
+</html>
