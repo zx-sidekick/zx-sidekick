@@ -5,10 +5,10 @@ description: >
   mockup: "make a mockup of X", "show me what it would look like", "design the
   screen first", or from inside a spec whose value is how it LOOKS (a panel
   widget, a menu, a card, a notice, the window's layout, colours,
-  typography). Produces a headless render of the program's own drawing over a
-  plain stand-in for the game's picture (or a sketch for UI that doesn't exist
-  yet), commits it under docs/mockups/ on the work branch, and embeds it in
-  the ticket. Never shows a real game's picture. The maintainer approves the
+  typography). Produces a headless render of the program's drawing (a
+  screenshot, with a game running behind it, when that shows it best) or a
+  sketch for UI that doesn't exist yet, commits it under docs/mockups/ on the
+  work branch, and embeds it in the ticket. The maintainer approves the
   picture BEFORE any real UI is built. Trigger before writing any UI code for
   looks-driven work, even if nobody asked for a mockup.
 ---
@@ -19,34 +19,35 @@ part of the spec OK.
 
 ## The reference look
 
-The screenshots in `starquake-emulated-mockups/` are the reference design:
+The screenshots in `docs/mockups/starquake/` are the reference design:
 layout, wording and behaviour, for every game (`ZX-SIDEKICK.md`, "Mockups",
-lists them). Read them locally to match it. **They contain the game's
-picture, so they never leave this machine**: never committed (the folder is
-git-ignored), uploaded, attached, embedded or copied into a new image.
+lists them). Match them pixel for pixel: the game's own font and icons at
+whole multiples of a Spectrum pixel, Inter for the program's own text.
+
+**Screenshots are allowed** (CLAUDE.md, rule 3): a picture of a game running,
+as a player sees it, may be committed and embedded. Graphics, fonts, maps or
+sprite sheets extracted as files may not.
 
 ## Step 1: build it
 
-Pick whichever shows the design fastest and most faithfully. **Neither ever
-holds a real game's picture**, graphics or font.
+Pick whichever shows the design fastest and most faithfully.
 
-- **A headless render of the program's own drawing**, the default.
-  `sidekick-ui` draws the panel, menus, cards and notices in software into an
-  RGBA buffer, the same path the golden-image tests use, so render the window
-  into a PNG at its 1368×768 with a plain stand-in where the game's picture
-  goes, and stand-in graphics in any widget that draws the game's own. A
-  change can be seen in place: a throwaway edit on the work branch (a colour,
-  a widget placed by hand), rendered headless, never kept as the build and
-  never committed. Never render with a real tape loaded: the picture would be
-  the game's.
+- **A headless render of the program's drawing**, the default. `sidekick-ui`
+  draws the panel, menus, cards and notices in software into an RGBA buffer,
+  the same path the golden-image tests use, so render the window into a PNG
+  at its 1368×768. With the player's tape in `assets/`, the game can run
+  behind it, which makes it a screenshot; without one, use a plain stand-in.
+  A change can be seen in place: a throwaway edit on the work branch (a
+  colour, a widget placed by hand), rendered headless, never kept as the
+  build and never committed.
 - **A sketch**, only for UI that doesn't exist yet and can't be rendered: the
   library screen, the menu for a game without a definition. Draw it as an
   image (HTML or SVG in the scratchpad, rendered to PNG; the source is never
-  committed), with the same plain stand-in for the game's picture. Say which
-  it is, so nobody reads a sketch as the program.
+  committed), in the reference look. Say which it is, so nobody reads a
+  sketch as the program.
 
 **Look at the PNG yourself before posting it**, to catch a blank or clipped
-render, and to check nothing of a game's picture, graphics or text is in it.
+render.
 
 ## Step 2: commit the image
 

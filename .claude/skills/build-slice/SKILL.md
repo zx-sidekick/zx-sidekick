@@ -57,7 +57,8 @@ one goes back to `Plan`.
    `.scratch/`. A regenerated committed file (the definition JSON Schema, a
    golden image) travels with the change that moved it, since the tests fail
    on drift. Golden images show the program's own drawing over a plain
-   stand-in for the game's picture, never a real game's picture.
+   stand-in for the game's picture, since CI has no tape. Screenshots of a
+   game running may be committed (`docs/mockups/`); extracted graphics may not.
 3. **A change to the machine is made in the fork first.** `rustzx-core` and
    `rustzx-z80` come from [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx),
    pinned by `rev`. Build against a local checkout with the ignored
@@ -154,7 +155,7 @@ The gates prove it formats, lints and passes its tests. They cannot see:
 - **Game material**: nothing of a game's code, disassembly, graphics, maps,
   text or sound in the diff; definitions hold facts only, each recorded in
   `docs/re/<game>.md` with its confidence; no tape, snapshot or ROM staged;
-  no image holding a real game's picture.
+  a game's picture only as a screenshot, never extracted graphics as files.
 
 **Sort each finding into one of two kinds** (zx-recompiled/starquake-recompiled#74):
 

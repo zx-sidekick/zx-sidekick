@@ -1,7 +1,8 @@
 # Build output
 /target/
 
-# Game, ROM and mockup material never enters the repository (see CLAUDE.md)
+# Game and ROM material never enters the repository (see CLAUDE.md); screenshots may, in
+# docs/mockups/. The old local copy of the mockups stays ignored.
 /assets/*
 !/assets/README.md
 /starquake-emulated-mockups/
