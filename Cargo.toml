@@ -14,9 +14,8 @@ repository = "https://github.com/zx-sidekick/zx-sidekick"
 # there; never follow the branch. To work on the fork alongside this repository, see
 # "Working on the engine" in ZX-SIDEKICK.md.
 [workspace.dependencies]
-rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "bf1ed57d6ce111508783b6c3bb9faeff40c83570", features = ["embedded-roms", "ay", "zlib", "precise-border"] }
-thiserror = "2.0.21"
-rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "bf1ed57d6ce111508783b6c3bb9faeff40c83570" }
+rustzx-core = { git = "https://github.com/zx-sidekick/rustzx", rev = "4afcd3e9c4777f01de2175269cafc4ceb1b23f5e", features = ["embedded-roms", "ay", "zlib", "precise-border"] }
+rustzx-z80 = { git = "https://github.com/zx-sidekick/rustzx", rev = "4afcd3e9c4777f01de2175269cafc4ceb1b23f5e" }
 
 # The strictest useful setting: clippy's pedantic, nursery and cargo groups, plus the
 # restriction lints that suit this code. CI denies warnings. A lint allowed has its reason beside it.
@@ -30,8 +29,6 @@ unreachable_pub = "warn"
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 cargo = { level = "warn", priority = -1 }
-# rustzx-core's own dependencies pull in three versions of syn; updating them is a fork patch.
-multiple_crate_versions = "allow"
 # Contradicts rustc's `unreachable_pub`, which asks for `pub(crate)` where this asks for `pub`.
 redundant_pub_crate = "allow"
 allow_attributes_without_reason = "warn"
