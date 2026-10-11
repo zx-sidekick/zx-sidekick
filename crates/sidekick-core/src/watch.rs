@@ -5,6 +5,7 @@ use rustzx_core::host::DebugInterface;
 use rustzx_z80::Breakpoints;
 
 /// Asked by the core about every instruction, through its `DebugInterface`.
+#[derive(Clone)]
 pub struct Watch {
     sync: Option<u16>,
     /// Whether the sync address has stopped the machine in this frame.
