@@ -35,13 +35,15 @@ pub struct Picture {
 }
 
 impl Picture {
+    /// Its width in pixels.
     #[must_use]
-    pub fn width(&self) -> usize {
+    pub const fn width(&self) -> usize {
         self.width
     }
 
+    /// Its height in pixels.
     #[must_use]
-    pub fn height(&self) -> usize {
+    pub const fn height(&self) -> usize {
         self.height
     }
 
