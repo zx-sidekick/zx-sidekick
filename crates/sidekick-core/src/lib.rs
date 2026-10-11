@@ -60,6 +60,8 @@ pub struct Machine {
     passed: Vec<u16>,
     /// The border and screen together, as of the last frame's end.
     picture: Picture,
+    /// The last frame's sound, left and right.
+    sound: Vec<(f32, f32)>,
 }
 
 impl Machine {
@@ -91,6 +93,7 @@ impl Machine {
             frame_ended: false,
             passed: Vec::new(),
             picture: Picture::new(320, BORDER.height(), FrameBufferSource::Border, ()),
+            sound: Vec::with_capacity(SAMPLE_RATE / 50),
         })
     }
 
@@ -133,8 +136,11 @@ impl Machine {
                     32,
                     BORDER.canvas_y(),
                 );
-                // The mixer fills a frame's worth of samples; nothing plays them headless.
-                while self.emulator.next_audio_sample().is_some() {}
+                // The mixer fills exactly a frame's worth, sampled as the frame's T-states pass.
+                self.sound.clear();
+                while let Some(sample) = self.emulator.next_audio_sample() {
+                    self.sound.push((sample.left, sample.right));
+                }
                 Stop::FrameEnd
             }
         };
@@ -217,6 +223,13 @@ impl Machine {
             .load_snapshot(Snapshot::Szx(BufferCursor::new(szx.to_vec())))?;
         self.frame_ended = true;
         Ok(())
+    }
+
+    /// The last frame's sound, as stereo samples at [`SAMPLE_RATE`]: one frame's worth (882 at
+    /// 44.1 kHz), beeper and AY mixed, sampled in emulated time.
+    #[must_use]
+    pub fn sound(&self) -> &[(f32, f32)] {
+        &self.sound
     }
 
     /// The picture as it was at the end of the last frame: 320×256, the 256×192 screen with
