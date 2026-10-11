@@ -114,7 +114,7 @@ type = "table"
 # fields.x = TODO
 # fields.y = TODO
 # fields.picture = TODO
-# fields.colour = TODO
+# fields.color = TODO
 # fields.carried = TODO
 
 [values.inventory]

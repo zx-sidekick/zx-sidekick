@@ -21,7 +21,7 @@ fn the_48k_rom_is_there_and_boots() {
     let picture = machine.picture();
     let ink = (0..picture.height())
         .flat_map(|y| (0..picture.width()).map(move |x| (x, y)))
-        .filter(|&(x, y)| picture.colour(x, y) == 0)
+        .filter(|&(x, y)| picture.color(x, y) == 0)
         .count();
     assert!(ink > 0, "the copyright message is on the screen");
 }

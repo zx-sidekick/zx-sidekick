@@ -1,0 +1,25 @@
+# Keeps the Rust crates and the workflow actions current. See dependabot-auto-merge.yml.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    ignore:
+      # The rustzx fork is pinned to a commit on purpose: its rev moves by hand, after a
+      # patch lands there (ZX-SIDEKICK.md, "Working on the engine").
+      - dependency-name: rustzx-core
+      - dependency-name: rustzx-z80
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    groups:
+      actions:
+        patterns: ['*']

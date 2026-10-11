@@ -197,7 +197,7 @@ width = 16         # pixels, a multiple of 8
 height = 16
 stride = 32        # bytes from one picture to the next (default width/8 × height)
 mask = "none"      # "none", "interleaved" (mask byte before each byte), or "after" (mask after the picture)
-colours = { value = "item_colours" }   # optional: a table or bytes giving each picture's ink
+colors = { value = "item_colors" }   # optional: a table or bytes giving each picture's ink
 ```
 
 ## `[[cheats]]`: training switches
@@ -390,9 +390,9 @@ source = "value:energy"
 | `chip-list` | Short words in the game's font; one may be outlined | a list of `{ text, outlined }` |
 | `icon-grid` | Pictures from `pictures`, each bright, dim or outlined | a list of `{ picture, look = "bright" / "dim" / "outlined" }` |
 | `card-set` | Numbered groups of pictures, each dim until answered | a list of `{ label, cards = [{ picture, answered }] }` |
-| `map-grid` | Places on a grid, walls, markers, routes, and exit arrows at the picture's edge | `{ width, height, cells = [{ x, y, walls = "NESW", seen }], markers = [{ x, y, kind, picture?, colour? }], routes = [{ colour, steps = [[x, y], …], exit = "N" }] }` |
+| `map-grid` | Places on a grid, walls, markers, routes, and exit arrows at the picture's edge | `{ width, height, cells = [{ x, y, walls = "NESW", seen }], markers = [{ x, y, kind, picture?, color? }], routes = [{ color, steps = [[x, y], …], exit = "N" }] }` |
 
-`map-grid` `kind`s for markers are `player`, `teleport`, `door`, `item` and `target`; route colours are `first` and `second`.
+`map-grid` `kind`s for markers are `player`, `teleport`, `door`, `item` and `target`; route `color`s are `first` and `second`.
 
 ## `[situations]`
 

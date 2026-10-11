@@ -9,7 +9,7 @@ Early days: the plan is [`ZX-SIDEKICK.md`](ZX-SIDEKICK.md), the definition forma
 ## Building
 
 ```
-cargo test
+scripts/check.sh
 ```
 
 The emulated machine comes from the [zx-sidekick fork of RustZX](https://github.com/zx-sidekick/rustzx), fetched by Cargo. To work on it alongside this repository, see "Working on the engine" in `ZX-SIDEKICK.md`.

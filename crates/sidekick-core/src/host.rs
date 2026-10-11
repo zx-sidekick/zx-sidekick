@@ -27,7 +27,7 @@ impl HostContext<HeadlessHost> for HeadlessContext {
     fn frame_buffer_context(&self) -> <Picture as FrameBuffer>::Context {}
 }
 
-/// A picture as the Spectrum's 16 colours: 0–7 normal, 8–15 bright.
+/// A picture as the Spectrum's 16 colors: 0–7 normal, 8–15 bright.
 pub struct Picture {
     width: usize,
     height: usize,
@@ -45,9 +45,9 @@ impl Picture {
         self.height
     }
 
-    /// The colour at (`x`, `y`): 0–7 normal, 8–15 bright.
+    /// The color at (`x`, `y`): 0–7 normal, 8–15 bright.
     #[must_use]
-    pub fn colour(&self, x: usize, y: usize) -> u8 {
+    pub fn color(&self, x: usize, y: usize) -> u8 {
         self.pixels[x + y * self.width]
     }
 }
