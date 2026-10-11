@@ -9,11 +9,12 @@ Games and the Spectrum ROM belong to their rights holders. These rules keep the 
 1. **A legally distributed copy, never shared.** Work from the supported dump named by SHA-1 in the game's definition. For Starquake, that's the copy World of Spectrum distributes. Keep it in `assets/` (ignored by git). Never commit, upload, attach or share it. Players download their own.
 2. **Disassembly is for finding facts and understanding how the game works, nothing else.** It is never used to recreate, port or translate the game, and never published. It lives only in `.scratch/` (ignored by git). None of it goes into a commit, a doc, an issue, a PR, a comment, or a summary in chat.
 3. **Publish facts only, in our own words.** Addresses, what the bytes there mean, and short patch bytes with the bytes they replace (`expect`). Write each fact in `docs/re/<game>.md`, marked **confirmed** (seen running), **read** (understood from the disassembly) or **guess**. No listings, no code excerpts. No extracted maps, text, graphics or sound either: the program reads those from the player's tape at run time.
+   **Screenshots are the exception** (@starquake): a picture of a game running, as a player sees it, may be committed (`docs/mockups/`) and shown in issues and PRs, to show what ZX Sidekick looks like. Graphics, fonts, maps or sprite sheets extracted as files still may not.
 4. **Use whatever is quickest and most accurate.** Our own disassembly, tracing, memory search, watchpoints: no method is preferred. Read a public disassembly only if it's published with the rights holder's permission, or holds annotations only (for example a SkoolKit control file applied to our own copy). Never download an unlicensed full listing.
 5. **Never circumvent copy protection.** A game with a protected loader (Speedlock and the like) loads in the emulator as it would on a Spectrum. Nobody decrypts or strips it to find facts.
 6. **No money on any game.** No donations, tiers or paid builds tied to a game. Ask the rights holder before anything commercial; asking for permission is always the better option.
 
-The repository never holds tapes, snapshots, ROM files or the mockup images. `scripts/check.sh guard` (in CI's `lint` job) fails on any `.tap`, `.tzx`, `.z80`, `.sna`, `.szx` or `.rom`. The ROM the emulator needs comes inside the `rustzx-core` dependency, under Amstrad's permission (`THIRD-PARTY.md`).
+The repository never holds tapes, snapshots or ROM files. `scripts/check.sh guard` (in CI's `lint` job) fails on any `.tap`, `.tzx`, `.z80`, `.sna`, `.szx` or `.rom`. The ROM the emulator needs comes inside the `rustzx-core` dependency, under Amstrad's permission (`THIRD-PARTY.md`).
 
 ## Hard rules
 
@@ -59,7 +60,7 @@ cargo test -p sidekick-core
 - **A ticket ported from a sibling repository goes in the lane its content puts it in**: open questions to `Your input`, a settled spec with a plan to `Your sign-off` and one without to `Plan`, a parent to `Backlog` with no label.
 - **The body is the living spec; the comments are append-only history.** When a question is answered it moves into _Decisions_ and is deleted from _Open questions_. Every state change gets a NEW `> 🤖 **Next steps**` comment; never edit an old one.
 - **Questions go in a copy-paste answer block**: a fenced block headed `# keep your pick, delete the rest`, one line per question, every line carrying a `(rec)`, ending with `notes =`. Posting one moves the ticket to `Your input` in the same step.
-- **Visual work gets a mockup approved before the real UI is built** (`mockup` skill): a headless render of the program's own drawing, with a plain stand-in for the game's picture, or a sketch for UI that doesn't exist yet. Mockups are committed under `docs/mockups/`. A game's own picture never goes into the repository, an issue or a PR; `starquake-emulated-mockups/` stays local.
+- **Visual work gets a mockup approved before the real UI is built** (`mockup` skill): a headless render of the program's drawing (with a game running behind it, a screenshot, if that shows it best), or a sketch for UI that doesn't exist yet. Mockups are committed under `docs/mockups/`; the reference design is `docs/mockups/starquake/`.
 
 ### Attribution: issues and comments yes, pull requests and commits no
 
@@ -99,7 +100,7 @@ Every change comes with tests. Write a test instead of a one-off check script: a
 - **Unit tests** in a `#[cfg(test)] mod tests` beside the code; **integration tests** in the crate's `tests/`, through its public interface.
 - **Tests run in parallel, so they stay fast.** Each builds its own machine and shares no state with another; nothing serialises them. Split a slow test rather than letting one dominate the run.
 - **No game in CI**: tests that need a tape read it from `assets/` and skip, saying so, when it's missing. CI runs everything else; the ROM tests run everywhere, since the ROM comes with `rustzx-core`.
-- **Golden images** of the program's own drawing are committed; a game's picture never is (tests use a plain stand-in).
+- **Golden images** of the program's own drawing are committed, over a plain stand-in for the game's picture: CI has no tape.
 - **A flaky test is a bug to file**, not to rerun past.
 
 ## Comments

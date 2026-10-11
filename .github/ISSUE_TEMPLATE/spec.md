@@ -62,9 +62,9 @@ labels: 'needs: spec'
 
 <!-- Anything whose value is how it LOOKS gets a mockup approved here before
      the real UI is built (the `mockup` skill): a headless render of the
-     program's own drawing with a plain stand-in for the game's picture, or a
-     sketch for UI that doesn't exist yet. Never a game's own picture: those
-     stay out of the repository, issues and PRs. Embed it with this form:
+     program's drawing (a screenshot, with a game running behind it, if that
+     shows it best), or a sketch for UI that doesn't exist yet. The reference
+     design is `docs/mockups/starquake/`. Embed it with this form:
      ![mockup](https://github.com/zx-sidekick/zx-sidekick/raw/<branch>/docs/mockups/<file>.png)
      The PR that merges it repoints the embed to /raw/main/. -->
 

@@ -4,7 +4,7 @@ A design and build plan for one program that plays original **ZX Spectrum games*
 
 What the program does for a particular game comes from that game's **definition**: a TOML or JSON file, or a zip holding one with a few extra files, that names the game's tape, its memory addresses and what they mean, its training switches, how a pad drives it, and what its guidance panel shows. **Anyone can add a game by adding a definition**, with no change to the program. A tape no definition knows still plays, without the extras.
 
-**Starquake** (Stephen Crow / Bubble Bus Software, 1985) is the reference game. Its definition exercises every feature in this plan, and its own notes are in [`docs/games/starquake.md`](docs/games/starquake.md). The screenshots in `starquake-emulated-mockups/` come from an earlier Starquake-only implementation. Treat them as the reference design: the layout, wording and behaviour described here match them, for every game.
+**Starquake** (Stephen Crow / Bubble Bus Software, 1985) is the reference game. Its definition exercises every feature in this plan, and its own notes are in [`docs/games/starquake.md`](docs/games/starquake.md). The screenshots in [`docs/mockups/starquake/`](docs/mockups/starquake/) come from an earlier Starquake-only implementation. Treat them as the reference design: the layout, wording and behaviour described here match them, for every game.
 
 The definition format is specified in [`docs/definition-format.md`](docs/definition-format.md). The rules for working with game code are in [`CLAUDE.md`](CLAUDE.md).
 
@@ -12,7 +12,7 @@ The definition format is specified in [`docs/definition-format.md`](docs/definit
 
 ## 1. Ground rules
 
-1. **No game data in the repository, ever.** No tapes, snapshots, extracted graphics, maps or text, and no disassembly listings. `assets/` is ignored except its README, and CI fails if a `.tap`, `.tzx`, `.z80`, `.sna`, `.szx` or `.rom` is committed. What the repository may hold are *facts*: a supported tape's SHA-1, where a program starts, memory addresses, the meaning of the bytes there, and short patches with the bytes they replace. **Definitions hold only facts**, in their authors' own words, plus their authors' own icons.
+1. **No game data in the repository, ever.** No tapes, snapshots, extracted graphics, maps or text, and no disassembly listings. `assets/` is ignored except its README, and CI fails if a `.tap`, `.tzx`, `.z80`, `.sna`, `.szx` or `.rom` is committed. What the repository may hold are *facts*: a supported tape's SHA-1, where a program starts, memory addresses, the meaning of the bytes there, and short patches with the bytes they replace. **Definitions hold only facts**, in their authors' own words, plus their authors' own icons. **Screenshots** of a game running, as a player sees it, are the one exception, to show what the program looks like (`docs/mockups/`).
 2. **The player brings the tape.** Each definition supports the dumps it names by SHA-1. Anything else is refused for that game, with a message naming the dump that's expected; it can still be played without the game's extras (§5).
 3. **The ROM is bundled.** The emulated Spectrum needs Amstrad's ROMs to load tapes and to run the games that call them. Amstrad has long allowed emulators to distribute the Spectrum ROMs, provided the copyright notice is kept and nothing is charged. They come inside `rustzx-core`, and `THIRD-PARTY.md` carries the notice.
 4. **A game's code never changes on disk.** Anything that alters behaviour (training switches, a pad's split button meanings) happens at run time: a write to RAM between frames, or a patch applied to emulated memory after loading. A definition lists each one in one place, with what it changes and why. A patch names the bytes it expects to replace and isn't applied if they differ.
@@ -148,8 +148,8 @@ Most of what a definition says is plain data. A few things are computations no d
 - **The window's title bar** follows the system's light or dark appearance.
 - **The tape prompt** appears when a game's tape isn't found. It shows the game's title, a short explanation ("This needs your copy of the game. Nothing from the original is included; it runs from your own tape"), a **Locate the tape…** button, drag-and-drop onto the window, and a link to where the tape can be downloaded, all from the game's `[[media]]`. It accepts the tape, or the `.zip` it's distributed in, in any upper or lower case. A located tape is kept in the game's data folder, so it's found next time. A different dump is refused with a clear message naming the dump that's needed.
 
-  ![The tape prompt](starquake-emulated-mockups/tape-prompt.png)
-  ![The tape prompt refusing a different dump](starquake-emulated-mockups/tape-prompt-wrong-dump.png)
+  ![The tape prompt](docs/mockups/starquake/tape-prompt.png)
+  ![The tape prompt refusing a different dump](docs/mockups/starquake/tape-prompt-wrong-dump.png)
 
   The mockup's text says "the graphics, maps and sound are read from your own tape". The emulator's should say the game *runs* from the player's own tape.
 - **The loading screen:** the picture the tape draws as it loads stays up until a key is pressed, as on a real Spectrum, when the definition asks for it (`[run] hold_loading_screen`).
@@ -170,7 +170,7 @@ Most of what a definition says is plain data. A few things are computations no d
 
 When a definition names its game's paused state, the picture dims there and a card says how to go on: in the definition's own words for the keyboard (for Starquake, any move or fire continues once the pause key is let go), and A or B on a pad.
 
-![Paused](starquake-emulated-mockups/paused.png)
+![Paused](docs/mockups/starquake/paused.png)
 
 ## 11. Guidance and training
 
@@ -194,16 +194,16 @@ Starquake's seven levels are the reference: [`docs/games/starquake.md`](docs/gam
 
 | | |
 |---|---|
-| ![Level 0](starquake-emulated-mockups/play-level0.png) | ![Level 1](starquake-emulated-mockups/play-level1.png) |
-| ![Level 2](starquake-emulated-mockups/play-level2.png) | ![Level 3](starquake-emulated-mockups/play-level3.png) |
-| ![Level 4](starquake-emulated-mockups/play-level4.png) | ![Level 5](starquake-emulated-mockups/play-level5.png) |
-| ![Level 6](starquake-emulated-mockups/play-level6.png) | |
+| ![Level 0](docs/mockups/starquake/play-level0.png) | ![Level 1](docs/mockups/starquake/play-level1.png) |
+| ![Level 2](docs/mockups/starquake/play-level2.png) | ![Level 3](docs/mockups/starquake/play-level3.png) |
+| ![Level 4](docs/mockups/starquake/play-level4.png) | ![Level 5](docs/mockups/starquake/play-level5.png) |
+| ![Level 6](docs/mockups/starquake/play-level6.png) | |
 
 ### 11.2 The guidance menu
 
 Esc, or Select on a pad, opens the menu and pauses the game. It's built from the definition.
 
-![The guidance menu](starquake-emulated-mockups/menu.png)
+![The guidance menu](docs/mockups/starquake/menu.png)
 
 - **Guidance level:** left and right, or Enter on it to step up and wrap round. Changes take effect at once in the panel. Shown when the definition has levels.
 - **Training mode:** one **On/Off** switch per `[[cheats]]` entry, with its label. Each is a write between frames, a value held from going down, or a patch applied while it's on.
@@ -229,7 +229,7 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 
 | Choosing | Spelling |
 |---|---|
-| ![Choosing a code](starquake-emulated-mockups/booth-choose.png) | ![Spelling a code](starquake-emulated-mockups/booth-spell.png) |
+| ![Choosing a code](docs/mockups/starquake/booth-choose.png) | ![Spelling a code](docs/mockups/starquake/booth-spell.png) |
 
 **Kept lists.** A definition's `[persist]` lists are kept between games in the game's data folder, as plain text (Starquake: every teleport code discovered, in `teleporter-codes.txt`). The panel and the card use them from the start of every later game.
 
@@ -239,16 +239,16 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 - **A training game** is shown in the table, then left out of it.
 - **A game a save was loaded into** stays in the table, marked "loaded".
 
-![Game over: the record and the table](starquake-emulated-mockups/game-over.png)
+![Game over: the record and the table](docs/mockups/starquake/game-over.png)
 
 **Save games** work for every game, defined or not: a save is a snapshot of the whole machine, stored as a standard `.szx`, with the program's own state alongside (game id, training switches, guidance record, kept-list entries found this game).
 - **F5** saves to a quick slot (`quick.sav` in the game's data folder); **F9** loads it, on the title screen too. The menu's row offers the same, plus **Open a save…** for any file, through the system's own dialog. On a Mac that dialog must run on the main thread.
 - A short notice confirms: "Game saved", "Game loaded", or why not.
 
-  ![Game saved](starquake-emulated-mockups/saved-note.png)
+  ![Game saved](docs/mockups/starquake/saved-note.png)
 - **Saved on quitting:** closing the window during a game saves it to its own slot. So does **Cmd-Q** or Quit in the Mac menu, which never arrives as the window closing, only as the program shutting down; handle both. The next start offers it ("Continue where you left off?"): Enter or A continues, anything else starts afresh, and either way it's removed.
 
-  ![The offer to continue](starquake-emulated-mockups/offer.png)
+  ![The offer to continue](docs/mockups/starquake/offer.png)
 - **Wherever the game is** (paused, typing a code, the menu open), a snapshot can be taken. Take it at the sync point wherever possible, so loading resumes cleanly; otherwise at the end of a frame.
 - **A loaded game is marked** beside its score.
 
@@ -328,7 +328,7 @@ Each step ends green, committed, and on a reviewed pull request.
 
 ## Mockups
 
-All the files in `starquake-emulated-mockups/`, at the window's size of 1368×768. They show Starquake, but the layout, wording and behaviour are the same for every game:
+All the files in `docs/mockups/starquake/`, at the window's size of 1368×768. They show Starquake, but the layout, wording and behaviour are the same for every game:
 
 | File | Shows |
 |---|---|
@@ -343,4 +343,4 @@ All the files in `starquake-emulated-mockups/`, at the window's size of 1368×76
 
 Still to be drawn: the library screen, and the menu for a game without a definition (§14).
 
-They contain the original's picture, so like the tape they stay out of the repository.
+They're screenshots, the one kind of game picture the repository holds (§1).

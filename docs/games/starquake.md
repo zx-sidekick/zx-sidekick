@@ -1,6 +1,6 @@
 # Starquake
 
-**Starquake** (Stephen Crow / Bubble Bus Software, 1985) is ZX Sidekick's reference game: its definition, `games/starquake/`, uses every feature in `ZX-SIDEKICK.md`, and the mockups in `starquake-emulated-mockups/` show it. This file holds what's particular to Starquake: what its guidance levels show, its training switches, its pad, its teleport booths and its high-score table. It also says how each maps onto the definition format.
+**Starquake** (Stephen Crow / Bubble Bus Software, 1985) is ZX Sidekick's reference game: its definition, `games/starquake/`, uses every feature in `ZX-SIDEKICK.md`, and the mockups in `../mockups/starquake/` show it. This file holds what's particular to Starquake: what its guidance levels show, its training switches, its pad, its teleport booths and its high-score table. It also says how each maps onto the definition format.
 
 Not affiliated with or endorsed by the rights holders; you need your own copy.
 
