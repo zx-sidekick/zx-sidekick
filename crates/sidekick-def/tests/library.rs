@@ -52,6 +52,14 @@ fn a_definition_loads_from_a_file_a_folder_or_a_zip() {
     )
     .unwrap();
     fs::write(base.join("folder-game/scripts/s.rhai"), "// script").unwrap();
+    let zipped_json =
+        sidekick_def::Definition::from_toml(&definition("zip-json", "Zip JSON", ABC_SHA1))
+            .unwrap()
+            .to_json();
+    zip(
+        &base.join("zip-json.zip"),
+        &[("game.json", zipped_json.as_bytes())],
+    );
     zip(
         &base.join("zip-game.zip"),
         &[
@@ -69,7 +77,16 @@ fn a_definition_loads_from_a_file_a_folder_or_a_zip() {
         .games()
         .map(|p| p.definition.game.id.as_str())
         .collect();
-    assert_eq!(ids, ["folder-game", "json-game", "toml-game", "zip-game"]);
+    assert_eq!(
+        ids,
+        [
+            "folder-game",
+            "json-game",
+            "toml-game",
+            "zip-game",
+            "zip-json"
+        ]
+    );
 
     let folder = library.get("folder-game").unwrap();
     assert_eq!(folder.read("scripts/s.rhai").unwrap(), b"// script");

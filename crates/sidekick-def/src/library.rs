@@ -118,14 +118,18 @@ impl Package {
         match extension(path).as_deref() {
             Some("zip") => {
                 let bytes = fs::read(path).or_else(|e| fail(path, LoadProblem::Io(e)))?;
-                let definition = DEFINITION_NAMES
+                let (name, text) = DEFINITION_NAMES
                     .iter()
-                    .find_map(|name| zip_entry(path, &bytes, name).transpose())
+                    .find_map(|name| {
+                        zip_entry(path, &bytes, name)
+                            .transpose()
+                            .map(|entry| entry.map(|text| (*name, text)))
+                    })
                     .ok_or_else(|| LoadError {
                         path: path.to_owned(),
                         problem: LoadProblem::NoDefinition,
                     })??;
-                let definition = parse(path, &definition)?;
+                let definition = parse(path, name, &text)?;
                 Ok(Self {
                     definition,
                     path: path.to_owned(),
@@ -174,15 +178,17 @@ fn extension(path: &Path) -> Option<String> {
 
 fn parse_file(path: &Path) -> Result<Definition, LoadError> {
     let bytes = fs::read(path).or_else(|e| fail(path, LoadProblem::Io(e)))?;
-    parse(path, &bytes)
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    parse(path, name, &bytes)
 }
 
-fn parse(path: &Path, bytes: &[u8]) -> Result<Definition, LoadError> {
+/// Parses a definition from `name`'s bytes: JSON if the name ends in `.json`, else TOML.
+fn parse(path: &Path, name: &str, bytes: &[u8]) -> Result<Definition, LoadError> {
     let text = String::from_utf8_lossy(bytes);
-    let json = extension(path).as_deref() == Some("json")
-        || path.file_name().and_then(|n| n.to_str()) == Some("game.json")
-        || (extension(path).as_deref() == Some("zip") && text.trim_start().starts_with('{'));
-    let parsed = if json {
+    let parsed = if extension(Path::new(name)).as_deref() == Some("json") {
         Definition::from_json(&text)
     } else {
         Definition::from_toml(&text)
