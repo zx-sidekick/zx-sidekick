@@ -262,7 +262,8 @@ The same window, menus, saves and pad, minus what needs facts: no panel, no trai
 
 What makes "anyone can add a game" real:
 
-- **`sidekick check DEF [TAPE]`:** checks a definition against the schema, that addresses are in range, that names it uses are defined, and, given the tape, that each patch's expected bytes are there once the game has loaded. Every definition in `games/` passes it in CI.
+- **`sidekick check DEF [TAPE]`:** checks a definition against the schema, lists what's still missing, that names it uses are defined, and, given a tape, whether it's one of the definition's dumps. Exits 0, 1 with problems, 2 when something can't be read. Checking each patch's expected bytes in the loaded game comes with `sidekick author`. Every finished definition in `games/` passes it in CI.
+- **`sidekick convert FILE`:** TOML to JSON, or JSON to TOML.
 - **`sidekick author TAPE [DEF]`:** runs the game with an overlay for authors:
   - every named value, live;
   - a **cheat finder**: narrow the whole memory down, frame by frame, to the bytes that went down, went up, changed, stayed or equal a number (lose a life, search "went down", repeat);
