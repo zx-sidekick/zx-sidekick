@@ -11,7 +11,6 @@ mod watch;
 
 pub use host::{HeadlessHost, Picture};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
-pub use rustzx_z80::Breakpoints;
 
 use rustzx_core::{EmulationMode, EmulationStopReason, Emulator, RustzxSettings};
 use std::time::Duration;
