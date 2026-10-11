@@ -60,7 +60,7 @@ What ZX Sidekick needs from it that isn't there yet. Each is a small patch to th
 
 1. **A frame that stops where the game says.** *(Done: fork patches 11 and 12.)* `Machine::run` stops at the definition's sync address, at most once a frame, or at the frame's end (§7), through the core's `DebugInterface`; the core now steps with `Z80::step`, so an interrupt handler's address is seen too, and a frame's end isn't lost over a breakpoint stop.
 2. **Writing and inspecting the machine.** *(Done: fork patch 13.)* `Machine::write` leaves the ROM alone and reaches the picture; `registers`/`registers_mut` and `ram_bank` read and set the rest.
-3. **`Emulator: Clone`**, for in-memory states and for reading facts on copies of the machine.
+3. **`Emulator: Clone`**, for in-memory states and for reading facts on copies of the machine. *(Done: fork patch 14; `Machine` is `Clone`.)*
 4. **Saving SZX.** SZX loads already; saving a 48K SNA pushes the program counter onto the game's own stack, so SZX is the save format.
 5. **A 320×256 picture** (the mockups' border) as a setting, beside the core's 320×240.
 6. **Sound that follows emulated time.** Some games' sound effects hold the game while they play, so a frame can last much longer than 1/50 s. Check the mixer keeps every sample of such a frame, so effects aren't cut short.

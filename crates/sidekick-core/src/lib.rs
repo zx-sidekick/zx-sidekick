@@ -37,6 +37,9 @@ pub enum Stop {
 }
 
 /// A Spectrum with the bundled ROM and nothing loaded, run a frame at a time.
+///
+/// A clone is the whole machine, and runs apart from the original.
+#[derive(Clone)]
 pub struct Machine {
     emulator: Emulator<HeadlessHost>,
     /// The last `run` returned at a frame's end, so the next begins a new frame.

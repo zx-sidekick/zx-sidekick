@@ -28,6 +28,7 @@ impl HostContext<HeadlessHost> for HeadlessContext {
 }
 
 /// A picture as the Spectrum's 16 colors: 0–7 normal, 8–15 bright.
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Picture {
     width: usize,
     height: usize,
