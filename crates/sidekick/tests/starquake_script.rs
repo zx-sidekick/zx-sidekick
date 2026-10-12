@@ -514,3 +514,32 @@ fn an_edge_is_open_only_where_blob_fits_against_it() {
     s.run_frame().expect("a frame");
     assert_eq!(s.script_results()["walls"], Fact::Text(String::new()));
 }
+}
+
+#[test]
+fn items_are_marked_by_what_the_game_does_with_them() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    // The core still needs pictures 5 and 6; BLOB carries a 6.
+    poke_into(&mut s, "core_slots", 0, &[0x85, 0x86]);
+    poke_into(&mut s, "carried", 0, &[6, 3]);
+    // In room 9: the twin of the 6 carried, a card that answers any (14), a pack (20), and a
+    // core piece not needed (27).
+    for (k, picture) in (0..).zip([5u8, 6, 14, 20, 27]) {
+        poke_into(&mut s, "items", k * 4, &[3, 20, 9, picture]);
+    }
+    enter(&mut s, "play");
+    s.set_level(4);
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        item_marks(&s),
+        [
+            (5, Fact::Text("first".to_owned()), 9),
+            (6, Fact::Number(7), 9),
+            (14, Fact::Number(5), 9),
+            (27, Fact::Number(7), 9),
+        ],
+        "a needed piece, the carried one's twin as any piece, a card, no pack, a piece"
+    );
+}
