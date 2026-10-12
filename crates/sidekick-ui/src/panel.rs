@@ -539,3 +539,110 @@ impl Panel {
         bottom
     }
 }
+
+/// A row of the high-score table after a game.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScoreRow {
+    /// The name.
+    pub name: String,
+    /// How its game was played: "level 3 · What you have seen", "from the tape".
+    pub mark: String,
+    /// Whether it's the game just played.
+    pub mine: bool,
+}
+
+/// The panel after a game: what it was played with, and the high-score table
+/// (`docs/mockups/starquake/game-over.png`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThisGame {
+    /// "Guidance up to level 3", or "No guidance".
+    pub played_with: String,
+    /// The level's name, or what else marks it.
+    pub detail: String,
+    /// The table's heading: "CORE OF HEROES".
+    pub title: String,
+    /// The table, in order.
+    pub rows: Vec<ScoreRow>,
+}
+
+/// A line of text on a 16-pixel line's baseline, as the mockups' smaller spans are.
+fn span(c: &mut Canvas, fonts: &mut Fonts, words: &str, (x, y): (f32, f32), style: &Style) {
+    let top = y + Fonts::in_body_line(style);
+    line(c, fonts, words, (x, top), Align::Left, style);
+}
+
+impl ThisGame {
+    /// Draws the page at `scale` device pixels to a logical one.
+    #[must_use]
+    pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
+        let mut c = Canvas::new(WIDTH, HEIGHT, scale);
+        c.fill(colors::PANEL);
+        #[allow(clippy::cast_precision_loss, reason = "the panel's height")]
+        c.rect((0.0, 0.0, 1.0, HEIGHT as f32), 0.0, Some(EDGE), None);
+        line(
+            &mut c,
+            fonts,
+            "THIS GAME",
+            (LEFT, 27.0),
+            Align::Left,
+            &label(colors::LABEL),
+        );
+        span(
+            &mut c,
+            fonts,
+            "Played with",
+            (LEFT, 300.0),
+            &Style::new(13.0, colors::MUTED),
+        );
+        let headline = Style::new(21.0, colors::TEXT).weight(Weight::Medium);
+        line(
+            &mut c,
+            fonts,
+            &self.played_with,
+            (LEFT, 322.0),
+            Align::Left,
+            &headline,
+        );
+        span(
+            &mut c,
+            fonts,
+            &self.detail,
+            (LEFT, 356.0),
+            &Style::new(13.0, BODY),
+        );
+        let title = self.title.to_uppercase();
+        line(
+            &mut c,
+            fonts,
+            &title,
+            (LEFT, 425.0),
+            Align::Left,
+            &label(colors::LABEL),
+        );
+        for (i, row) in self.rows.iter().enumerate() {
+            #[allow(clippy::cast_precision_loss, reason = "a few rows")]
+            let y = 451.0 + i as f32 * 23.0;
+            let (weight, ink, mark_ink) = if row.mine {
+                (Weight::SemiBold, colors::TEXT, colors::TEXT)
+            } else {
+                (Weight::Medium, BODY, colors::MUTED)
+            };
+            let name = Style::new(15.0, ink).weight(weight);
+            span(
+                &mut c,
+                fonts,
+                &format!("{} {}", i + 1, row.name),
+                (LEFT, y),
+                &name,
+            );
+            span(
+                &mut c,
+                fonts,
+                &row.mark,
+                (100.0, y + 1.0),
+                &Style::new(14.0, mark_ink),
+            );
+        }
+        c
+    }
+}

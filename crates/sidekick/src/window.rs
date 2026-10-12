@@ -9,6 +9,7 @@ use crate::{
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
     picture::{layout, placement, to_rgba, Layout},
+    scores,
 };
 use sdl3::{
     audio::{AudioFormat, AudioSpec, AudioStreamOwner},
@@ -23,13 +24,13 @@ use sdl3::{
     video::{FullscreenType, WindowContext},
     GamepadSubsystem,
 };
-use sidekick_core::{Machine, Session, SAMPLE_RATE};
+use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
 use sidekick_ui::{
     Canvas, EntryCard, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark,
-    Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ENTRY_HEIGHT, ENTRY_WIDTH,
-    MENU_WIDTH, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT,
-    TAPE_PROMPT_WIDTH,
+    Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT,
+    ENTRY_WIDTH, MENU_WIDTH, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH,
+    TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
     collections::BTreeMap,
@@ -142,6 +143,9 @@ struct Player {
     /// The text-entry card while it's open, and a word being typed.
     entry: Option<Entry>,
     typing: Option<Typing>,
+    /// The high-score table as kept, and the panel's page after a game, until the next.
+    table: Vec<scores::Kept>,
+    this_game: Option<ThisGame>,
     started: Instant,
     frames_run: u64,
     rgba: Vec<u8>,
@@ -174,6 +178,8 @@ struct Output<'a> {
     /// The panel, likewise, and the pins it puts over the picture.
     panel: Option<(Texture<'a>, Panel, u32)>,
     pins: Option<(Texture<'a>, Vec<Pin>, u32)>,
+    /// The panel's page after a game, likewise.
+    this_game: Option<(Texture<'a>, ThisGame, u32)>,
     /// The text-entry card, likewise.
     entry: Option<(Texture<'a>, EntryCard, u32)>,
     /// The guidance menu and its question, likewise.
@@ -213,6 +219,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         notice: None,
         panel: None,
         pins: None,
+        this_game: None,
         entry: None,
         menu: None,
         question: None,
@@ -493,6 +500,8 @@ impl Player {
             menu_at: None,
             entry: None,
             typing: None,
+            table: Vec::new(),
+            this_game: None,
             started: Instant::now(),
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
@@ -559,6 +568,7 @@ impl Player {
                 pads.hold_back();
             }
             self.save_kept();
+            self.milestones();
             self.frames_run += 1;
             if let Some(stream) = &out.sound {
                 self.samples.clear();
@@ -591,6 +601,22 @@ impl Player {
 
     /// Draws the panel beside the picture, and the pins it puts over the picture.
     fn draw_panel(&self, out: &mut Output, layout: Layout) -> Result<(), String> {
+        if let (Some(at), Some(page)) = (layout.panel, &self.this_game) {
+            cached(
+                out.creator,
+                &mut out.this_game,
+                &mut out.fonts,
+                page,
+                layout.scale,
+                ThisGame::draw,
+            )?;
+            if let Some((texture, _, _)) = &out.this_game {
+                out.canvas
+                    .copy(texture, None, frect(at))
+                    .map_err(|e| e.to_string())?;
+            }
+            return Ok(());
+        }
         if let Some(at) = layout.panel {
             let chosen = self.entry.as_ref().and_then(Entry::chosen);
             let panel = panel::of(&self.session, self.level, chosen);
@@ -633,6 +659,65 @@ impl Player {
             }
         }
         Ok(())
+    }
+
+    /// Acts on the session's milestones: the kept high scores put in at the first title, and
+    /// read back after each game.
+    fn milestones(&mut self) {
+        if self.session.state() == Some("play") {
+            self.this_game = None;
+        }
+        for milestone in self.session.take_milestones() {
+            match milestone {
+                Milestone::FirstTitle => {
+                    let kept = self.folder.as_deref().map(scores::load).unwrap_or_default();
+                    let entries: Vec<_> = kept.iter().map(|k| k.entry.clone()).collect();
+                    self.session.set_scores(&entries);
+                    // What the game has now: the kept entries, and any of its own they didn't
+                    // cover (fewer kept than it holds), which are the tape's.
+                    let now = self.session.scores().unwrap_or_default();
+                    self.table = scores::after_game(&kept, now, "from the tape", false).0;
+                }
+                Milestone::GameEnded => self.game_ended(),
+            }
+        }
+    }
+
+    /// Reads the high scores back after a game, marks this game's entry, keeps the table
+    /// (without training games), and shows the page after a game.
+    fn game_ended(&mut self) {
+        let Some(read) = self.session.scores() else {
+            return;
+        };
+        let definition = self.session.definition();
+        let record = self.session.record().clone();
+        let level_name = definition
+            .and_then(|d| d.guidance.as_ref())
+            .and_then(|g| g.levels.get(usize::from(record.level)))
+            .map(|l| l.name.clone());
+        let title = definition
+            .and_then(|d| d.high_scores.as_ref())
+            .and_then(|t| t.title.clone())
+            .unwrap_or_else(|| "High scores".to_owned());
+        let mark = scores::mark(&record, level_name.as_deref());
+        let training = !record.switches.is_empty();
+        let (table, mine) = scores::after_game(&self.table, read, &mark, training);
+        if let Some(folder) = &self.folder {
+            if let Err(e) = scores::save(folder, &table) {
+                eprintln!(
+                    "{}: the high scores couldn't be kept: {e}",
+                    folder.display()
+                );
+            }
+        }
+        self.this_game = Some(scores::this_game(
+            &record,
+            level_name.as_deref(),
+            &title,
+            &table,
+            mine,
+        ));
+        self.table = table;
     }
 
     /// Saves the kept lists that changed, at once, so nothing is lost if the program stops.

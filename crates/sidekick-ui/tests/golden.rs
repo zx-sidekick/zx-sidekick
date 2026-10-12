@@ -5,7 +5,7 @@ use sidekick_ui::{
     pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Levels, LibraryEntry,
     LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, NoticeHint, PadLabels, PadMark, Panel,
     PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question, Refusal, Route,
-    RouteColor, Row, SwitchRow, TapePrompt,
+    RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -541,4 +541,30 @@ fn the_text_entry_card() {
         ..choosing
     };
     golden("entry-spell-blank.png", &blank.draw(&mut fonts, 1).png());
+}
+
+#[test]
+fn the_panel_after_a_game() {
+    let mut fonts = Fonts::new();
+    let row = |name: &str, mark: &str, mine| ScoreRow {
+        name: name.to_owned(),
+        mark: mark.to_owned(),
+        mine,
+    };
+    let page = ThisGame {
+        played_with: "Guidance up to level 3".to_owned(),
+        detail: "What you have seen".to_owned(),
+        title: "Core of heroes".to_owned(),
+        rows: vec![
+            row("ANN", "level 3 · What you have seen", true),
+            row("BOB", "no guidance", false),
+            row("CAT", "from the tape", false),
+            row("DAN", "level 5 · Routes · loaded", false),
+            row("EVE", "from the tape", false),
+            row("FAY", "from the tape", false),
+            row("GUS", "level 1 · Codes and the core", false),
+            row("HAL", "from the tape", false),
+        ],
+    };
+    golden("panel-this-game.png", &page.draw(&mut fonts, 1).png());
 }

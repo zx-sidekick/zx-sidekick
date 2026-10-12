@@ -354,6 +354,7 @@ add = { value = "booth_code", in_state = "booth" }   # added when the game shows
 
 ```toml
 [high_scores]
+title = "CORE OF HEROES"   # its heading in the panel after a game
 addr = 0xC100
 count = 8
 stride = 9
@@ -361,7 +362,9 @@ name  = { offset = 0, len = 3, type = "text" }
 score = { offset = 3, len = 6, type = "digits" }
 ```
 
-The table is written into memory when the game starts, and read back when the game leaves `game_over`.
+The kept table (`high-scores.txt` in the game's data folder) is written into memory the first time the game reaches its title, and read back when the title comes round after a game, by when the game has put in the new score and its name. An entry that wasn't there before is this game's, marked with how it was played: its highest guidance level, or "no guidance"; one from a training game is shown for the rest of the session but not kept. Entries no game here made are marked "from the tape". After a game, until the next starts, the panel shows what it was played with and the table under `title`.
+
+`name` is `text` (in its `charset`); `score` is `digits`, `bcd`, `u8` or `u16`.
 
 ## `[guidance]` and `[[panel]]`
 

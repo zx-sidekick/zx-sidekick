@@ -15,6 +15,7 @@ mod menu;
 mod pad;
 mod panel;
 mod picture;
+mod scores;
 mod window;
 
 use clap::{Parser, Subcommand};

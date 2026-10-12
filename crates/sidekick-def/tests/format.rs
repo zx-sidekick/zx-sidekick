@@ -282,6 +282,34 @@ notice = {{ text = "Playing." }}
 }
 
 #[test]
+fn a_high_score_table_names_in_text_and_scores_in_numbers() {
+    let text = format!(
+        r#"{HEADER}
+[high_scores]
+addr = 0x8000
+count = 8
+stride = 9
+name = {{ offset = 0, len = 3, type = "u8" }}
+score = {{ offset = 3, len = 6, type = "text" }}
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def
+        .check()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|p| p.starts_with("high_scores"))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            "high_scores.name: a name is text",
+            "high_scores.score: a score is digits, bcd, u8 or u16",
+        ]
+    );
+}
+
+#[test]
 fn the_committed_schema_is_the_generated_one() {
     assert!(
         repo("schema/definition.schema.json") == schema(),

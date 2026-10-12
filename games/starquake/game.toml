@@ -262,7 +262,8 @@ file = "teleporter-codes.txt"
 add = "script"
 
 [high_scores]
-# addr = TODO: the CORE OF HEROES
+title = "CORE OF HEROES"
+# addr = TODO: the table
 # count = TODO
 # stride = TODO
 # name = TODO

@@ -572,9 +572,18 @@ impl Checker<'_> {
         }
         if let Some(name) = &table.name {
             self.field("high_scores.name", name, table.stride);
+            if name.kind != ValueType::Text {
+                self.report("high_scores.name", "a name is text");
+            }
         }
         if let Some(score) = &table.score {
             self.field("high_scores.score", score, table.stride);
+            if !matches!(
+                score.kind,
+                ValueType::Digits | ValueType::Bcd | ValueType::U8 | ValueType::U16
+            ) {
+                self.report("high_scores.score", "a score is digits, bcd, u8 or u16");
+            }
         }
     }
 
