@@ -52,7 +52,7 @@ Levels 0 to 3 show only what the player could have written down; 4 and up tell t
 
 **The whole planet** (level 6) is decoded from the room data in the script's `on_load`, the way the game draws a room: large tiles of medium tiles, each medium tile's picture saying which cells it draws, and each cell's attribute whether it blocks. Only the rooms' edges and doors are kept; the walls follow the same rule as the screen's, and the real-tape tests check that they agree. Every door is found from its tile type, and its cards worked out from the game's seed and the room, as the game does on meeting it.
 
-Screenshots of the program running the game: [level 1](../media/starquake-level1.png), [level 2](../media/starquake-level2.png).
+Screenshots of the program running the game: [level 1](../media/starquake-level1.png), [level 2](../media/starquake-level2.png), [level 3](../media/starquake-level3.png), [level 4](../media/starquake-level4.png), [level 6](../media/starquake-level6.png).
 
 **Routes** are a breadth-first search over a graph of places, not just rooms. A room can be divided by walls, so a place is the part of a room that can be walked between. Edges are the openings, the teleports (any seen code can be typed), and lifts. The script builds the graph in `on_load` and searches it in `on_frame`; `next-route` steps through the nearest pieces.
 
