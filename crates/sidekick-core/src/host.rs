@@ -64,6 +64,10 @@ impl Picture {
 
     /// Copies `border` into this picture, and `screen` onto it with its top left at
     /// (`x`, `y`). The three must fit: this picture is the border's size.
+    pub(crate) fn set(&mut self, x: usize, y: usize, color: u8) {
+        self.pixels[x + y * self.width] = color;
+    }
+
     pub(crate) fn compose(&mut self, border: &Self, screen: &Self, x: usize, y: usize) {
         self.pixels.copy_from_slice(&border.pixels);
         for (row, line) in screen.pixels.chunks_exact(screen.width).enumerate() {
