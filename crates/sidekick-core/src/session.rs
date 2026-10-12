@@ -76,6 +76,9 @@ pub struct Session {
     results: BTreeMap<String, Fact>,
     /// Why the script isn't running: it failed, or couldn't be compiled.
     script_off: Option<String>,
+    /// The kept lists, by name, and those changed since the program last saved them.
+    kept: BTreeMap<String, Vec<String>>,
+    kept_changed: BTreeSet<String>,
 }
 
 impl Session {
@@ -116,6 +119,8 @@ impl Session {
             script_loaded: false,
             results: BTreeMap::new(),
             script_off: None,
+            kept: BTreeMap::new(),
+            kept_changed: BTreeSet::new(),
         }
     }
 
@@ -152,7 +157,95 @@ impl Session {
         self.state = self.decide();
         self.track_games();
         self.run_script();
+        self.keep_from_values();
         Ok(())
+    }
+
+    /// Gives the session its kept lists, as the program last saved them.
+    pub fn set_kept(&mut self, kept: BTreeMap<String, Vec<String>>) {
+        self.kept = kept;
+    }
+
+    /// The kept lists, by name.
+    #[must_use]
+    pub const fn kept(&self) -> &BTreeMap<String, Vec<String>> {
+        &self.kept
+    }
+
+    /// The names of the lists changed since this was last asked, for the program to save.
+    pub fn take_kept_changes(&mut self) -> BTreeSet<String> {
+        std::mem::take(&mut self.kept_changed)
+    }
+
+    /// Empties every kept list.
+    pub fn forget_kept(&mut self) {
+        for (name, list) in &mut self.kept {
+            if !list.is_empty() {
+                list.clear();
+                self.kept_changed.insert(name.clone());
+            }
+        }
+    }
+
+    /// Adds an entry to a kept list the definition has, unless it's there or empty.
+    fn keep(&mut self, list: &str, entry: &str) {
+        let entry = entry.trim();
+        let known = self
+            .definition
+            .as_ref()
+            .is_some_and(|d| d.persist.contains_key(list));
+        if entry.is_empty() || !known {
+            return;
+        }
+        let entries = self.kept.entry(list.to_owned()).or_default();
+        if !entries.iter().any(|e| e == entry) {
+            entries.push(entry.to_owned());
+            self.kept_changed.insert(list.to_owned());
+        }
+    }
+
+    /// Adds what the game shows to the lists that keep a value in a state.
+    fn keep_from_values(&mut self) {
+        let Some(state) = self.state.clone() else {
+            return;
+        };
+        let adds: Vec<(String, String)> = self
+            .definition
+            .iter()
+            .flat_map(|d| &d.persist)
+            .filter_map(|(list, persist)| match &persist.add {
+                Some(sidekick_def::Add::Value { value, in_state }) if *in_state == state => {
+                    let entry = match self.reading.get(value)? {
+                        Read::Text(t) => t.clone(),
+                        Read::Number(n) => n.to_string(),
+                        _ => return None,
+                    };
+                    Some((list.clone(), entry))
+                }
+                _ => None,
+            })
+            .collect();
+        for (list, entry) in adds {
+            self.keep(&list, &entry);
+        }
+    }
+
+    /// Adds what a script returned under `kept`: a map of list names to new entries.
+    fn keep_from_script(&mut self, results: &mut BTreeMap<String, Fact>) {
+        let Some(Fact::Map(lists)) = results.remove("kept") else {
+            return;
+        };
+        for (list, entries) in lists {
+            let entries = match entries {
+                Fact::List(entries) => entries,
+                one => vec![one],
+            };
+            for entry in entries {
+                if let Fact::Text(text) = entry {
+                    self.keep(&list, &text);
+                }
+            }
+        }
     }
 
     /// Gives the session its definition's script, compiled; or why it couldn't be.
@@ -177,7 +270,10 @@ impl Session {
             return;
         };
         let ran = if self.script_loaded {
-            script.on_frame(&view).map(|results| self.results = results)
+            script.on_frame(&view).map(|mut results| {
+                self.keep_from_script(&mut results);
+                self.results = results;
+            })
         } else {
             self.script_loaded = true;
             script.on_load(&view)
@@ -198,11 +294,12 @@ impl Session {
         }
         let view = self.view();
         let script = self.script.as_mut().ok_or("the definition has no script")?;
-        let (results, writes) = script.action(name, &view).inspect_err(|why| {
+        let (mut results, writes) = script.action(name, &view).inspect_err(|why| {
             if script.off().is_some() {
                 self.script_off = Some(why.clone());
             }
         })?;
+        self.keep_from_script(&mut results);
         self.results.extend(results);
         for (value, number) in writes {
             self.write(&value, number)
@@ -223,7 +320,7 @@ impl Session {
                 .collect(),
             state: self.state.clone(),
             level: i64::from(self.level),
-            kept: BTreeMap::new(),
+            kept: self.kept.clone(),
         }
     }
 
