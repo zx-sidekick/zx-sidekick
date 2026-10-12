@@ -10,11 +10,13 @@
 mod games;
 mod headless;
 mod keys;
+mod pad;
 mod picture;
 mod window;
 
 use clap::{Parser, Subcommand};
 use games::Game;
+use pad::Mapping;
 use sidekick_core::{Machine, Model};
 use sidekick_def::{tapes_in, Definition, Identified, Library, Package, TapeFormat};
 use std::{
@@ -135,10 +137,10 @@ fn open(target: Option<&str>, extra: &[PathBuf]) -> Result<Start, String> {
         if let Ok(Identified::Game { package, tape, .. }) = library.identify(file) {
             let game = Game::new(package.clone(), &data);
             let machine = game.machine(&tape)?;
-            return Ok(Start::Play(Box::new(machine), game.title()));
+            return Ok(Start::Play(Box::new(machine), game.title(), game.mapping()));
         }
         let (machine, title) = tape_file(file)?;
-        return Ok(Start::Play(Box::new(machine), title));
+        return Ok(Start::Play(Box::new(machine), title, Mapping::default()));
     }
     let package = if let Some(id) = target {
         library
@@ -166,7 +168,7 @@ fn start_game(game: Game) -> Result<Start, String> {
     match game.kept_tape() {
         Some(tape) => {
             let machine = game.machine(&tape)?;
-            Ok(Start::Play(Box::new(machine), game.title()))
+            Ok(Start::Play(Box::new(machine), game.title(), game.mapping()))
         }
         None => Ok(Start::Prompt(Box::new(game))),
     }

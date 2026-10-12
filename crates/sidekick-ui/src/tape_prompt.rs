@@ -2,7 +2,7 @@
 
 use crate::{
     colors,
-    hints::{hints, Hint, Press},
+    hints::{hints, Hint, PadLabels, Press},
     Align, Canvas, Color, Fonts, Line, Style, Weight,
 };
 
@@ -26,6 +26,8 @@ pub struct TapePrompt {
     pub download: Option<(String, String)>,
     /// Why the last file offered wasn't taken.
     pub refusal: Option<Refusal>,
+    /// What the last pad used marks its buttons with, once a pad is plugged in.
+    pub pad: Option<PadLabels>,
 }
 
 /// Why a file offered as the tape wasn't taken: a heading and a line.
@@ -123,13 +125,22 @@ impl TapePrompt {
             Align::Left,
             &small,
         );
+        let (locate, quit) = self.pad.map_or_else(
+            || (vec![Press::Key("Enter")], vec![Press::Key("Esc")]),
+            |pad| {
+                (
+                    vec![Press::Key("Enter"), pad.confirm()],
+                    vec![Press::Key("Esc"), pad.back()],
+                )
+            },
+        );
         hints(
             &mut c,
             fonts,
             (840.0, 709.0),
             &[
                 Hint {
-                    press: &[Press::Key("Enter")],
+                    press: &locate,
                     does: "locate",
                 },
                 Hint {
@@ -137,7 +148,7 @@ impl TapePrompt {
                     does: "website",
                 },
                 Hint {
-                    press: &[Press::Key("Esc")],
+                    press: &quit,
                     does: "quit",
                 },
             ],

@@ -1,7 +1,7 @@
 //! The program's screens, compared with golden images byte for byte. `UPDATE_GOLDEN=1`
 //! rewrites them; look at a changed image before committing it.
 
-use sidekick_ui::{Fonts, LibraryEntry, LibraryPage, Refusal, TapePrompt};
+use sidekick_ui::{Fonts, LibraryEntry, LibraryPage, PadLabels, Refusal, TapePrompt};
 use std::path::PathBuf;
 
 fn golden(name: &str, png: &[u8]) {
@@ -30,6 +30,7 @@ fn starquake() -> TapePrompt {
             "worldofspectrum.net/item/0004873".to_owned(),
         )),
         refusal: None,
+        pad: None,
     }
 }
 
@@ -58,6 +59,16 @@ fn the_tape_prompt_refusing_a_different_dump() {
 }
 
 #[test]
+fn the_tape_prompt_with_a_pad_plugged_in() {
+    let mut fonts = Fonts::new();
+    let prompt = TapePrompt {
+        pad: Some(PadLabels::Letters),
+        ..starquake()
+    };
+    golden("tape-prompt-pad.png", &prompt.draw(&mut fonts, 1).png());
+}
+
+#[test]
 fn at_scale_2_every_logical_pixel_is_four() {
     let mut fonts = Fonts::new();
     let canvas = starquake().draw(&mut fonts, 2);
@@ -79,6 +90,15 @@ fn the_library() {
             entry("Deep Vault", "1986 · Another Label", false),
         ],
         chosen: 0,
+        pad: PadLabels::Letters,
     };
     golden("library.png", &page.draw(&mut fonts, 1).png());
+    let playstation = LibraryPage {
+        pad: PadLabels::Shapes,
+        ..page
+    };
+    golden(
+        "library-playstation.png",
+        &playstation.draw(&mut fonts, 1).png(),
+    );
 }

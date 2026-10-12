@@ -239,6 +239,25 @@ impl Checker<'_> {
         }
     }
 
+    fn run(&mut self) {
+        let Some(run) = &self.def.run else { return };
+        match (&run.joystick, &run.keys) {
+            (crate::Joystick::Keys, None) => {
+                self.report(
+                    "run.keys",
+                    "joystick = \"keys\" needs the game's keys for each direction",
+                );
+            }
+            (crate::Joystick::Keys, Some(keys)) => {
+                let named =
+                    [&keys.up, &keys.down, &keys.left, &keys.right, &keys.fire].map(Clone::clone);
+                self.keys("run.keys", &named);
+            }
+            (_, Some(_)) => self.report("run.keys", "only with joystick = \"keys\""),
+            (_, None) => {}
+        }
+    }
+
     fn states(&mut self) {
         let mut seen = BTreeSet::new();
         for (i, state) in self.def.states.iter().enumerate() {
@@ -388,6 +407,13 @@ impl Checker<'_> {
                             if !self.action_exists(action) {
                                 self.report(&path, format!("no action named {action:?}"));
                             }
+                        }
+                        match (table.frames, table.tap.is_empty()) {
+                            (Some(0), false) => {
+                                self.report(&path, "a tap lasts at least one frame");
+                            }
+                            (Some(_), true) => self.report(&path, "frames is only for a tap"),
+                            _ => {}
                         }
                         if table.keys.is_empty() && table.tap.is_empty() && table.action.is_none() {
                             self.report(path, "needs keys, tap or action");
@@ -574,6 +600,7 @@ pub(crate) fn check(def: &Definition) -> Vec<Problem> {
         checker.report("schema", format!("this program reads format {SCHEMA}"));
     }
     checker.game();
+    checker.run();
     checker.states();
     checker.values();
     checker.cheats();

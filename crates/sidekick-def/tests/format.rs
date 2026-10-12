@@ -169,6 +169,59 @@ select = "fire"
 }
 
 #[test]
+fn a_joystick_of_the_game_s_own_keys_names_them_all() {
+    let problems = |run: &str| -> Vec<String> {
+        let text = format!("{HEADER}\n[run]\n{run}\n");
+        let def = Definition::from_toml(&text).expect("it parses");
+        def.check()
+            .iter()
+            .map(ToString::to_string)
+            .filter(|p| p.starts_with("run."))
+            .collect()
+    };
+    assert_eq!(
+        problems(r#"joystick = "keys""#),
+        ["run.keys: joystick = \"keys\" needs the game's keys for each direction"]
+    );
+    assert_eq!(
+        problems(
+            r#"joystick = "keys"
+keys = { up = "Q", down = "A", left = "O", right = "P", fire = "FIRE" }"#
+        ),
+        ["run.keys: \"FIRE\" isn't a Spectrum key"]
+    );
+    assert_eq!(
+        problems(r#"keys = { up = "Q", down = "A", left = "O", right = "P", fire = "M" }"#),
+        ["run.keys: only with joystick = \"keys\""]
+    );
+}
+
+#[test]
+fn a_tap_lasts_at_least_a_frame() {
+    let text = format!(
+        r#"{HEADER}
+[pad.default]
+north = {{ tap = ["P"], frames = 0 }}
+east = {{ keys = ["H"], frames = 3 }}
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def
+        .check()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|p| p.starts_with("pad."))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            "pad.default.east: frames is only for a tap",
+            "pad.default.north: a tap lasts at least one frame",
+        ]
+    );
+}
+
+#[test]
 fn the_committed_schema_is_the_generated_one() {
     assert!(
         repo("schema/definition.schema.json") == schema(),

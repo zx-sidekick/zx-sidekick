@@ -110,7 +110,8 @@ One entry per dump the definition supports. A tape that matches none is refused 
 |---|---|
 | `sync` | The address at the top of the game's main loop, reached once per frame of play. When given, each frame runs to it, so every readout and write sees the game between two of its own frames. Without it, frames end at the interrupt. |
 | `hold_loading_screen` | `true`: the loading screen stays until a key is pressed. |
-| `joystick` | What the pad's directions drive in play: `"kempston"` (default), `"sinclair1"`, `"sinclair2"`, `"cursor"`, or `"keys"` (then `[pad]` names the keys). |
+| `joystick` | What the pad's directions drive in play: `"kempston"` (default), `"sinclair1"`, `"sinclair2"`, `"cursor"`, or `"keys"`. |
+| `keys` | With `joystick = "keys"`: the game's own keys, `{ up = "Q", down = "A", left = "O", right = "P", fire = "SPACE" }`. |
 
 ## `[[states]]`: moments of the game
 
@@ -236,7 +237,9 @@ note = "Skips the call that takes energy when an enemy touches the player."
 
 ## `[pad]`: the controller
 
-Per state, what each part of a pad does. `[pad.default]` applies in every state; `[pad.<state>]` overrides it, entry by entry, while that state is the game's.
+Per state, what each part of a pad does. `[pad.default]` applies in every state; `[pad.<state>]` overrides it, entry by entry, while that state is the game's. Without a `[pad]`, the D-pad and stick drive the joystick, west fires, and the other buttons do nothing in the game; `[pad.default]` changes that entry by entry.
+
+Parts go by position, whoever made the pad. The stick counts once it's past half its travel, and so do the triggers.
 
 ```toml
 [pad.default]
@@ -261,7 +264,7 @@ What a part can do:
 - `"joystick"` (directions only): the joystick named in `[run]`.
 - `"up"`, `"down"`, `"left"`, `"right"`, `"fire"`: one joystick direction or fire.
 - `{ keys = ["SYMBOL SHIFT", "A"] }`: those keys, held as long as the button is.
-- `{ tap = ["P"], frames = 2 }`: those keys for a fixed number of frames, however long the button is held.
+- `{ tap = ["P"], frames = 2 }`: those keys for a fixed number of frames, however long the button is held. `frames` is 2 when not given.
 - `{ action = "build" }`, or just `"build"`: an `[[actions]]` entry.
 - `"menu"`: the guidance menu. `select` is always `"menu"`, so every game's pad can reach it.
 - `"none"`.

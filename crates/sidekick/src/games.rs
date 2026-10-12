@@ -1,5 +1,6 @@
 //! Games: where their definitions and tapes are, and which tape a game takes.
 
+use crate::pad::Mapping;
 use sidekick_core::{Machine, Model};
 use sidekick_def::{
     tapes_in, Definition, Library, LoadError, Machine as Spectrum, Package, Tape, TapeFormat,
@@ -148,6 +149,7 @@ impl Game {
         }
         credit.push_str(". Not affiliated.");
         TapePrompt {
+            pad: None,
             title: game.title.clone(),
             credit,
             tape_file: ending(".tap")
@@ -197,6 +199,11 @@ impl Game {
     /// The game's title.
     pub(crate) fn title(&self) -> String {
         self.definition().game.title.clone()
+    }
+
+    /// What a pad does in the game.
+    pub(crate) fn mapping(&self) -> Mapping {
+        Mapping::new(Some(self.definition()))
     }
 
     /// A machine of the game's model, with the tape going in.

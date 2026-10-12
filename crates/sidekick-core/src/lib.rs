@@ -12,6 +12,7 @@ mod watch;
 
 pub use error::Error;
 pub use host::{HeadlessHost, Picture};
+pub use rustzx_core::zx::joy::kempston::KempstonKey as Kempston;
 pub use rustzx_core::zx::keys::{CompoundKey, ZXKey as Key};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
 pub use rustzx_z80::Regs;
@@ -226,6 +227,11 @@ impl Machine {
     /// Presses or releases a Spectrum key.
     pub fn key(&mut self, key: Key, pressed: bool) {
         self.emulator.send_key(key, pressed);
+    }
+
+    /// Moves or releases the Kempston joystick in one direction, or its fire button.
+    pub fn kempston(&mut self, direction: Kempston, pressed: bool) {
+        self.emulator.send_kempston_key(direction, pressed);
     }
 
     /// Presses or releases a key the Spectrum types with CAPS SHIFT (the cursor keys, DELETE,
