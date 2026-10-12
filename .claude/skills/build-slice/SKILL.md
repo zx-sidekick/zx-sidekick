@@ -94,7 +94,7 @@ one goes back to `Plan`.
    gh pr checks <n> --json name,bucket -q '.[] | "\(.bucket)\t\(.name)"'
    ```
 
-   The required ones are `lint` and `test`; the repo guard must pass too. A
+   The required ones are `lint` and `build (linux)`, `build (macos)`, `build (windows)`; the repo guard runs in `lint`. A
    subagent is never woken by its own background task, so don't background
    the watch and end. **A flaky test is a bug**: reproduce it, root-cause it,
    and fix the cause. A re-run unblocks a PR; it doesn't end the flake.

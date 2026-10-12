@@ -29,6 +29,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - run: scripts/linux-deps.sh
       # Pinned, as in the rustzx fork: pedantic lints are on, so a new clippy lint
       # can't fail every PR at once. Move it on purpose.
       - uses: dtolnay/rust-toolchain@1.98.1
@@ -37,12 +38,38 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: scripts/check.sh guard fmt clippy
 
-  test:
-    runs-on: ubuntu-24.04
+  # The program built and tested on each platform it ships for, SDL3 built from source into
+  # it. The binary is kept as an artifact, to try a pull request's build.
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-24.04
+            binary: sidekick
+          - name: macos
+            os: macos-15
+            binary: sidekick
+          - name: windows
+            os: windows-2025
+            binary: sidekick.exe
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - if: matrix.name == 'linux'
+        run: scripts/linux-deps.sh
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: scripts/check.sh test
+        with:
+          key: ${{ matrix.name }}
+      - run: cargo test --workspace
+      - run: cargo build --release -p sidekick
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sidekick-${{ matrix.name }}
+          path: target/release/${{ matrix.binary }}
+          retention-days: 7

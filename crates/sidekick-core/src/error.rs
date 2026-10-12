@@ -11,6 +11,8 @@ pub enum Error {
     UnknownModel,
     /// A snapshot is for the other model.
     OtherModel,
+    /// A `.tap` whose blocks don't add up.
+    BadTape,
 }
 
 impl fmt::Display for Error {
@@ -19,6 +21,7 @@ impl fmt::Display for Error {
             Self::Core(_) => "the emulated machine",
             Self::UnknownModel => "the snapshot is for a machine other than a 48K or 128K",
             Self::OtherModel => "the snapshot is for the other model (48K or 128K)",
+            Self::BadTape => "the tape's blocks don't add up: not a .tap, or a damaged one",
         })
     }
 }
@@ -27,7 +30,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Core(e) => Some(e),
-            Self::UnknownModel | Self::OtherModel => None,
+            Self::UnknownModel | Self::OtherModel | Self::BadTape => None,
         }
     }
 }

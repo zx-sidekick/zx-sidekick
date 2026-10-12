@@ -11,6 +11,8 @@ repository.workspace = true
 
 [dependencies]
 clap.workspace = true
+sdl3.workspace = true
+sidekick-core.workspace = true
 sidekick-def.workspace = true
 
 [dev-dependencies]

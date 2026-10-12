@@ -43,7 +43,7 @@ A Rust workspace. The emulated machine comes from a fork; everything else is cra
 | `sidekick-def` | Loads and checks definitions: serde structs read from TOML or JSON, alone or zipped; validation; a JSON Schema generated with `schemars` and committed, for editors. |
 | `sidekick-script` | The script runtime for what plain data can't say (§6.3): [Rhai](https://rhai.rs), pure Rust and sandboxed, with an operation limit per call. No C toolchain, which keeps handheld and libretro builds simple. |
 | `sidekick-ui` | Draws the panel, menus, cards and notices in software, into an RGBA buffer (`tiny-skia` and a font rasteriser), so the same code renders headless golden images for tests. |
-| `sidekick` | The program: window, sound, gamepads (SDL2, as the fork's own frontend uses, bundled and statically linked; its GameController API reports vendor IDs and buttons by position, and it has a software path for handhelds), sound output through cpal, and the command line. |
+| `sidekick` | The program: window, sound, gamepads and file dialogs through SDL3, built from source and linked statically (its gamepad API reports each pad's type, buttons by position and their printed labels; Wayland first on Linux, X11 as the fallback; a framebuffer path for handhelds), and the command line. |
 
 ## 4. The emulated machine
 
@@ -304,7 +304,7 @@ The games' logic is the originals', so there's no rewrite to prove. What needs p
 ## 18. Performance and platforms
 
 - **Desktop** (macOS on Apple silicon and Intel, Windows, Linux): an accuracy-first Spectrum emulator runs a game 50 times or more faster than real time on a current desktop. At real speed that's a few percent of one core. Drawing the scaled picture costs more than emulating. Measure the script's share per frame; Starquake's routes are the heaviest expected.
-- **Small handhelds** (for example a Miyoo Mini: Cortex-A7 at about 1.2 GHz, no 3D GPU, 640×480): measure early. An accuracy-first emulator may need a large share of one core there, and the window needs SDL2's software path. The panel won't fit 640×480 beside the picture and would become an overlay.
+- **Small handhelds** (for example a Miyoo Mini: Cortex-A7 at about 1.2 GHz, no 3D GPU, 640×480): measure early. An accuracy-first emulator may need a large share of one core there, and the window needs SDL's framebuffer path (SDL3's KMSDRM, or SDL2 where the firmware ships only that). The panel won't fit 640×480 beside the picture and would become an overlay.
 - **A libretro core** is worth considering once the desktop program works. RetroArch then provides the screen, sound, input and save states on most handhelds and consoles, and Rust produces such a core naturally. Definitions would travel with it unchanged.
 
 ## 19. Build order
