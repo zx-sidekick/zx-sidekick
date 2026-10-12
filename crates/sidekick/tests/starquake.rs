@@ -1,7 +1,7 @@
 //! The real Starquake tape loads and its game starts. Needs the player's tape in `assets/`
 //! (`Starquake.tap.zip` from World of Spectrum); skipped without it, as in CI.
 
-use sidekick_core::{Key, Machine, Model, Session};
+use sidekick_core::{Kempston, Key, Machine, Model, Session};
 use sidekick_def::{tapes_in, Package};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -163,21 +163,95 @@ fn starquake_s_training_switches_work_on_the_game() {
         "a platform built, still full"
     );
 
-    // The switch's patch, as the definition gives it: where, what it writes, what it expects.
-    let patch = s
+    // The switch's patches, as the definition gives them: where, what each writes, what it
+    // expects.
+    let patches = s
         .definition()
         .and_then(|d| d.cheats.iter().find(|c| c.id == "no-harm"))
-        .and_then(|c| c.patch.first())
-        .cloned()
+        .map(|c| c.patch.clone())
         .expect("no harm patches the game");
-    let at = patch.addr.expect("an address").0;
+    let bytes_at = |s: &Session, patch: &sidekick_def::Patch| -> Vec<u8> {
+        let at = patch.addr.expect("an address").0;
+        (at..)
+            .take(patch.bytes.0.len())
+            .map(|a| s.machine().peek(a))
+            .collect()
+    };
     s.switch("no-harm", true)
-        .expect("its patch finds the game's bytes in play");
-    assert_eq!(s.machine().peek(at), patch.bytes.0[0]);
-    s.switch("no-harm", false).expect("and comes off");
-    assert_eq!(
-        s.machine().peek(at),
-        patch.expect.0[0],
-        "the game's own bytes back"
+        .expect("its patches find the game's bytes in play");
+    for patch in &patches {
+        assert_eq!(bytes_at(&s, patch), patch.bytes.0, "on");
+    }
+    s.switch("no-harm", false).expect("and come off");
+    for patch in &patches {
+        assert_eq!(
+            bytes_at(&s, patch),
+            patch.expect.0,
+            "the game's own bytes back"
+        );
+    }
+}
+
+/// Starquake in play from its real tape, BLOB on the Kempston joystick; `None` without the
+/// tape.
+#[allow(clippy::print_stderr, reason = "a skipped test says why")]
+fn in_play_on_the_joystick() -> Option<Session> {
+    let zip = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/Starquake.tap.zip");
+    if !zip.exists() {
+        eprintln!("skipped: no {} (the player's own tape)", zip.display());
+        return None;
+    }
+    let tapes = tapes_in(&zip).expect("the zip holds a tape");
+    let package =
+        Package::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../games/starquake"))
+            .expect("Starquake's definition");
+    let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K");
+    machine.load_tap(&tapes[0].bytes).expect("the tape goes in");
+    let mut s = Session::new(machine, Some(package.definition));
+    until(&mut s, 400, |_| false);
+    press(&mut s, Key::Space);
+    assert!(until(&mut s, 1500, |s| s.state() == Some("title")));
+    press(&mut s, Key::N1);
+    let started = (0..10).any(|_| {
+        press(&mut s, Key::N0);
+        until(&mut s, 200, |s| s.state() == Some("play"))
+    });
+    assert!(started, "play");
+    until(&mut s, 900, |_| false);
+    Some(s)
+}
+
+/// Lives lost walking BLOB right and left, jumping now and then, energy kept full: the walk
+/// meets the start room's deadly scenery.
+fn lives_lost_walking(s: &mut Session, frames: u32) -> i64 {
+    let lives = |s: &Session| s.reading()["lives"].number().expect("lives");
+    let mut lost = 0;
+    let mut before = lives(s);
+    for frame in 0..frames {
+        s.write("energy", 127).expect("energy is writable");
+        let phase = frame % 600;
+        let machine = s.machine_mut();
+        machine.kempston(Kempston::Right, phase < 300);
+        machine.kempston(Kempston::Left, phase >= 300);
+        machine.kempston(Kempston::Up, frame % 97 < 10);
+        s.run_frame().expect("a frame");
+        let now = lives(s);
+        lost += (before - now).max(0);
+        before = now;
+    }
+    lost
+}
+
+#[test]
+fn no_harm_keeps_blob_s_lives_against_deadly_scenery() {
+    let Some(mut s) = in_play_on_the_joystick() else {
+        return;
+    };
+    let mut without = s.clone();
+    assert!(
+        lives_lost_walking(&mut without, 1200) > 0,
+        "the walk does meet harm"
     );
+    s.switch("no-harm", true).expect("it goes on");
+    assert_eq!(lives_lost_walking(&mut s, 1200), 0, "with the switch, none");
 }

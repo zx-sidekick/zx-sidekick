@@ -566,6 +566,32 @@ patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }]
     }
 
     #[test]
+    fn a_patch_a_switch_gained_since_the_save_is_applied_on_loading() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = saves(folder.path());
+        let mut s = played();
+        s.machine_mut().write(0x8020, 0x22);
+        write(&mut s, &saves, &saves.quick).unwrap();
+
+        // The same switch, given a second patch since.
+        let text = DEFINITION.replace(
+            r#"patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }]"#,
+            r#"patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }, { addr = 0x8020, bytes = "11", expect = "22" }]"#,
+        );
+        assert_ne!(text, DEFINITION, "the definition changed");
+        let definition = Definition::from_toml(&text).expect("the test definition parses");
+        let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+        for _ in 0..BOOT_FRAMES {
+            machine.run_frame().expect("a frame");
+        }
+        let mut later = Session::new(machine, Some(definition));
+        read(&saves.quick, &mut later, &saves).unwrap();
+        assert!(later.switched_on("no-harm"));
+        assert_eq!(later.machine().peek(0x8010), 0x00, "the saved patch stays");
+        assert_eq!(later.machine().peek(0x8020), 0x11, "the new patch goes on");
+    }
+
+    #[test]
     fn a_plain_tape_s_quick_slot_is_under_its_name_and_dump() {
         let data = Path::new("data");
         assert_eq!(
