@@ -12,12 +12,13 @@ mod watch;
 
 pub use error::Error;
 pub use host::{HeadlessHost, Picture};
+pub use rustzx_core::zx::keys::{CompoundKey, ZXKey as Key};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
 pub use rustzx_z80::Regs;
 
 use host::Bytes;
 use rustzx_core::{
-    host::{BufferCursor, FrameBuffer, FrameBufferSource, Snapshot, SnapshotRecorder},
+    host::{BufferCursor, FrameBuffer, FrameBufferSource, Snapshot, SnapshotRecorder, Tape},
     zx::video::BorderSize,
     EmulationMode, EmulationStopReason, Emulator, RustzxSettings,
 };
@@ -84,6 +85,7 @@ impl Machine {
             sound_volume: 100,
             sound_sample_rate: SAMPLE_RATE,
             load_default_rom: true,
+            autoload_enabled: true,
         };
         let mut emulator = Emulator::new(settings, host::HeadlessContext)?;
         emulator.set_debug_interface(Watch::new());
@@ -191,6 +193,45 @@ impl Machine {
     #[must_use]
     pub fn ram_bank(&self, bank: u8) -> Option<&[u8]> {
         self.emulator.ram_bank(bank)
+    }
+
+    /// Inserts a `.tap` and types `LOAD ""`, as a player would: the core's own start-up state
+    /// with the command typed, then the tape fast-loaded block by block as the ROM asks for
+    /// each. The next `run` starts a new frame.
+    ///
+    /// # Errors
+    /// If the tape isn't a well-formed `.tap`: blocks that run past its end, or one too short
+    /// for its flag and checksum. (Checksums aren't checked: some tapes break them on purpose.)
+    pub fn load_tap(&mut self, tap: &[u8]) -> Result<(), Error> {
+        let mut rest = tap;
+        while !rest.is_empty() {
+            let [lo, hi, after @ ..] = rest else {
+                return Err(Error::BadTape);
+            };
+            let len = usize::from(u16::from_le_bytes([*lo, *hi]));
+            if len < 2 || len > after.len() {
+                return Err(Error::BadTape);
+            }
+            rest = &after[len..];
+        }
+        if tap.is_empty() {
+            return Err(Error::BadTape);
+        }
+        self.emulator
+            .load_tape(Tape::Tap(BufferCursor::new(tap.to_vec())))?;
+        self.frame_ended = true;
+        Ok(())
+    }
+
+    /// Presses or releases a Spectrum key.
+    pub fn key(&mut self, key: Key, pressed: bool) {
+        self.emulator.send_key(key, pressed);
+    }
+
+    /// Presses or releases a key the Spectrum types with CAPS SHIFT (the cursor keys, DELETE,
+    /// BREAK…), keeping CAPS SHIFT held while any of them is.
+    pub fn compound_key(&mut self, key: CompoundKey, pressed: bool) {
+        self.emulator.send_compound_key(key, pressed);
     }
 
     /// The whole machine as a standard SZX snapshot: memory, processor, paging, AY registers,
