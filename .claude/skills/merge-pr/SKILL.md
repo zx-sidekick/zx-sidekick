@@ -28,7 +28,7 @@ its own diff. Re-read all three at the last moment.
 
 The ruleset (`.github/rulesets/main.json`) is what the merge must satisfy:
 squash only, signed commits, linear history, every review thread resolved,
-the branch up to date with `main`, and the required checks `lint` and `test`
+the branch up to date with `main`, and the required checks `lint` and `build (linux|macos|windows)`
 green.
 
 ## Step 1: the label
