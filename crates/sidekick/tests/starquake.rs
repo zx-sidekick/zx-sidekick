@@ -106,7 +106,7 @@ fn starquake_s_states_and_values_read_what_the_game_shows() {
 
     assert!(
         until(&mut s, 3000, |s| number(s, "lives") == Some(3)),
-        "standing still, a creature takes a life"
+        "standing still, energy runs down and a life goes"
     );
     assert!(
         until(&mut s, 200, |s| number(s, "energy")

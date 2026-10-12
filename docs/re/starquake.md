@@ -18,11 +18,12 @@ Dump: Starquake (Bubble Bus Software), as World of Spectrum distributes it: `STA
 | The room | `0xD2C8` (word) | The room BLOB is in: 16 rooms to a row, 0 at the top left; a game starts in room 8 | confirmed | Walked down a room: 8 became 24 (#78) |
 | BLOB's position | `0xDD1D`, `0xDD1E` | BLOB's x in pixels, and his y | confirmed (x), read (y) | x rose 8 a step moving right (#78) |
 | Lives | `0xD2CC` | Lives left: 4 at the start; the status line shows it as two digits | confirmed | Fell by one with each life lost (#78) |
-| Energy | `0xD2CD` | Energy, full at 127: drains on touching creatures; at 0 a life is lost and it refills | confirmed | Watched draining and refilling (#78) |
+| Energy | `0xD2CD` | Energy, full at 127. It runs down with time, by 4 every 120 game cycles (about five seconds); at 0 a life is lost and it refills | confirmed | Watched every write to it: only the timer's, at that rate (#78) |
 | Platforms | `0xD2CE` | Bridging platforms left, at most 127; 50 at the start; building one takes 2 | confirmed | Built one: 58 became 56 (#78) |
 | Laser | `0xD2CF` | Laser charge, full at 127; each shot takes some | confirmed | Fired: 127 became 124 (#78) |
 | The bars' most | — | Picking something up adds to lives, energy, platforms or laser in turn, and the three bars are capped at 127 | read | (#78) |
-| Creatures touching BLOB | `0xA53A` | The main loop checks BLOB against each creature on the screen, and one close enough harms him; at no energy, a life goes | read | (#78), for the "no harm" switch (#79) |
+| Creatures touching BLOB | `0xA53A` | The main loop checks BLOB against each creature on the screen; one marked deadly that's close enough kills him outright, through the call at `0xA56A`. Creatures don't take energy | read | (#78), for the "no harm" switch (#79) |
+| Dying | `0xC350` | The way into the routine that takes a life: from a deadly touch, or with A = 2 when energy has run out (from `0xA537`) | read | (#78) |
 | The control method | `0x5E58` | The menu's choice: 1 Kempston, 4 the keyboard (the default), and so on | confirmed | Chose Kempston: 4 became 1 (#78) |
 
 `docs/games/starquake.md`, "Facts to find", lists what's still needed.
