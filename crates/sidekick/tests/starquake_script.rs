@@ -293,3 +293,158 @@ fn teleports_and_doors_in_rooms_walked_are_marked() {
     }
     assert_eq!(markers(&s), ["teleport", "door", "player"]);
 }
+
+/// Where stand-in medium tile pictures go: one that draws nothing, and one that draws a row.
+const BLANK: u16 = 0x8100;
+const ROW: u16 = 0x8010;
+
+/// Writes bytes into a value, `offset` bytes from its start.
+fn poke_into(s: &mut Session, name: &str, offset: u16, bytes: &[u8]) {
+    let at = addr(s, name) + offset;
+    poke(s, at, bytes);
+}
+
+/// A planet of rooms that draw nothing, so open all round, and no items.
+fn blank_planet(s: &mut Session) {
+    let pictures = addr(s, "tile_pictures");
+    for id in 0..256 {
+        poke(s, pictures + id * 2, &BLANK.to_le_bytes());
+    }
+    let items = addr(s, "items");
+    for k in 0..45 {
+        poke(s, items + k * 4, &[0, 0, 0, 0xFF]);
+    }
+}
+
+fn number(fact: &Fact) -> i64 {
+    match fact {
+        Fact::Number(n) => *n,
+        other => panic!("a number: {other:?}"),
+    }
+}
+
+fn list(fact: &Fact) -> Vec<Fact> {
+    match fact {
+        Fact::List(items) => items.clone(),
+        other => panic!("a list: {other:?}"),
+    }
+}
+
+#[test]
+fn level_6_maps_every_room_with_the_walls_its_tiles_draw() {
+    let mut s = session();
+    blank_planet(&mut s);
+    // Medium tile 2 draws its top row, eight cells without BRIGHT: they block.
+    poke(&mut s, ROW, &[0xFF, 0, 0, 0, 0, 0]);
+    poke(&mut s, ROW - 8, &[0x07; 8]);
+    poke_into(&mut s, "tile_pictures", 4, &ROW.to_le_bytes());
+    // Large tile 1: medium tile 2 at the top, left and right; room 300's top row is all large
+    // tile 1, so its top edge is shut.
+    poke_into(&mut s, "large_tiles", 4, &[0, 0, 2, 2]);
+    poke_into(&mut s, "rooms", 300 * 12, &[1, 1, 1, 1]);
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    let map = s.script_results()["map"].clone();
+    assert!(
+        list(field(&map, "cells")).len() < 512,
+        "level 0: rooms walked only"
+    );
+
+    s.set_level(6);
+    s.run_frame().expect("a frame");
+    let map = s.script_results()["map"].clone();
+    let cells = list(field(&map, "cells"));
+    assert_eq!(cells.len(), 512);
+    assert_eq!(field(&cells[300], "walls"), &Fact::Text("N".to_owned()));
+    assert_eq!(field(&cells[0], "walls"), &Fact::Text(String::new()));
+}
+
+#[test]
+fn level_6_lists_every_security_door_with_the_cards_the_game_works_out() {
+    let mut s = session();
+    blank_planet(&mut s);
+    // Medium tile 1 is a security door, one cell in and one down; large tile 3 has it at its
+    // top left, and room 176 has large tile 3 at its top left.
+    poke_into(&mut s, "tile_types", 1, &[0x05]);
+    poke_into(&mut s, "large_tiles", 12, &[0, 0, 0, 1]);
+    poke_into(&mut s, "rooms", 176 * 12, &[3]);
+    // The seed of a game where the door in room 176 was met with cards 12, 13 and 13.
+    poke_into(&mut s, "seed", 0, &[0xF5, 0x07]);
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert!(result(&s, "doors").is_empty(), "level 0: doors met only");
+
+    s.set_level(6);
+    s.run_frame().expect("a frame");
+    let doors = result(&s, "doors");
+    assert_eq!(doors.len(), 1);
+    let cards: Vec<i64> = list(field(&doors[0], "cards"))
+        .iter()
+        .map(|card| number(field(card, "picture")))
+        .collect();
+    assert_eq!(cards, [12, 13, 13]);
+    let map = s.script_results()["map"].clone();
+    assert!(list(field(&map, "markers")).iter().any(|m| {
+        field(m, "kind") == &Fact::Text("door".to_owned())
+            && number(field(m, "x")) == 0
+            && number(field(m, "y")) == 11
+    }));
+}
+
+/// The item markers on the map, as (picture, color, room).
+fn item_marks(s: &Session) -> Vec<(i64, Fact, i64)> {
+    let map = s.script_results()["map"].clone();
+    list(field(&map, "markers"))
+        .iter()
+        .filter(|m| matches!(field(m, "kind"), Fact::Text(k) if k == "piece" || k == "item"))
+        .map(|m| {
+            let room = number(field(m, "y")) * 16 + number(field(m, "x"));
+            (number(field(m, "picture")), field(m, "color").clone(), room)
+        })
+        .collect()
+}
+
+#[test]
+fn items_are_marked_by_kind_from_level_3_in_rooms_walked_and_level_4_everywhere() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    // The core still needs picture 5; picture 7 is delivered.
+    let slots = addr(&s, "core_slots");
+    poke(&mut s, slots, &[0x85, 0x07]);
+    let items = addr(&s, "items");
+    // Placed in room 8: a needed piece and the key.
+    poke(&mut s, items, &[3, 20, 8, 5]);
+    poke(&mut s, items + 4, &[3, 20, 8, 16]);
+    // A card in room 300, not yet placed: room 300's ninth bit is the second byte's top bit.
+    poke(&mut s, items + 8, &[3, 0x80, 0x2C, 10]);
+    // Kept in the core's own room, and one picked up: neither is on the map.
+    poke(&mut s, items + 12, &[0, 10, 199, 0]);
+    poke(&mut s, items + 16, &[0, 1, 8, 7]);
+    let mut kept = s.kept().clone();
+    kept.insert("rooms-walked".to_owned(), vec!["4660:8:".to_owned()]);
+    s.set_kept(kept);
+    enter(&mut s, "play");
+    s.set_level(2);
+    s.run_frame().expect("a frame");
+    assert!(item_marks(&s).is_empty(), "level 2: no items");
+
+    s.set_level(3);
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        item_marks(&s),
+        [
+            (5, Fact::Text("first".to_owned()), 8),
+            (16, Fact::Number(6), 8)
+        ],
+        "level 3: in rooms walked, the needed piece in the first color, the key yellow"
+    );
+
+    s.set_level(4);
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        item_marks(&s).last(),
+        Some(&(10, Fact::Number(5), 300)),
+        "level 4: in rooms not reached too, a card cyan"
+    );
+}

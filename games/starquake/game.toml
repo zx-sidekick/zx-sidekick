@@ -74,17 +74,21 @@ pc = 0x5FF4
 
 [values.room]
 type = "u16"
+writable = true
 addr = 0xD2C8
 description = "The room BLOB is in: 16 to a row, 0 at the top left"
 
 [values.blob_x]
 type = "u8"
+writable = true
 addr = 0xDD1D
 description = "BLOB's left edge, in pixels"
 
 [values.blob_y]
 type = "u8"
+writable = true
 addr = 0xDD1E
+description = "BLOB's height, in pixels up from the screen's bottom"
 
 [values.lives]
 type = "u8"
@@ -188,11 +192,29 @@ type = "u16"
 addr = 0xD2C6
 description = "The game's seed, set at its start: with a room, it decides that room's door cards"
 
-[values.map]
+[values.rooms]
 type = "bytes"
-# addr = TODO
-# len = TODO
-description = "The room map, read once by the script's on_load"
+addr = 0x7530
+len = 6144
+description = "Each room's 4 × 3 large tiles, 12 bytes a room, read once by the script's on_load"
+
+[values.large_tiles]
+type = "bytes"
+addr = 0x9840
+len = 1024
+description = "Each large tile's 2 × 2 medium tiles, 4 bytes a tile"
+
+[values.tile_types]
+type = "bytes"
+addr = 0x9740
+len = 256
+description = "Each medium tile's type: what it does (top four bits) and where in the tile (the rest)"
+
+[values.tile_pictures]
+type = "bytes"
+addr = 0xEB23
+len = 512
+description = "Each medium tile's picture, a word a tile: which cells it draws, their attributes before it"
 
 [values.font]
 type = "font"
@@ -396,7 +418,7 @@ column = "left"
 pictures = "item_pictures"
 source = "script:map"
 # The kinds of marker the script puts on the map, and the shape each is drawn as.
-markers = { player = "player", teleport = "diamond", door = "square" }
+markers = { player = "player", teleport = "diamond", door = "square", piece = "picture", item = "picture" }
 
 [situations]
 # The routine that starts play in the current room (docs/re/starquake.md).
