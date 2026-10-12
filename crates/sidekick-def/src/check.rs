@@ -1,8 +1,8 @@
 //! What makes a definition complete and consistent, beyond its shape.
 
 use crate::{
-    Add, Address, Amount, Charset, Count, Definition, Field, Machine, OneOrMany, PadTarget, Patch,
-    Test, Value, ValueType, WidgetKind, SCHEMA,
+    Add, Address, Amount, Charset, Count, Definition, Field, Layout, Machine, OneOrMany, PadTarget,
+    Patch, Test, Value, ValueType, WidgetKind, SCHEMA,
 };
 use std::{collections::BTreeSet, fmt};
 
@@ -364,6 +364,10 @@ impl Checker<'_> {
                     }
                     if value.width.is_some_and(|w| w == 0 || w % 8 != 0) {
                         self.report(format!("{path}.width"), "a multiple of 8");
+                    }
+                    let in_cells = value.layout == Some(Layout::Cells);
+                    if in_cells && value.height.is_some_and(|h| h % 8 != 0) {
+                        self.report(format!("{path}.height"), "a multiple of 8, for cells");
                     }
                     if let Some(colors) = &value.colors {
                         self.need_value(&format!("{path}.colors"), &colors.value);

@@ -259,6 +259,9 @@ pub struct Value {
     /// For sprites: where their masks are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mask: Option<Mask>,
+    /// For sprites: the order of their bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<Layout>,
     /// For sprites: a value giving each picture's ink.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colors: Option<ValueRef>,
@@ -368,6 +371,18 @@ pub struct Field {
     /// For `text`: how codes map to letters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub charset: Option<Charset>,
+}
+
+/// The order of a picture's bytes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Layout {
+    /// Row by row, top to bottom, each row left to right.
+    #[default]
+    Rows,
+    /// In 8 × 8 character cells, left to right then top to bottom, each cell's eight rows in
+    /// turn, as the screen's characters are drawn.
+    Cells,
 }
 
 /// Where sprites keep their masks.

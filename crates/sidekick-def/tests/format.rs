@@ -69,10 +69,7 @@ fn starquake_s_draft_parses_and_lists_what_is_left_to_find() {
         !problems.iter().any(|p| p.starts_with("media")),
         "the dump's SHA-1 is recorded"
     );
-    for expected in [
-        "values.visited.addr: missing",
-        "values.items.count: missing",
-    ] {
+    for expected in ["values.visited.addr: missing", "values.map.addr: missing"] {
         assert!(
             problems.iter().any(|p| p == expected),
             "{expected} in {problems:#?}"
@@ -314,5 +311,24 @@ fn the_committed_schema_is_the_generated_one() {
     assert!(
         repo("schema/definition.schema.json") == schema(),
         "schema/definition.schema.json is stale: run `cargo run -p sidekick-def --example schema > schema/definition.schema.json`"
+    );
+}
+
+#[test]
+fn pictures_in_cells_want_whole_cells() {
+    let text = format!(
+        "{HEADER}[values.pictures]\ntype = \"sprites\"\naddr = 0x8000\ncount = 1\nwidth = 16\nheight = 12\nlayout = \"cells\"\n"
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def.check().iter().map(ToString::to_string).collect();
+    assert!(
+        problems.contains(&"values.pictures.height: a multiple of 8, for cells".to_owned()),
+        "{problems:?}"
+    );
+    let rows = text.replace("layout = \"cells\"\n", "");
+    let def = Definition::from_toml(&rows).expect("it parses");
+    assert!(
+        !def.check().iter().any(|p| p.path.ends_with("height")),
+        "rows may be any height"
     );
 }

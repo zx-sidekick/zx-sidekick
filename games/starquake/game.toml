@@ -43,7 +43,14 @@ notice = { text = "Move or fire to go on.", hints = [
 
 [[states]]
 name = "booth"
-# pc = TODO: where the booth reads the code
+# The booth's wait for each letter of a code (docs/re/starquake.md).
+pc = [0xCF93, 0xCF9A]
+
+[[states]]
+name = "door"
+# The card routine's loop, reached once a door's cards are worked out; the main loop waits
+# meanwhile, so the values are read at the frame's end, cards and all (docs/re/starquake.md).
+pc = 0xD64E
 
 [[states]]
 name = "game_over"
@@ -107,50 +114,69 @@ description = "Rooms visited, kept by the game for its first-visit bonus"
 [values.booth_code]
 type = "text"
 len = 5
-# addr = TODO
-# charset = TODO
+addr = 0xCF3D
 description = "The code of the booth BLOB is in, as the booth shows it"
 
 [values.items]
 type = "table"
-# addr = TODO
-# count = TODO
-# stride = TODO
-# fields.room = TODO
-# fields.x = TODO
-# fields.y = TODO
-# fields.picture = TODO
-# fields.color = TODO
-# fields.carried = TODO
+addr = 0x94E8
+count = 45
+stride = 4
+# Packed: x in the low five bits of the first byte, its color in the top three; y in the low
+# seven bits of the second (0 not yet placed, 1 picked up), the room's ninth bit in its top.
+fields.first = { offset = 0, type = "u8" }
+fields.second = { offset = 1, type = "u8" }
+fields.room_low = { offset = 2, type = "u8" }
+fields.picture = { offset = 3, type = "u8" }
+description = "The items, each in a room until picked up"
 
-[values.inventory]
-type = "bytes"
-# addr = TODO
-# len = TODO
+[values.carried]
+type = "table"
+addr = 0xD2D2
+count = 4
+stride = 2
+fields.picture = { offset = 0, type = "u8" }
+fields.color = { offset = 1, type = "u8" }
+description = "What BLOB carries: four slots, a slot empty when its color is 0"
 
 [values.core_slots]
 type = "table"
-# addr = TODO
+addr = 0xD2DE
 count = 9
-# stride = TODO
-# fields.wants = TODO: the picture the slot wants
-# fields.filled = TODO
+stride = 1
+fields.slot = { offset = 0, type = "u8" }
+fields.missing = { offset = 0, type = "u8", bits = 0x80 }
+description = "The core's slots: the picture each wants (the low seven bits), missing while bit 7 is set"
+
+[values.pieces_missing]
+type = "u8"
+addr = 0xD2E7
+description = "Core pieces still to deliver: 9 at the start"
 
 [values.teleports]
 type = "table"
-# addr = TODO
-# count = TODO
-# stride = TODO
-# fields.room = TODO
-# fields.code = TODO
+addr = 0xD036
+count = 15
+stride = 7
+fields.code = { offset = 0, type = "text", len = 5 }
+fields.room = { offset = 5, type = "u16" }
+description = "Each teleport's code and the room it goes to"
 
-[values.doors]
-type = "table"
-# addr = TODO
-# count = TODO
-# stride = TODO
-# fields.room = TODO
-# fields.cards = TODO: the three cards it asks for
+[values.door_cards]
+type = "bytes"
+addr = 0xD5F7
+len = 5
+description = "The last security door's three cards, at every other byte: pictures 9 to 13"
+
+[values.door_card_count]
+type = "u8"
+addr = 0xD5F6
+description = "How many cards the card routine asks for: 3 at a security door"
+
+[values.seed]
+type = "u16"
+addr = 0xD2C6
+description = "The game's seed, set at its start: with a room, it decides that room's door cards"
 
 [values.map]
 type = "bytes"
@@ -160,18 +186,19 @@ description = "The room map, read once by the script's on_load"
 
 [values.font]
 type = "font"
-# addr = TODO
-# first = TODO
-# count = TODO
+addr = 0xADD4
+first = 0x20
+count = 59
 width = 8
 height = 8
 
 [values.item_pictures]
 type = "sprites"
-# addr = TODO
-# count = TODO
-# width = TODO
-# height = TODO
+addr = 0x9088
+count = 35
+width = 16
+height = 16
+layout = "cells"
 
 # Training switches.
 
@@ -259,6 +286,13 @@ key_up_frames = 1
 [persist.teleport-codes]
 label = "teleport codes"
 file = "teleporter-codes.txt"
+add = "script"
+
+[persist.doors-met]
+label = "doors met"
+# One a door: the game's seed, the room, and its three cards, as `seed:room:card-card-card`.
+# Kept so a game continued from a save still lists the doors it met.
+file = "doors-met.txt"
 add = "script"
 
 [high_scores]

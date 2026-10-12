@@ -195,7 +195,7 @@ fields.carried = { offset = 3, type = "u8", bits = 0x80 }   # true when the bit 
 
 ### The game's font and graphics
 
-The panel draws in the game's own style by reading its font and graphics from memory, never from the definition. They're read each time the panel is drawn, so a game that changes them in play shows the change. Characters are one bit a pixel, the high bit leftmost, `width` / 8 bytes a row; the panel draws the font at two of its pixels to a game pixel and pictures at four, and their `mask` is skipped: only ink is drawn.
+The panel draws in the game's own style by reading its font and graphics from memory, never from the definition. They're read each time the panel is drawn, so a game that changes them in play shows the change. Characters are one bit a pixel, the high bit leftmost, `width` / 8 bytes a row; the panel draws the font at two of its pixels to a game pixel, and each picture as large as fits its tile at a whole number of its pixels to a game pixel (an 8 × 8 picture at four, a 16 × 16 one at two). Their `mask` is skipped: only ink is drawn.
 
 ```toml
 [values.font]
@@ -214,8 +214,11 @@ width = 16         # pixels, a multiple of 8
 height = 16
 stride = 32        # bytes from one picture to the next (default width/8 × height)
 mask = "none"      # "none", "interleaved" (mask byte before each byte), or "after" (mask after the picture)
+layout = "rows"    # "rows", or "cells": 8 × 8 character cells, left to right then top to bottom
 colors = { value = "item_colors" }   # optional: a table or bytes giving each picture's ink
 ```
+
+Pictures are usually stored row by row. Some games keep them as the screen's characters are, in 8 × 8 cells, each cell's eight rows together. `layout = "cells"` reads those, and wants a height that's a multiple of 8, as the width always is.
 
 ## `[[cheats]]`: training switches
 
