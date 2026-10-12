@@ -234,20 +234,29 @@ layout = "cells"
 
 # Training switches.
 
+# Each Full switch also patches out the game's calls that take from its bar, so the bar on
+# screen stays full too; the set fills a bar already low (docs/re/starquake.md).
+
 [[cheats]]
 id = "full-energy"
 label = "Full energy"
 set = { value = "energy", to = "max" }
+patch = [{ addr = 0xCB65, bytes = "00 00 00", expect = "CD 1F D4" }]
 
 [[cheats]]
 id = "full-platforms"
 label = "Full bridging platforms"
 set = { value = "platforms", to = "max" }
+patch = [{ addr = 0xC84C, bytes = "00 00 00", expect = "CD 1F D4" }]
 
 [[cheats]]
 id = "full-laser"
 label = "Full laser"
 set = { value = "laser", to = "max" }
+patch = [
+  { addr = 0xC888, bytes = "00 00 00", expect = "CD 1F D4" },
+  { addr = 0xCA44, bytes = "00 00 00", expect = "CD 1F D4" },
+]
 
 [[cheats]]
 id = "endless-lives"
