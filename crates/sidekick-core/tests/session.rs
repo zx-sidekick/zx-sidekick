@@ -151,6 +151,7 @@ type = "u8"
 
 [[states]]
 name = "paused"
+role = "paused"
 when = { value = "mode", equals = 2 }
 
 [[states]]

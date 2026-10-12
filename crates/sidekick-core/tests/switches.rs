@@ -34,12 +34,15 @@ type = "u8"
 
 [[states]]
 name = "title"
+role = "title"
 when = { value = "mode", equals = 1 }
 [[states]]
 name = "play"
+role = "play"
 when = { value = "mode", equals = 2 }
 [[states]]
 name = "game_over"
+role = "game_over"
 when = { value = "mode", equals = 3 }
 
 [[cheats]]

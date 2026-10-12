@@ -1,8 +1,8 @@
 //! What makes a definition complete and consistent, beyond its shape.
 
 use crate::{
-    Add, Address, Amount, Charset, Count, Definition, Field, Layout, Machine, OneOrMany, PadTarget,
-    Patch, Test, Value, ValueType, WidgetKind, SCHEMA,
+    Add, Address, Amount, Charset, Count, Definition, Field, Layout, Machine, MarkerShape,
+    OneOrMany, PadTarget, Patch, Role, Test, Value, ValueType, WidgetKind, SCHEMA,
 };
 use std::{collections::BTreeSet, fmt};
 
@@ -68,6 +68,9 @@ const KEYS: &[&str] = &[
 /// What a pad part or an action may name besides an action.
 const DIRECTIONS: &[&str] = &["up", "down", "left", "right", "fire"];
 
+/// Every role a state can have.
+const ROLES: [Role; 4] = [Role::Title, Role::Play, Role::Paused, Role::GameOver];
+
 /// The pad's parts a notice's hint can show: the face buttons and the directions.
 const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north"];
 
@@ -113,6 +116,12 @@ impl Checker<'_> {
 
     fn action_exists(&self, id: &str) -> bool {
         self.def.actions.iter().any(|a| a.id == id)
+    }
+
+    fn need_state(&mut self, path: &str, name: &str) {
+        if !self.state_exists(name) {
+            self.report(path, format!("no state named {name:?}"));
+        }
     }
 
     fn need_value(&mut self, path: &str, name: &str) -> Option<&Value> {
@@ -271,8 +280,8 @@ impl Checker<'_> {
 
     fn notice(&mut self, path: &str, state: &crate::State) {
         let Some(notice) = &state.notice else { return };
-        if state.name != "paused" {
-            self.report(path, "only the paused state has a notice");
+        if state.role != Some(Role::Paused) {
+            self.report(path, "only the state with role = \"paused\" has a notice");
         }
         for (i, hint) in notice.hints.iter().enumerate() {
             let path = format!("{path}.hints[{i}]");
@@ -295,6 +304,7 @@ impl Checker<'_> {
 
     fn states(&mut self) {
         let mut seen = BTreeSet::new();
+        let mut roles = BTreeSet::new();
         for (i, state) in self.def.states.iter().enumerate() {
             self.notice(&format!("states[{i}].notice"), state);
             let path = format!("states[{i}]");
@@ -302,6 +312,26 @@ impl Checker<'_> {
                 self.report(
                     format!("{path}.name"),
                     format!("{:?} is named twice", state.name),
+                );
+            }
+            if let Some(role) = state.role {
+                if !roles.insert(role) {
+                    self.report(
+                        format!("{path}.role"),
+                        format!("another state is already {:?}", role.name()),
+                    );
+                }
+            }
+            // A name the program once gave a meaning: say the meaning is a role now.
+            let named_as_role = ROLES.iter().find(|r| r.name() == state.name);
+            if let (Some(role), None) = (named_as_role, state.role) {
+                self.report(
+                    format!("{path}.role"),
+                    format!(
+                        "a state named {:?} means nothing by its name: add role = {:?} for that",
+                        state.name,
+                        role.name()
+                    ),
                 );
             }
             if state.pc.is_none() && state.when.is_none() {
@@ -485,6 +515,18 @@ impl Checker<'_> {
                 }
             }
             self.patches(&format!("{path}.patch_for_frame"), &action.patch_for_frame);
+            for state in &action.menu_in {
+                self.need_state(&format!("{path}.menu_in"), state);
+            }
+            if !action.menu_in.is_empty() && action.menu.is_none() {
+                self.report(format!("{path}.menu_in"), "only with menu");
+            }
+            if action.id == "end-game" && action.menu.is_none() {
+                self.report(
+                    format!("{path}.menu"),
+                    "an action named \"end-game\" means nothing by its name: add menu = \"End this game\" for its row",
+                );
+            }
             if action.script.is_some() && self.def.script.is_none() {
                 self.report(format!("{path}.script"), "the definition has no [script]");
             }
@@ -635,6 +677,24 @@ impl Checker<'_> {
             }
             if widget.kind == WidgetKind::IconGrid && widget.pictures.is_none() {
                 self.report(format!("{path}.pictures"), "an icon-grid needs pictures");
+            }
+            match (
+                widget.kind == WidgetKind::MapGrid,
+                widget.markers.is_empty(),
+            ) {
+                (true, true) => self.report(
+                    format!("{path}.markers"),
+                    "a map-grid's markers aren't drawn until it says each kind's shape",
+                ),
+                (false, false) => self.report(format!("{path}.markers"), "only for a map-grid"),
+                _ => {}
+            }
+            let pictured = widget.markers.values().any(|&s| s == MarkerShape::Picture);
+            if pictured && widget.pictures.is_none() {
+                self.report(
+                    format!("{path}.pictures"),
+                    "a marker drawn as its picture needs pictures",
+                );
             }
         }
     }

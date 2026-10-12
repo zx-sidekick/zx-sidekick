@@ -390,7 +390,7 @@ fn stand_in_map(seen: bool) -> MapGrid {
     let item = |x, y, seed| Marker {
         x,
         y,
-        kind: MarkerKind::Item(Some(stand_in(seed))),
+        kind: MarkerKind::Picture(Some(stand_in(seed))),
         color: None,
     };
     let mut markers = vec![
@@ -409,7 +409,7 @@ fn stand_in_map(seen: bool) -> MapGrid {
         markers.push(Marker {
             x: 1,
             y: 20,
-            kind: MarkerKind::Teleport,
+            kind: MarkerKind::Diamond,
             color: None,
         });
     }

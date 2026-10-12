@@ -65,16 +65,16 @@ pub struct Cell {
 /// What a marker marks.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MarkerKind {
-    /// The player.
+    /// Where the player is: a box, with a bar above its cell.
     Player,
-    /// A teleport.
-    Teleport,
-    /// A door.
-    Door,
-    /// An item, as its picture.
-    Item(Option<Pixels>),
-    /// Somewhere to go.
-    Target,
+    /// A diamond.
+    Diamond,
+    /// A small square.
+    Square,
+    /// The marker's own picture.
+    Picture(Option<Pixels>),
+    /// A ring.
+    Ring,
 }
 
 /// A marker in a cell.
@@ -195,12 +195,12 @@ impl MapGrid {
                     let edge = Line::solid(colors::TEXT, 2.0);
                     c.rect((mx - 4.5, my - 4.5, 9.0, 9.0), 2.0, None, Some(edge));
                 }
-                MarkerKind::Teleport => {
+                MarkerKind::Diamond => {
                     let r = 3.5 * std::f32::consts::SQRT_2;
                     let points = [(mx, my - r), (mx + r, my), (mx, my + r), (mx - r, my)];
                     c.polygon(&points, marker.color.unwrap_or(TEAL));
                 }
-                MarkerKind::Door => {
+                MarkerKind::Square => {
                     c.rect(
                         (mx - 3.5, my - 3.5, 7.0, 7.0),
                         1.0,
@@ -208,11 +208,11 @@ impl MapGrid {
                         None,
                     );
                 }
-                MarkerKind::Target => {
+                MarkerKind::Ring => {
                     let ring = Line::solid(marker.color.unwrap_or(colors::ACCENT), 1.5);
                     c.circle((mx, my), 4.0, None, Some(ring));
                 }
-                MarkerKind::Item(picture) => {
+                MarkerKind::Picture(picture) => {
                     let color = marker.color.unwrap_or_else(|| RouteColor::First.color());
                     if let Some(picture) = picture {
                         #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]

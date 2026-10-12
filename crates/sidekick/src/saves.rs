@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use sidekick_core::{Error, Progress, Record, Session};
+use sidekick_def::Role;
 use std::{
     collections::BTreeSet,
     fs, io,
@@ -253,12 +254,12 @@ pub(crate) fn continue_from(
 /// # Errors
 /// If a game under way couldn't be saved.
 pub(crate) fn keep_on_quit(session: &mut Session, saves: &Saves) -> Result<(), Unsaved> {
-    let has_play = session
-        .definition()
-        .is_some_and(|d| d.states.iter().any(|s| s.name == "play"));
+    let definition = session.definition();
+    let has_play = definition.is_some_and(|d| d.state_for(Role::Play).is_some());
     let progress = session.progress();
+    let over = definition.is_some_and(|d| d.is(progress.last_known.as_deref(), Role::GameOver));
     let under_way = if has_play {
-        progress.in_game && progress.last_known.as_deref() != Some("game_over")
+        progress.in_game && !over
     } else {
         session.machine().tape_loaded()
     };
@@ -354,9 +355,11 @@ type = "u8"
 
 [[states]]
 name = "title"
+role = "title"
 when = { value = "mode", equals = 1 }
 [[states]]
 name = "play"
+role = "play"
 when = { value = "mode", equals = 2 }
 
 [[cheats]]

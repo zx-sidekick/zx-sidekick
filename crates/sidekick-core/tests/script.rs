@@ -29,6 +29,7 @@ type = "u8"
 # Matches every frame: the ROM's interrupt runs in each.
 [[states]]
 name = "play"
+role = "play"
 pc = 0x0038
 "#;
 

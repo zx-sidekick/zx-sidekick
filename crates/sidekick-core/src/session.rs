@@ -5,7 +5,7 @@ use crate::{
     value::{self, Read, WriteError},
     Error, Machine, Stop,
 };
-use sidekick_def::{Amount, Cheat, Definition, Patch, State, Test};
+use sidekick_def::{Amount, Cheat, Definition, Patch, Role, State, Test};
 use sidekick_script::{Fact, Script, View};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -521,8 +521,8 @@ impl Session {
         let Some(definition) = self.definition.take() else {
             return;
         };
-        let has_play = definition.states.iter().any(|s| s.name == "play");
-        if has_play && self.progress.last_known.as_deref() != Some("play") {
+        let has_play = definition.state_for(Role::Play).is_some();
+        if has_play && !definition.is(self.progress.last_known.as_deref(), Role::Play) {
             self.definition = Some(definition);
             return;
         }
@@ -574,9 +574,21 @@ impl Session {
         let Some(state) = self.state.clone() else {
             return;
         };
-        let after = self.progress.last_known.clone();
-        let after = after.as_deref();
-        if state == "play" && matches!(after, None | Some("title" | "game_over")) {
+        let (starts, came_to_title) = {
+            let Some(definition) = &self.definition else {
+                return;
+            };
+            let after = self.progress.last_known.as_deref();
+            let now = Some(state.as_str());
+            let from_start = after.is_none()
+                || definition.is(after, Role::Title)
+                || definition.is(after, Role::GameOver);
+            (
+                definition.is(now, Role::Play) && from_start,
+                definition.is(now, Role::Title) && !definition.is(after, Role::Title),
+            )
+        };
+        if starts {
             self.record = Record {
                 loaded: std::mem::take(&mut self.next.loaded),
                 ..Record::default()
@@ -584,7 +596,7 @@ impl Session {
             self.note_use();
             self.progress.in_game = true;
         }
-        if state == "title" && after != Some("title") {
+        if came_to_title {
             if !self.progress.seen_title {
                 self.progress.seen_title = true;
                 self.milestones.push(Milestone::FirstTitle);

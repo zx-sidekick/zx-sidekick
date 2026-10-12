@@ -33,6 +33,7 @@ joystick = "kempston"
 
 [[states]]
 name = "paused"
+role = "paused"
 # SPACE pauses: the game waits for it to be let go, then for any move or fire.
 pc = [0xC5AF, 0xC5B5]
 # In the original, any move or fire goes on once the pause key is let go (docs/games/starquake.md).
@@ -54,15 +55,18 @@ pc = 0xD64E
 
 [[states]]
 name = "game_over"
+role = "game_over"
 # Entered when the last life is lost, or A S D F G are held together.
 pc = 0x64A0
 
 [[states]]
 name = "play"
+role = "play"
 pc = 0xA523
 
 [[states]]
 name = "title"
+role = "title"
 # The menu's loop, passed every few frames once its tune has played.
 pc = 0x5FF4
 
@@ -252,6 +256,9 @@ start = { tap = ["P"], frames = 2 }
 [[actions]]
 id = "end-game"
 label = "End this game"
+# The guidance menu's row, in play: A S D F G held together end the game.
+menu = "End this game"
+menu_in = ["play"]
 tap = ["A", "S", "D", "F", "G"]
 frames = 5
 
@@ -383,6 +390,8 @@ from_level = 2
 column = "left"
 pictures = "item_pictures"
 source = "script:map"
+# The kinds of marker the script puts on the map, and the shape each is drawn as.
+markers = { player = "player", teleport = "diamond", door = "square" }
 
 [situations]
 # The routine that starts play in the current room (docs/re/starquake.md).

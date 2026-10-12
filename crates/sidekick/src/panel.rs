@@ -3,7 +3,7 @@
 
 use crate::picture::color;
 use sidekick_core::{Bitmap, Fact, Font, Read, Reading, Session};
-use sidekick_def::{Column, Definition, Widget, WidgetKind};
+use sidekick_def::{Column, Definition, MarkerShape, Widget, WidgetKind};
 use sidekick_ui::{
     CardRow, Cell, Chip, Color, Edge, Icon, Look, MapGrid, Marker, MarkerKind, Panel, PanelBody,
     PanelColumn, PanelWidget, Pin, Pixels, Route, RouteColor,
@@ -131,7 +131,7 @@ pub(crate) fn panel(
                     Source::Script(fact),
                 ) => pictured(w, fact, &graphics(w), script.chosen)?,
                 (WidgetKind::MapGrid, Source::Script(fact)) => {
-                    PanelBody::Map(map(fact, &graphics(w))?)
+                    PanelBody::Map(map(fact, &graphics(w), &w.markers)?)
                 }
                 (WidgetKind::Text, Source::Value(read, _)) => PanelBody::Text(read.as_text()),
                 (WidgetKind::Counter, Source::Value(read, _)) => PanelBody::Counter(read.number()?),
@@ -222,7 +222,11 @@ fn words(fact: Option<&Fact>) -> Option<&str> {
 }
 
 /// The script's map: `{ width, height, cells, markers, routes }`.
-fn map(fact: &Fact, graphics: &Graphics) -> Option<MapGrid> {
+fn map(
+    fact: &Fact,
+    graphics: &Graphics,
+    shapes: &BTreeMap<String, MarkerShape>,
+) -> Option<MapGrid> {
     let list = |key: &str| match get(fact, key) {
         Some(Fact::List(items)) => items.as_slice(),
         _ => &[],
@@ -245,13 +249,16 @@ fn map(fact: &Fact, graphics: &Graphics) -> Option<MapGrid> {
     let markers = list("markers")
         .iter()
         .filter_map(|marker| {
-            let kind = match words(get(marker, "kind"))? {
-                "player" => MarkerKind::Player,
-                "teleport" => MarkerKind::Teleport,
-                "door" => MarkerKind::Door,
-                "target" => MarkerKind::Target,
-                "item" => MarkerKind::Item(graphics.picture(get(marker, "picture"))),
-                _ => return None,
+            // The script's kind, drawn as the widget's markers say; one it doesn't list isn't
+            // drawn.
+            let kind = match shapes.get(words(get(marker, "kind"))?)? {
+                MarkerShape::Player => MarkerKind::Player,
+                MarkerShape::Diamond => MarkerKind::Diamond,
+                MarkerShape::Square => MarkerKind::Square,
+                MarkerShape::Ring => MarkerKind::Ring,
+                MarkerShape::Picture => {
+                    MarkerKind::Picture(graphics.picture(get(marker, "picture")))
+                }
             };
             let color = match get(marker, "color") {
                 Some(Fact::Text(t)) => route_color(t).map(RouteColor::color),
@@ -748,6 +755,7 @@ kind = "map-grid"
 from_level = 1
 pictures = "pictures"
 source = "script:map"
+markers = { player = "player", item = "picture", door = "square" }
 "#,
         );
         let xy = |x, y| Fact::List(vec![Fact::Number(x), Fact::Number(y)]);
@@ -823,7 +831,7 @@ source = "script:map"
             Marker {
                 x: 1,
                 y: 1,
-                kind: MarkerKind::Item(Some(pixels(&dot(2)))),
+                kind: MarkerKind::Picture(Some(pixels(&dot(2)))),
                 color: Some(RouteColor::Second.color()),
             }
         );

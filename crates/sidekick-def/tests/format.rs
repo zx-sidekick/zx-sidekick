@@ -252,11 +252,13 @@ fn a_notice_is_the_paused_state_s_and_shows_parts_a_pad_has() {
         r#"{HEADER}
 [[states]]
 name = "paused"
+role = "paused"
 pc = 0x8000
 notice = {{ text = "Fire to go on.", hints = [{{ pad = "start", does = "go on" }}, {{ does = "wait" }}] }}
 
 [[states]]
 name = "play"
+role = "play"
 pc = 0x8001
 notice = {{ text = "Playing." }}
 "#
@@ -273,7 +275,7 @@ notice = {{ text = "Playing." }}
         [
             "states[0].notice.hints[0].pad: \"start\" isn't a part a notice shows: one of dpad, stick, west, south, east, north",
             "states[0].notice.hints[1]: needs keys, pad or both",
-            "states[1].notice: only the paused state has a notice",
+            "states[1].notice: only the state with role = \"paused\" has a notice",
         ]
     );
 }
@@ -330,5 +332,78 @@ fn pictures_in_cells_want_whole_cells() {
     assert!(
         !def.check().iter().any(|p| p.path.ends_with("height")),
         "rows may be any height"
+    );
+}
+
+#[test]
+fn meanings_come_from_roles_menus_and_markers_and_the_old_names_are_pointed_out() {
+    let text = format!(
+        r#"{HEADER}
+[values.mode]
+addr = 0x8000
+type = "u8"
+
+[[states]]
+name = "play"
+when = {{ value = "mode", equals = 1 }}
+[[states]]
+name = "running"
+role = "play"
+when = {{ value = "mode", equals = 2 }}
+[[states]]
+name = "racing"
+role = "play"
+when = {{ value = "mode", equals = 3 }}
+
+[[actions]]
+id = "end-game"
+tap = ["A"]
+[[actions]]
+id = "quit"
+tap = ["Q"]
+menu_in = ["running", "nowhere"]
+
+[guidance]
+levels = [{{ name = "Off", description = "None." }}, {{ name = "Map", description = "A map." }}]
+
+[[panel]]
+kind = "map-grid"
+from_level = 1
+source = "value:mode"
+[[panel]]
+kind = "text"
+from_level = 1
+source = "value:mode"
+markers = {{ you = "player" }}
+[[panel]]
+kind = "map-grid"
+from_level = 1
+source = "value:mode"
+markers = {{ item = "picture" }}
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def.check().iter().map(|p| p.path.clone()).collect();
+    for expected in [
+        "states[0].role",
+        "states[2].role",
+        "actions[0].menu",
+        "actions[1].menu_in",
+        "panel[0].markers",
+        "panel[1].markers",
+        "panel[2].pictures",
+    ] {
+        assert!(
+            problems.iter().any(|p| p == expected),
+            "{expected} in {problems:#?}"
+        );
+    }
+    assert_eq!(
+        problems
+            .iter()
+            .filter(|p| *p == "actions[1].menu_in")
+            .count(),
+        2,
+        "no menu, and a state it doesn't have"
     );
 }
