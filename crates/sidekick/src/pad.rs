@@ -86,7 +86,8 @@ impl Maker {
     pub(crate) const fn labels(self) -> PadLabels {
         match self {
             Self::PlayStation => PadLabels::Shapes,
-            Self::Nintendo | Self::Other => PadLabels::Letters,
+            Self::Nintendo => PadLabels::Nintendo,
+            Self::Other => PadLabels::Letters,
         }
     }
 }
@@ -924,7 +925,7 @@ mod tests {
         assert_eq!(nav(Part::DPad(Way::Up), Maker::Other), Some(Nav::Up));
         assert_eq!(nav(Part::West, Maker::Other), None);
         assert_eq!(Maker::PlayStation.labels(), PadLabels::Shapes);
-        assert_eq!(Maker::Nintendo.labels(), PadLabels::Letters);
+        assert_eq!(Maker::Nintendo.labels(), PadLabels::Nintendo);
     }
 
     /// What `play` holds and patches after one update with `held`.

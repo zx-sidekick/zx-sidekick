@@ -16,14 +16,15 @@ use sdl3::{
     mouse::MouseButton,
     pixels::{Color, PixelFormat},
     rect::Rect,
-    render::{FRect, ScaleMode, Texture, TextureCreator, WindowCanvas},
+    render::{BlendMode, FRect, ScaleMode, Texture, TextureCreator, WindowCanvas},
     video::{FullscreenType, WindowContext},
     GamepadSubsystem,
 };
 use sidekick_core::{Machine, Session, SAMPLE_RATE};
+use sidekick_def::Definition;
 use sidekick_ui::{
-    Canvas, Fonts, LibraryPage, PadLabels, Refusal, TapePrompt, TAPE_PROMPT_HEIGHT,
-    TAPE_PROMPT_WIDTH,
+    Canvas, Face, Fonts, LibraryPage, NoticeHint, PadLabels, PadMark, PauseNotice, Refusal,
+    TapePrompt, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
     collections::BTreeMap,
@@ -110,6 +111,8 @@ struct Output<'a> {
     creator: &'a TextureCreator<WindowContext>,
     picture: Texture<'a>,
     prompt: Option<Texture<'a>>,
+    /// The pause notice, and the scale and pad it was drawn for.
+    notice: Option<(Texture<'a>, u32, PadLabels)>,
     sound: Option<AudioStreamOwner>,
     fonts: Fonts,
 }
@@ -141,6 +144,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         canvas,
         creator: &creator,
         prompt: None,
+        notice: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
         sound: open_sound(&sdl),
         fonts: Fonts::new(),
@@ -202,29 +206,38 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
             }
         }
         gamepads.label(&mut screen);
-        out.canvas.set_draw_color(Color::RGB(0, 0, 0));
-        out.canvas.clear();
-        match &mut screen {
-            Screen::Play(player) => player.frame(&mut out, &mut gamepads.pads)?,
-            Screen::Prompt(prompt) => {
-                let page = &prompt.page;
-                show(&mut out, &mut prompt.drawn, |fonts, scale| {
-                    page.draw(fonts, scale)
-                })?;
-            }
-            Screen::Library(library) => {
-                let page = &library.page;
-                show(&mut out, &mut library.drawn, |fonts, scale| {
-                    page.draw(fonts, scale)
-                })?;
-            }
-        }
-        out.canvas.present();
+        screen.draw(&mut out, &mut gamepads)?;
     }
     Ok(())
 }
 
 impl Screen {
+    /// Runs the frames due, and draws the screen.
+    fn draw(&mut self, out: &mut Output, gamepads: &mut Gamepads) -> Result<(), String> {
+        out.canvas.set_draw_color(Color::RGB(0, 0, 0));
+        out.canvas.clear();
+        match self {
+            Self::Play(player) => {
+                player.frame(out, &mut gamepads.pads)?;
+                player.notice(out, gamepads.last.labels())?;
+            }
+            Self::Prompt(prompt) => {
+                let page = &prompt.page;
+                show(out, &mut prompt.drawn, |fonts, scale| {
+                    page.draw(fonts, scale)
+                })?;
+            }
+            Self::Library(library) => {
+                let page = &library.page;
+                show(out, &mut library.drawn, |fonts, scale| {
+                    page.draw(fonts, scale)
+                })?;
+            }
+        }
+        out.canvas.present();
+        Ok(())
+    }
+
     /// Handles an event, and the pad presses it made.
     fn event(&mut self, event: &Event, presses: &[(Part, Maker)], canvas: &WindowCanvas) -> Choice {
         let navs = presses.iter().filter_map(|&(p, m)| pad::nav(p, m));
@@ -458,10 +471,86 @@ impl Player {
         out.picture
             .update(None::<Rect>, &self.rgba, PICTURE.0 as usize * 4)
             .map_err(|e| e.to_string())?;
+        // Dimmed to 55% while the game is paused, under the notice.
+        let dim = if self.paused() { 140 } else { 255 };
+        out.picture.set_color_mod(dim, dim, dim);
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         out.canvas
             .copy(&out.picture, None, frect(placement(output, PICTURE)))
             .map_err(|e| e.to_string())
+    }
+
+    fn paused(&self) -> bool {
+        self.session.state() == Some("paused")
+    }
+
+    /// Draws the pause notice over the picture while the game is paused, centred on it, at
+    /// the largest whole scale no more than a third of the picture's (the notice is laid out
+    /// on the picture at three logical pixels to the Spectrum's one).
+    fn notice(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
+        if !self.paused() {
+            return Ok(());
+        }
+        let output = out.canvas.output_size().map_err(|e| e.to_string())?;
+        let (px, py, pw, ph) = placement(output, PICTURE);
+        let scale = (pw / PICTURE.0 / 3).max(1);
+        if out
+            .notice
+            .as_ref()
+            .is_none_or(|&(_, s, l)| s != scale || l != labels)
+        {
+            let card = pause_notice(self.session.definition(), labels).draw(&mut out.fonts, scale);
+            let (w, h) = card.size();
+            let mut texture = new_texture(out.creator, w, h)?;
+            texture
+                .update(None::<Rect>, &card.straight_rgba(), w as usize * 4)
+                .map_err(|e| e.to_string())?;
+            texture.set_blend_mode(BlendMode::Blend);
+            out.notice = Some((texture, scale, labels));
+        }
+        let (w, h) = (PAUSE_NOTICE_WIDTH * scale, PAUSE_NOTICE_HEIGHT * scale);
+        let at = (px + (pw - w) / 2, py + (ph - h) / 2, w, h);
+        if let Some((texture, _, _)) = &out.notice {
+            out.canvas
+                .copy(texture, None, frect(at))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+/// The pause notice a definition words, for a pad marked as `labels` says.
+fn pause_notice(definition: Option<&Definition>, labels: PadLabels) -> PauseNotice {
+    let notice = definition
+        .into_iter()
+        .flat_map(|d| &d.states)
+        .find(|s| s.name == "paused")
+        .and_then(|s| s.notice.as_ref());
+    let Some(notice) = notice else {
+        return PauseNotice {
+            pad: labels,
+            ..PauseNotice::default()
+        };
+    };
+    PauseNotice {
+        text: notice.text.clone(),
+        hints: notice
+            .hints
+            .iter()
+            .map(|hint| NoticeHint {
+                keys: hint.keys.clone(),
+                pad: hint.pad.as_deref().and_then(|part| match part {
+                    "west" => Some(PadMark::Face(Face::West)),
+                    "south" => Some(PadMark::Face(Face::South)),
+                    "east" => Some(PadMark::Face(Face::East)),
+                    "north" => Some(PadMark::Face(Face::North)),
+                    "dpad" | "stick" => Some(PadMark::Directions),
+                    _ => None,
+                }),
+                does: hint.does.clone(),
+            })
+            .collect(),
+        pad: labels,
     }
 }
 
