@@ -20,6 +20,7 @@ pub use rustzx_core::zx::keys::{CompoundKey, ZXKey as Key};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
 pub use rustzx_z80::Regs;
 pub use session::{Reading, Record, Session, SwitchError};
+pub use sidekick_script::{Fact, Script};
 pub use value::{Read, WriteError};
 
 use host::Bytes;
@@ -69,6 +70,8 @@ pub struct Machine {
     /// The watch's addresses passed, as of the last `run` (the core lends its debug interface
     /// mutably only).
     passed: Vec<u16>,
+    /// Whether the tape has loaded, as of the last `run`.
+    tape_loaded: bool,
     /// The border and screen together, as of the last frame's end.
     picture: Picture,
     /// The last frame's sound, left and right.
@@ -104,6 +107,7 @@ impl Machine {
             model,
             frame_ended: false,
             passed: Vec::new(),
+            tape_loaded: false,
             picture: Picture::new(320, BORDER.height(), FrameBufferSource::Border, ()),
             sound: Vec::with_capacity(SAMPLE_RATE / 50),
         })
@@ -337,10 +341,18 @@ impl Machine {
         self.emulator.debug_interface().expect(WATCH_SET)
     }
 
-    /// Copies the watch's addresses passed, reusing the copy's memory.
+    /// Copies the watch's addresses passed, reusing the copy's memory, and whether the tape
+    /// has loaded.
     fn copy_passed(&mut self) {
         let watch = self.emulator.debug_interface().expect(WATCH_SET);
+        self.tape_loaded = watch.tape_loaded();
         self.passed.clear();
         self.passed.extend_from_slice(watch.passed());
+    }
+
+    /// Whether the tape's every block has gone in through the ROM's loader.
+    #[must_use]
+    pub const fn tape_loaded(&self) -> bool {
+        self.tape_loaded
     }
 }

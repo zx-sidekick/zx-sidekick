@@ -1,7 +1,7 @@
 //! Games: where their definitions and tapes are, and which tape a game takes.
 
 use crate::pad::Mapping;
-use sidekick_core::{Machine, Model, Session};
+use sidekick_core::{Machine, Model, Script, Session};
 use sidekick_def::{
     tapes_in, Definition, Library, LoadError, Machine as Spectrum, Package, Tape, TapeFormat,
 };
@@ -220,11 +220,23 @@ impl Game {
     /// # Errors
     /// If the tape can't be played.
     pub(crate) fn session(&self, tape: &Tape) -> Result<Session, String> {
-        Ok(Session::new(
-            self.machine(tape)?,
-            Some(self.definition().clone()),
-        ))
+        let mut session = Session::new(self.machine(tape)?, Some(self.definition().clone()));
+        if let Some(script) = script(&self.package) {
+            session.set_script(script);
+        }
+        Ok(session)
     }
+}
+
+/// A package's script, compiled, or why it couldn't be; `None` without one.
+pub(crate) fn script(package: &Package) -> Option<Result<Script, String>> {
+    let file = &package.definition.script.as_ref()?.file;
+    let compiled = package
+        .read(file)
+        .map_err(|e| format!("{file}: {e}"))
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| format!("{file}: not text (UTF-8)")))
+        .and_then(|source| Script::compile(&source).map_err(|e| format!("{file}: {e}")));
+    Some(compiled)
 }
 
 /// The emulated model for a definition's machine.

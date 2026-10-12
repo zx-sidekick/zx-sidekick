@@ -439,16 +439,18 @@ file = "scripts/starquake.rhai"
 
 It may provide:
 
-- **`on_load(mem)`**, run once when the tape has loaded. Whatever it returns is passed to every later call as `loaded`.
-- **`on_frame(mem, loaded, prev, kept)`**, run at each sync point. It returns a map of results: each key is a `script:<result>` a widget can show, plus `kept` to add entries to `[persist]` lists.
-- **Action functions** named by `[[actions]] script`, called as `fn(mem, loaded, prev, kept)`, returning the same as `on_frame`.
+- **`on_load`**, run once: when the tape has loaded through the ROM's loader, or when the game's state is first known. Whatever it returns is passed to every later call as `loaded`.
+- **`on_frame`**, run each frame, after the values are read. It returns a map of results: each key is a `script:<result>` a widget can show, plus `kept` to add entries to `[persist]` lists.
+- **Action functions** named by `[[actions]] script`, called when the action's button or key is pressed, returning the same as `on_frame`.
+
+Each function is given as many of `mem`, `loaded`, `prev`, `kept` and `level` as it takes, in that order: `fn on_load(mem)` and `fn on_frame(mem, loaded, prev)` are both fine.
 
 What a script can use:
 
 | | |
 |---|---|
 | `mem.peek(addr)`, `mem.peek16(addr)` | Bytes and words |
-| `mem.value(name)` | A named value |
+| `mem.value(name)` | A named value (`()` when it couldn't be read this frame; a name that isn't a value stops the script, so a typo shows) |
 | `mem.table(name)` | A table, as a list of maps of its fields |
 | `mem.state` | The game's state's name |
 | `mem.write(name, v)` | Only for `writable` values, and only in action functions |
@@ -456,7 +458,9 @@ What a script can use:
 | `kept` | The `[persist]` lists |
 | `level` | The guidance level |
 
-A script can't touch files, the network or the clock, and each call has an operation limit. A script that goes over it, or fails, has its widgets turned off for the rest of the session, with the reason in the panel.
+A script can't touch files, the network or the clock, and can't `eval`. Each call may take 1,000,000 operations and call 32 deep; strings are at most 4,096 characters, arrays and maps 65,536 entries. A script that goes over a limit, or fails, is turned off for the rest of the session, and its widgets show the reason instead. `mem.write` in `on_frame` is a failure: only actions write.
+
+`sidekick check` compiles the script, reporting a syntax error with its line, and checks that every action's `script` names one of its functions.
 
 ## Checking a definition
 

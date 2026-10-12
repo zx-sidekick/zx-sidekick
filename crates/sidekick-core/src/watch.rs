@@ -48,6 +48,11 @@ impl Watch {
         self.stop_when_loaded = stop;
     }
 
+    /// Whether the tape's every block has gone in through the ROM's loader.
+    pub const fn tape_loaded(&self) -> bool {
+        self.blocks > 0 && self.loads >= self.blocks
+    }
+
     /// Whether the last stop was the tape having loaded; asking clears it.
     pub const fn take_loaded(&mut self) -> bool {
         std::mem::replace(&mut self.loaded, false)

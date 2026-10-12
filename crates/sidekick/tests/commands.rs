@@ -129,3 +129,52 @@ fn something_unreadable_exits_2_with_its_reason_on_standard_error() {
     assert_eq!(run.status, 2);
     assert!(run.stderr.contains("snyc"), "{}", run.stderr);
 }
+
+#[test]
+fn check_compiles_the_script_and_finds_its_action_functions() {
+    let dir = TempDir::new().unwrap();
+    let game = dir.path().join("game");
+    fs::create_dir_all(game.join("scripts")).unwrap();
+    let definition = format!(
+        "{COMPLETE}[[actions]]\nid = \"route\"\nscript = \"next_route\"\n[script]\nfile = \"scripts/game.rhai\"\n"
+    );
+    fs::write(game.join("game.toml"), definition).unwrap();
+
+    fs::write(
+        game.join("scripts/game.rhai"),
+        "fn on_frame(mem) {\n  #{ x: \n}\n",
+    )
+    .unwrap();
+    let broken = sidekick(&["check", path(&game)]);
+    assert_eq!(broken.status, 1, "{}{}", broken.stdout, broken.stderr);
+    assert!(
+        broken
+            .stdout
+            .starts_with("script: scripts/game.rhai: line 3: "),
+        "{}",
+        broken.stdout
+    );
+
+    fs::write(game.join("scripts/game.rhai"), "fn on_frame(mem) { #{} }\n").unwrap();
+    let missing = sidekick(&["check", path(&game)]);
+    assert_eq!(
+        missing.stdout,
+        "actions[0].script: the script has no function next_route\n"
+    );
+
+    fs::write(
+        game.join("scripts/game.rhai"),
+        "fn on_frame(mem) { #{} }\nfn next_route(mem) { #{} }\n",
+    )
+    .unwrap();
+    let clean = sidekick(&["check", path(&game)]);
+    assert_eq!((clean.status, clean.stdout.as_str()), (0, ""));
+
+    fs::remove_file(game.join("scripts/game.rhai")).unwrap();
+    let gone = sidekick(&["check", path(&game)]);
+    assert!(
+        gone.stdout.starts_with("script: scripts/game.rhai: "),
+        "{}",
+        gone.stdout
+    );
+}

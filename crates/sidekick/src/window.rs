@@ -314,7 +314,10 @@ impl Screen {
             Self::Play(player) => {
                 play_event(player.session.machine_mut(), event);
                 for &(part, _) in presses {
-                    player.play.pressed(part);
+                    if let Some(function) = player.play.pressed(part) {
+                        // A failure turns the script off, which the panel shows.
+                        let _ = player.session.script_action(&function);
+                    }
                 }
                 Choice::Stay
             }
@@ -553,11 +556,7 @@ impl Player {
             .copy(&out.picture, None, frect(layout.picture))
             .map_err(|e| e.to_string())?;
         if let Some(at) = layout.panel {
-            let panel = panel::panel(
-                self.session.definition(),
-                self.level,
-                self.session.reading(),
-            );
+            let panel = panel::of(&self.session, self.level);
             if let Some(panel) = panel {
                 cached(
                     out.creator,
@@ -695,7 +694,9 @@ impl Player {
             }
             Outcome::EndGame => {
                 self.close_menu(pads);
-                self.play.act("end-game");
+                if let Some(function) = self.play.act("end-game") {
+                    let _ = self.session.script_action(&function);
+                }
             }
             Outcome::Exit => return MenuEvent::Quit,
         }
