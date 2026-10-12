@@ -111,8 +111,8 @@ struct Output<'a> {
     creator: &'a TextureCreator<WindowContext>,
     picture: Texture<'a>,
     prompt: Option<Texture<'a>>,
-    /// The pause notice, and the scale and pad it was drawn for.
-    notice: Option<(Texture<'a>, u32, PadLabels)>,
+    /// The pause notice drawn, and what it was drawn from and at.
+    notice: Option<(Texture<'a>, PauseNotice, u32)>,
     sound: Option<AudioStreamOwner>,
     fonts: Fonts,
 }
@@ -494,19 +494,20 @@ impl Player {
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let (px, py, pw, ph) = placement(output, PICTURE);
         let scale = (pw / PICTURE.0 / 3).max(1);
+        let notice = pause_notice(self.session.definition(), labels);
         if out
             .notice
             .as_ref()
-            .is_none_or(|&(_, s, l)| s != scale || l != labels)
+            .is_none_or(|(_, n, s)| *s != scale || *n != notice)
         {
-            let card = pause_notice(self.session.definition(), labels).draw(&mut out.fonts, scale);
+            let card = notice.draw(&mut out.fonts, scale);
             let (w, h) = card.size();
             let mut texture = new_texture(out.creator, w, h)?;
             texture
                 .update(None::<Rect>, &card.straight_rgba(), w as usize * 4)
                 .map_err(|e| e.to_string())?;
             texture.set_blend_mode(BlendMode::Blend);
-            out.notice = Some((texture, scale, labels));
+            out.notice = Some((texture, notice, scale));
         }
         let (w, h) = (PAUSE_NOTICE_WIDTH * scale, PAUSE_NOTICE_HEIGHT * scale);
         let at = (px + (pw - w) / 2, py + (ph - h) / 2, w, h);
