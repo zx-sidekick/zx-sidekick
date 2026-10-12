@@ -4,24 +4,29 @@
 use crate::{
     games::Game,
     keys::{spectrum_key, Spectrum},
+    pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     picture::{placement, to_rgba},
 };
 use sdl3::{
     audio::{AudioFormat, AudioSpec, AudioStreamOwner},
     dialog::{show_open_file_dialog, DialogFileFilter},
     event::Event,
+    gamepad::{Axis, Button, Gamepad, GamepadType},
     keyboard::{Mod, Scancode},
     mouse::MouseButton,
     pixels::{Color, PixelFormat},
     rect::Rect,
     render::{FRect, ScaleMode, Texture, TextureCreator, WindowCanvas},
     video::{FullscreenType, WindowContext},
+    GamepadSubsystem,
 };
 use sidekick_core::{Machine, SAMPLE_RATE};
 use sidekick_ui::{
-    Canvas, Fonts, LibraryPage, Refusal, TapePrompt, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    Canvas, Fonts, LibraryPage, PadLabels, Refusal, TapePrompt, TAPE_PROMPT_HEIGHT,
+    TAPE_PROMPT_WIDTH,
 };
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -45,8 +50,8 @@ const PROMPT: (u32, u32) = (TAPE_PROMPT_WIDTH, TAPE_PROMPT_HEIGHT);
 
 /// What the window opens on.
 pub(crate) enum Start {
-    /// A machine to play, and its title.
-    Play(Box<Machine>, String),
+    /// A machine to play, its title, and what a pad does in it.
+    Play(Box<Machine>, String, Mapping),
     /// A game whose tape has to be located first.
     Prompt(Box<Game>),
     /// Several games, to choose one.
@@ -74,6 +79,7 @@ struct Prompt {
 /// A machine being played, and what keeps its time and sound.
 struct Player {
     machine: Box<Machine>,
+    play: Play,
     started: Instant,
     frames_run: u64,
     rgba: Vec<u8>,
@@ -84,6 +90,15 @@ enum Screen {
     Library(Box<Library>),
     Prompt(Box<Prompt>),
     Play(Player),
+}
+
+/// The pads plugged in, what each holds, and the maker of the one used last.
+struct Gamepads {
+    subsystem: Option<GamepadSubsystem>,
+    /// Each pad open, by its id, and who made it. Closed when it's dropped.
+    open: BTreeMap<u32, (Gamepad, Maker)>,
+    pads: Pads,
+    last: Maker,
 }
 
 /// What the window draws with.
@@ -105,7 +120,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
     let sdl = sdl3::init().map_err(|e| e.to_string())?;
     let video = sdl.video().map_err(|e| e.to_string())?;
     let title = match &start {
-        Start::Play(_, title) => title.clone(),
+        Start::Play(_, title, _) => title.clone(),
         Start::Prompt(game) => game.title(),
         Start::Library(_) => "Choose a game".to_owned(),
     };
@@ -129,6 +144,13 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
     };
     let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
     let mut screen = first_screen(start);
+    let mut gamepads = Gamepads {
+        // No gamepad support is no reason not to play by keyboard.
+        subsystem: sdl.gamepad().ok(),
+        open: BTreeMap::new(),
+        pads: Pads::default(),
+        last: Maker::default(),
+    };
 
     'run: loop {
         for event in events.poll_iter() {
@@ -148,33 +170,33 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                             .map_err(|e| e.to_string())?;
                     }
                 }
-                event => match &mut screen {
-                    Screen::Play(player) => play_event(&mut player.machine, &event),
-                    Screen::Prompt(prompt) => {
-                        if prompt.event(&event, &out.canvas) {
-                            break 'run;
-                        }
-                    }
-                    Screen::Library(library) => match library.event(&event, &out.canvas) {
+                event => {
+                    let presses = gamepads.event(&event);
+                    match screen.event(&event, &presses, &out.canvas) {
                         Choice::Stay => {}
                         Choice::Quit => break 'run,
                         Choice::Play(i) => {
-                            let game = library.games.swap_remove(i);
-                            screen = open_game(game, &mut out.canvas)?;
+                            if let Screen::Library(library) = &mut screen {
+                                let game = library.games.swap_remove(i);
+                                screen = open_game(game, &mut out.canvas)?;
+                                gamepads.pads.hold_back();
+                            }
                         }
-                    },
-                },
+                    }
+                }
             }
         }
         if let Screen::Prompt(prompt) = &mut screen {
-            if let Some(machine) = prompt.take_offer() {
-                screen = Screen::Play(Player::new(machine));
+            if let Some((machine, mapping)) = prompt.take_offer() {
+                screen = Screen::Play(Player::new(machine, mapping));
+                gamepads.pads.hold_back();
             }
         }
+        gamepads.label(&mut screen);
         out.canvas.set_draw_color(Color::RGB(0, 0, 0));
         out.canvas.clear();
         match &mut screen {
-            Screen::Play(player) => player.frame(&mut out)?,
+            Screen::Play(player) => player.frame(&mut out, &gamepads.pads)?,
             Screen::Prompt(prompt) => {
                 let page = &prompt.page;
                 show(&mut out, &mut prompt.drawn, |fonts, scale| {
@@ -193,10 +215,145 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
     Ok(())
 }
 
+impl Screen {
+    /// Handles an event, and the pad presses it made.
+    fn event(&mut self, event: &Event, presses: &[(Part, Maker)], canvas: &WindowCanvas) -> Choice {
+        let navs = presses.iter().filter_map(|&(p, m)| pad::nav(p, m));
+        match self {
+            Self::Play(player) => {
+                play_event(&mut player.machine, event);
+                for &(part, _) in presses {
+                    player.play.pressed(part);
+                }
+                Choice::Stay
+            }
+            Self::Prompt(prompt) => {
+                if prompt.event(event, canvas) || prompt.navs(navs, canvas) {
+                    Choice::Quit
+                } else {
+                    Choice::Stay
+                }
+            }
+            Self::Library(library) => match library.event(event, canvas) {
+                Choice::Stay => library.navs(navs),
+                choice => choice,
+            },
+        }
+    }
+}
+
+impl Gamepads {
+    /// Takes in a pad event: a pad plugged in or out, a button, an axis. Returns the parts
+    /// pressed that count, each with the maker of the pad it's on.
+    fn event(&mut self, event: &Event) -> Vec<(Part, Maker)> {
+        let (pad, parts) = match *event {
+            Event::GamepadAdded { which, .. } => {
+                if let Some(gamepad) = self.subsystem.as_ref().and_then(|s| s.open(which).ok()) {
+                    let maker = maker(gamepad.r#type());
+                    self.open.insert(which.raw(), (gamepad, maker));
+                    self.last = maker;
+                }
+                return Vec::new();
+            }
+            Event::GamepadRemoved { which, .. } => {
+                self.open.remove(&which.raw());
+                self.pads.removed(which.raw());
+                return Vec::new();
+            }
+            Event::GamepadButtonDown { which, button, .. } => (
+                which.raw(),
+                part(button)
+                    .and_then(|p| self.pads.button(which.raw(), p, true))
+                    .into_iter()
+                    .collect(),
+            ),
+            Event::GamepadButtonUp { which, button, .. } => {
+                if let Some(p) = part(button) {
+                    self.pads.button(which.raw(), p, false);
+                }
+                return Vec::new();
+            }
+            Event::GamepadAxisMotion {
+                which, axis, value, ..
+            } => match pad_axis(axis) {
+                Some(axis) => (which.raw(), self.pads.axis(which.raw(), axis, value)),
+                None => return Vec::new(),
+            },
+            _ => return Vec::new(),
+        };
+        let maker = self.open.get(&pad).map_or(self.last, |&(_, m)| m);
+        if !parts.is_empty() {
+            self.last = maker;
+        }
+        parts.into_iter().map(|p| (p, maker)).collect()
+    }
+
+    /// Shows the last pad's buttons on the pages: always on the library, on the tape prompt
+    /// once a pad is plugged in.
+    fn label(&self, screen: &mut Screen) {
+        let labels = self.last.labels();
+        match screen {
+            Screen::Library(library) if library.page.pad != labels => {
+                library.page.pad = labels;
+                library.drawn = None;
+            }
+            Screen::Prompt(prompt) => {
+                let pad = (!self.open.is_empty()).then_some(labels);
+                if prompt.page.pad != pad {
+                    prompt.page.pad = pad;
+                    prompt.drawn = None;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A pad's button, by its position.
+const fn part(button: Button) -> Option<Part> {
+    Some(match button {
+        Button::DPadUp => Part::DPad(Way::Up),
+        Button::DPadDown => Part::DPad(Way::Down),
+        Button::DPadLeft => Part::DPad(Way::Left),
+        Button::DPadRight => Part::DPad(Way::Right),
+        Button::West => Part::West,
+        Button::South => Part::South,
+        Button::East => Part::East,
+        Button::North => Part::North,
+        Button::LeftShoulder => Part::L1,
+        Button::RightShoulder => Part::R1,
+        Button::Start => Part::Start,
+        Button::Back => Part::Select,
+        _ => return None,
+    })
+}
+
+const fn pad_axis(axis: Axis) -> Option<pad::Axis> {
+    Some(match axis {
+        Axis::LeftX => pad::Axis::StickX,
+        Axis::LeftY => pad::Axis::StickY,
+        Axis::TriggerLeft => pad::Axis::L2,
+        Axis::TriggerRight => pad::Axis::R2,
+        _ => return None,
+    })
+}
+
+const fn maker(kind: GamepadType) -> Maker {
+    match kind {
+        GamepadType::PS3 | GamepadType::PS4 | GamepadType::PS5 => Maker::PlayStation,
+        GamepadType::NintendoSwitchPro
+        | GamepadType::NintendoSwitchJoyconLeft
+        | GamepadType::NintendoSwitchJoyconRight
+        | GamepadType::NintendoSwitchJoyconPair => Maker::Nintendo,
+        _ => Maker::Other,
+    }
+}
+
 impl Player {
-    fn new(machine: Box<Machine>) -> Self {
+    fn new(machine: Box<Machine>, mapping: Mapping) -> Self {
         Self {
             machine,
+            play: Play::new(mapping),
             started: Instant::now(),
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
@@ -205,7 +362,7 @@ impl Player {
     }
 
     /// Runs the frames that are due, queues their sound, and draws the latest picture.
-    fn frame(&mut self, out: &mut Output) -> Result<(), String> {
+    fn frame(&mut self, out: &mut Output, pads: &Pads) -> Result<(), String> {
         let due = out.sound.as_ref().map_or_else(
             || frames_due(self.started.elapsed(), self.frames_run),
             |stream| {
@@ -218,7 +375,9 @@ impl Player {
             std::thread::sleep(Duration::from_millis(1));
         }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
+            send(&mut self.machine, self.play.update(pads.held()));
             self.machine.run_frame().map_err(|e| e.to_string())?;
+            self.play.frame_ran();
             self.frames_run += 1;
             if let Some(stream) = &out.sound {
                 self.samples.clear();
@@ -286,13 +445,25 @@ impl Prompt {
         false
     }
 
+    /// Pad presses: confirm locates the tape, back quits. Returns true to quit.
+    fn navs(&self, navs: impl Iterator<Item = Nav>, canvas: &WindowCanvas) -> bool {
+        for nav in navs {
+            match nav {
+                Nav::Confirm => self.locate(canvas),
+                Nav::Back => return true,
+                Nav::Up | Nav::Down => {}
+            }
+        }
+        false
+    }
+
     /// A file offered since the last pass, taken as the tape or refused on the page. A tape
     /// that's the game's but can't be played yet (a `.tzx`) is refused too, not fatal.
-    fn take_offer(&mut self) -> Option<Box<Machine>> {
+    fn take_offer(&mut self) -> Option<(Box<Machine>, Mapping)> {
         let file = self.chosen.lock().ok().and_then(|mut c| c.take())?;
         let refusal = match self.game.offer(&file) {
             Ok(tape) => match self.game.machine(&tape) {
-                Ok(machine) => return Some(Box::new(machine)),
+                Ok(machine) => return Some((Box::new(machine), self.game.mapping())),
                 Err(e) => Refusal {
                     heading: "This tape can't be played yet".to_owned(),
                     detail: e,
@@ -371,6 +542,22 @@ impl Library {
         Choice::Stay
     }
 
+    /// Pad presses: up and down choose, confirm plays, back quits.
+    fn navs(&mut self, navs: impl Iterator<Item = Nav>) -> Choice {
+        for nav in navs {
+            match nav {
+                Nav::Up if self.page.chosen > 0 => self.choose(self.page.chosen - 1),
+                Nav::Down if self.page.chosen + 1 < self.games.len() => {
+                    self.choose(self.page.chosen + 1);
+                }
+                Nav::Confirm => return Choice::Play(self.page.chosen),
+                Nav::Back => return Choice::Quit,
+                Nav::Up | Nav::Down => {}
+            }
+        }
+        Choice::Stay
+    }
+
     const fn choose(&mut self, game: usize) {
         self.page.chosen = game;
         self.drawn = None;
@@ -379,12 +566,13 @@ impl Library {
 
 fn first_screen(start: Start) -> Screen {
     match start {
-        Start::Play(machine, _) => Screen::Play(Player::new(machine)),
+        Start::Play(machine, _, mapping) => Screen::Play(Player::new(machine, mapping)),
         Start::Prompt(game) => prompt_screen(*game),
         Start::Library(games) => Screen::Library(Box::new(Library {
             page: LibraryPage {
                 games: games.iter().map(Game::entry).collect(),
                 chosen: 0,
+                pad: PadLabels::default(),
             },
             games,
             drawn: None,
@@ -400,7 +588,10 @@ fn open_game(game: Game, canvas: &mut WindowCanvas) -> Result<Screen, String> {
         .set_title(&format!("ZX Sidekick — {}", game.title()))
         .map_err(|e| e.to_string())?;
     match game.kept_tape() {
-        Some(tape) => Ok(Screen::Play(Player::new(Box::new(game.machine(&tape)?)))),
+        Some(tape) => Ok(Screen::Play(Player::new(
+            Box::new(game.machine(&tape)?),
+            game.mapping(),
+        ))),
         None => Ok(prompt_screen(game)),
     }
 }
@@ -509,6 +700,21 @@ fn is_fullscreen_toggle(scancode: Scancode, keymod: Mod) -> bool {
     let control_command = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD)
         && keymod.intersects(Mod::LGUIMOD | Mod::RGUIMOD);
     scancode == Scancode::F11 || (scancode == Scancode::F && control_command)
+}
+
+/// Presses and lets go on the Spectrum what a pad changed.
+fn send(machine: &mut Machine, changes: Changes) {
+    let inputs = changes
+        .release
+        .into_iter()
+        .map(|i| (i, false))
+        .chain(changes.press.into_iter().map(|i| (i, true)));
+    for (input, pressed) in inputs {
+        match input {
+            Input::Kempston(direction) => machine.kempston(direction.kempston(), pressed),
+            Input::Key(key) => machine.key(key.0, pressed),
+        }
+    }
 }
 
 fn press(machine: &mut Machine, scancode: Scancode, pressed: bool) {
