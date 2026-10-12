@@ -101,6 +101,8 @@ Every change comes with tests. Write a test instead of a one-off check script: a
 - **Tests run in parallel, so they stay fast.** Each builds its own machine and shares no state with another; nothing serialises them. Split a slow test rather than letting one dominate the run.
 - **No game in CI**: tests that need a tape read it from `assets/` and skip, saying so, when it's missing. CI runs everything else; the ROM tests run everywhere, since the ROM comes with `rustzx-core`.
 - **Golden images** of the program's own drawing are committed, over a plain stand-in for the game's picture: CI has no tape.
+- **A game's addresses come from its definition, in tests too**: a test looks a value's address up by name rather than writing the game's numbers into Rust.
+- **A game's script is tested on stand-ins** in CI: its real definition and script on a bare 48K, the game held in a state by parking the processor at that state's address, stand-in values written where the definition says (`crates/sidekick/tests/starquake_script.rs`). The real-tape tests confirm the facts; these keep the script honest without a tape.
 - **A flaky test is a bug to file**, not to rerun past.
 
 ## Comments

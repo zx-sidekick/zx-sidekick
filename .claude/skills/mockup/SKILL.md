@@ -62,8 +62,11 @@ GitHub has no upload API for issue attachments.
 ## Step 3: embed with exactly this URL form
 
 ```markdown
-![mockup](https://github.com/zx-sidekick/zx-sidekick/raw/<branch>/docs/mockups/<file>.png)
+![mockup](https://github.com/zx-sidekick/zx-sidekick/raw/<sha>/docs/mockups/<file>.png)
 ```
+
+`<sha>` is the commit that holds the image as shown, pushed before the embed is
+posted.
 
 Use the `github.com/…/raw/…` form, not `raw.githubusercontent.com`: it is the
 one that keeps rendering whether the repo is public or private, and
@@ -72,15 +75,14 @@ one that keeps rendering whether the repo is public or private, and
 Put it in the ticket's *Mockup* section. If you post it in a comment instead,
 the comment opens with the 🤖 "Comment by Claude" attribution line.
 
-**The embed must end up pointing at `main`.** A `/raw/<branch>/` embed dies
-when the branch is deleted on merge, silently and retroactively. The PR that
-merges the image repoints the embed to `/raw/main/…` (`build-slice`, Finish).
-Not a commit SHA: PRs are squash-merged, so the branch's commits aren't in
-`main`'s history.
+**Never embed by branch.** A `/raw/<branch>/` embed dies when the branch is
+deleted on merge, silently and retroactively. A commit link doesn't: GitHub
+keeps every PR's commits after a squash merge, and the image stays as it was
+shown for approval.
 
 ## Step 4: STOP for approval
 
 Move the card to `Your sign-off` and post a Next-steps comment asking for a
 yes, or for changes via an answer block. No real UI code before that. To
-iterate, re-render to the same filename on the same branch: the embed then
-shows the new version.
+iterate, re-render to the same filename on the same branch, push, and move the
+embed to the new commit.
