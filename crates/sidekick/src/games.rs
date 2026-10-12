@@ -177,6 +177,23 @@ impl Game {
             .and_then(|m| m.download.clone())
     }
 
+    /// The game as the library lists it: its title, its year and publisher, whether its tape
+    /// is kept.
+    pub(crate) fn entry(&self) -> sidekick_ui::LibraryEntry {
+        let game = &self.definition().game;
+        let line: Vec<String> = game
+            .year
+            .map(|y| y.to_string())
+            .into_iter()
+            .chain(game.publisher.clone())
+            .collect();
+        sidekick_ui::LibraryEntry {
+            title: game.title.clone(),
+            line: line.join(" · "),
+            ready: self.kept_tape().is_some(),
+        }
+    }
+
     /// The game's title.
     pub(crate) fn title(&self) -> String {
         self.definition().game.title.clone()

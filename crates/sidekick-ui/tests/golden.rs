@@ -1,7 +1,7 @@
 //! The program's screens, compared with golden images byte for byte. `UPDATE_GOLDEN=1`
 //! rewrites them; look at a changed image before committing it.
 
-use sidekick_ui::{Fonts, Refusal, TapePrompt};
+use sidekick_ui::{Fonts, LibraryEntry, LibraryPage, Refusal, TapePrompt};
 use std::path::PathBuf;
 
 fn golden(name: &str, png: &[u8]) {
@@ -62,4 +62,23 @@ fn at_scale_2_every_logical_pixel_is_four() {
     let mut fonts = Fonts::new();
     let canvas = starquake().draw(&mut fonts, 2);
     assert_eq!(canvas.size(), (1920, 1536));
+}
+
+#[test]
+fn the_library() {
+    let mut fonts = Fonts::new();
+    let entry = |title: &str, line: &str, ready| LibraryEntry {
+        title: title.to_owned(),
+        line: line.to_owned(),
+        ready,
+    };
+    let page = LibraryPage {
+        games: vec![
+            entry("Starquake", "1985 · Bubble Bus Software", true),
+            entry("Lunar Courier", "1984 · Example Software", false),
+            entry("Deep Vault", "1986 · Another Label", false),
+        ],
+        chosen: 0,
+    };
+    golden("library.png", &page.draw(&mut fonts, 1).png());
 }

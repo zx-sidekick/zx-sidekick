@@ -1,6 +1,10 @@
 //! The tape prompt: shown when a game's tape isn't found (`docs/mockups/starquake/tape-prompt.png`).
 
-use crate::{colors, Align, Canvas, Color, Fonts, Line, Style, Weight};
+use crate::{
+    colors,
+    hints::{hints, Hint, Press},
+    Align, Canvas, Color, Fonts, Line, Style, Weight,
+};
 
 /// The prompt's width, in logical pixels.
 pub const WIDTH: u32 = 960;
@@ -123,7 +127,20 @@ impl TapePrompt {
             &mut c,
             fonts,
             (840.0, 709.0),
-            &[("Enter", "locate"), ("W", "website"), ("Esc", "quit")],
+            &[
+                Hint {
+                    press: &[Press::Key("Enter")],
+                    does: "locate",
+                },
+                Hint {
+                    press: &[Press::Key("W")],
+                    does: "website",
+                },
+                Hint {
+                    press: &[Press::Key("Esc")],
+                    does: "quit",
+                },
+            ],
         );
         c
     }
@@ -264,31 +281,5 @@ fn spans(c: &mut Canvas, fonts: &mut Fonts, (x, y): (f32, f32), runs: &[(&str, S
     let mut left = x - width / 2.0;
     for (text, style) in runs {
         left += c.text(fonts, text, (left, y), 16.0, Align::Left, style);
-    }
-}
-
-/// Key hints along the bottom, right-aligned on `x`: each key in a squarish badge, then what it
-/// does.
-fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), items: &[(&str, &str)]) {
-    let key = Style::new(12.0, colors::TEXT).weight(Weight::SemiBold);
-    let what = Style::new(12.0, colors::MUTED);
-    let widths: Vec<(f32, f32)> = items
-        .iter()
-        .map(|(k, w)| (fonts.measure(k, &key) + 10.0, fonts.measure(w, &what)))
-        .collect();
-    let gaps: f32 = widths.iter().skip(1).map(|_| 14.0).sum();
-    let total: f32 = widths.iter().map(|(k, w)| k + 6.0 + w).sum::<f32>() + gaps;
-    let mut x = right - total;
-    for ((k, w), (kw, ww)) in items.iter().zip(widths) {
-        c.rect(
-            (x, y, kw, 20.0),
-            3.0,
-            None,
-            Some(Line::solid(colors::KEY_EDGE, 1.0)),
-        );
-        c.text(fonts, k, (x + kw / 2.0, y + 1.0), 18.0, Align::Center, &key);
-        x += kw + 6.0;
-        c.text(fonts, w, (x, y + 1.0), 18.0, Align::Left, &what);
-        x += ww + 14.0;
     }
 }

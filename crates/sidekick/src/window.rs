@@ -18,7 +18,9 @@ use sdl3::{
     video::{FullscreenType, WindowContext},
 };
 use sidekick_core::{Machine, SAMPLE_RATE};
-use sidekick_ui::{Fonts, Refusal, TapePrompt, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH};
+use sidekick_ui::{
+    Canvas, Fonts, LibraryPage, Refusal, TapePrompt, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -47,6 +49,16 @@ pub(crate) enum Start {
     Play(Box<Machine>, String),
     /// A game whose tape has to be located first.
     Prompt(Box<Game>),
+    /// Several games, to choose one.
+    Library(Vec<Game>),
+}
+
+/// The library, choosing a game.
+struct Library {
+    games: Vec<Game>,
+    page: LibraryPage,
+    /// The scale the page was last drawn at; drawn again when it or the page changes.
+    drawn: Option<u32>,
 }
 
 /// The tape prompt, waiting for a tape.
@@ -69,6 +81,7 @@ struct Player {
 }
 
 enum Screen {
+    Library(Box<Library>),
     Prompt(Box<Prompt>),
     Play(Player),
 }
@@ -94,6 +107,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
     let title = match &start {
         Start::Play(_, title) => title.clone(),
         Start::Prompt(game) => game.title(),
+        Start::Library(_) => "Choose a game".to_owned(),
     };
     let window = video
         .window(&format!("ZX Sidekick — {title}"), 1368, 768)
@@ -114,15 +128,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         fonts: Fonts::new(),
     };
     let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
-    let mut screen = match start {
-        Start::Play(machine, _) => Screen::Play(Player::new(machine)),
-        Start::Prompt(game) => Screen::Prompt(Box::new(Prompt {
-            page: game.prompt(),
-            game: *game,
-            drawn: None,
-            chosen: Arc::new(Mutex::new(None)),
-        })),
-    };
+    let mut screen = first_screen(start);
 
     'run: loop {
         for event in events.poll_iter() {
@@ -149,6 +155,14 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                             break 'run;
                         }
                     }
+                    Screen::Library(library) => match library.event(&event, &out.canvas) {
+                        Choice::Stay => {}
+                        Choice::Quit => break 'run,
+                        Choice::Play(i) => {
+                            let game = library.games.swap_remove(i);
+                            screen = open_game(game, &mut out.canvas)?;
+                        }
+                    },
                 },
             }
         }
@@ -161,7 +175,18 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         out.canvas.clear();
         match &mut screen {
             Screen::Play(player) => player.frame(&mut out)?,
-            Screen::Prompt(prompt) => prompt.draw(&mut out)?,
+            Screen::Prompt(prompt) => {
+                let page = &prompt.page;
+                show(&mut out, &mut prompt.drawn, |fonts, scale| {
+                    page.draw(fonts, scale)
+                })?;
+            }
+            Screen::Library(library) => {
+                let page = &library.page;
+                show(&mut out, &mut library.drawn, |fonts, scale| {
+                    page.draw(fonts, scale)
+                })?;
+            }
         }
         out.canvas.present();
     }
@@ -280,31 +305,6 @@ impl Prompt {
         None
     }
 
-    /// Draws the page at the largest whole scale that fits, drawing it anew when that changed.
-    fn draw(&mut self, out: &mut Output) -> Result<(), String> {
-        let output = out.canvas.output_size().map_err(|e| e.to_string())?;
-        let (x, y, w, h) = placement(output, PROMPT);
-        let scale = w / PROMPT.0;
-        if self.drawn != Some(scale) {
-            let page = self.page.draw(&mut out.fonts, scale);
-            let (pw, ph) = page.size();
-            let mut texture = new_texture(out.creator, pw, ph)?;
-            texture
-                .update(None::<Rect>, page.rgba(), pw as usize * 4)
-                .map_err(|e| e.to_string())?;
-            out.prompt = Some(texture);
-            self.drawn = Some(scale);
-        }
-        if let Some(texture) = &out.prompt {
-            out.canvas
-                .copy(texture, None, frect((x, y, w, h)))
-                .map_err(|e| e.to_string())?;
-        }
-        // Nothing moves on the prompt; don't spin.
-        std::thread::sleep(Duration::from_millis(10));
-        Ok(())
-    }
-
     fn locate(&self, canvas: &WindowCanvas) {
         let chosen = Arc::clone(&self.chosen);
         let filters = [DialogFileFilter {
@@ -331,6 +331,117 @@ impl Prompt {
             let _ = sdl3::url::open_url(&url);
         }
     }
+}
+
+/// What the library's event means.
+enum Choice {
+    Stay,
+    Quit,
+    Play(usize),
+}
+
+impl Library {
+    fn event(&mut self, event: &Event, canvas: &WindowCanvas) -> Choice {
+        let count = self.games.len();
+        match event {
+            Event::KeyDown {
+                scancode: Some(scancode),
+                ..
+            } => match scancode {
+                Scancode::Escape => return Choice::Quit,
+                Scancode::Return | Scancode::KpEnter => return Choice::Play(self.page.chosen),
+                Scancode::Up if self.page.chosen > 0 => self.choose(self.page.chosen - 1),
+                Scancode::Down if self.page.chosen + 1 < count => self.choose(self.page.chosen + 1),
+                _ => {}
+            },
+            Event::MouseButtonDown {
+                mouse_btn: MouseButton::Left,
+                x,
+                y,
+                ..
+            } => {
+                if let Some(game) =
+                    logical_point(canvas, *x, *y).and_then(|(lx, ly)| self.page.game_at(lx, ly))
+                {
+                    return Choice::Play(game);
+                }
+            }
+            _ => {}
+        }
+        Choice::Stay
+    }
+
+    const fn choose(&mut self, game: usize) {
+        self.page.chosen = game;
+        self.drawn = None;
+    }
+}
+
+fn first_screen(start: Start) -> Screen {
+    match start {
+        Start::Play(machine, _) => Screen::Play(Player::new(machine)),
+        Start::Prompt(game) => prompt_screen(*game),
+        Start::Library(games) => Screen::Library(Box::new(Library {
+            page: LibraryPage {
+                games: games.iter().map(Game::entry).collect(),
+                chosen: 0,
+            },
+            games,
+            drawn: None,
+        })),
+    }
+}
+
+/// A game chosen from the library, opened from its kept tape or on its tape prompt, the
+/// window titled for it.
+fn open_game(game: Game, canvas: &mut WindowCanvas) -> Result<Screen, String> {
+    canvas
+        .window_mut()
+        .set_title(&format!("ZX Sidekick — {}", game.title()))
+        .map_err(|e| e.to_string())?;
+    match game.kept_tape() {
+        Some(tape) => Ok(Screen::Play(Player::new(Box::new(game.machine(&tape)?)))),
+        None => Ok(prompt_screen(game)),
+    }
+}
+
+fn prompt_screen(game: Game) -> Screen {
+    Screen::Prompt(Box::new(Prompt {
+        page: game.prompt(),
+        game,
+        drawn: None,
+        chosen: Arc::new(Mutex::new(None)),
+    }))
+}
+
+/// Shows a page (the prompt, the library) at the largest whole scale that fits, drawing it
+/// anew when the scale changed or the page did (`drawn` cleared).
+fn show(
+    out: &mut Output,
+    drawn: &mut Option<u32>,
+    draw: impl FnOnce(&mut Fonts, u32) -> Canvas,
+) -> Result<(), String> {
+    let output = out.canvas.output_size().map_err(|e| e.to_string())?;
+    let (x, y, w, h) = placement(output, PROMPT);
+    let scale = w / PROMPT.0;
+    if *drawn != Some(scale) {
+        let page = draw(&mut out.fonts, scale);
+        let (pw, ph) = page.size();
+        let mut texture = new_texture(out.creator, pw, ph)?;
+        texture
+            .update(None::<Rect>, page.rgba(), pw as usize * 4)
+            .map_err(|e| e.to_string())?;
+        out.prompt = Some(texture);
+        *drawn = Some(scale);
+    }
+    if let Some(texture) = &out.prompt {
+        out.canvas
+            .copy(texture, None, frect((x, y, w, h)))
+            .map_err(|e| e.to_string())?;
+    }
+    // Nothing moves on a page; don't spin.
+    std::thread::sleep(Duration::from_millis(10));
+    Ok(())
 }
 
 fn new_texture(

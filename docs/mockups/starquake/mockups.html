@@ -363,6 +363,29 @@ function tapePrompt(wrong) {
   W(el('', 120, 711, 0, 0, '<span style="font-size:12px;color:var(--faint)">Starquake © 1985 Stephen Crow / Bubble Bus Software. Not affiliated.</span>'));
   hints(584, 709, [['<span class="key">Enter</span>', 'locate'], ['<span class="key">W</span>', 'website'], ['<span class="key">Esc</span>', 'quit']]);
 }
+function library() {
+  document.documentElement.style.width = document.body.style.width = '960px';
+  W(el('', 0, 0, 960, 768, '', 'background:#0b0c0f'));
+  W(el('label', 120, 97, 0, 0, 'ZX Sidekick'));
+  W(el('', 120, 118, 0, 0, '<span style="font-size:31px;font-weight:600">Choose a game</span>'));
+  const games = [
+    ['Starquake', '1985 · Bubble Bus Software', 'Ready', true],
+    ['Lunar Courier', '1984 · Example Software', 'Needs its tape', false],
+    ['Deep Vault', '1986 · Another Label', 'Needs its tape', false],
+  ];
+  games.forEach(([title, line, status, ready], i) => {
+    const y = 186 + i * 84;
+    const chosen = i === 0;
+    W(el('', 120, y, 720, 72, '', `border-radius:10px;background:${chosen ? '#1a1f2b' : '#15171c'};border:${chosen ? '1.5px solid var(--accent)' : '1px solid #2b2e36'}`));
+    W(el('', 144, y + 15, 0, 0, `<span style="font-size:18px;font-weight:600">${title}</span>`));
+    W(el('', 144, y + 41, 0, 0, `<span style="font-size:13px;color:var(--muted)">${line}</span>`));
+    W(el('', 696, y + 25, 120, 0, `<div style="text-align:right;font-size:13px;font-weight:500;color:${ready ? 'var(--accent)' : 'var(--faint)'}">${status}</div>`));
+  });
+  W(el('', 120, 460, 720, 0, '<div style="font-size:13px;line-height:20px;color:var(--faint)">Games come from their definitions. Add one by putting its file in the games folder of ZX Sidekick\'s data folder; a game that needs its tape asks for it when chosen.</div>'));
+  W(el('', 120, 711, 0, 0, '<span style="font-size:12px;color:var(--faint)">No game is included: each runs from your own copy.</span>'));
+  hints(543, 709, [['↑↓', 'choose'], ['<span class="key">Enter</span>/<span class="pad">A</span>', 'play'], ['<span class="key">Esc</span>/<span class="pad">B</span>', 'quit']]);
+}
+MOCKUPS['library'] = library;
 MOCKUPS['tape-prompt'] = () => tapePrompt(false);
 MOCKUPS['tape-prompt-wrong-dump'] = () => tapePrompt(true);
 

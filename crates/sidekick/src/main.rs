@@ -145,22 +145,24 @@ fn open(target: Option<&str>, extra: &[PathBuf]) -> Result<Start, String> {
             .get(id)
             .ok_or_else(|| format!("{id}: no game with that id, and no such file"))?
     } else {
-        let mut games = library.games();
-        match (games.next(), games.next()) {
-            (Some(only), None) => only,
-            (None, _) => {
-                return Err("No games are installed: give a tape (sidekick TAPE), or a folder of definitions (--games DIR)".to_owned());
+        let mut games: Vec<Game> = library
+            .games()
+            .map(|p| Game::new(p.clone(), &data))
+            .collect();
+        return match games.len() {
+            0 => Err("No games are installed: give a tape (sidekick TAPE), or a folder of definitions (--games DIR)".to_owned()),
+            1 => games.pop().map_or_else(|| Err(String::new()), start_game),
+            _ => {
+                games.sort_by_key(Game::title);
+                Ok(Start::Library(games))
             }
-            (Some(_), Some(_)) => {
-                let ids: Vec<&str> = library
-                    .games()
-                    .map(|p| p.definition.game.id.as_str())
-                    .collect();
-                return Err(format!("Choose a game: sidekick {}", ids.join(" | ")));
-            }
-        }
+        };
     };
-    let game = Game::new(package.clone(), &data);
+    start_game(Game::new(package.clone(), &data))
+}
+
+/// A game opened from its kept tape, or on its tape prompt.
+fn start_game(game: Game) -> Result<Start, String> {
     match game.kept_tape() {
         Some(tape) => {
             let machine = game.machine(&tape)?;
