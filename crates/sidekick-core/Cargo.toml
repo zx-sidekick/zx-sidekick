@@ -13,6 +13,7 @@ repository.workspace = true
 rustzx-core.workspace = true
 rustzx-z80.workspace = true
 sidekick-def.workspace = true
+sidekick-script.workspace = true
 
 [lints]
 workspace = true

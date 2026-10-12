@@ -6,6 +6,7 @@ use crate::{
     Error, Machine, Stop,
 };
 use sidekick_def::{Amount, Cheat, Definition, Patch, State, Test};
+use sidekick_script::{Fact, Script, View};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
@@ -69,6 +70,12 @@ pub struct Session {
     record: Record,
     /// The last state that matched, through frames that matched none.
     last_known: Option<String>,
+    /// The definition's script, whether `on_load` has run, and what it returned last.
+    script: Option<Script>,
+    script_loaded: bool,
+    results: BTreeMap<String, Fact>,
+    /// Why the script isn't running: it failed, or couldn't be compiled.
+    script_off: Option<String>,
 }
 
 impl Session {
@@ -105,6 +112,10 @@ impl Session {
             level: 0,
             record: Record::default(),
             last_known: None,
+            script: None,
+            script_loaded: false,
+            results: BTreeMap::new(),
+            script_off: None,
         }
     }
 
@@ -140,7 +151,91 @@ impl Session {
         }
         self.state = self.decide();
         self.track_games();
+        self.run_script();
         Ok(())
+    }
+
+    /// Gives the session its definition's script, compiled; or why it couldn't be.
+    pub fn set_script(&mut self, script: Result<Script, String>) {
+        match script {
+            Ok(script) => self.script = Some(script),
+            Err(why) => self.script_off = Some(why),
+        }
+    }
+
+    /// Runs the script for a frame: `on_load` once, when the tape has loaded or the game's
+    /// state is first known; then `on_frame`.
+    fn run_script(&mut self) {
+        if self.script.is_none() || self.script_off.is_some() {
+            return;
+        }
+        if !self.script_loaded && !self.machine.tape_loaded() && self.state.is_none() {
+            return;
+        }
+        let view = self.view();
+        let Some(script) = &mut self.script else {
+            return;
+        };
+        let ran = if self.script_loaded {
+            script.on_frame(&view).map(|results| self.results = results)
+        } else {
+            self.script_loaded = true;
+            script.on_load(&view)
+        };
+        if let Err(why) = ran {
+            self.script_off = Some(why);
+        }
+    }
+
+    /// Runs one of the script's action functions, and makes the writes it asks for through
+    /// the one place for writes.
+    ///
+    /// # Errors
+    /// The script is off, has no such function, or failed; or a write was refused.
+    pub fn script_action(&mut self, name: &str) -> Result<(), String> {
+        if let Some(why) = &self.script_off {
+            return Err(why.clone());
+        }
+        let view = self.view();
+        let script = self.script.as_mut().ok_or("the definition has no script")?;
+        let (results, writes) = script.action(name, &view).inspect_err(|why| {
+            if script.off().is_some() {
+                self.script_off = Some(why.clone());
+            }
+        })?;
+        self.results.extend(results);
+        for (value, number) in writes {
+            self.write(&value, number)
+                .map_err(|e| format!("{name}: writing {value}: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// What a script sees now.
+    fn view(&self) -> View {
+        View {
+            memory: (0..=u16::MAX).map(|a| self.machine.peek(a)).collect(),
+            values: self
+                .reading
+                .iter()
+                .map(|(k, v)| (k.clone(), fact(v)))
+                .collect(),
+            state: self.state.clone(),
+            level: i64::from(self.level),
+            kept: BTreeMap::new(),
+        }
+    }
+
+    /// What the script returned last, by name, for `script:` sources.
+    #[must_use]
+    pub const fn script_results(&self) -> &BTreeMap<String, Fact> {
+        &self.results
+    }
+
+    /// Why the script isn't running, when it isn't.
+    #[must_use]
+    pub fn script_off(&self) -> Option<&str> {
+        self.script_off.as_deref()
     }
 
     /// Reads the values for this frame, and lets the switches that are on act on them: only in
@@ -449,6 +544,25 @@ impl Session {
     #[must_use]
     pub const fn definition(&self) -> Option<&Definition> {
         self.definition.as_ref()
+    }
+}
+
+/// A value read, as a script sees it.
+fn fact(read: &Read) -> Fact {
+    match read {
+        Read::Number(n) => Fact::Number(*n),
+        Read::Flag(b) => Fact::Flag(*b),
+        Read::Bits(bits) => Fact::List(bits.iter().map(|&b| Fact::Flag(b)).collect()),
+        Read::Bytes(bytes) => {
+            Fact::List(bytes.iter().map(|&b| Fact::Number(i64::from(b))).collect())
+        }
+        Read::Text(text) => Fact::Text(text.clone()),
+        Read::Table(records) => Fact::List(
+            records
+                .iter()
+                .map(|r| Fact::Map(r.iter().map(|(k, v)| (k.clone(), fact(v))).collect()))
+                .collect(),
+        ),
     }
 }
 
