@@ -195,7 +195,7 @@ fields.carried = { offset = 3, type = "u8", bits = 0x80 }   # true when the bit 
 
 ### The game's font and graphics
 
-The panel draws in the game's own style by reading its font and graphics from memory, never from the definition. They're read each time the panel is drawn, so a game that changes them in play shows the change. Characters are one bit a pixel, the high bit leftmost, `width` / 8 bytes a row; the panel draws the font at two of its pixels to a game pixel and pictures at four, and their `mask` is skipped: only ink is drawn.
+The panel draws in the game's own style by reading its font and graphics from memory, never from the definition. They're read each time the panel is drawn, so a game that changes them in play shows the change. Characters are one bit a pixel, the high bit leftmost, `width` / 8 bytes a row; the panel draws the font at two of its pixels to a game pixel, and each picture as large as fits its tile at a whole number of its pixels to a game pixel (an 8 × 8 picture at four, a 16 × 16 one at two). Their `mask` is skipped: only ink is drawn.
 
 ```toml
 [values.font]

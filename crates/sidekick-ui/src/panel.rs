@@ -131,10 +131,19 @@ pub struct CardRow {
 const TEAL: Color = Color::rgb(0x6F, 0xD6, 0xC4);
 const TEAL_BG: Color = Color::rgb(0x1D, 0x35, 0x32);
 const TILE: Color = Color::rgb(0x1D, 0x20, 0x27);
-/// Logical pixels to a game pixel: the font's, and the pictures'.
+/// Logical pixels to a game pixel: the font's.
 const FONT_PIXEL: f32 = 2.0;
-const ICON_PIXEL: f32 = 4.0;
-const CARD_PIXEL: f32 = 2.0;
+/// The room a picture has on its tile: an icon's, and a card's.
+const ICON_ROOM: f32 = 32.0;
+const CARD_ROOM: f32 = 16.0;
+
+/// Logical pixels to a game pixel for a picture in `room`: as many whole ones as fit, so an
+/// 8-pixel picture is drawn at 4 in an icon's 32, and a 16-pixel one at 2; never less than 1.
+fn fit(picture: &Pixels, room: f32) -> f32 {
+    #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
+    let side = picture.width.max(picture.height).max(1) as f32;
+    (room / side).floor().max(1.0)
+}
 
 /// Draws a picture's ink, each game pixel `size` logical pixels square, from (`x`, `y`).
 pub(crate) fn draw_pixels(
@@ -482,16 +491,17 @@ impl Panel {
             } else {
                 ink
             };
+            let pixel = fit(&icon.picture, ICON_ROOM);
             #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
             let (pw, ph) = (
-                icon.picture.width as f32 * ICON_PIXEL,
-                icon.picture.height as f32 * ICON_PIXEL,
+                icon.picture.width as f32 * pixel,
+                icon.picture.height as f32 * pixel,
             );
             draw_pixels(
                 c,
                 &icon.picture,
                 (tx + (36.0 - pw) / 2.0, ty + (36.0 - ph) / 2.0),
-                ICON_PIXEL,
+                pixel,
                 ink,
             );
             bottom = ty + 36.0;
@@ -520,17 +530,15 @@ impl Panel {
                 let cx = cards_left + i as f32 * 22.0;
                 let alpha = if *answered { 255 } else { 115 };
                 c.rect((cx, y, 20.0, 20.0), 4.0, Some(faded(TEAL_BG, alpha)), None);
+                let pixel = fit(picture, CARD_ROOM);
                 #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
-                let (pw, ph) = (
-                    picture.width as f32 * CARD_PIXEL,
-                    picture.height as f32 * CARD_PIXEL,
-                );
+                let (pw, ph) = (picture.width as f32 * pixel, picture.height as f32 * pixel);
                 let ink = faded(picture.color.unwrap_or(TEAL), alpha);
                 draw_pixels(
                     c,
                     picture,
                     (cx + (20.0 - pw) / 2.0, y + (20.0 - ph) / 2.0),
-                    CARD_PIXEL,
+                    pixel,
                     ink,
                 );
             }
@@ -644,5 +652,29 @@ impl ThisGame {
             );
         }
         c
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn picture(side: usize) -> Pixels {
+        Pixels {
+            width: side,
+            height: side,
+            ink: vec![false; side * side],
+            color: None,
+        }
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp, reason = "whole numbers, exact in f32")]
+    fn a_picture_fits_its_tile_at_a_whole_size() {
+        assert_eq!(fit(&picture(8), ICON_ROOM), 4.0, "the mockups' stand-ins");
+        assert_eq!(fit(&picture(16), ICON_ROOM), 2.0, "Starquake's items");
+        assert_eq!(fit(&picture(16), CARD_ROOM), 1.0);
+        assert_eq!(fit(&picture(12), ICON_ROOM), 2.0, "whole pixels only");
+        assert_eq!(fit(&picture(40), CARD_ROOM), 1.0, "never smaller than one");
     }
 }
