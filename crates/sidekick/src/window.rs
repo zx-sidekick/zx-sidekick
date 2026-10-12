@@ -725,6 +725,9 @@ impl Player {
             }
         }
         let level = menu.level();
+        // The menu may have forgotten the kept lists; no frame runs while it's open, so save
+        // now, before an Exit could leave the old ones on disk.
+        self.save_kept();
         match outcome {
             Outcome::Stay => {}
             Outcome::Cancelled => self.close_menu(pads),
