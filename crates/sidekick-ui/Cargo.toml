@@ -1,0 +1,18 @@
+[package]
+name = "sidekick-ui"
+description = "ZX Sidekick's own screens, drawn in software, pixel-exact"
+publish = false
+
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+miniz_oxide.workspace = true
+swash.workspace = true
+tiny-skia.workspace = true
+
+[lints]
+workspace = true
