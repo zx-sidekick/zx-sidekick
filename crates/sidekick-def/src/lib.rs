@@ -9,11 +9,13 @@ mod check;
 mod library;
 mod scalars;
 mod sections;
+mod situation;
 
 pub use check::Problem;
 pub use library::{tapes_in, Identified, Library, LoadError, LoadProblem, Package, Tape};
 pub use scalars::{Address, Bytes, OneOrMany};
 pub use sections::*;
+pub use situation::Situation;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

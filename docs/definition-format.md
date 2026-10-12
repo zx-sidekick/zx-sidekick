@@ -64,7 +64,7 @@ Inside a zip or folder:
 ```
 game.toml            or game.json
 scripts/*.rhai       the script, if any (see Scripts)
-situations/*.txt     crafted situations, for testing
+situations/*.toml    crafted situations, for testing
 icons/*.png          your own icons, never the game's graphics
 README.md            optional: credits, sources, notes for players
 ```
@@ -426,10 +426,18 @@ source = "value:energy"
 
 ```toml
 [situations]
-enter = 0x6400      # the routine that starts play in the current room
+enter = 0x6400          # the routine that starts play in the current room
+start = ["SPACE", "0"]  # the keys from the loaded tape to play
 ```
 
-A crafted situation is a text file in `situations/`, of `name = value` lines naming only what differs from a new game, using `[values]` names (which must be `writable`), `cheats = [..]` and `kept.<list> = [..]`. The program starts a new game, writes those, and calls `enter`.
+A crafted situation is a TOML file in `situations/`, of `name = value` lines naming only what differs from a new game: `[values]` names (which must be `writable`), `cheats = [..]` and `kept.<list> = [..]`.
+
+```
+lives = 9
+cheats = ["no-harm"]
+```
+
+The program starts a new game by tapping the `start` keys in turn. Each is tapped a second after the state last changed, and again every forty seconds while it stays the same. Once the game is in `play`, at the sync address, the program writes the values, turns the switches on and adds the kept entries. Then it calls `enter`, with the sync address as its return, so the main loop carries on after it. The game is marked loaded. `sidekick TAPE --load FILE.toml`, or `sidekick run TAPE --load FILE.toml`, starts from one.
 
 ## Scripts
 

@@ -282,6 +282,11 @@ pub(crate) struct Playing {
     pub(crate) mapping: Mapping,
     pub(crate) folder: Option<PathBuf>,
     pub(crate) saves: Saves,
+    /// Whether the quit slot is used: a game kept there offered, and the game kept there on
+    /// quitting. Not when it starts from `--load`, which leaves the player's slot alone.
+    pub(crate) quit_slot: bool,
+    /// Whether kept lists are saved: not for a crafted situation, whose entries are made up.
+    pub(crate) keep_lists: bool,
 }
 
 impl Game {
@@ -296,6 +301,8 @@ impl Game {
             mapping: self.mapping(),
             folder: Some(self.folder.clone()),
             saves: Saves::of_game(&self.definition().game.id, &tape.sha1, &self.folder),
+            quit_slot: true,
+            keep_lists: true,
         })
     }
 }

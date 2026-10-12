@@ -100,8 +100,17 @@ pub struct Session {
     /// How far the session's got, and the milestones not yet taken.
     progress: Progress,
     milestones: Vec<Milestone>,
+    /// What carries over to what comes next.
+    next: Next,
+}
+
+/// What carries over from one moment of a session to what comes next.
+#[derive(Clone, Copy, Debug, Default)]
+struct Next {
     /// A snapshot alone was loaded: the next game's record starts marked loaded.
-    loaded_next: bool,
+    loaded: bool,
+    /// The machine stopped at the sync address this frame, and the values were read there.
+    read_at_sync: bool,
 }
 
 /// How far a session's got, as a save keeps it.
@@ -156,7 +165,7 @@ impl Session {
             kept_changed: BTreeSet::new(),
             progress: Progress::default(),
             milestones: Vec::new(),
-            loaded_next: false,
+            next: Next::default(),
         }
     }
 
@@ -172,7 +181,8 @@ impl Session {
         if self.holding {
             return Ok(());
         }
-        let mut read = false;
+        // A frame stopped at the sync address by `run_to_sync` was read there already.
+        let mut read = std::mem::take(&mut self.next.read_at_sync);
         loop {
             match self.machine.run()? {
                 Stop::Sync => {
@@ -190,11 +200,46 @@ impl Session {
         if !read {
             self.take_reading();
         }
+        self.end_frame();
+        Ok(())
+    }
+
+    /// Runs on to the sync address, stopping there mid-frame, so what's done next is done at
+    /// the top of the game's main loop; the next [`Session::run_frame`] finishes the frame.
+    /// Returns false, having run no further, if the frame ended (or the tape loaded) first.
+    ///
+    /// # Errors
+    /// If the machine fails.
+    pub fn run_to_sync(&mut self) -> Result<bool, Error> {
+        if self.holding {
+            return Ok(false);
+        }
+        match self.machine.run()? {
+            Stop::Sync => {
+                self.take_reading();
+                self.next.read_at_sync = true;
+                Ok(true)
+            }
+            Stop::Loaded => {
+                self.holding = true;
+                self.machine.draw_screen_from_memory();
+                Ok(false)
+            }
+            Stop::FrameEnd => {
+                self.take_reading();
+                self.end_frame();
+                Ok(false)
+            }
+        }
+    }
+
+    /// What follows a frame's end: the state decided, games tracked, the script run, and the
+    /// kept lists filled.
+    fn end_frame(&mut self) {
         self.state = self.decide();
         self.track_games();
         self.run_script();
         self.keep_from_values();
-        Ok(())
     }
 
     /// Gives the session its kept lists, as the program last saved them.
@@ -527,7 +572,7 @@ impl Session {
         let after = after.as_deref();
         if state == "play" && matches!(after, None | Some("title" | "game_over")) {
             self.record = Record {
-                loaded: std::mem::take(&mut self.loaded_next),
+                loaded: std::mem::take(&mut self.next.loaded),
                 ..Record::default()
             };
             self.note_use();
@@ -635,14 +680,15 @@ impl Session {
         // The game the save was taken in goes on, not a new one, in the state it was in.
         self.state.clone_from(&progress.last_known);
         self.progress = progress;
-        self.loaded_next = false;
+        self.next.loaded = false;
         self.holding = false;
         self.reading_anew();
     }
 
     /// The values read from the machine as it is now, so the next frame's are told against
-    /// them: a hold switch mustn't take the machine before a load for the game's own.
-    fn reading_anew(&mut self) {
+    /// them: a hold switch mustn't take the machine before a load, or before values were set
+    /// up, for the game's own.
+    pub fn reading_anew(&mut self) {
         self.reading = self.read();
     }
 
@@ -652,12 +698,17 @@ impl Session {
     pub fn loaded_snapshot(&mut self) {
         self.switches.clear();
         self.record.loaded = true;
-        self.loaded_next = true;
+        self.next.loaded = true;
         self.progress.last_known = None;
         self.progress.in_game = false;
         self.holding = false;
         self.state = None;
         self.reading_anew();
+    }
+
+    /// Marks the game being played as not played from its start: loaded, or set up.
+    pub const fn mark_loaded(&mut self) {
+        self.record.loaded = true;
     }
 
     /// Whether a switch could go on now, without turning it on.

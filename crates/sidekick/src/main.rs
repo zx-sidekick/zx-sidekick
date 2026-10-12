@@ -17,6 +17,7 @@ mod panel;
 mod picture;
 mod saves;
 mod scores;
+mod situations;
 mod window;
 
 use clap::{Parser, Subcommand};
@@ -43,6 +44,9 @@ struct Cli {
     /// A folder of definitions to add to those installed. Repeat for more.
     #[arg(long = "games", value_name = "DIR")]
     games: Vec<PathBuf>,
+    /// Start from a save (.sav, .szx) or a crafted situation (.toml).
+    #[arg(long, value_name = "FILE")]
+    load: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -84,6 +88,9 @@ enum Command {
         /// for more.
         #[arg(long = "switch", value_name = "ID@FRAME")]
         switches: Vec<headless::SwitchAt>,
+        /// Start from a save (.sav, .szx) or a crafted situation (.toml); the frames run after.
+        #[arg(long, value_name = "FILE")]
+        load: Option<PathBuf>,
         /// Where to write the picture after the last frame, as a PNG.
         #[arg(long, value_name = "FILE")]
         screenshot: Option<PathBuf>,
@@ -120,13 +127,19 @@ fn main() -> ExitCode {
                 frames,
                 keys,
                 switches,
+                load,
                 screenshot,
                 scale,
             }),
             _,
         ) => {
             let run = run_session(&tape, definition.as_deref(), &games).and_then(
-                |Playing { mut session, .. }| {
+                |Playing {
+                     mut session, saves, ..
+                 }| {
+                    if let Some(file) = &load {
+                        situations::load(&mut session, &saves, file)?;
+                    }
                     headless::run(
                         &mut session,
                         frames,
@@ -149,7 +162,10 @@ fn main() -> ExitCode {
                 }
             }
         }
-        (None, target) => match open(target.as_deref(), &cli.games).and_then(window::run) {
+        (None, target) => match open(target.as_deref(), &cli.games)
+            .and_then(|start| loading(start, cli.load.as_deref()))
+            .and_then(window::run)
+        {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("{e}");
@@ -190,6 +206,36 @@ fn open(target: Option<&str>, extra: &[PathBuf]) -> Result<Start, String> {
     start_game(Game::new(package.clone(), &data))
 }
 
+/// The window's start with `--load` applied: a game started from the file, and no offer to
+/// continue.
+fn loading(start: Start, load: Option<&Path>) -> Result<Start, String> {
+    let Some(file) = load else {
+        return Ok(start);
+    };
+    match start {
+        Start::Play(mut playing) => {
+            situations::load(&mut playing.session, &playing.saves, file)?;
+            playing.quit_slot = false;
+            playing.keep_lists = !is_situation(file);
+            Ok(Start::Play(playing))
+        }
+        Start::Prompt(_) => Err(format!(
+            "{}: the game's tape is needed first: give the tape, or start the game once to locate it",
+            file.display()
+        )),
+        Start::Library(_) => Err(format!(
+            "{}: name the game or the tape to load it into",
+            file.display()
+        )),
+    }
+}
+
+/// Whether `--load`'s file is a crafted situation rather than a save.
+fn is_situation(file: &Path) -> bool {
+    file.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("toml"))
+}
+
 /// A game opened from its kept tape, or on its tape prompt.
 fn start_game(game: Game) -> Result<Start, String> {
     match game.kept_tape() {
@@ -214,6 +260,8 @@ fn tape_session(file: &Path, library: &Library, data: &Path) -> Result<Playing, 
         mapping: Mapping::default(),
         folder: None,
         saves: Saves::of_tape(&tape.name, &tape.sha1, data),
+        quit_slot: true,
+        keep_lists: true,
     })
 }
 
@@ -348,5 +396,55 @@ fn convert(file: &Path, output: Option<&Path>) -> ExitCode {
                 ExitCode::from(UNREADABLE)
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn plain(data: &Path) -> Playing {
+        let machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+        Playing {
+            session: Session::new(machine, None),
+            title: "Plain".to_owned(),
+            mapping: Mapping::default(),
+            folder: None,
+            saves: Saves::of_tape("plain.tap", "ABC123", data),
+            quit_slot: true,
+            keep_lists: true,
+        }
+    }
+
+    #[test]
+    fn load_starts_from_a_save_and_leaves_the_quit_slot_alone() {
+        let data = tempfile::TempDir::new().unwrap();
+        let mut first = plain(data.path());
+        first.session.machine_mut().write(0x9000, 0x42);
+        let file = data.path().join("game.sav");
+        saves::write(&mut first.session, &first.saves, &file).unwrap();
+        let Ok(Start::Play(playing)) =
+            loading(Start::Play(Box::new(plain(data.path()))), Some(&file))
+        else {
+            panic!("it plays");
+        };
+        assert_eq!(playing.session.machine().peek(0x9000), 0x42);
+        assert!(playing.session.record().loaded);
+        assert!(!playing.quit_slot, "neither offered nor written over");
+        assert!(playing.keep_lists, "a save's lists are the player's");
+        assert!(is_situation(Path::new("a/stocked-up.TOML")));
+    }
+
+    #[test]
+    fn load_wants_a_game_to_load_into() {
+        let file = Path::new("game.sav");
+        let error = loading(Start::Library(Vec::new()), Some(file))
+            .err()
+            .expect("refused");
+        assert!(error.contains("name the game"), "{error}");
+        assert!(matches!(
+            loading(Start::Library(Vec::new()), None),
+            Ok(Start::Library(_))
+        ));
     }
 }
