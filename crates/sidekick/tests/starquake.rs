@@ -116,8 +116,13 @@ fn starquake_s_states_and_values_read_what_the_game_shows() {
 }
 
 /// Starquake in play from its real tape, with its definition; `None` without the tape.
-#[allow(clippy::print_stderr, reason = "a skipped test says why")]
 fn in_play() -> Option<Session> {
+    in_play_from(|_| {})
+}
+
+/// Starquake in play, the session set up by `prepare` before the tape runs.
+#[allow(clippy::print_stderr, reason = "a skipped test says why")]
+fn in_play_from(prepare: impl FnOnce(&mut Session)) -> Option<Session> {
     let zip = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/Starquake.tap.zip");
     if !zip.exists() {
         eprintln!("skipped: no {} (the player's own tape)", zip.display());
@@ -130,6 +135,7 @@ fn in_play() -> Option<Session> {
     let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K");
     machine.load_tap(&tapes[0].bytes).expect("the tape goes in");
     let mut s = Session::new(machine, Some(package.definition));
+    prepare(&mut s);
     until(&mut s, 400, |_| false);
     press(&mut s, Key::Space);
     assert!(until(&mut s, 1500, |s| s.state() == Some("title")));
@@ -310,10 +316,12 @@ fn list(fact: &Fact) -> &[Fact] {
 
 #[test]
 fn starquake_s_rooms_decoded_from_its_data_have_the_walls_the_screen_shows() {
-    let Some(mut s) = in_play() else {
+    // Given the script from the start, as the program does: its on_load runs once the tape
+    // has loaded, and the room data must be in place by then.
+    let Some(mut s) = in_play_from(|s| with_script(s, 0)) else {
         return;
     };
-    with_script(&mut s, 6);
+    s.set_level(6);
     for room in [8, 9, 24, 176, 300, 511] {
         enter_room(&mut s, &[("room", room)]);
         // Entering plays a transition; the room is drawn once play comes back.

@@ -108,7 +108,7 @@ fn on_load(mem) {
     let types = mem.value("tile_types");
     let pictures = mem.value("tile_pictures");
     if rooms == () || bigs == () || types == () || pictures == () {
-        return #{ walls: [], doors: [] };
+        return #{ walls: [], cells: [], doors: [] };
     }
     // Only the medium tiles the large tiles use.
     let mediums = [];
@@ -135,6 +135,7 @@ fn on_load(mem) {
     }
 
     let walls = [];
+    let cells = [];
     let doors = [];
     for room in 0..512 {
         let at = room * 12;
@@ -171,6 +172,7 @@ fn on_load(mem) {
             shut += "W";
         }
         walls.push(shut);
+        cells.push(#{ x: room % 16, y: room / 16, walls: shut, seen: true });
         let places = [];
         for i in 0..12 {
             let big = rooms[at + i];
@@ -184,7 +186,8 @@ fn on_load(mem) {
             doors.push(#{ room: room, places: places });
         }
     }
-    #{ walls: walls, doors: doors }
+    // The whole planet's map cells, as level 6 shows them, made once.
+    #{ walls: walls, cells: cells, doors: doors }
 }
 
 // The pictures BLOB carries.
@@ -427,12 +430,10 @@ fn items(mem) {
 // The map: the rooms walked, or at level 6 every room, with their walls; the teleports and
 // doors in them; from level 3 the items in rooms walked, from level 4 in every room; BLOB's room.
 fn map(mem, loaded, kept, rooms, level) {
-    let everything = level >= 6 && loaded.walls.len() == 512;
+    let everything = level >= 6 && loaded.cells.len() == 512;
     let cells = [];
     if everything {
-        for room in 0..512 {
-            cells.push(#{ x: room % 16, y: room / 16, walls: loaded.walls[room], seen: true });
-        }
+        cells = loaded.cells;
     } else {
         for key in rooms.keys() {
             let room = parse_int(key);
