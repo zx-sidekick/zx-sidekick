@@ -86,9 +86,16 @@ fn frame(s: &mut Session) {
     s.run_frame().expect("a frame");
 }
 
+/// Puts the game in play.
+fn play(s: &mut Session) {
+    poke(s, FREE + 2, &[2]);
+    frame(s);
+}
+
 #[test]
 fn set_writes_its_number_or_the_value_s_max_each_frame() {
     let mut s = session();
+    play(&mut s);
     poke(&mut s, FREE, &[7, 50]);
     s.switch("full-energy", true).expect("on");
     s.switch("three-lives", true).expect("on");
@@ -108,8 +115,30 @@ fn set_writes_its_number_or_the_value_s_max_each_frame() {
 }
 
 #[test]
+fn set_and_hold_act_only_in_play() {
+    let mut s = session();
+    poke(&mut s, FREE, &[0, 50, 1]);
+    frame(&mut s);
+    s.switch("full-energy", true).expect("on");
+    frame(&mut s);
+    assert_eq!(s.machine().peek(FREE + 1), 50, "on the title: left alone");
+    play(&mut s);
+    frame(&mut s);
+    assert_eq!(s.machine().peek(FREE + 1), 200, "in play");
+    poke(&mut s, FREE + 1, &[10]);
+    poke(&mut s, FREE + 2, &[0]);
+    frame(&mut s);
+    assert_eq!(
+        s.machine().peek(FREE + 1),
+        200,
+        "through a frame that matched no state"
+    );
+}
+
+#[test]
 fn hold_puts_a_value_back_when_it_goes_down() {
     let mut s = session();
+    play(&mut s);
     poke(&mut s, FREE, &[4]);
     frame(&mut s);
     s.switch("endless-lives", true).expect("on");

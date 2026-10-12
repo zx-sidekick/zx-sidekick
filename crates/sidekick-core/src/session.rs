@@ -143,13 +143,21 @@ impl Session {
         Ok(())
     }
 
-    /// Reads the values for this frame, and lets the switches that are on act on them.
+    /// Reads the values for this frame, and lets the switches that are on act on them: only in
+    /// play when the definition names a `play` state (the last state known, so a frame that
+    /// matches none doesn't skip), since outside it a game may use the same memory for other
+    /// things.
     fn take_reading(&mut self) {
         let now = self.read();
         let previous = std::mem::replace(&mut self.reading, now);
         let Some(definition) = self.definition.take() else {
             return;
         };
+        let has_play = definition.states.iter().any(|s| s.name == "play");
+        if has_play && self.last_known.as_deref() != Some("play") {
+            self.definition = Some(definition);
+            return;
+        }
         let on: Vec<&Cheat> = definition
             .cheats
             .iter()
