@@ -195,7 +195,7 @@ fields.carried = { offset = 3, type = "u8", bits = 0x80 }   # true when the bit 
 
 ### The game's font and graphics
 
-The panel draws in the game's own style by reading its font and graphics from memory, never from the definition:
+The panel draws in the game's own style by reading its font and graphics from memory, never from the definition. They're read each time the panel is drawn, so a game that changes them in play shows the change. Characters are one bit a pixel, the high bit leftmost, `width` / 8 bytes a row; the panel draws the font at two of its pixels to a game pixel and pictures at four, and their `mask` is skipped: only ink is drawn.
 
 ```toml
 [values.font]
@@ -412,7 +412,7 @@ source = "value:energy"
 | `text` | A line of text | a string |
 | `counter` | A number | a number |
 | `meter` | A bar, against the value's `max` | a number, and optionally `max` |
-| `chip-list` | Short words in the game's font; one may be outlined | a list of `{ text, outlined }` |
+| `chip-list` | Short words in the game's font; one may be outlined | a list of `{ text, outlined }`, or of words |
 | `icon-grid` | Pictures from `pictures`, each bright, dim or outlined | a list of `{ picture, look = "bright" / "dim" / "outlined" }` |
 | `card-set` | Numbered groups of pictures, each dim until answered | a list of `{ label, cards = [{ picture, answered }] }` |
 | `map-grid` | Places on a grid, walls, markers, routes, and exit arrows at the picture's edge | `{ width, height, cells = [{ x, y, walls = "NESW", seen }], markers = [{ x, y, kind, picture?, color? }], routes = [{ color, steps = [[x, y], …], exit = "N" }] }` |

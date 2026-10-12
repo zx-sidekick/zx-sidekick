@@ -227,6 +227,25 @@ impl Session {
         }
     }
 
+    /// The game's font a `font` value names, read from memory now.
+    #[must_use]
+    pub fn font(&self, name: &str) -> Option<crate::Font> {
+        let value = self.definition.as_ref()?.values.get(name)?;
+        crate::graphics::font(&self.machine, value)
+    }
+
+    /// The game's pictures a `sprites` value names, read from memory now, each with its ink
+    /// when the value's `colors` gives one.
+    #[must_use]
+    pub fn sprites(&self, name: &str) -> Option<Vec<crate::Bitmap>> {
+        let value = self.definition.as_ref()?.values.get(name)?;
+        let colors = value
+            .colors
+            .as_ref()
+            .and_then(|c| self.reading.get(&c.value));
+        crate::graphics::sprites(&self.machine, value, colors)
+    }
+
     /// What the script returned last, by name, for `script:` sources.
     #[must_use]
     pub const fn script_results(&self) -> &BTreeMap<String, Fact> {
