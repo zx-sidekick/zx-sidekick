@@ -7,6 +7,7 @@
     reason = "a command line's results and errors are printed"
 )]
 
+mod headless;
 mod keys;
 mod picture;
 mod window;
@@ -43,6 +44,24 @@ enum Command {
         /// A tape (.tap, .tzx) or a .zip holding tapes.
         tape: Option<PathBuf>,
     },
+    /// Runs a tape without a window, and writes its picture as a PNG.
+    Run {
+        /// A tape to run: a .tap, or the .zip it came in.
+        tape: PathBuf,
+        /// Frames to run (50 a second).
+        #[arg(long, default_value_t = 250)]
+        frames: u32,
+        /// A key to press at a frame, for five frames: NAME@FRAME, like SPACE@1500. Repeat
+        /// for more.
+        #[arg(long = "key", value_name = "NAME@FRAME")]
+        keys: Vec<headless::KeyPress>,
+        /// Where to write the picture after the last frame, as a PNG.
+        #[arg(long, value_name = "FILE")]
+        screenshot: Option<PathBuf>,
+        /// How many screen pixels each Spectrum pixel is in the PNG.
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=16))]
+        scale: u32,
+    },
     /// Converts a definition from TOML to JSON, or from JSON to TOML.
     Convert {
         /// A .toml or .json definition file.
@@ -63,6 +82,30 @@ fn main() -> ExitCode {
     match (cli.command, cli.tape) {
         (Some(Command::Check { definition, tape }), _) => check(&definition, tape.as_deref()),
         (Some(Command::Convert { file, output }), _) => convert(&file, output.as_deref()),
+        (
+            Some(Command::Run {
+                tape,
+                frames,
+                keys,
+                screenshot,
+                scale,
+            }),
+            _,
+        ) => match start(&tape) {
+            Ok((mut machine, _)) => {
+                match headless::run(&mut machine, frames, &keys, screenshot.as_deref(), scale) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        ExitCode::from(UNREADABLE)
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::from(UNREADABLE)
+            }
+        },
         (None, Some(tape)) => play(&tape),
         (None, None) => {
             eprintln!("Give a tape to play: sidekick TAPE (sidekick --help for more)");
@@ -71,35 +114,29 @@ fn main() -> ExitCode {
     }
 }
 
-/// Plays a tape plainly: a 48K, the tape loading as `LOAD ""` loads it, the keyboard reaching
-/// the Spectrum.
-fn play(path: &Path) -> ExitCode {
-    let tapes = match tapes_in(path) {
-        Ok(tapes) => tapes,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::from(UNREADABLE);
-        }
-    };
-    let Some(tape) = tapes.iter().find(|t| t.format == TapeFormat::Tap) else {
-        eprintln!("{}: only .tap tapes can be played yet", path.display());
-        return ExitCode::from(UNREADABLE);
-    };
-    let started = Machine::new(Model::Sinclair48K).and_then(|mut machine| {
-        machine.load_tap(&tape.bytes)?;
-        Ok(machine)
-    });
-    let machine = match started {
-        Ok(machine) => machine,
-        Err(e) => {
-            eprintln!("{}: {e}", path.display());
-            return ExitCode::from(UNREADABLE);
-        }
-    };
+/// A 48K with the tape in a file going in, as `LOAD ""` loads it, and the tape's name.
+fn start(path: &Path) -> Result<(Machine, String), String> {
+    let tapes = tapes_in(path).map_err(|e| e.to_string())?;
+    let tape = tapes
+        .iter()
+        .find(|t| t.format == TapeFormat::Tap)
+        .ok_or_else(|| format!("{}: only .tap tapes can be played yet", path.display()))?;
+    let mut machine =
+        Machine::new(Model::Sinclair48K).map_err(|e| format!("{}: {e}", path.display()))?;
+    machine
+        .load_tap(&tape.bytes)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     let title = Path::new(&tape.name)
         .file_stem()
         .map_or_else(|| tape.name.clone(), |s| s.to_string_lossy().into_owned());
-    match window::play(machine, &title) {
+    Ok((machine, title))
+}
+
+/// Plays a tape plainly: a 48K, the tape loading as `LOAD ""` loads it, the keyboard reaching
+/// the Spectrum.
+fn play(path: &Path) -> ExitCode {
+    let result = start(path).and_then(|(machine, title)| window::play(machine, &title));
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("{e}");
