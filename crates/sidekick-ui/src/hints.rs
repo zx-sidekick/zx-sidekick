@@ -12,6 +12,40 @@ pub enum Press<'a> {
     Pad(&'a str),
     /// Arrows, bare: `↑↓`, `←→`.
     Arrows(&'a str),
+    /// A PlayStation pad's × button, in a round badge.
+    Cross,
+    /// A PlayStation pad's ○ button, in a round badge.
+    Circle,
+}
+
+/// What a pad's confirm and back buttons are marked with.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PadLabels {
+    /// A confirms and B goes back: Xbox and Nintendo pads, and most others.
+    #[default]
+    Letters,
+    /// × confirms and ○ goes back: PlayStation pads.
+    Shapes,
+}
+
+impl PadLabels {
+    /// The confirm button.
+    #[must_use]
+    pub const fn confirm(self) -> Press<'static> {
+        match self {
+            Self::Letters => Press::Pad("A"),
+            Self::Shapes => Press::Cross,
+        }
+    }
+
+    /// The back button.
+    #[must_use]
+    pub const fn back(self) -> Press<'static> {
+        match self {
+            Self::Letters => Press::Pad("B"),
+            Self::Shapes => Press::Circle,
+        }
+    }
 }
 
 /// A hint: what to press (alternatives, shown with `/` between them), and what it does.
@@ -35,7 +69,7 @@ const PAD_SIZE: f32 = 18.0;
 fn width(fonts: &mut Fonts, press: Press) -> f32 {
     match press {
         Press::Key(k) => fonts.measure(k, &KEY) + 10.0,
-        Press::Pad(_) => PAD_SIZE,
+        Press::Pad(_) | Press::Cross | Press::Circle => PAD_SIZE,
         Press::Arrows(a) => fonts.measure(a, &WHAT),
     }
 }
@@ -84,6 +118,22 @@ pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &
                 }
                 Press::Arrows(a) => {
                     c.text(fonts, a, (x, y + 1.0), 18.0, Align::Left, &WHAT);
+                }
+                Press::Cross | Press::Circle => {
+                    let (cx, cy) = (x + PAD_SIZE / 2.0, y + 10.0);
+                    c.circle(
+                        (cx, cy),
+                        PAD_SIZE / 2.0,
+                        None,
+                        Some(Line::solid(colors::KEY_EDGE, 1.0)),
+                    );
+                    let mark = Line::solid(colors::TEXT, 1.5);
+                    if matches!(press, Press::Cross) {
+                        c.line((cx - 3.5, cy - 3.5), (cx + 3.5, cy + 3.5), mark);
+                        c.line((cx - 3.5, cy + 3.5), (cx + 3.5, cy - 3.5), mark);
+                    } else {
+                        c.circle((cx, cy), 4.5, None, Some(mark));
+                    }
                 }
             }
             x += w;

@@ -2,7 +2,7 @@
 
 use crate::{
     colors,
-    hints::{hints, Hint, Press},
+    hints::{hints, Hint, PadLabels, Press},
     Align, Canvas, Color, Fonts, Line, Style, Weight,
 };
 
@@ -38,6 +38,8 @@ pub struct LibraryPage {
     pub games: Vec<LibraryEntry>,
     /// The chosen one.
     pub chosen: usize,
+    /// What the last pad used marks its buttons with.
+    pub pad: PadLabels,
 }
 
 impl LibraryPage {
@@ -135,11 +137,11 @@ impl LibraryPage {
                     does: "choose",
                 },
                 Hint {
-                    press: &[Press::Key("Enter"), Press::Pad("A")],
+                    press: &[Press::Key("Enter"), self.pad.confirm()],
                     does: "play",
                 },
                 Hint {
-                    press: &[Press::Key("Esc"), Press::Pad("B")],
+                    press: &[Press::Key("Esc"), self.pad.back()],
                     does: "quit",
                 },
             ],
@@ -204,6 +206,7 @@ mod tests {
                 })
                 .collect(),
             chosen,
+            pad: PadLabels::Letters,
         }
     }
 

@@ -19,6 +19,7 @@ pub mod png;
 mod tape_prompt;
 mod text;
 
+pub use hints::PadLabels;
 pub use library::{LibraryEntry, LibraryPage};
 pub use tape_prompt::{
     Refusal, TapePrompt, HEIGHT as TAPE_PROMPT_HEIGHT, WIDTH as TAPE_PROMPT_WIDTH,
@@ -224,6 +225,29 @@ impl Canvas {
             radius,
             fill,
             line,
+        );
+    }
+
+    /// A straight line between two points, with round ends.
+    pub fn line(&mut self, (x1, y1): (f32, f32), (x2, y2): (f32, f32), line: Line) {
+        let s = self.scale;
+        let mut pb = PathBuilder::new();
+        pb.move_to(x1 * s, y1 * s);
+        pb.line_to(x2 * s, y2 * s);
+        let Some(path) = pb.finish() else {
+            return;
+        };
+        let stroke = Stroke {
+            width: line.width * s,
+            line_cap: tiny_skia::LineCap::Round,
+            ..Stroke::default()
+        };
+        self.pixmap.stroke_path(
+            &path,
+            &paint(line.color),
+            &stroke,
+            Transform::identity(),
+            None,
         );
     }
 
