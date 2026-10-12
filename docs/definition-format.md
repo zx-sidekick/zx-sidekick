@@ -273,7 +273,7 @@ What a part can do:
 - `"menu"`: the guidance menu. `select` is always `"menu"`, so every game's pad can reach it.
 - `"none"`.
 
-A button held when a state changes is held back from the game until it's let go (`ZX-SIDEKICK.md` §9).
+A button held when a state changes what it does is held back from the game until it's let go (`ZX-SIDEKICK.md` §9); one that does the same in both states carries on, so a held direction isn't cut short.
 
 ## `[[actions]]`
 

@@ -180,6 +180,13 @@ impl Pads {
         self.held_back.extend(self.held.iter().copied());
     }
 
+    /// The game's state changed what these parts do: those held now are held back until
+    /// they're let go.
+    pub(crate) fn hold_back_parts(&mut self, parts: &[Part]) {
+        let held = self.held.iter().filter(|(_, part)| parts.contains(part));
+        self.held_back.extend(held.copied());
+    }
+
     /// The parts held that count, on any pad.
     pub(crate) fn held(&self) -> impl Iterator<Item = Part> + '_ {
         self.held.difference(&self.held_back).map(|&(_, part)| part)
@@ -567,14 +574,25 @@ impl Play {
         &self.mapping
     }
 
-    /// The game's state for the frames to come. Returns true when it changed, for what's held
-    /// to be held back.
-    pub(crate) fn enter(&mut self, state: Option<&str>) -> bool {
+    /// The game's state for the frames to come. Returns the parts whose meaning it changed,
+    /// for those held to be held back: a part that does the same in both carries on, so a
+    /// state that flickers doesn't cut out a held direction.
+    pub(crate) fn enter(&mut self, state: Option<&str>) -> Vec<Part> {
         if self.state.as_deref() == state {
-            return false;
+            return Vec::new();
         }
+        let before = self.mapping.parts(self.state.as_deref());
+        let after = self.mapping.parts(state);
+        let changed = before
+            .keys()
+            .chain(after.keys())
+            .filter(|part| before.get(part) != after.get(part))
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         self.state = state.map(str::to_owned);
-        true
+        changed
     }
 
     /// A part was pressed: starts its tap, and keeps what it holds going for the frames it
@@ -870,6 +888,21 @@ mod tests {
     }
 
     #[test]
+    fn a_state_change_holds_back_only_the_parts_it_changes() {
+        let mut pads = Pads::default();
+        pads.button(0, Part::Start, true);
+        pads.button(0, Part::DPad(Way::Left), true);
+        pads.hold_back_parts(&[Part::Start, Part::South]);
+        assert_eq!(pads.held().collect::<Vec<_>>(), [Part::DPad(Way::Left)]);
+        pads.button(0, Part::Start, false);
+        pads.button(0, Part::Start, true);
+        assert_eq!(
+            pads.held().collect::<Vec<_>>(),
+            [Part::DPad(Way::Left), Part::Start]
+        );
+    }
+
+    #[test]
     fn an_unplugged_pad_lets_go() {
         let mut pads = Pads::default();
         pads.button(3, Part::West, true);
@@ -918,9 +951,13 @@ mod tests {
             start = { keys = ["2"] }
             "#)));
         let mut play = Play::new(mapping);
-        assert!(!play.enter(None), "no state to begin with");
+        assert!(play.enter(None).is_empty(), "no state to begin with");
         assert_eq!(holds(&mut play, &[Part::South]), [key(Key::H)]);
-        assert!(play.enter(Some("title")));
+        assert_eq!(
+            play.enter(Some("title")),
+            [Part::South, Part::Start],
+            "only the parts it changes"
+        );
         assert_eq!(holds(&mut play, &[Part::South]), [key(Key::N1)]);
         assert_eq!(holds(&mut play, &[Part::Start]), [key(Key::N2)]);
         assert_eq!(
@@ -928,8 +965,8 @@ mod tests {
             [Input::Kempston(Direction::Fire)],
             "the default's west"
         );
-        assert!(!play.enter(Some("title")), "the same state");
-        assert!(play.enter(Some("play")));
+        assert!(play.enter(Some("title")).is_empty(), "the same state");
+        assert_eq!(play.enter(Some("play")), [Part::South, Part::Start]);
         assert_eq!(
             holds(&mut play, &[Part::South]),
             [key(Key::H)],

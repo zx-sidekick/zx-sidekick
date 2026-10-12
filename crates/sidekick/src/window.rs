@@ -404,9 +404,7 @@ impl Player {
             std::thread::sleep(Duration::from_millis(1));
         }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
-            if self.play.enter(self.session.state()) {
-                pads.hold_back();
-            }
+            pads.hold_back_parts(&self.play.enter(self.session.state()));
             let mut changes = self.play.update(pads.held());
             let patches = std::mem::take(&mut changes.patches);
             send(self.session.machine_mut(), changes);
