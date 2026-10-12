@@ -13,10 +13,13 @@
     reason = "layout arithmetic stays as written: plain sums and products, the same on every platform"
 )]
 
+pub mod hints;
+mod library;
 pub mod png;
 mod tape_prompt;
 mod text;
 
+pub use library::{LibraryEntry, LibraryPage};
 pub use tape_prompt::{
     Refusal, TapePrompt, HEIGHT as TAPE_PROMPT_HEIGHT, WIDTH as TAPE_PROMPT_WIDTH,
 };
