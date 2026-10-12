@@ -70,9 +70,8 @@ fn starquake_s_draft_parses_and_lists_what_is_left_to_find() {
         "the dump's SHA-1 is recorded"
     );
     for expected in [
-        "values.room.addr: missing",
+        "values.visited.addr: missing",
         "values.items.count: missing",
-        "situations.enter: missing",
     ] {
         assert!(
             problems.iter().any(|p| p == expected),

@@ -23,7 +23,8 @@ download = "https://worldofspectrum.net/item/0004873"
 download_label = "World of Spectrum"
 
 [run]
-# sync = TODO: the top of the main loop
+# The main loop's call to its wait for the next frame: passed once a frame in play.
+sync = 0xA523
 # Its own loader already waits for a key on the loading screen (docs/re/starquake.md).
 hold_loading_screen = false
 joystick = "kempston"
@@ -32,7 +33,8 @@ joystick = "kempston"
 
 [[states]]
 name = "paused"
-# when = TODO
+# SPACE pauses: the game waits for it to be let go, then for any move or fire.
+pc = [0xC5AF, 0xC5B5]
 # In the original, any move or fire goes on once the pause key is let go (docs/games/starquake.md).
 notice = { text = "Move or fire to go on.", hints = [
   { pad = "dpad", does = "move" },
@@ -45,64 +47,62 @@ name = "booth"
 
 [[states]]
 name = "game_over"
-# pc = TODO
+# Entered when the last life is lost, or A S D F G are held together.
+pc = 0x64A0
 
 [[states]]
 name = "play"
-# pc = TODO: the main loop's top (the same as [run] sync)
+pc = 0xA523
 
 [[states]]
 name = "title"
-# pc = TODO
+# The menu's loop, passed every few frames once its tune has played.
+pc = 0x5FF4
 
 # Values. Each needs its address and type confirmed.
 
 [values.room]
-type = "u8"
-# addr = TODO
-description = "The room BLOB is in"
+type = "u16"
+addr = 0xD2C8
+description = "The room BLOB is in: 16 to a row, 0 at the top left"
 
 [values.blob_x]
 type = "u8"
-# addr = TODO
+addr = 0xDD1D
+description = "BLOB's left edge, in pixels"
 
 [values.blob_y]
 type = "u8"
-# addr = TODO
+addr = 0xDD1E
 
 [values.lives]
 type = "u8"
 writable = true
-# addr = TODO
-# max = TODO
+addr = 0xD2CC
 
 [values.energy]
 type = "u8"
 writable = true
-# addr = TODO
-# max = TODO
+addr = 0xD2CD
+max = 127
 
 [values.platforms]
 type = "u8"
 writable = true
-# addr = TODO
-# max = TODO
+addr = 0xD2CE
+max = 127
 
 [values.laser]
 type = "u8"
 writable = true
-# addr = TODO
-# max = TODO
+addr = 0xD2CF
+max = 127
 
 [values.visited]
 type = "bitset"
 # addr = TODO
 # len = TODO
 description = "Rooms visited, kept by the game for its first-visit bonus"
-
-[values.paused_flag]
-type = "u8"
-# addr = TODO
 
 [values.booth_code]
 type = "text"
@@ -333,7 +333,8 @@ pictures = "item_pictures"
 source = "script:map"
 
 [situations]
-# enter = TODO: the routine that starts play in the current room
+# The routine that starts play in the current room (docs/re/starquake.md).
+enter = 0xA426
 
 [script]
 file = "scripts/starquake.rhai"
