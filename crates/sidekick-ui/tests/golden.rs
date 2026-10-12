@@ -1,7 +1,7 @@
 //! The program's screens, compared with golden images byte for byte. `UPDATE_GOLDEN=1`
 //! rewrites them; look at a changed image before committing it.
 
-use sidekick_ui::{Fonts, TapePrompt, WrongDump};
+use sidekick_ui::{Fonts, Refusal, TapePrompt};
 use std::path::PathBuf;
 
 fn golden(name: &str, png: &[u8]) {
@@ -29,7 +29,7 @@ fn starquake() -> TapePrompt {
             "World of Spectrum".to_owned(),
             "worldofspectrum.net/item/0004873".to_owned(),
         )),
-        wrong: None,
+        refusal: None,
     }
 }
 
@@ -45,10 +45,9 @@ fn the_tape_prompt() {
 fn the_tape_prompt_refusing_a_different_dump() {
     let mut fonts = Fonts::new();
     let prompt = TapePrompt {
-        wrong: Some(WrongDump {
-            file: "starquake-other.zip".to_owned(),
-            wanted: "the original Bubble Bus release".to_owned(),
-            sha1: "65450d6f".to_owned(),
+        refusal: Some(Refusal {
+            heading: "That isn't the Starquake tape this version needs".to_owned(),
+            detail: "The tape in starquake-other.zip is a different dump. This version works only with the original Bubble Bus release (SHA-1 65450d6f…).".to_owned(),
         }),
         ..starquake()
     };

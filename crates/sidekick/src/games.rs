@@ -1,0 +1,322 @@
+//! Games: where their definitions and tapes are, and which tape a game takes.
+
+use sidekick_core::{Machine, Model};
+use sidekick_def::{
+    tapes_in, Definition, Library, LoadError, Machine as Spectrum, Package, Tape, TapeFormat,
+};
+use sidekick_ui::{Refusal, TapePrompt};
+use std::{
+    fmt::Write as _,
+    fs,
+    path::{Path, PathBuf},
+};
+
+/// A game ready to start: its definition and its folder in the data folder.
+#[derive(Clone, Debug)]
+pub(crate) struct Game {
+    /// Its definition.
+    pub package: Package,
+    /// `<data>/<id>/`, where its tape and the rest of what's kept for it live.
+    pub folder: PathBuf,
+}
+
+/// The data folder: the system's, or `ZX_SIDEKICK_DATA`.
+pub(crate) fn data_folder() -> PathBuf {
+    std::env::var_os("ZX_SIDEKICK_DATA").map_or_else(
+        || {
+            directories::ProjectDirs::from("", "", "ZX Sidekick").map_or_else(
+                || PathBuf::from("zx-sidekick-data"),
+                |d| d.data_dir().to_owned(),
+            )
+        },
+        PathBuf::from,
+    )
+}
+
+/// The definitions in `games/` beside the program, then the data folder's `games/`, then
+/// `extra`: later folders win.
+pub(crate) fn library(data: &Path, extra: &[PathBuf]) -> (Library, Vec<LoadError>) {
+    let mut folders = Vec::new();
+    if let Some(beside) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.join("games")))
+    {
+        folders.push(beside);
+    }
+    folders.push(data.join("games"));
+    folders.extend(extra.iter().cloned());
+    Library::search(&folders)
+}
+
+impl Game {
+    /// The game a package defines, keeping its things under `data`.
+    pub(crate) fn new(package: Package, data: &Path) -> Self {
+        let folder = data.join(&package.definition.game.id);
+        Self { package, folder }
+    }
+
+    const fn definition(&self) -> &Definition {
+        &self.package.definition
+    }
+
+    fn supports(&self, tape: &Tape) -> bool {
+        self.definition().media.iter().any(|m| {
+            m.sha1
+                .as_deref()
+                .is_some_and(|sha1| sha1.eq_ignore_ascii_case(&tape.sha1))
+        })
+    }
+
+    const fn kept_path(format: TapeFormat) -> &'static str {
+        match format {
+            TapeFormat::Tap => "tape.tap",
+            TapeFormat::Tzx => "tape.tzx",
+        }
+    }
+
+    /// The tape kept from an earlier start, if it's there and still one of the game's dumps.
+    pub(crate) fn kept_tape(&self) -> Option<Tape> {
+        [TapeFormat::Tap, TapeFormat::Tzx]
+            .into_iter()
+            .find_map(|format| {
+                let path = self.folder.join(Self::kept_path(format));
+                let tape = tapes_in(&path).ok()?.into_iter().next()?;
+                self.supports(&tape).then_some(tape)
+            })
+    }
+
+    /// Takes a file offered as the tape (a tape, or a zip holding tapes): the first of its tapes
+    /// that is one of the game's dumps is kept, for next time, and returned.
+    ///
+    /// # Errors
+    /// A refusal to show: no tape in the file, a different dump, or the tape couldn't be kept.
+    pub(crate) fn offer(&self, file: &Path) -> Result<Tape, Refusal> {
+        let name = file
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let title = &self.definition().game.title;
+        let tapes = tapes_in(file).map_err(|_| Refusal {
+            heading: format!("{name} holds no {title} tape"),
+            detail: "Locate the .tap or .tzx, or the .zip it was downloaded in.".to_owned(),
+        })?;
+        let Some(tape) = tapes.into_iter().find(|t| self.supports(t)) else {
+            let media = self.definition().media.first();
+            let wanted = media.map_or_else(|| format!("its own {title} tape"), |m| m.name.clone());
+            let sha1 = media
+                .and_then(|m| m.sha1.as_deref())
+                .map_or_else(String::new, |s| {
+                    format!(" (SHA-1 {}…)", &s[..s.len().min(8)])
+                });
+            return Err(Refusal {
+                heading: format!("That isn't the {title} tape this version needs"),
+                detail: format!("The tape in {name} is a different dump. This version works only with {wanted}{sha1}."),
+            });
+        };
+        fs::create_dir_all(&self.folder)
+            .and_then(|()| fs::write(self.folder.join(Self::kept_path(tape.format)), &tape.bytes))
+            .map_err(|e| Refusal {
+                heading: format!("The {title} tape couldn't be kept"),
+                detail: format!("{}: {e}", self.folder.display()),
+            })?;
+        Ok(tape)
+    }
+
+    /// What the tape prompt says for this game.
+    pub(crate) fn prompt(&self) -> TapePrompt {
+        let def = self.definition();
+        let game = &def.game;
+        let media = def.media.first();
+        let files = media.map_or(&[][..], |m| m.files.as_slice());
+        let ending = |ext: &str| {
+            files
+                .iter()
+                .find(|f| f.to_ascii_lowercase().ends_with(ext))
+                .cloned()
+        };
+        let mut credit = game.title.clone();
+        if let Some(year) = game.year {
+            let _ = write!(credit, " © {year}");
+        }
+        let makers: Vec<&str> = game
+            .authors
+            .iter()
+            .map(String::as_str)
+            .chain(game.publisher.as_deref())
+            .collect();
+        if !makers.is_empty() {
+            let _ = write!(credit, " {}", makers.join(" / "));
+        }
+        credit.push_str(". Not affiliated.");
+        TapePrompt {
+            title: game.title.clone(),
+            credit,
+            tape_file: ending(".tap")
+                .or_else(|| ending(".tzx"))
+                .unwrap_or_else(|| format!("{}.tap", game.id)),
+            download_file: ending(".zip"),
+            download: media.and_then(|m| {
+                let url = m.download.as_deref()?;
+                let page = m
+                    .download_label
+                    .clone()
+                    .unwrap_or_else(|| "the download page".to_owned());
+                let shown = url
+                    .trim_start_matches("https://")
+                    .trim_start_matches("http://");
+                Some((page, shown.to_owned()))
+            }),
+            refusal: None,
+        }
+    }
+
+    /// The download page's address, to open.
+    pub(crate) fn download_url(&self) -> Option<String> {
+        self.definition()
+            .media
+            .first()
+            .and_then(|m| m.download.clone())
+    }
+
+    /// The game's title.
+    pub(crate) fn title(&self) -> String {
+        self.definition().game.title.clone()
+    }
+
+    /// A machine of the game's model, with the tape going in.
+    ///
+    /// # Errors
+    /// If the tape can't be played.
+    pub(crate) fn machine(&self, tape: &Tape) -> Result<Machine, String> {
+        start(model(self.definition().game.machine), tape)
+    }
+}
+
+/// The emulated model for a definition's machine.
+pub(crate) const fn model(machine: Spectrum) -> Model {
+    match machine {
+        Spectrum::Spectrum48K => Model::Sinclair48K,
+        Spectrum::Spectrum128K => Model::Sinclair128K,
+    }
+}
+
+/// A machine of `model` with `tape` going in, as `LOAD ""` loads it.
+///
+/// # Errors
+/// If the tape is a `.tzx` (not read yet) or a broken `.tap`.
+pub(crate) fn start(model: Model, tape: &Tape) -> Result<Machine, String> {
+    if tape.format != TapeFormat::Tap {
+        return Err(format!("{}: only .tap tapes can be played yet", tape.name));
+    }
+    let mut machine = Machine::new(model).map_err(|e| e.to_string())?;
+    machine
+        .load_tap(&tape.bytes)
+        .map_err(|e| format!("{}: {e}", tape.name))?;
+    Ok(machine)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sidekick_def::Definition;
+    use std::io::Write as _;
+
+    /// The SHA-1 of the three bytes "abc".
+    const ABC_SHA1: &str = "a9993e364706816aba3e25717850c26c9cd0d89d";
+
+    fn game(data: &Path) -> Game {
+        let text = format!(
+            r#"schema = 1
+[game]
+id = "quake"
+title = "Quake Example"
+year = 1985
+authors = ["A. Author"]
+publisher = "Example Soft"
+machine = "48k"
+[[media]]
+name = "the original Example Soft release"
+sha1 = "{ABC_SHA1}"
+files = ["QUAKE.TAP", "Quake.tap.zip"]
+download = "https://example.org/item/1"
+download_label = "Example Archive"
+"#
+        );
+        let definition = Definition::from_toml(&text).unwrap();
+        let dir = data.join("definition");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("game.toml"), text).unwrap();
+        assert_eq!(definition.game.id, "quake");
+        Game::new(Package::load(&dir).unwrap(), data)
+    }
+
+    #[test]
+    fn the_prompt_says_what_the_definition_says() {
+        let data = tempfile::TempDir::new().unwrap();
+        let prompt = game(data.path()).prompt();
+        assert_eq!(prompt.title, "Quake Example");
+        assert_eq!(
+            prompt.credit,
+            "Quake Example © 1985 A. Author / Example Soft. Not affiliated."
+        );
+        assert_eq!(prompt.tape_file, "QUAKE.TAP");
+        assert_eq!(prompt.download_file.as_deref(), Some("Quake.tap.zip"));
+        assert_eq!(
+            prompt.download,
+            Some((
+                "Example Archive".to_owned(),
+                "example.org/item/1".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn the_right_tape_is_kept_and_found_next_time() {
+        let data = tempfile::TempDir::new().unwrap();
+        let game = game(data.path());
+        assert!(game.kept_tape().is_none(), "nothing kept yet");
+        let zip = data.path().join("download.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
+        writer
+            .start_file("QUAKE.TAP", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"abc").unwrap();
+        writer.finish().unwrap();
+
+        let tape = game.offer(&zip).expect("the right dump");
+        assert_eq!(tape.sha1, ABC_SHA1);
+        assert_eq!(game.kept_tape().map(|t| t.bytes), Some(b"abc".to_vec()));
+        assert!(data.path().join("quake/tape.tap").exists());
+    }
+
+    #[test]
+    fn another_dump_is_refused_by_name() {
+        let data = tempfile::TempDir::new().unwrap();
+        let game = game(data.path());
+        let other = data.path().join("other.tap");
+        fs::write(&other, b"not the game").unwrap();
+        let refusal = game.offer(&other).expect_err("a different dump");
+        assert_eq!(
+            refusal.heading,
+            "That isn't the Quake Example tape this version needs"
+        );
+        assert_eq!(
+            refusal.detail,
+            "The tape in other.tap is a different dump. This version works only with the original Example Soft release (SHA-1 a9993e36…)."
+        );
+        assert!(game.kept_tape().is_none(), "nothing kept");
+
+        let notes = data.path().join("notes.txt");
+        fs::write(&notes, b"hello").unwrap();
+        let refusal = game.offer(&notes).expect_err("not a tape");
+        assert_eq!(refusal.heading, "notes.txt holds no Quake Example tape");
+    }
+
+    #[test]
+    fn a_kept_tape_that_isn_t_the_dump_any_more_is_ignored() {
+        let data = tempfile::TempDir::new().unwrap();
+        let game = game(data.path());
+        fs::create_dir_all(data.path().join("quake")).unwrap();
+        fs::write(data.path().join("quake/tape.tap"), b"changed").unwrap();
+        assert!(game.kept_tape().is_none());
+    }
+}

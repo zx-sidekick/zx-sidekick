@@ -2,10 +2,10 @@
 
 use crate::{colors, Align, Canvas, Color, Fonts, Line, Style, Weight};
 
-/// The prompt's size, in logical pixels.
-const WIDTH: u32 = 960;
-/// The prompt's size, in logical pixels.
-const HEIGHT: u32 = 768;
+/// The prompt's width, in logical pixels.
+pub const WIDTH: u32 = 960;
+/// The prompt's height, in logical pixels.
+pub const HEIGHT: u32 = 768;
 
 /// What the tape prompt says, from the game's definition.
 #[derive(Clone, Debug)]
@@ -20,19 +20,17 @@ pub struct TapePrompt {
     pub download_file: Option<String>,
     /// Where the tape can be downloaded: the page's name and its address.
     pub download: Option<(String, String)>,
-    /// A tape that was offered and isn't the one needed.
-    pub wrong: Option<WrongDump>,
+    /// Why the last file offered wasn't taken.
+    pub refusal: Option<Refusal>,
 }
 
-/// A tape that isn't the dump a game needs.
-#[derive(Clone, Debug)]
-pub struct WrongDump {
-    /// The file it came in.
-    pub file: String,
-    /// The dump that is needed, in words.
-    pub wanted: String,
-    /// The start of that dump's SHA-1.
-    pub sha1: String,
+/// Why a file offered as the tape wasn't taken: a heading and a line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Refusal {
+    /// What's wrong, in a few words.
+    pub heading: String,
+    /// Which file, and what's needed instead.
+    pub detail: String,
 }
 
 const LABEL: Style = Style::new(11.0, colors::LABEL)
@@ -44,6 +42,29 @@ const ERROR_TEXT: Color = Color::rgb(0xD9, 0xB4, 0xB6);
 const DROP_BG: Color = Color::rgb(0x10, 0x12, 0x1A);
 
 impl TapePrompt {
+    /// Where the drop zone starts: lower when a refusal is shown above it.
+    const fn drop_top(&self) -> f32 {
+        if self.refusal.is_some() {
+            336.0
+        } else {
+            250.0
+        }
+    }
+
+    /// The "Locate the tape…" button, in logical pixels: x, y, width, height.
+    #[must_use]
+    pub fn locate_button(&self) -> (f32, f32, f32, f32) {
+        (383.0, self.drop_top() + 36.0, 194.0, 44.0)
+    }
+
+    /// The button that opens the download page, if there is one.
+    #[must_use]
+    pub fn download_button(&self) -> Option<(f32, f32, f32, f32)> {
+        self.download
+            .as_ref()
+            .map(|_| (616.0, self.drop_top() + 214.0 + 36.0, 224.0, 38.0))
+    }
+
     /// Draws the prompt at `scale` device pixels to a logical one.
     #[must_use]
     pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
@@ -80,10 +101,10 @@ impl TapePrompt {
             &body,
         );
 
-        let y = self.wrong.as_ref().map_or(250.0, |wrong| {
-            self.wrong_dump(&mut c, fonts, wrong);
-            336.0
-        });
+        if let Some(refusal) = &self.refusal {
+            refusal_box(&mut c, fonts, refusal);
+        }
+        let y = self.drop_top();
         self.drop_zone(&mut c, fonts, y);
         if let Some((page, address)) = &self.download {
             self.download(&mut c, fonts, y + 214.0, page, address);
@@ -105,38 +126,6 @@ impl TapePrompt {
             &[("Enter", "locate"), ("W", "website"), ("Esc", "quit")],
         );
         c
-    }
-
-    fn wrong_dump(&self, c: &mut Canvas, fonts: &mut Fonts, wrong: &WrongDump) {
-        c.rect(
-            (120.0, 236.0, 720.0, 90.0),
-            8.0,
-            Some(ERROR_BG),
-            Some(Line::solid(ERROR_EDGE, 1.0)),
-        );
-        c.circle((147.0, 261.0), 9.0, Some(colors::RED), None);
-        let bang = Style::new(12.0, ERROR_BG).weight(Weight::Bold);
-        c.text(fonts, "!", (147.0, 252.0), 18.0, Align::Center, &bang);
-        let heading = Style::new(15.0, colors::TEXT).weight(Weight::SemiBold);
-        c.text(
-            fonts,
-            &format!("That isn't the {} tape this version needs", self.title),
-            (166.0, 249.0),
-            Fonts::normal_line_height(&heading),
-            Align::Left,
-            &heading,
-        );
-        c.paragraph(
-            fonts,
-            &format!(
-                "The tape in {} is a different dump. This version works only with {} (SHA-1 {}…).",
-                wrong.file, wrong.wanted, wrong.sha1
-            ),
-            (166.0, 273.0),
-            650.0,
-            20.0,
-            &Style::new(13.0, ERROR_TEXT),
-        );
     }
 
     fn drop_zone(&self, c: &mut Canvas, fonts: &mut Fonts, y: f32) {
@@ -235,6 +224,35 @@ impl TapePrompt {
             &open,
         );
     }
+}
+
+fn refusal_box(c: &mut Canvas, fonts: &mut Fonts, refusal: &Refusal) {
+    c.rect(
+        (120.0, 236.0, 720.0, 90.0),
+        8.0,
+        Some(ERROR_BG),
+        Some(Line::solid(ERROR_EDGE, 1.0)),
+    );
+    c.circle((147.0, 261.0), 9.0, Some(colors::RED), None);
+    let bang = Style::new(12.0, ERROR_BG).weight(Weight::Bold);
+    c.text(fonts, "!", (147.0, 252.0), 18.0, Align::Center, &bang);
+    let heading = Style::new(15.0, colors::TEXT).weight(Weight::SemiBold);
+    c.text(
+        fonts,
+        &refusal.heading,
+        (166.0, 249.0),
+        Fonts::normal_line_height(&heading),
+        Align::Left,
+        &heading,
+    );
+    c.paragraph(
+        fonts,
+        &refusal.detail,
+        (166.0, 273.0),
+        650.0,
+        20.0,
+        &Style::new(13.0, ERROR_TEXT),
+    );
 }
 
 /// Runs of differently styled text on one line, centred on `x`.

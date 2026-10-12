@@ -1,4 +1,4 @@
-//! `sidekick`: ZX Sidekick's program. `sidekick TAPE` plays a tape in a window; the other
+//! `sidekick`: ZX Sidekick's program. `sidekick [GAME-ID | TAPE]` plays in a window; the other
 //! commands are for definition authors.
 
 #![allow(
@@ -7,12 +7,14 @@
     reason = "a command line's results and errors are printed"
 )]
 
+mod games;
 mod headless;
 mod keys;
 mod picture;
 mod window;
 
 use clap::{Parser, Subcommand};
+use games::Game;
 use sidekick_core::{Machine, Model};
 use sidekick_def::{tapes_in, Definition, Identified, Library, Package, TapeFormat};
 use std::{
@@ -20,14 +22,19 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
 };
+use window::Start;
 
 /// Play original ZX Spectrum games from your own copy, with a pad, training switches and
 /// guidance.
 #[derive(Parser)]
 #[command(version, args_conflicts_with_subcommands = true)]
 struct Cli {
-    /// A tape to play: a .tap, or the .zip it came in.
-    tape: Option<PathBuf>,
+    /// A game to play, by its id, or a tape to play (a .tap, or the .zip it came in). With
+    /// neither, the only game installed.
+    target: Option<String>,
+    /// A folder of definitions to add to those installed. Repeat for more.
+    #[arg(long = "games", value_name = "DIR")]
+    games: Vec<PathBuf>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -79,7 +86,7 @@ const PROBLEMS: u8 = 1;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    match (cli.command, cli.tape) {
+    match (cli.command, cli.target) {
         (Some(Command::Check { definition, tape }), _) => check(&definition, tape.as_deref()),
         (Some(Command::Convert { file, output }), _) => convert(&file, output.as_deref()),
         (
@@ -91,7 +98,7 @@ fn main() -> ExitCode {
                 scale,
             }),
             _,
-        ) => match start(&tape) {
+        ) => match tape_file(&tape) {
             Ok((mut machine, _)) => {
                 match headless::run(&mut machine, frames, &keys, screenshot.as_deref(), scale) {
                     Ok(()) => ExitCode::SUCCESS,
@@ -106,43 +113,75 @@ fn main() -> ExitCode {
                 ExitCode::from(UNREADABLE)
             }
         },
-        (None, Some(tape)) => play(&tape),
-        (None, None) => {
-            eprintln!("Give a tape to play: sidekick TAPE (sidekick --help for more)");
-            ExitCode::from(UNREADABLE)
+        (None, target) => match open(target.as_deref(), &cli.games).and_then(window::run) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::from(UNREADABLE)
+            }
+        },
+    }
+}
+
+/// What to open the window on: a tape file played, a game by its id, or the only game.
+fn open(target: Option<&str>, extra: &[PathBuf]) -> Result<Start, String> {
+    let data = games::data_folder();
+    let (library, problems) = games::library(&data, extra);
+    for problem in &problems {
+        eprintln!("{problem}");
+    }
+    if let Some(file) = target.map(Path::new).filter(|p| p.exists()) {
+        // A tape a definition knows plays on its game's machine, and is kept for it.
+        if let Ok(Identified::Game { package, tape, .. }) = library.identify(file) {
+            let game = Game::new(package.clone(), &data);
+            let machine = game.machine(&tape)?;
+            return Ok(Start::Play(Box::new(machine), game.title()));
         }
+        let (machine, title) = tape_file(file)?;
+        return Ok(Start::Play(Box::new(machine), title));
+    }
+    let package = if let Some(id) = target {
+        library
+            .get(id)
+            .ok_or_else(|| format!("{id}: no game with that id, and no such file"))?
+    } else {
+        let mut games = library.games();
+        match (games.next(), games.next()) {
+            (Some(only), None) => only,
+            (None, _) => {
+                return Err("No games are installed: give a tape (sidekick TAPE), or a folder of definitions (--games DIR)".to_owned());
+            }
+            (Some(_), Some(_)) => {
+                let ids: Vec<&str> = library
+                    .games()
+                    .map(|p| p.definition.game.id.as_str())
+                    .collect();
+                return Err(format!("Choose a game: sidekick {}", ids.join(" | ")));
+            }
+        }
+    };
+    let game = Game::new(package.clone(), &data);
+    match game.kept_tape() {
+        Some(tape) => {
+            let machine = game.machine(&tape)?;
+            Ok(Start::Play(Box::new(machine), game.title()))
+        }
+        None => Ok(Start::Prompt(Box::new(game))),
     }
 }
 
 /// A 48K with the tape in a file going in, as `LOAD ""` loads it, and the tape's name.
-fn start(path: &Path) -> Result<(Machine, String), String> {
+fn tape_file(path: &Path) -> Result<(Machine, String), String> {
     let tapes = tapes_in(path).map_err(|e| e.to_string())?;
     let tape = tapes
         .iter()
         .find(|t| t.format == TapeFormat::Tap)
         .ok_or_else(|| format!("{}: only .tap tapes can be played yet", path.display()))?;
-    let mut machine =
-        Machine::new(Model::Sinclair48K).map_err(|e| format!("{}: {e}", path.display()))?;
-    machine
-        .load_tap(&tape.bytes)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let machine = games::start(Model::Sinclair48K, tape)?;
     let title = Path::new(&tape.name)
         .file_stem()
         .map_or_else(|| tape.name.clone(), |s| s.to_string_lossy().into_owned());
     Ok((machine, title))
-}
-
-/// Plays a tape plainly: a 48K, the tape loading as `LOAD ""` loads it, the keyboard reaching
-/// the Spectrum.
-fn play(path: &Path) -> ExitCode {
-    let result = start(path).and_then(|(machine, title)| window::play(machine, &title));
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("{e}");
-            ExitCode::from(UNREADABLE)
-        }
-    }
 }
 
 fn check(path: &Path, tape: Option<&Path>) -> ExitCode {
