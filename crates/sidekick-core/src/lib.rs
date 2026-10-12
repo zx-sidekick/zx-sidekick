@@ -8,12 +8,14 @@
 //! writing to it by name. The cheats and saves described in `ZX-SIDEKICK.md` build on these.
 
 mod error;
+mod graphics;
 mod host;
 mod session;
 mod value;
 mod watch;
 
 pub use error::Error;
+pub use graphics::{Bitmap, Font};
 pub use host::{HeadlessHost, Picture};
 pub use rustzx_core::zx::joy::kempston::KempstonKey as Kempston;
 pub use rustzx_core::zx::keys::{CompoundKey, ZXKey as Key};
