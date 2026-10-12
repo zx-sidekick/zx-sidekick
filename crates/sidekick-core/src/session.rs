@@ -23,6 +23,8 @@ pub struct Record {
     pub level: u8,
     /// The switches used, by id.
     pub switches: BTreeSet<String>,
+    /// Whether a save was loaded into the game.
+    pub loaded: bool,
 }
 
 /// A moment in a session the program acts on.
@@ -86,8 +88,6 @@ pub struct Session {
     /// The guidance level, and what the game being played has used.
     level: u8,
     record: Record,
-    /// The last state that matched, through frames that matched none.
-    last_known: Option<String>,
     /// The definition's script, whether `on_load` has run, and what it returned last.
     script: Option<Script>,
     script_loaded: bool,
@@ -100,14 +100,19 @@ pub struct Session {
     /// How far the session's got, and the milestones not yet taken.
     progress: Progress,
     milestones: Vec<Milestone>,
+    /// A snapshot alone was loaded: the next game's record starts marked loaded.
+    loaded_next: bool,
 }
 
-/// How far a session's got: whether the title has been seen, and whether a game has been
-/// played since it was last.
-#[derive(Clone, Copy, Debug, Default)]
-struct Progress {
-    seen_title: bool,
-    in_game: bool,
+/// How far a session's got, as a save keeps it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Progress {
+    /// The last state that matched, through frames that matched none.
+    pub last_known: Option<String>,
+    /// Whether the title has been seen.
+    pub seen_title: bool,
+    /// Whether a game has been played since the title was last.
+    pub in_game: bool,
 }
 
 impl Session {
@@ -143,7 +148,6 @@ impl Session {
             switches: BTreeSet::new(),
             level: 0,
             record: Record::default(),
-            last_known: None,
             script: None,
             script_loaded: false,
             results: BTreeMap::new(),
@@ -152,6 +156,7 @@ impl Session {
             kept_changed: BTreeSet::new(),
             progress: Progress::default(),
             milestones: Vec::new(),
+            loaded_next: false,
         }
     }
 
@@ -466,7 +471,7 @@ impl Session {
             return;
         };
         let has_play = definition.states.iter().any(|s| s.name == "play");
-        if has_play && self.last_known.as_deref() != Some("play") {
+        if has_play && self.progress.last_known.as_deref() != Some("play") {
             self.definition = Some(definition);
             return;
         }
@@ -518,10 +523,13 @@ impl Session {
         let Some(state) = self.state.clone() else {
             return;
         };
-        let after = self.last_known.clone();
+        let after = self.progress.last_known.clone();
         let after = after.as_deref();
         if state == "play" && matches!(after, None | Some("title" | "game_over")) {
-            self.record = Record::default();
+            self.record = Record {
+                loaded: std::mem::take(&mut self.loaded_next),
+                ..Record::default()
+            };
             self.note_use();
             self.progress.in_game = true;
         }
@@ -534,7 +542,7 @@ impl Session {
                 self.milestones.push(Milestone::GameEnded);
             }
         }
-        self.last_known = Some(state);
+        self.progress.last_known = Some(state);
     }
 
     /// Adds the guidance level and the switches on now to the record.
@@ -585,6 +593,74 @@ impl Session {
             self.switches.remove(id);
         }
         Ok(())
+    }
+
+    /// The training switches on, by id.
+    #[must_use]
+    pub const fn switches_on(&self) -> &BTreeSet<String> {
+        &self.switches
+    }
+
+    /// The guidance level in use.
+    #[must_use]
+    pub const fn level(&self) -> u8 {
+        self.level
+    }
+
+    /// How far the session's got, for a save.
+    #[must_use]
+    pub const fn progress(&self) -> &Progress {
+        &self.progress
+    }
+
+    /// Puts back what a save held of the program's own: the guidance level, the switches on
+    /// (not applied again: their patches are in the saved memory), the record, marked loaded,
+    /// and where the session had got. Switches the definition doesn't have are left off.
+    pub fn restore(
+        &mut self,
+        level: u8,
+        switches: &BTreeSet<String>,
+        record: Record,
+        progress: Progress,
+    ) {
+        let known: BTreeSet<String> = self
+            .definition
+            .iter()
+            .flat_map(|d| &d.cheats)
+            .map(|c| c.id.clone())
+            .collect();
+        self.level = level;
+        self.switches = switches.intersection(&known).cloned().collect();
+        self.record = Record {
+            loaded: true,
+            ..record
+        };
+        // The game the save was taken in goes on, not a new one, in the state it was in.
+        self.state.clone_from(&progress.last_known);
+        self.progress = progress;
+        self.loaded_next = false;
+        self.holding = false;
+        self.reading_anew();
+    }
+
+    /// The values read from the machine as it is now, so the next frame's are told against
+    /// them: a hold switch mustn't take the machine before a load for the game's own.
+    fn reading_anew(&mut self) {
+        self.reading = self.read();
+    }
+
+    /// A snapshot alone was loaded into the machine: the switches are forgotten, since what
+    /// their bytes hold now is the snapshot's; where the session had got isn't known; and the
+    /// game, this one or the next to start, is marked loaded.
+    pub fn loaded_snapshot(&mut self) {
+        self.switches.clear();
+        self.record.loaded = true;
+        self.loaded_next = true;
+        self.progress.last_known = None;
+        self.progress.in_game = false;
+        self.holding = false;
+        self.state = None;
+        self.reading_anew();
     }
 
     /// Whether a switch could go on now, without turning it on.

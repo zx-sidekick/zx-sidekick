@@ -53,6 +53,16 @@ impl Watch {
         self.blocks > 0 && self.loads >= self.blocks
     }
 
+    /// Whether a tape is in and not every block has loaded.
+    pub const fn tape_loading(&self) -> bool {
+        self.blocks > 0 && self.loads < self.blocks
+    }
+
+    /// Counts the tape as loaded: a snapshot has replaced what it was loading into.
+    pub const fn finish_tape(&mut self) {
+        self.loads = self.blocks;
+    }
+
     /// Whether the last stop was the tape having loaded; asking clears it.
     pub const fn take_loaded(&mut self) -> bool {
         std::mem::replace(&mut self.loaded, false)

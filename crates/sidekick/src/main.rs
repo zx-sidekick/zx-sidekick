@@ -15,14 +15,16 @@ mod menu;
 mod pad;
 mod panel;
 mod picture;
+mod saves;
 mod scores;
 mod window;
 
 use clap::{Parser, Subcommand};
 use games::{Game, Playing};
 use pad::Mapping;
+use saves::Saves;
 use sidekick_core::{Machine, Model, Session};
-use sidekick_def::{tapes_in, Definition, Identified, Library, Package, TapeFormat};
+use sidekick_def::{tapes_in, Definition, Identified, Library, Package, Tape, TapeFormat};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -202,12 +204,16 @@ fn tape_session(file: &Path, library: &Library, data: &Path) -> Result<Playing, 
     if let Ok(Identified::Game { package, tape, .. }) = library.identify(file) {
         return Game::new(package.clone(), data).playing(&tape);
     }
-    let (machine, title) = tape_file(file)?;
+    let (machine, tape) = tape_file(file)?;
+    let title = Path::new(&tape.name)
+        .file_stem()
+        .map_or_else(|| tape.name.clone(), |s| s.to_string_lossy().into_owned());
     Ok(Playing {
         session: Session::new(machine, None),
         title,
         mapping: Mapping::default(),
         folder: None,
+        saves: Saves::of_tape(&tape.name, &tape.sha1, data),
     })
 }
 
@@ -231,18 +237,15 @@ fn run_session(
     tape_session(file, &library, &data)
 }
 
-/// A 48K with the tape in a file going in, as `LOAD ""` loads it, and the tape's name.
-fn tape_file(path: &Path) -> Result<(Machine, String), String> {
-    let tapes = tapes_in(path).map_err(|e| e.to_string())?;
-    let tape = tapes
-        .iter()
+/// A 48K with the tape in a file going in, as `LOAD ""` loads it, and the tape.
+fn tape_file(path: &Path) -> Result<(Machine, Tape), String> {
+    let tape = tapes_in(path)
+        .map_err(|e| e.to_string())?
+        .into_iter()
         .find(|t| t.format == TapeFormat::Tap)
         .ok_or_else(|| format!("{}: only .tap tapes can be played yet", path.display()))?;
-    let machine = games::start(Model::Sinclair48K, tape)?;
-    let title = Path::new(&tape.name)
-        .file_stem()
-        .map_or_else(|| tape.name.clone(), |s| s.to_string_lossy().into_owned());
-    Ok((machine, title))
+    let machine = games::start(Model::Sinclair48K, &tape)?;
+    Ok((machine, tape))
 }
 
 fn check(path: &Path, tape: Option<&Path>) -> ExitCode {

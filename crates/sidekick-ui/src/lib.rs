@@ -18,6 +18,7 @@ pub mod hints;
 mod library;
 mod map;
 mod menu;
+mod note;
 mod panel;
 mod pause;
 pub mod png;
@@ -31,6 +32,7 @@ pub use map::{
     pins, Cell, Edge, MapGrid, Marker, MarkerKind, Pin, Route, RouteColor, PICTURE as PINS_SIZE,
 };
 pub use menu::{Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH};
+pub use note::{Note, AT as NOTE_AT, HEIGHT as NOTE_HEIGHT};
 pub use panel::{
     Body as PanelBody, CardRow, Chip, Column as PanelColumn, Icon, Look, Panel, Pixels, ScoreRow,
     ThisGame, Widget as PanelWidget, HEIGHT as PANEL_HEIGHT, WIDTH as PANEL_WIDTH,
