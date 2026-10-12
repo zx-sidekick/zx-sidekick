@@ -224,6 +224,13 @@
             "null"
           ]
         },
+        "sequence": {
+          "description": "Keys tapped one after another, each for `frames` frames with as many between.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "tap": {
           "description": "Keys pressed for `frames` frames.",
           "type": "array",
@@ -1094,6 +1101,13 @@
         },
         "keys": {
           "description": "Keys held as long as the button is.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sequence": {
+          "description": "Keys tapped one after another, each for `frames` frames with as many between.",
           "type": "array",
           "items": {
             "type": "string"
