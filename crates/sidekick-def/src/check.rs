@@ -68,6 +68,9 @@ const KEYS: &[&str] = &[
 /// What a pad part or an action may name besides an action.
 const DIRECTIONS: &[&str] = &["up", "down", "left", "right", "fire"];
 
+/// The pad's parts a notice's hint can show: the face buttons and the directions.
+const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north"];
+
 /// The program's own keys, which an action can't take.
 const PROGRAM_KEYS: &[&str] = &["Esc", "F5", "F9", "F11"];
 
@@ -266,9 +269,34 @@ impl Checker<'_> {
         }
     }
 
+    fn notice(&mut self, path: &str, state: &crate::State) {
+        let Some(notice) = &state.notice else { return };
+        if state.name != "paused" {
+            self.report(path, "only the paused state has a notice");
+        }
+        for (i, hint) in notice.hints.iter().enumerate() {
+            let path = format!("{path}.hints[{i}]");
+            if hint.keys.is_none() && hint.pad.is_none() {
+                self.report(&path, "needs keys, pad or both");
+            }
+            if let Some(pad) = &hint.pad {
+                if !NOTICE_PARTS.contains(&pad.as_str()) {
+                    self.report(
+                        format!("{path}.pad"),
+                        format!(
+                            "{pad:?} isn't a part a notice shows: one of {}",
+                            NOTICE_PARTS.join(", ")
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
     fn states(&mut self) {
         let mut seen = BTreeSet::new();
         for (i, state) in self.def.states.iter().enumerate() {
+            self.notice(&format!("states[{i}].notice"), state);
             let path = format!("states[{i}]");
             if !seen.insert(&state.name) {
                 self.report(

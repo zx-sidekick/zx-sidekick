@@ -147,6 +147,34 @@ pub struct State {
     /// Matches if this test of a value holds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub when: Option<Test>,
+    /// For `paused`: what the pause notice says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notice: Option<Notice>,
+}
+
+/// What a card over the picture says: a line, and hints along its bottom.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Notice {
+    /// The line: "Move or fire to go on."
+    pub text: String,
+    /// What to press, along the bottom.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hints: Vec<Hint>,
+}
+
+/// One thing to press, and what it does.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Hint {
+    /// The keyboard's key as shown (`"Alt"`), or arrows (`"← ↑ → ↓"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<String>,
+    /// The pad part that does it, by position: `west`, `dpad`…
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pad: Option<String>,
+    /// What it does: "fire".
+    pub does: String,
 }
 
 /// A test of a value, or a combination of tests.

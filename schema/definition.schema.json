@@ -600,6 +600,34 @@
       },
       "additionalProperties": false
     },
+    "Hint": {
+      "description": "One thing to press, and what it does.",
+      "type": "object",
+      "properties": {
+        "does": {
+          "description": "What it does: \"fire\".",
+          "type": "string"
+        },
+        "keys": {
+          "description": "The keyboard's key as shown (`\"Alt\"`), or arrows (`\"← ↑ → ↓\"`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pad": {
+          "description": "The pad part that does it, by position: `west`, `dpad`…",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "does"
+      ]
+    },
     "Joystick": {
       "description": "What a pad's directions drive.",
       "oneOf": [
@@ -748,6 +776,27 @@
           "type": "string",
           "const": "ascii"
         }
+      ]
+    },
+    "Notice": {
+      "description": "What a card over the picture says: a line, and hints along its bottom.",
+      "type": "object",
+      "properties": {
+        "hints": {
+          "description": "What to press, along the bottom.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Hint"
+          }
+        },
+        "text": {
+          "description": "The line: \"Move or fire to go on.\"",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text"
       ]
     },
     "OneOrMany": {
@@ -1163,6 +1212,17 @@
         "name": {
           "description": "Its name. `title`, `play`, `paused` and `game_over` mean something to the program.",
           "type": "string"
+        },
+        "notice": {
+          "description": "For `paused`: what the pause notice says.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Notice"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "pc": {
           "description": "Matches if the processor executed one of these during the frame.",

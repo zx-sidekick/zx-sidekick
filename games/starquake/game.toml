@@ -33,6 +33,11 @@ joystick = "kempston"
 [[states]]
 name = "paused"
 # when = TODO
+# In the original, any move or fire goes on once the pause key is let go (docs/games/starquake.md).
+notice = { text = "Move or fire to go on.", hints = [
+  { pad = "dpad", does = "move" },
+  { pad = "west", does = "fire" },
+] }
 
 [[states]]
 name = "booth"

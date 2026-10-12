@@ -15,12 +15,17 @@
 
 pub mod hints;
 mod library;
+mod pause;
 pub mod png;
 mod tape_prompt;
 mod text;
 
-pub use hints::PadLabels;
+pub use hints::{Face, PadLabels};
 pub use library::{LibraryEntry, LibraryPage};
+pub use pause::{
+    NoticeHint, PadMark, PauseNotice, AT as PAUSE_NOTICE_AT, HEIGHT as PAUSE_NOTICE_HEIGHT,
+    WIDTH as PAUSE_NOTICE_WIDTH,
+};
 pub use tape_prompt::{
     Refusal, TapePrompt, HEIGHT as TAPE_PROMPT_HEIGHT, WIDTH as TAPE_PROMPT_WIDTH,
 };
@@ -148,6 +153,19 @@ impl Canvas {
     #[must_use]
     pub fn rgba(&self) -> &[u8] {
         self.pixmap.data()
+    }
+
+    /// Its pixels, RGBA row by row, not premultiplied: for blending over something else.
+    #[must_use]
+    pub fn straight_rgba(&self) -> Vec<u8> {
+        self.pixmap
+            .pixels()
+            .iter()
+            .flat_map(|p| {
+                let c = p.demultiply();
+                [c.red(), c.green(), c.blue(), c.alpha()]
+            })
+            .collect()
     }
 
     /// The canvas as a PNG.

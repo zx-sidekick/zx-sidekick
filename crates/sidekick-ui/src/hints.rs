@@ -16,15 +16,34 @@ pub enum Press<'a> {
     Cross,
     /// A PlayStation pad's ○ button, in a round badge.
     Circle,
+    /// A PlayStation pad's □ button, in a round badge.
+    Square,
+    /// A PlayStation pad's △ button, in a round badge.
+    Triangle,
 }
 
-/// What a pad's confirm and back buttons are marked with.
+/// A pad's face button, by position.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Face {
+    /// Left.
+    West,
+    /// Bottom.
+    South,
+    /// Right.
+    East,
+    /// Top.
+    North,
+}
+
+/// What a pad's buttons are marked with, by its maker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PadLabels {
-    /// A confirms and B goes back: Xbox and Nintendo pads, and most others.
+    /// Xbox's letters, and most others': A at the bottom confirms, B on the right goes back.
     #[default]
     Letters,
-    /// × confirms and ○ goes back: PlayStation pads.
+    /// Nintendo's letters: A on the right confirms, B at the bottom goes back.
+    Nintendo,
+    /// PlayStation's shapes: × at the bottom confirms, ○ on the right goes back.
     Shapes,
 }
 
@@ -33,7 +52,7 @@ impl PadLabels {
     #[must_use]
     pub const fn confirm(self) -> Press<'static> {
         match self {
-            Self::Letters => Press::Pad("A"),
+            Self::Letters | Self::Nintendo => Press::Pad("A"),
             Self::Shapes => Press::Cross,
         }
     }
@@ -42,8 +61,23 @@ impl PadLabels {
     #[must_use]
     pub const fn back(self) -> Press<'static> {
         match self {
-            Self::Letters => Press::Pad("B"),
+            Self::Letters | Self::Nintendo => Press::Pad("B"),
             Self::Shapes => Press::Circle,
+        }
+    }
+
+    /// A face button, as it's marked.
+    #[must_use]
+    pub const fn face(self, face: Face) -> Press<'static> {
+        match (self, face) {
+            (Self::Letters, Face::South) | (Self::Nintendo, Face::East) => Press::Pad("A"),
+            (Self::Letters, Face::East) | (Self::Nintendo, Face::South) => Press::Pad("B"),
+            (Self::Letters, Face::West) | (Self::Nintendo, Face::North) => Press::Pad("X"),
+            (Self::Letters, Face::North) | (Self::Nintendo, Face::West) => Press::Pad("Y"),
+            (Self::Shapes, Face::South) => Press::Cross,
+            (Self::Shapes, Face::East) => Press::Circle,
+            (Self::Shapes, Face::West) => Press::Square,
+            (Self::Shapes, Face::North) => Press::Triangle,
         }
     }
 }
@@ -69,7 +103,7 @@ const PAD_SIZE: f32 = 18.0;
 fn width(fonts: &mut Fonts, press: Press) -> f32 {
     match press {
         Press::Key(k) => fonts.measure(k, &KEY) + 10.0,
-        Press::Pad(_) | Press::Cross | Press::Circle => PAD_SIZE,
+        Press::Pad(_) | Press::Cross | Press::Circle | Press::Square | Press::Triangle => PAD_SIZE,
         Press::Arrows(a) => fonts.measure(a, &WHAT),
     }
 }
@@ -81,6 +115,13 @@ fn hint_width(fonts: &mut Fonts, hint: &Hint) -> f32 {
     #[allow(clippy::cast_precision_loss, reason = "a hint has a few presses")]
     let separators = between as f32 * (slash + 2.0 * GAP);
     presses + separators + GAP + fonts.measure(hint.does, &WHAT)
+}
+
+/// Draws hints in a row 20 pixels tall from `y`, the first one starting at `left`.
+pub fn hints_from(c: &mut Canvas, fonts: &mut Fonts, (left, y): (f32, f32), list: &[Hint]) {
+    let widths: f32 = list.iter().map(|h| hint_width(fonts, h)).sum();
+    let spacing: f32 = list.iter().skip(1).map(|_| SPACING).sum();
+    hints(c, fonts, (left + widths + spacing, y), list);
 }
 
 /// Draws hints in a row 20 pixels tall from `y`, the last one ending at `right`.
@@ -119,7 +160,7 @@ pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &
                 Press::Arrows(a) => {
                     c.text(fonts, a, (x, y + 1.0), 18.0, Align::Left, &WHAT);
                 }
-                Press::Cross | Press::Circle => {
+                Press::Cross | Press::Circle | Press::Square | Press::Triangle => {
                     let (cx, cy) = (x + PAD_SIZE / 2.0, y + 10.0);
                     c.circle(
                         (cx, cy),
@@ -128,11 +169,20 @@ pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &
                         Some(Line::solid(colors::KEY_EDGE, 1.0)),
                     );
                     let mark = Line::solid(colors::TEXT, 1.5);
-                    if matches!(press, Press::Cross) {
-                        c.line((cx - 3.5, cy - 3.5), (cx + 3.5, cy + 3.5), mark);
-                        c.line((cx - 3.5, cy + 3.5), (cx + 3.5, cy - 3.5), mark);
-                    } else {
-                        c.circle((cx, cy), 4.5, None, Some(mark));
+                    match press {
+                        Press::Cross => {
+                            c.line((cx - 3.5, cy - 3.5), (cx + 3.5, cy + 3.5), mark);
+                            c.line((cx - 3.5, cy + 3.5), (cx + 3.5, cy - 3.5), mark);
+                        }
+                        Press::Square => {
+                            c.rect((cx - 4.0, cy - 4.0, 8.0, 8.0), 0.0, None, Some(mark));
+                        }
+                        Press::Triangle => {
+                            c.line((cx, cy - 4.5), (cx + 4.5, cy + 3.5), mark);
+                            c.line((cx + 4.5, cy + 3.5), (cx - 4.5, cy + 3.5), mark);
+                            c.line((cx - 4.5, cy + 3.5), (cx, cy - 4.5), mark);
+                        }
+                        _ => c.circle((cx, cy), 4.5, None, Some(mark)),
                     }
                 }
             }

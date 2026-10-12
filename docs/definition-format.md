@@ -136,6 +136,17 @@ pc = [0x5F10, 0x5F42]  # any of these
 | `name` | The state's name. `title`, `play`, `paused` and `game_over` have meanings to the program (the pause notice, Start on the title screen, the high-score table); others are yours. |
 | `pc` | One address or a list: matches if the processor executed it during the frame. |
 | `when` | A test of a value: `equals`, `not`, `in = [..]`, `at_least`, `at_most`, or `bits = 0x80` (all set). `all = [..]` and `any = [..]` combine tests. |
+| `notice` | For `paused` only: what the pause notice says while the game is paused. `text` is its line; `hints` are what to press, each with `keys` (the keyboard's, as shown: `"Alt"`, or arrows such as `"← ↑ → ↓"`), `pad` (a pad part by position: `dpad`, `stick`, `west`, `south`, `east` or `north`, shown as the pad's maker marks it) or both, and `does`. Without it, the notice says "Press a key or a button to go on." |
+
+```toml
+[[states]]
+name = "paused"
+when = { value = "paused_flag", equals = 1 }
+notice = { text = "Move or fire to go on.", hints = [
+  { keys = "← ↑ → ↓", does = "move" },
+  { keys = "Alt", pad = "west", does = "fire" },
+] }
+```
 
 ## `[values]`: named facts
 
