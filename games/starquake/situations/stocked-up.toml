@@ -1,0 +1,6 @@
+# A new game with plenty of everything, and creatures that do no harm.
+lives = 9
+energy = 127
+platforms = 99
+laser = 99
+cheats = ["no-harm"]

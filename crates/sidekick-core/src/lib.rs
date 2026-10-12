@@ -236,6 +236,18 @@ impl Machine {
         &self.emulator.cpu().regs
     }
 
+    /// Calls the routine at `addr` as a `CALL` at `back` would: `back` pushed as its return,
+    /// and the processor sent to `addr`.
+    pub fn call(&mut self, addr: u16, back: u16) {
+        let regs = self.registers_mut();
+        let sp = regs.get_sp().wrapping_sub(2);
+        regs.set_sp(sp);
+        regs.set_pc(addr);
+        let [low, high] = back.to_le_bytes();
+        self.write(sp, low);
+        self.write(sp.wrapping_add(1), high);
+    }
+
     /// The processor's registers, to change between frames.
     pub fn registers_mut(&mut self) -> &mut Regs {
         &mut self.emulator.cpu_mut().regs

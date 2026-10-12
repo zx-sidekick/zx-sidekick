@@ -337,6 +337,8 @@ source = "script:map"
 [situations]
 # The routine that starts play in the current room (docs/re/starquake.md).
 enter = 0xA426
+# Its loading screen waits for a key; at the title, 0 starts a game.
+start = ["SPACE", "0"]
 
 [script]
 file = "scripts/starquake.rhai"

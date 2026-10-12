@@ -253,7 +253,7 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 - **Wherever the game is** (paused, typing a code, the menu open), a snapshot can be taken. Take it at the sync point wherever possible, so loading resumes cleanly; otherwise at the end of a frame.
 - **A loaded game is marked** beside its score.
 
-**Crafted situations, for testing:** a short text file of `name = value` lines naming only what differs from a new game, using the definition's `[values]` names: the room, the player's position, lives, energy, items carried, codes seen, training switches. The program starts a new game, writes those into memory, then enters play through the routine the definition names (`[situations] enter`). Crafted files hold nothing of the original's, so they can be committed, in the definition's `situations/`. `sidekick TAPE --load FILE` starts from a save or a crafted file, in a window or headless.
+**Crafted situations, for testing:** a short TOML file of `name = value` lines naming only what differs from a new game, using the definition's `[values]` names: the room, the player's position, lives, energy, items carried, codes seen, training switches. The program starts a new game, writes those into memory, then enters play through the routine the definition names (`[situations] enter`). Crafted files hold nothing of the original's, so they can be committed, in the definition's `situations/`. `sidekick TAPE --load FILE` starts from a save or a crafted file, in a window or headless.
 
 ## 14. What the player sees for a game without a definition
 

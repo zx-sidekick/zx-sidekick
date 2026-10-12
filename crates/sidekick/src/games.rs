@@ -282,6 +282,8 @@ pub(crate) struct Playing {
     pub(crate) mapping: Mapping,
     pub(crate) folder: Option<PathBuf>,
     pub(crate) saves: Saves,
+    /// Whether a game kept on quitting is offered: not when it starts from `--load`.
+    pub(crate) offer: bool,
 }
 
 impl Game {
@@ -296,6 +298,7 @@ impl Game {
             mapping: self.mapping(),
             folder: Some(self.folder.clone()),
             saves: Saves::of_game(&self.definition().game.id, &tape.sha1, &self.folder),
+            offer: true,
         })
     }
 }

@@ -1228,6 +1228,13 @@
               "type": "null"
             }
           ]
+        },
+        "start": {
+          "description": "The keys that take the game from its loaded tape to play, in turn: each tapped every\nsecond until the game's state changes.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

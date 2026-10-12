@@ -549,13 +549,17 @@ const fn maker(kind: GamepadType) -> Maker {
 
 impl Player {
     fn new(playing: Playing) -> Self {
-        let offer = saves::take_quit(&playing.saves);
-        Self {
+        let offer = if playing.offer {
+            saves::take_quit(&playing.saves)
+        } else {
+            None
+        };
+        let mut player = Self {
+            level: usize::from(playing.session.level()),
             session: Box::new(playing.session),
             play: Play::new(playing.mapping),
             title: playing.title,
             folder: playing.folder,
-            level: 0,
             menu: None,
             menu_at: None,
             entry: None,
@@ -571,7 +575,13 @@ impl Player {
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
             samples: Vec::with_capacity(SAMPLE_RATE / 50 * 2),
+        };
+        // Started from a save (`--load`) past the title: the kept table goes back in, as
+        // after any load.
+        if player.session.progress().seen_title {
+            player.put_scores_in();
         }
+        player
     }
 
     /// Whether the game is held on its loading screen, taking the event. Any key or button

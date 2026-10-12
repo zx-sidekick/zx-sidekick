@@ -771,6 +771,10 @@ pub struct Situations {
     /// The routine that starts play in the current room.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enter: Option<Address>,
+    /// The keys that take the game from its loaded tape to play, in turn: each tapped every
+    /// second until the game's state changes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub start: Vec<String>,
 }
 
 /// `[script]`: the definition's script.

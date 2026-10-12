@@ -640,6 +640,7 @@ impl Checker<'_> {
             if situations.enter.is_none() {
                 self.report("situations.enter", "missing");
             }
+            self.keys("situations.start", &situations.start);
         }
     }
 }

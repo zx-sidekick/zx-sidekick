@@ -190,11 +190,45 @@ impl Session {
         if !read {
             self.take_reading();
         }
+        self.end_frame();
+        Ok(())
+    }
+
+    /// Runs on to the sync address, stopping there mid-frame, so what's done next is done at
+    /// the top of the game's main loop; the next [`Session::run_frame`] finishes the frame.
+    /// Returns false, having run no further, if the frame ended (or the tape loaded) first.
+    ///
+    /// # Errors
+    /// If the machine fails.
+    pub fn run_to_sync(&mut self) -> Result<bool, Error> {
+        if self.holding {
+            return Ok(false);
+        }
+        match self.machine.run()? {
+            Stop::Sync => {
+                self.take_reading();
+                Ok(true)
+            }
+            Stop::Loaded => {
+                self.holding = true;
+                self.machine.draw_screen_from_memory();
+                Ok(false)
+            }
+            Stop::FrameEnd => {
+                self.take_reading();
+                self.end_frame();
+                Ok(false)
+            }
+        }
+    }
+
+    /// What follows a frame's end: the state decided, games tracked, the script run, and the
+    /// kept lists filled.
+    fn end_frame(&mut self) {
         self.state = self.decide();
         self.track_games();
         self.run_script();
         self.keep_from_values();
-        Ok(())
     }
 
     /// Gives the session its kept lists, as the program last saved them.
@@ -658,6 +692,11 @@ impl Session {
         self.holding = false;
         self.state = None;
         self.reading_anew();
+    }
+
+    /// Marks the game being played as not played from its start: loaded, or set up.
+    pub const fn mark_loaded(&mut self) {
+        self.record.loaded = true;
     }
 
     /// Whether a switch could go on now, without turning it on.
