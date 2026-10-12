@@ -553,6 +553,11 @@ impl Player {
             }
             ran.map_err(|e| e.to_string())?;
             self.play.frame_ran();
+            // The card goes when the game leaves its state, press or no press.
+            if self.entry.is_some() && self.text_entry().is_none() {
+                self.entry = None;
+                pads.hold_back();
+            }
             self.save_kept();
             self.frames_run += 1;
             if let Some(stream) = &out.sound {
