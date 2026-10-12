@@ -89,7 +89,7 @@ Once the change is merged in the fork, delete the override and bump the `rev` in
 - **The library:** when more than one game is installed, the program opens on a library screen of the games it has tapes for, and of those it has definitions for but no tape yet. Choosing one of the latter opens its tape prompt (§8).
 - **Plain play:** a tape no definition knows still runs, with the keyboard, and the pad on the Kempston joystick. There's no panel, no training and no kept scores; saves still work.
 - **Data folders:** each game keeps its own files in `<data>/<game-id>/`: its tape, kept codes, high scores, saves.
-- **The command line:** `sidekick` opens the library; `sidekick TAPE` or `sidekick GAME-ID` starts one game; `sidekick check`, `sidekick author` and `sidekick import-pok` are the authoring tools (§15).
+- **The command line:** `sidekick` starts the only game installed (the library, when there are several); `sidekick GAME-ID` starts that game, from its kept tape or the tape prompt; `sidekick TAPE` plays a tape, on its game's machine when a definition knows it; `--games DIR` adds a folder of definitions, and `ZX_SIDEKICK_DATA` moves the data folder. `sidekick run` runs a tape headless and writes a screenshot; `sidekick check`, `sidekick convert`, `sidekick author` and `sidekick import-pok` are the authoring tools (§15).
 
 ## 6. The definition
 

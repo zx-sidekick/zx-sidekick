@@ -17,8 +17,8 @@ machine = "48k"
 
 [[media]]
 name = "Starquake (Bubble Bus Software), as distributed by World of Spectrum"
-# sha1 = TODO: from the downloaded tape
-files = ["starquake.tap", "Starquake.tap.zip"]
+sha1 = "65450d6f33692c2c2868c0b497037f2cfd0ef3bd"
+files = ["STARQUAK.TAP", "Starquake.tap.zip"]
 download = "https://worldofspectrum.net/item/0004873"
 download_label = "World of Spectrum"
 
