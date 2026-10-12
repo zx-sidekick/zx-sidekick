@@ -12,6 +12,7 @@ repository.workspace = true
 [dependencies]
 rustzx-core.workspace = true
 rustzx-z80.workspace = true
+sidekick-def.workspace = true
 
 [lints]
 workspace = true

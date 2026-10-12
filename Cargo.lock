@@ -797,6 +797,7 @@ version = "0.1.0"
 dependencies = [
  "rustzx-core",
  "rustzx-z80",
+ "sidekick-def",
 ]
 
 [[package]]

@@ -20,7 +20,7 @@ use sdl3::{
     video::{FullscreenType, WindowContext},
     GamepadSubsystem,
 };
-use sidekick_core::{Machine, SAMPLE_RATE};
+use sidekick_core::{Machine, Session, SAMPLE_RATE};
 use sidekick_ui::{
     Canvas, Fonts, LibraryPage, PadLabels, Refusal, TapePrompt, TAPE_PROMPT_HEIGHT,
     TAPE_PROMPT_WIDTH,
@@ -50,8 +50,8 @@ const PROMPT: (u32, u32) = (TAPE_PROMPT_WIDTH, TAPE_PROMPT_HEIGHT);
 
 /// What the window opens on.
 pub(crate) enum Start {
-    /// A machine to play, its title, and what a pad does in it.
-    Play(Box<Machine>, String, Mapping),
+    /// A game to play, its title, and what a pad does in it.
+    Play(Box<Session>, String, Mapping),
     /// A game whose tape has to be located first.
     Prompt(Box<Game>),
     /// Several games, to choose one.
@@ -76,9 +76,9 @@ struct Prompt {
     chosen: Arc<Mutex<Option<PathBuf>>>,
 }
 
-/// A machine being played, and what keeps its time and sound.
+/// A game being played, and what keeps its time and sound.
 struct Player {
-    machine: Box<Machine>,
+    session: Box<Session>,
     play: Play,
     started: Instant,
     frames_run: u64,
@@ -187,8 +187,8 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
             }
         }
         if let Screen::Prompt(prompt) = &mut screen {
-            if let Some((machine, mapping)) = prompt.take_offer() {
-                screen = Screen::Play(Player::new(machine, mapping));
+            if let Some((session, mapping)) = prompt.take_offer() {
+                screen = Screen::Play(Player::new(session, mapping));
                 gamepads.pads.hold_back();
             }
         }
@@ -221,7 +221,7 @@ impl Screen {
         let navs = presses.iter().filter_map(|&(p, m)| pad::nav(p, m));
         match self {
             Self::Play(player) => {
-                play_event(&mut player.machine, event);
+                play_event(player.session.machine_mut(), event);
                 for &(part, _) in presses {
                     player.play.pressed(part);
                 }
@@ -350,9 +350,9 @@ const fn maker(kind: GamepadType) -> Maker {
 }
 
 impl Player {
-    fn new(machine: Box<Machine>, mapping: Mapping) -> Self {
+    fn new(session: Box<Session>, mapping: Mapping) -> Self {
         Self {
-            machine,
+            session,
             play: Play::new(mapping),
             started: Instant::now(),
             frames_run: 0,
@@ -375,14 +375,15 @@ impl Player {
             std::thread::sleep(Duration::from_millis(1));
         }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
-            send(&mut self.machine, self.play.update(pads.held()));
-            self.machine.run_frame().map_err(|e| e.to_string())?;
+            send(self.session.machine_mut(), self.play.update(pads.held()));
+            self.session.run_frame().map_err(|e| e.to_string())?;
             self.play.frame_ran();
             self.frames_run += 1;
             if let Some(stream) = &out.sound {
                 self.samples.clear();
                 self.samples.extend(
-                    self.machine
+                    self.session
+                        .machine()
                         .sound()
                         .iter()
                         .flat_map(|&s| <[f32; 2]>::from(s)),
@@ -392,7 +393,7 @@ impl Player {
                     .map_err(|e| e.to_string())?;
             }
         }
-        to_rgba(self.machine.picture(), &mut self.rgba);
+        to_rgba(self.session.machine().picture(), &mut self.rgba);
         out.picture
             .update(None::<Rect>, &self.rgba, PICTURE.0 as usize * 4)
             .map_err(|e| e.to_string())?;
@@ -459,11 +460,11 @@ impl Prompt {
 
     /// A file offered since the last pass, taken as the tape or refused on the page. A tape
     /// that's the game's but can't be played yet (a `.tzx`) is refused too, not fatal.
-    fn take_offer(&mut self) -> Option<(Box<Machine>, Mapping)> {
+    fn take_offer(&mut self) -> Option<(Box<Session>, Mapping)> {
         let file = self.chosen.lock().ok().and_then(|mut c| c.take())?;
         let refusal = match self.game.offer(&file) {
-            Ok(tape) => match self.game.machine(&tape) {
-                Ok(machine) => return Some((Box::new(machine), self.game.mapping())),
+            Ok(tape) => match self.game.session(&tape) {
+                Ok(session) => return Some((Box::new(session), self.game.mapping())),
                 Err(e) => Refusal {
                     heading: "This tape can't be played yet".to_owned(),
                     detail: e,
@@ -566,7 +567,7 @@ impl Library {
 
 fn first_screen(start: Start) -> Screen {
     match start {
-        Start::Play(machine, _, mapping) => Screen::Play(Player::new(machine, mapping)),
+        Start::Play(session, _, mapping) => Screen::Play(Player::new(session, mapping)),
         Start::Prompt(game) => prompt_screen(*game),
         Start::Library(games) => Screen::Library(Box::new(Library {
             page: LibraryPage {
@@ -589,7 +590,7 @@ fn open_game(game: Game, canvas: &mut WindowCanvas) -> Result<Screen, String> {
         .map_err(|e| e.to_string())?;
     match game.kept_tape() {
         Some(tape) => Ok(Screen::Play(Player::new(
-            Box::new(game.machine(&tape)?),
+            Box::new(game.session(&tape)?),
             game.mapping(),
         ))),
         None => Ok(prompt_screen(game)),

@@ -115,7 +115,7 @@ One entry per dump the definition supports. A tape that matches none is refused 
 
 ## `[[states]]`: moments of the game
 
-Each state names a moment the program needs to recognise: the title screen, play, pause, a code being asked for, game over. They're checked in order at the end of each frame, and **the first that matches is the game's state** for that frame. Unknown is a state too: nothing matched.
+Each state names a moment the program needs to recognise: the title screen, play, pause, a code being asked for, game over. They're checked in order at the end of each frame, and **the first that matches is the game's state** for that frame. Unknown is a state too: nothing matched. A state with both `pc` and `when` needs both, and one with neither (a draft's) never matches; a `when` on a value that isn't a number (text, bytes, a table) never holds.
 
 ```toml
 [[states]]
@@ -141,6 +141,10 @@ pc = [0x5F10, 0x5F42]  # any of these
 
 Each entry turns bytes into a named fact. Everything else (cheats, the panel, scripts, crafted situations) uses these names.
 
+Values are read once a frame: when the frame reaches `[run] sync`, at that moment, or else at the frame's end. Everything in that frame (its state, the panel, cheats) sees the same reading. Only numbers (`u8`, `i8`, `u16`, `u16be`, `bcd`, `digits`) marked `writable` can be written, and only in RAM.
+
+`sidekick run TAPE --definition DEF --values` prints the state and every value after the last frame, to check a definition against the game without a window.
+
 ```toml
 [values.lives]
 addr = 0x8F21
@@ -153,11 +157,11 @@ description = "Lives left, shown in the status bar"
 | Key | Meaning |
 |---|---|
 | `addr` | Where it starts. |
-| `type` | `u8`, `i8`, `u16` (little-endian), `u16be`, `bcd` (`len` bytes, two digits each), `digits` (`len` bytes, one digit each, with `zero` the code of the digit 0, default `0x30`), `bitset` (`len` bytes; bit 0 of the first byte is item 0), `bytes` (`len` raw bytes), `text` (`len` bytes in `charset`). |
+| `type` | `u8`, `i8`, `u16` (little-endian), `u16be`, `bcd` (`len` bytes, two digits each, the first byte the most significant), `digits` (`len` bytes, one digit each, the first the most significant, with `zero` the code of the digit 0, default `0x30`), `bitset` (`len` bytes; bit 0 of the first byte is item 0), `bytes` (`len` raw bytes), `text` (`len` bytes in `charset`). |
 | `len` | For the multi-byte types. |
 | `max` | The value's full amount, for meters and for cheats that fill it. |
 | `writable` | `true` if cheats, scripts or crafted situations may write it. Values are read-only otherwise. |
-| `charset` | For `text`: `"ascii"` (default), or a table `{ first = 0x20, chars = " ABC..." }` mapping codes to letters, for games with their own. |
+| `charset` | For `text`: `"ascii"` (default), or a table `{ first = 0x20, chars = " ABC..." }` mapping codes to letters, for games with their own. A code outside it reads as `?`. |
 | `description` | For authors and `sidekick author`'s overlay. |
 
 ### Tables
@@ -176,7 +180,7 @@ fields.sprite = { offset = 2, type = "u8" }
 fields.carried = { offset = 3, type = "u8", bits = 0x80 }   # true when the bit is set
 ```
 
-`count` may be a value's name instead of a number, for tables whose length the game keeps. A field may be any type above, at its `offset` within the record, with `bits` to pick out part of a byte.
+`count` may be a value's name instead of a number, for tables whose length the game keeps; at most 1,024 records are read, whatever it says. A field may be any type above, at its `offset` within the record, with `bits` to pick out part of a byte.
 
 ### The game's font and graphics
 

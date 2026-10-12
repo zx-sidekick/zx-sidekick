@@ -1,7 +1,7 @@
 //! Games: where their definitions and tapes are, and which tape a game takes.
 
 use crate::pad::Mapping;
-use sidekick_core::{Machine, Model};
+use sidekick_core::{Machine, Model, Session};
 use sidekick_def::{
     tapes_in, Definition, Library, LoadError, Machine as Spectrum, Package, Tape, TapeFormat,
 };
@@ -212,6 +212,18 @@ impl Game {
     /// If the tape can't be played.
     pub(crate) fn machine(&self, tape: &Tape) -> Result<Machine, String> {
         start(model(self.definition().game.machine), tape)
+    }
+
+    /// The game played from a tape: a machine of its model with the tape going in, its values
+    /// read and its state decided each frame.
+    ///
+    /// # Errors
+    /// If the tape can't be played.
+    pub(crate) fn session(&self, tape: &Tape) -> Result<Session, String> {
+        Ok(Session::new(
+            self.machine(tape)?,
+            Some(self.definition().clone()),
+        ))
     }
 }
 
