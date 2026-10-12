@@ -10,6 +10,10 @@ The emulator contains the ZX Spectrum 48K and 128K ROMs, created by Sinclair Res
 
 Amstrad has [given permission](https://groups.google.com/forum/?hl=en#!msg/comp.sys.amstrad.8bit/HtpBU2Bzv_U/HhNDSU3MksAJ) to distribute their ROMs in conjunction with emulators, provided the copyright notice is kept and nothing is charged for them. ZX Sidekick is free, and charges nothing for anything it includes.
 
+## Inter
+
+The program's own text is set in [Inter](https://rsms.me/inter/) 4.1, by Rasmus Andersson and The Inter Project Authors, under the SIL Open Font License 1.1. Its Regular, Medium, SemiBold and Bold are embedded from `crates/sidekick-ui/fonts/`, with the licence beside them (`LICENSE.txt`), included in each release.
+
 ## Games
 
 No game is included. Each game runs from the player's own copy. The definitions in `games/` hold facts about the games (checksums, memory addresses and what they mean) in their authors' own words, and nothing of the games themselves. ZX Sidekick is not affiliated with or endorsed by any game's rights holders.

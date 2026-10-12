@@ -11,12 +11,13 @@ repository.workspace = true
 
 [dependencies]
 clap.workspace = true
-miniz_oxide.workspace = true
+sidekick-ui.workspace = true
 sdl3.workspace = true
 sidekick-core.workspace = true
 sidekick-def.workspace = true
 
 [dev-dependencies]
+miniz_oxide.workspace = true
 tempfile.workspace = true
 
 [lints]

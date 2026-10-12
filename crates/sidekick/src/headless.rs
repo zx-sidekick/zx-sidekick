@@ -58,70 +58,25 @@ pub(crate) fn run(
     Ok(())
 }
 
-/// Writes the picture as an RGB PNG, each Spectrum pixel `scale` × `scale` pixels.
+/// Writes the picture as a PNG, each Spectrum pixel `scale` × `scale` pixels.
 fn write_png(picture: &Picture, scale: u32, path: &Path) -> std::io::Result<()> {
     let mut rgba = Vec::new();
     to_rgba(picture, &mut rgba);
     let (width, height) = (picture.width(), picture.height());
-    let scale = usize::try_from(scale.max(1)).unwrap_or(1);
-    // Each row: filter type 0 (none), then the row's RGB.
-    let mut rows = Vec::with_capacity((width * scale * 3 + 1) * height * scale);
+    let k = usize::try_from(scale.max(1)).unwrap_or(1);
+    let mut scaled = Vec::with_capacity(rgba.len() * k * k);
     for row in rgba.chunks_exact(width * 4) {
         let line: Vec<u8> = row
             .chunks_exact(4)
-            .flat_map(|p| std::iter::repeat_n([p[0], p[1], p[2]], scale).flatten())
+            .flat_map(|p| std::iter::repeat_n([p[0], p[1], p[2], p[3]], k).flatten())
             .collect();
-        for _ in 0..scale {
-            rows.push(0);
-            rows.extend_from_slice(&line);
+        for _ in 0..k {
+            scaled.extend_from_slice(&line);
         }
     }
-    let dimension = |n: usize| u32::try_from(n * scale).unwrap_or(u32::MAX).to_be_bytes();
-    let mut header = Vec::with_capacity(13);
-    header.extend_from_slice(&dimension(width));
-    header.extend_from_slice(&dimension(height));
-    header.extend_from_slice(&[8, 2, 0, 0, 0]); // 8 bits, RGB, deflate, no filter, no interlace
-    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
-    chunk(&mut png, *b"IHDR", &header);
-    chunk(
-        &mut png,
-        *b"IDAT",
-        &miniz_oxide::deflate::compress_to_vec_zlib(&rows, 6),
-    );
-    chunk(&mut png, *b"IEND", &[]);
-    fs::write(path, png)
-}
-
-/// Appends a PNG chunk: its length, type, data and CRC.
-fn chunk(png: &mut Vec<u8>, kind: [u8; 4], data: &[u8]) {
-    let len = u32::try_from(data.len()).unwrap_or(u32::MAX);
-    png.extend_from_slice(&len.to_be_bytes());
-    png.extend_from_slice(&kind);
-    png.extend_from_slice(data);
-    png.extend_from_slice(&crc32(kind.iter().chain(data)).to_be_bytes());
-}
-
-/// The CRC-32 PNG chunks carry (ISO 3309, polynomial 0xEDB88320).
-fn crc32<'a>(bytes: impl Iterator<Item = &'a u8>) -> u32 {
-    !bytes.fold(!0u32, |crc, &byte| {
-        (0..8).fold(crc ^ u32::from(byte), |c, _| {
-            if c & 1 == 1 {
-                (c >> 1) ^ 0xEDB8_8320
-            } else {
-                c >> 1
-            }
-        })
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_crc_is_png_s() {
-        // The CRC of an IEND chunk, as every PNG ends with.
-        assert_eq!(crc32(b"IEND".iter()), 0xAE42_6082);
-        assert_eq!(crc32(b"123456789".iter()), 0xCBF4_3926);
-    }
+    let size = |n: usize| u32::try_from(n * k).unwrap_or(u32::MAX);
+    fs::write(
+        path,
+        sidekick_ui::png::encode(&scaled, size(width), size(height)),
+    )
 }
