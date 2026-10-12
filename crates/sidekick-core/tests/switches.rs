@@ -183,6 +183,14 @@ fn a_patch_that_doesn_t_match_refuses_the_whole_switch() {
         "not even its first patch"
     );
     assert_eq!(s.switch("no-such", true), Err(SwitchError::Unknown));
+    assert_eq!(
+        s.can_switch_on("no-harm"),
+        Err(SwitchError::Mismatch { addr: FREE + 0x20 }),
+        "asking says the same, and changes nothing"
+    );
+    poke(&mut s, FREE + 0x20, &[0xF5]);
+    assert_eq!(s.can_switch_on("no-harm"), Ok(()));
+    assert!(!s.switched_on("no-harm"));
 }
 
 #[test]

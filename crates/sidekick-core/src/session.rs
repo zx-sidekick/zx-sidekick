@@ -264,6 +264,30 @@ impl Session {
         Ok(())
     }
 
+    /// Whether a switch could go on now, without turning it on.
+    ///
+    /// # Errors
+    /// As [`Session::switch`] would refuse it.
+    pub fn can_switch_on(&self, id: &str) -> Result<(), SwitchError> {
+        let cheat = self
+            .definition
+            .as_ref()
+            .and_then(|d| d.cheats.iter().find(|c| c.id == id))
+            .ok_or(SwitchError::Unknown)?;
+        if self.switches.contains(id) {
+            return Ok(());
+        }
+        cheat
+            .patch
+            .iter()
+            .find(|p| !self.expected(p))
+            .map_or(Ok(()), |patch| {
+                Err(SwitchError::Mismatch {
+                    addr: patch.addr.map_or(0, |a| a.0),
+                })
+            })
+    }
+
     /// Whether a patch's `expect` bytes are where it would go, in RAM.
     fn expected(&self, patch: &Patch) -> bool {
         patch.bank.is_none()

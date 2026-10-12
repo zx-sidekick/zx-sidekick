@@ -4,6 +4,7 @@
 use crate::{
     games::Game,
     keys::{spectrum_key, Spectrum},
+    menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     picture::{placement, to_rgba},
 };
@@ -23,8 +24,9 @@ use sdl3::{
 use sidekick_core::{Machine, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
 use sidekick_ui::{
-    Canvas, Face, Fonts, LibraryPage, NoticeHint, PadLabels, PadMark, PauseNotice, Refusal,
-    TapePrompt, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    Canvas, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark,
+    PauseNotice, Question, Refusal, Row, TapePrompt, MENU_WIDTH, PAUSE_NOTICE_HEIGHT,
+    PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
     collections::BTreeMap,
@@ -42,6 +44,47 @@ const QUEUED_FRAMES: usize = 3;
 
 /// The most frames run between two presented pictures, so a stall can't snowball.
 const MOST_FRAMES_A_PASS: usize = 5;
+
+/// The menu card's width, for halving it.
+#[allow(clippy::cast_precision_loss, reason = "a card's width")]
+const MENU_WIDTH_F: f32 = MENU_WIDTH as f32;
+
+/// What came of an event for the guidance menu.
+enum MenuEvent {
+    /// Not the menu's: the game has it.
+    NotMine,
+    /// The menu's.
+    Taken,
+    /// Exit, from the menu.
+    Quit,
+}
+
+/// Draws a card into a texture kept with what it was drawn from, drawing it anew only when
+/// that or the scale changed. Uploaded un-premultiplied, for blending over the picture.
+fn cached<'a, T: Clone + PartialEq>(
+    creator: &'a TextureCreator<WindowContext>,
+    kept: &mut Option<(Texture<'a>, T, u32)>,
+    fonts: &mut Fonts,
+    what: &T,
+    scale: u32,
+    draw: impl FnOnce(&T, &mut Fonts, u32) -> Canvas,
+) -> Result<(), String> {
+    if kept
+        .as_ref()
+        .is_some_and(|(_, drawn, s)| *s == scale && drawn == what)
+    {
+        return Ok(());
+    }
+    let card = draw(what, fonts, scale);
+    let (w, h) = card.size();
+    let mut texture = new_texture(creator, w, h)?;
+    texture
+        .update(None::<Rect>, &card.straight_rgba(), w as usize * 4)
+        .map_err(|e| e.to_string())?;
+    texture.set_blend_mode(BlendMode::Blend);
+    *kept = Some((texture, what.clone(), scale));
+    Ok(())
+}
 
 /// The keyboard, as a pad, for the keys that do a game's actions: an id no pad SDL opens has.
 const KEYBOARD: u32 = u32::MAX;
@@ -84,6 +127,13 @@ struct Prompt {
 struct Player {
     session: Box<Session>,
     play: Play,
+    title: String,
+    /// The guidance level in use.
+    level: usize,
+    /// The guidance menu, while it's open, and where its card was last drawn: its top left
+    /// in the window's device pixels, its scale, and device pixels to a window point.
+    menu: Option<Menu>,
+    menu_at: Option<(f32, f32, f32, f32)>,
     started: Instant,
     frames_run: u64,
     rgba: Vec<u8>,
@@ -113,6 +163,9 @@ struct Output<'a> {
     prompt: Option<Texture<'a>>,
     /// The pause notice drawn, and what it was drawn from and at.
     notice: Option<(Texture<'a>, PauseNotice, u32)>,
+    /// The guidance menu and its question, likewise.
+    menu: Option<(Texture<'a>, MenuCard, u32)>,
+    question: Option<(Texture<'a>, Question, u32)>,
     sound: Option<AudioStreamOwner>,
     fonts: Fonts,
 }
@@ -145,6 +198,8 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         creator: &creator,
         prompt: None,
         notice: None,
+        menu: None,
+        question: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
         sound: open_sound(&sdl),
         fonts: Fonts::new(),
@@ -183,6 +238,11 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                         if player.held(&event, &presses, &mut gamepads.pads) {
                             continue;
                         }
+                        match player.menu_event(&event, &presses, &mut gamepads.pads) {
+                            MenuEvent::NotMine => {}
+                            MenuEvent::Taken => continue,
+                            MenuEvent::Quit => break 'run,
+                        }
                         presses.extend(gamepads.host_key(&event, player.play.mapping()));
                     }
                     match screen.event(&event, &presses, &out.canvas) {
@@ -201,7 +261,8 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         }
         if let Screen::Prompt(prompt) = &mut screen {
             if let Some((session, mapping)) = prompt.take_offer() {
-                screen = Screen::Play(Box::new(Player::new(session, mapping)));
+                let title = prompt.game.title();
+                screen = Screen::Play(Box::new(Player::new(session, mapping, title)));
                 gamepads.pads.hold_back();
             }
         }
@@ -219,7 +280,11 @@ impl Screen {
         match self {
             Self::Play(player) => {
                 player.frame(out, &mut gamepads.pads)?;
-                player.notice(out, gamepads.last.labels())?;
+                if player.menu.is_some() {
+                    player.draw_menu(out, gamepads.last.labels())?;
+                } else {
+                    player.notice(out, gamepads.last.labels())?;
+                }
             }
             Self::Prompt(prompt) => {
                 let page = &prompt.page;
@@ -395,10 +460,14 @@ const fn maker(kind: GamepadType) -> Maker {
 }
 
 impl Player {
-    fn new(session: Box<Session>, mapping: Mapping) -> Self {
+    fn new(session: Box<Session>, mapping: Mapping, title: String) -> Self {
         Self {
             session,
             play: Play::new(mapping),
+            title,
+            level: 0,
+            menu: None,
+            menu_at: None,
             started: Instant::now(),
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
@@ -435,7 +504,7 @@ impl Player {
             std::thread::sleep(Duration::from_millis(1));
         }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
-            if self.session.holding() {
+            if self.session.holding() || self.menu.is_some() {
                 break;
             }
             pads.hold_back_parts(&self.play.enter(self.session.state()));
@@ -481,7 +550,187 @@ impl Player {
     }
 
     fn paused(&self) -> bool {
-        self.session.state() == Some("paused")
+        self.menu.is_some() || self.session.state() == Some("paused")
+    }
+
+    /// Takes an event for the guidance menu: Esc or Select opens it in play; while it's open,
+    /// every key, button and click is its. Keys let go still reach the game, so none sticks.
+    fn menu_event(
+        &mut self,
+        event: &Event,
+        presses: &[(Part, Maker)],
+        pads: &mut Pads,
+    ) -> MenuEvent {
+        let Some(menu) = &mut self.menu else {
+            let esc = matches!(
+                event,
+                Event::KeyDown {
+                    scancode: Some(Scancode::Escape),
+                    repeat: false,
+                    ..
+                }
+            );
+            if esc || presses.iter().any(|&(p, _)| p == Part::Select) {
+                self.menu = Some(Menu::open(&self.session, self.level, &self.title));
+                return MenuEvent::Taken;
+            }
+            return MenuEvent::NotMine;
+        };
+        if let Event::KeyUp { .. } = event {
+            play_event(self.session.machine_mut(), event);
+        }
+        let mut inputs: Vec<menu::Input> = presses
+            .iter()
+            .filter_map(|&(part, maker)| {
+                if part == Part::Select {
+                    return Some(menu::Input::Back);
+                }
+                Some(match pad::nav(part, maker)? {
+                    Nav::Up => menu::Input::Up,
+                    Nav::Down => menu::Input::Down,
+                    Nav::Left => menu::Input::Left,
+                    Nav::Right => menu::Input::Right,
+                    Nav::Confirm => menu::Input::Confirm,
+                    Nav::Back => menu::Input::Back,
+                })
+            })
+            .collect();
+        match *event {
+            Event::KeyDown {
+                scancode: Some(scancode),
+                ..
+            } => inputs.extend(match scancode {
+                Scancode::Up => Some(menu::Input::Up),
+                Scancode::Down => Some(menu::Input::Down),
+                Scancode::Left => Some(menu::Input::Left),
+                Scancode::Right => Some(menu::Input::Right),
+                Scancode::Return | Scancode::KpEnter => Some(menu::Input::Confirm),
+                Scancode::Escape => Some(menu::Input::Back),
+                _ => None,
+            }),
+            Event::MouseButtonDown {
+                mouse_btn: MouseButton::Left,
+                x,
+                y,
+                ..
+            } => {
+                if let Some((left, top, scale, density)) = self.menu_at {
+                    let card = menu.card(PadLabels::default());
+                    // Clicks come in window points; the card was placed in device pixels.
+                    let (lx, ly) = (
+                        x.mul_add(density, -left) / scale,
+                        y.mul_add(density, -top) / scale,
+                    );
+                    match card.row_at(lx, ly) {
+                        // The level box's halves step it the way their arrows point.
+                        Some(Row::Level) => inputs.extend([
+                            menu::Input::Choose(Row::Level),
+                            if lx < f32::midpoint(0.0, MENU_WIDTH_F) {
+                                menu::Input::Left
+                            } else {
+                                menu::Input::Right
+                            },
+                        ]),
+                        row => inputs.extend(row.map(menu::Input::Click)),
+                    }
+                }
+            }
+            _ => {}
+        }
+        let mut outcome = Outcome::Stay;
+        for input in inputs {
+            outcome = menu.input(input, &mut self.session);
+            if outcome != Outcome::Stay {
+                break;
+            }
+        }
+        let level = menu.level();
+        match outcome {
+            Outcome::Stay => {}
+            Outcome::Cancelled => self.close_menu(pads),
+            Outcome::Applied => {
+                self.level = level;
+                self.close_menu(pads);
+            }
+            Outcome::EndGame => {
+                self.close_menu(pads);
+                self.play.act("end-game");
+            }
+            Outcome::Exit => return MenuEvent::Quit,
+        }
+        MenuEvent::Taken
+    }
+
+    /// Closes the menu: the game's time starts again from now, and what's held is held back.
+    fn close_menu(&mut self, pads: &mut Pads) {
+        self.menu = None;
+        self.started = Instant::now();
+        self.frames_run = 0;
+        pads.hold_back();
+    }
+
+    /// Draws the guidance menu over the picture while it's open, centred on the window at the
+    /// notice's scale, and the question over it while it's asked.
+    fn draw_menu(&mut self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
+        let Some(menu) = &self.menu else {
+            out.menu = None;
+            return Ok(());
+        };
+        let output = out.canvas.output_size().map_err(|e| e.to_string())?;
+        let (_, _, pw, _) = placement(output, PICTURE);
+        let scale = (pw / PICTURE.0 / 3).max(1);
+        let card = menu.card(labels);
+        let (w, h) = (MENU_WIDTH * scale, card.height() * scale);
+        let at = (
+            (output.0 - w.min(output.0)) / 2,
+            (output.1 - h.min(output.1)) / 2,
+        );
+        cached(
+            out.creator,
+            &mut out.menu,
+            &mut out.fonts,
+            &card,
+            scale,
+            MenuCard::draw,
+        )?;
+        if let Some((texture, _, _)) = &out.menu {
+            out.canvas
+                .copy(texture, None, frect((at.0, at.1, w, h)))
+                .map_err(|e| e.to_string())?;
+        }
+        let (window_w, _) = out.canvas.window().size();
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "screen sizes are far below f32's limit"
+        )]
+        let place = (
+            at.0 as f32,
+            at.1 as f32,
+            scale as f32,
+            output.0 as f32 / window_w.max(1) as f32,
+        );
+        self.menu_at = Some(place);
+        if let Some(question) = menu.question(labels) {
+            let (qw, qh) = (QUESTION_WIDTH * scale, question.height() * scale);
+            let q = (
+                (output.0 - qw.min(output.0)) / 2,
+                (output.1 - qh.min(output.1)) / 2,
+            );
+            cached(
+                out.creator,
+                &mut out.question,
+                &mut out.fonts,
+                &question,
+                scale,
+                Question::draw,
+            )?;
+            if let Some((texture, _, _)) = &out.question {
+                out.canvas
+                    .copy(texture, None, frect((q.0, q.1, qw, qh)))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
     }
 
     /// Draws the pause notice over the picture while the game is paused, centred on it, at
@@ -603,7 +852,7 @@ impl Prompt {
             match nav {
                 Nav::Confirm => self.locate(canvas),
                 Nav::Back => return true,
-                Nav::Up | Nav::Down => {}
+                Nav::Up | Nav::Down | Nav::Left | Nav::Right => {}
             }
         }
         false
@@ -704,7 +953,7 @@ impl Library {
                 }
                 Nav::Confirm => return Choice::Play(self.page.chosen),
                 Nav::Back => return Choice::Quit,
-                Nav::Up | Nav::Down => {}
+                Nav::Up | Nav::Down | Nav::Left | Nav::Right => {}
             }
         }
         Choice::Stay
@@ -718,7 +967,9 @@ impl Library {
 
 fn first_screen(start: Start) -> Screen {
     match start {
-        Start::Play(session, _, mapping) => Screen::Play(Box::new(Player::new(session, mapping))),
+        Start::Play(session, title, mapping) => {
+            Screen::Play(Box::new(Player::new(session, mapping, title)))
+        }
         Start::Prompt(game) => prompt_screen(*game),
         Start::Library(games) => Screen::Library(Box::new(Library {
             page: LibraryPage {
@@ -743,6 +994,7 @@ fn open_game(game: Game, canvas: &mut WindowCanvas) -> Result<Screen, String> {
         Some(tape) => Ok(Screen::Play(Box::new(Player::new(
             Box::new(game.session(&tape)?),
             game.mapping(),
+            game.title(),
         )))),
         None => Ok(prompt_screen(game)),
     }

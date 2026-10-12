@@ -10,6 +10,7 @@
 mod games;
 mod headless;
 mod keys;
+mod menu;
 mod pad;
 mod picture;
 mod window;
