@@ -102,7 +102,8 @@ const PAD_SIZE: f32 = 18.0;
 
 fn width(fonts: &mut Fonts, press: Press) -> f32 {
     match press {
-        Press::Key(k) => fonts.measure(k, &KEY) + 10.0,
+        // 5 pixels of padding and a 1-pixel border either side, as the mockups' CSS has it.
+        Press::Key(k) => fonts.measure(k, &KEY) + 12.0,
         Press::Pad(_) | Press::Cross | Press::Circle | Press::Square | Press::Triangle => PAD_SIZE,
         Press::Arrows(a) => fonts.measure(a, &WHAT),
     }
@@ -117,11 +118,17 @@ fn hint_width(fonts: &mut Fonts, hint: &Hint) -> f32 {
     presses + separators + GAP + fonts.measure(hint.does, &WHAT)
 }
 
-/// Draws hints in a row 20 pixels tall from `y`, the first one starting at `left`.
-pub fn hints_from(c: &mut Canvas, fonts: &mut Fonts, (left, y): (f32, f32), list: &[Hint]) {
+/// The width of a row of hints.
+pub fn row_width(fonts: &mut Fonts, list: &[Hint]) -> f32 {
     let widths: f32 = list.iter().map(|h| hint_width(fonts, h)).sum();
     let spacing: f32 = list.iter().skip(1).map(|_| SPACING).sum();
-    hints(c, fonts, (left + widths + spacing, y), list);
+    widths + spacing
+}
+
+/// Draws hints in a row 20 pixels tall from `y`, the first one starting at `left`.
+pub fn hints_from(c: &mut Canvas, fonts: &mut Fonts, (left, y): (f32, f32), list: &[Hint]) {
+    let width = row_width(fonts, list);
+    hints(c, fonts, (left + width, y), list);
 }
 
 /// Draws hints in a row 20 pixels tall from `y`, the last one ending at `right`.

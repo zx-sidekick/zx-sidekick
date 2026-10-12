@@ -614,8 +614,8 @@ impl Session {
     }
 
     /// Puts back what a save held of the program's own: the guidance level, the switches on
-    /// (not applied again: their patches are in the saved memory), the record, marked loaded,
-    /// and where the session had got. Switches the definition doesn't have are left off.
+    /// (not applied again: their patches are in the saved memory), the record, and where the
+    /// session had got. Switches the definition doesn't have are left off.
     pub fn restore(
         &mut self,
         level: u8,
@@ -631,10 +631,7 @@ impl Session {
             .collect();
         self.level = level;
         self.switches = switches.intersection(&known).cloned().collect();
-        self.record = Record {
-            loaded: true,
-            ..record
-        };
+        self.record = record;
         // The game the save was taken in goes on, not a new one, in the state it was in.
         self.state.clone_from(&progress.last_known);
         self.progress = progress;

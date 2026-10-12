@@ -3,9 +3,9 @@
 
 use sidekick_ui::{
     pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Levels, LibraryEntry,
-    LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, PadLabels, PadMark,
-    Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question, Refusal, Route,
-    RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
+    LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer, PadLabels,
+    PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question,
+    Refusal, Route, RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -580,4 +580,14 @@ fn the_notice() {
     };
     assert_eq!(note.width(&mut fonts), 128, "the mockup's pill");
     golden("note.png", &note.draw(&mut fonts, 1).png());
+}
+
+#[test]
+fn the_offer_to_continue() {
+    let mut fonts = Fonts::new();
+    let offer = Offer {
+        title: "Starquake".to_owned(),
+        pad: PadLabels::Letters,
+    };
+    golden("offer.png", &offer.draw(&mut fonts, 1).png());
 }

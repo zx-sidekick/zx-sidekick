@@ -2,7 +2,7 @@
 
 use crate::{
     colors,
-    hints::{hints, Hint, PadLabels, Press},
+    hints::{hints_from, row_width, Hint, PadLabels, Press},
     Align, Canvas, Color, Fonts, Line, Style, Weight,
 };
 
@@ -134,25 +134,23 @@ impl TapePrompt {
                 )
             },
         );
-        hints(
-            &mut c,
-            fonts,
-            (840.0, 709.0),
-            &[
-                Hint {
-                    press: &locate,
-                    does: "locate",
-                },
-                Hint {
-                    press: &[Press::Key("W")],
-                    does: "website",
-                },
-                Hint {
-                    press: &quit,
-                    does: "quit",
-                },
-            ],
-        );
+        let row = [
+            Hint {
+                press: &locate,
+                does: "locate",
+            },
+            Hint {
+                press: &[Press::Key("W")],
+                does: "website",
+            },
+            Hint {
+                press: &quit,
+                does: "quit",
+            },
+        ];
+        // From 584, as the mockup has it; a pad's longer row ends at the margin instead.
+        let left = 584.0_f32.min(840.0 - row_width(fonts, &row));
+        hints_from(&mut c, fonts, (left, 709.0), &row);
         c
     }
 
