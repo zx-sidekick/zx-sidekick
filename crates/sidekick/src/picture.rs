@@ -26,6 +26,11 @@ const PALETTE: [[u8; 4]; 16] = {
     ]
 };
 
+/// One of the Spectrum's 16 colors, as RGBA.
+pub(crate) const fn color(index: u8) -> [u8; 4] {
+    PALETTE[(index & 0x0F) as usize]
+}
+
 /// Writes the picture into `rgba`, four bytes a pixel, row by row.
 pub(crate) fn to_rgba(picture: &Picture, rgba: &mut Vec<u8>) {
     rgba.clear();
