@@ -14,7 +14,9 @@ pub type Reading = BTreeMap<String, Read>;
 /// A game being played: the machine, and what its definition says about it.
 #[derive(Clone)]
 pub struct Session {
-    machine: Machine,
+    /// Boxed: the machine is tens of kilobytes, too much to move about on a small stack
+    /// (Windows gives its main thread 1 MB, less in a debug build's frames).
+    machine: Box<Machine>,
     definition: Option<Definition>,
     reading: Reading,
     state: Option<String>,
@@ -40,7 +42,7 @@ impl Session {
             .collect();
         machine.watch(&watched);
         Self {
-            machine,
+            machine: Box::new(machine),
             definition,
             reading: Reading::new(),
             state: None,
