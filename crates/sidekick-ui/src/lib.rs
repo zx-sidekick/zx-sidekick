@@ -15,6 +15,7 @@
 
 pub mod hints;
 mod library;
+mod map;
 mod menu;
 mod panel;
 mod pause;
@@ -24,6 +25,9 @@ mod text;
 
 pub use hints::{Face, PadLabels};
 pub use library::{LibraryEntry, LibraryPage};
+pub use map::{
+    pins, Cell, Edge, MapGrid, Marker, MarkerKind, Pin, Route, RouteColor, PICTURE as PINS_SIZE,
+};
 pub use menu::{Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH};
 pub use panel::{
     Body as PanelBody, CardRow, Chip, Column as PanelColumn, Icon, Look, Panel, Pixels,
@@ -274,6 +278,36 @@ impl Canvas {
                 None,
             );
         }
+    }
+
+    /// Lines through these points in turn, square-ended, dashed when the line is.
+    pub fn polyline(&mut self, points: &[(f32, f32)], line: Line) {
+        let s = self.scale;
+        let mut pb = PathBuilder::new();
+        for (i, &(x, y)) in points.iter().enumerate() {
+            if i == 0 {
+                pb.move_to(x * s, y * s);
+            } else {
+                pb.line_to(x * s, y * s);
+            }
+        }
+        let Some(path) = pb.finish() else {
+            return;
+        };
+        let mut stroke = Stroke {
+            width: line.width * s,
+            ..Stroke::default()
+        };
+        if let Some((dash, gap)) = line.dash {
+            stroke.dash = StrokeDash::new(vec![dash * s, gap * s], 0.0);
+        }
+        self.pixmap.stroke_path(
+            &path,
+            &paint(line.color),
+            &stroke,
+            Transform::identity(),
+            None,
+        );
     }
 
     /// A straight line between two points, with round ends.

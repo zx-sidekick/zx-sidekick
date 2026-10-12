@@ -1,7 +1,7 @@
 //! The panel beside the picture: the guidance level, and the widgets it shows
 //! (`docs/mockups/starquake/play-level*.png`).
 
-use crate::{colors, Align, Canvas, Color, Fonts, Line, Style, Weight};
+use crate::{colors, map::MapGrid, Align, Canvas, Color, Fonts, Line, Style, Weight};
 
 /// The panel's width, in logical pixels.
 pub const WIDTH: u32 = 408;
@@ -21,6 +21,9 @@ const SPACING: f32 = 20.0;
 /// From a widget's title to what it shows, and a line's height.
 const TO_BODY: f32 = 22.0;
 const LINE: f32 = 22.0;
+/// The panel's height, for the room left for the map.
+#[allow(clippy::cast_precision_loss, reason = "the panel's height")]
+const HEIGHT_F: f32 = HEIGHT as f32;
 /// A meter's length in a column, and across the panel.
 const METER: f32 = 160.0;
 
@@ -63,6 +66,8 @@ pub enum Body {
     },
     /// Groups of pictures, each with a label in the game's font.
     Cards(Vec<CardRow>),
+    /// The map.
+    Map(MapGrid),
 }
 
 /// A picture of the game's, one bit a pixel.
@@ -101,8 +106,8 @@ pub enum Look {
 pub struct Chip {
     /// Its characters, in order.
     pub glyphs: Vec<Pixels>,
-    /// Whether it's outlined.
-    pub outlined: bool,
+    /// Its outline's colour, when it's outlined.
+    pub outline: Option<Color>,
 }
 
 /// A picture in a grid.
@@ -132,7 +137,13 @@ const ICON_PIXEL: f32 = 4.0;
 const CARD_PIXEL: f32 = 2.0;
 
 /// Draws a picture's ink, each game pixel `size` logical pixels square, from (`x`, `y`).
-fn pixels(c: &mut Canvas, picture: &Pixels, (x, y): (f32, f32), size: f32, color: Color) {
+pub(crate) fn draw_pixels(
+    c: &mut Canvas,
+    picture: &Pixels,
+    (x, y): (f32, f32),
+    size: f32,
+    color: Color,
+) {
     for py in 0..picture.height {
         for px in 0..picture.width {
             if picture.at(px, py) {
@@ -160,7 +171,7 @@ fn word_width(glyphs: &[Pixels]) -> f32 {
 fn word(c: &mut Canvas, glyphs: &[Pixels], (x, y): (f32, f32), color: Color) {
     let mut left = x;
     for glyph in glyphs {
-        pixels(c, glyph, (left, y), FONT_PIXEL, color);
+        draw_pixels(c, glyph, (left, y), FONT_PIXEL, color);
         #[allow(clippy::cast_precision_loss, reason = "a glyph's few pixels")]
         let advance = glyph.width as f32 * FONT_PIXEL;
         left += advance;
@@ -278,13 +289,24 @@ impl Panel {
 
     fn widgets(&self, c: &mut Canvas, fonts: &mut Fonts) {
         let (mut left, mut right) = (TOP, TOP);
+        // How far right the left column reaches, for the map's legend beside it.
+        let mut reach = LEFT;
         for widget in &self.widgets {
             let (x, align, top) = match widget.column {
                 Column::Left => (LEFT, Align::Left, left),
                 Column::Right => (RIGHT, Align::Right, right),
                 Column::Full => (LEFT, Align::Left, left.max(right)),
             };
-            let bottom = Self::widget(c, fonts, widget, (x, top), align);
+            if widget.column == Column::Left {
+                reach = reach.max(LEFT + Self::extent(fonts, widget));
+            }
+            let bottom = if let Body::Map(map) = &widget.body {
+                let cell = map.cell_size((RIGHT - LEFT, HEIGHT_F - 56.0 - top));
+                map.legend(c, fonts, (reach + SPACING, top - 41.0));
+                map.draw(c, (LEFT, top), cell)
+            } else {
+                Self::widget(c, fonts, widget, (x, top), align)
+            };
             match widget.column {
                 Column::Left => left = bottom + SPACING,
                 Column::Right => right = bottom + SPACING,
@@ -294,6 +316,40 @@ impl Panel {
                 }
             }
         }
+    }
+
+    /// How wide a widget is drawn, in logical pixels.
+    fn extent(fonts: &mut Fonts, widget: &Widget) -> f32 {
+        let title = widget.title.as_ref().map_or(0.0, |t| {
+            fonts.measure(&t.to_uppercase(), &label(colors::LABEL))
+        });
+        let body = match &widget.body {
+            Body::Text(t) | Body::Empty(t) => fonts.measure(t, &Style::new(13.0, BODY)),
+            Body::Counter(n) => fonts.measure(
+                &n.to_string(),
+                &Style::new(18.0, colors::TEXT).weight(Weight::SemiBold),
+            ),
+            Body::Meter { .. } => METER,
+            Body::Chips(chips) => chips
+                .iter()
+                .map(|chip| word_width(&chip.glyphs) + 16.0)
+                .fold(0.0, f32::max),
+            Body::Icons { columns, .. } => {
+                #[allow(clippy::cast_precision_loss, reason = "a few columns")]
+                let width = (*columns).max(1) as f32 * 42.0 - 6.0;
+                width
+            }
+            Body::Cards(rows) => rows
+                .iter()
+                .map(|row| {
+                    #[allow(clippy::cast_precision_loss, reason = "a few cards")]
+                    let cards = row.cards.len() as f32 * 22.0 - 2.0;
+                    word_width(&row.label) + 3.0 + cards
+                })
+                .fold(0.0, f32::max),
+            Body::Map(_) => RIGHT - LEFT,
+        };
+        title.max(body)
     }
 
     /// Draws a widget with its title's top at `y`; returns where it ends.
@@ -364,6 +420,8 @@ impl Panel {
                 return Self::icons(c, *columns, icons, (x, top), align);
             }
             Body::Cards(rows) => return Self::cards(c, rows, (x, top), align),
+            // Drawn by `widgets`, which knows the room it has.
+            Body::Map(_) => {}
         }
         top + LINE
     }
@@ -375,10 +433,10 @@ impl Panel {
             let width = word_width(&chip.glyphs) + 16.0;
             let left = if align == Align::Right { x - width } else { x };
             c.rect((left, y, width, 22.0), 3.0, Some(TEAL_BG), None);
-            if chip.outlined {
+            if let Some(color) = chip.outline {
                 // Outside the chip, as CSS draws an outline.
                 let ring = (left - 1.5, y - 1.5, width + 3.0, 25.0);
-                c.rect(ring, 4.5, None, Some(Line::solid(colors::ACCENT, 1.5)));
+                c.rect(ring, 4.5, None, Some(Line::solid(color, 1.5)));
             }
             let height = chip.glyphs.first().map_or(8.0, |g| {
                 #[allow(clippy::cast_precision_loss, reason = "a glyph's few pixels")]
@@ -428,7 +486,7 @@ impl Panel {
                 icon.picture.width as f32 * ICON_PIXEL,
                 icon.picture.height as f32 * ICON_PIXEL,
             );
-            pixels(
+            draw_pixels(
                 c,
                 &icon.picture,
                 (tx + (36.0 - pw) / 2.0, ty + (36.0 - ph) / 2.0),
@@ -467,7 +525,7 @@ impl Panel {
                     picture.height as f32 * CARD_PIXEL,
                 );
                 let ink = faded(picture.color.unwrap_or(TEAL), alpha);
-                pixels(
+                draw_pixels(
                     c,
                     picture,
                     (cx + (20.0 - pw) / 2.0, y + (20.0 - ph) / 2.0),
