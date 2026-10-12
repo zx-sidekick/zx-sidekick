@@ -97,6 +97,8 @@ impl Maker {
 pub(crate) enum Nav {
     Up,
     Down,
+    Left,
+    Right,
     Confirm,
     Back,
 }
@@ -106,6 +108,8 @@ pub(crate) fn nav(part: Part, maker: Maker) -> Option<Nav> {
     match part {
         Part::DPad(Way::Up) | Part::Stick(Way::Up) => Some(Nav::Up),
         Part::DPad(Way::Down) | Part::Stick(Way::Down) => Some(Nav::Down),
+        Part::DPad(Way::Left) | Part::Stick(Way::Left) => Some(Nav::Left),
+        Part::DPad(Way::Right) | Part::Stick(Way::Right) => Some(Nav::Right),
         p if p == maker.confirm() => Some(Nav::Confirm),
         p if p == maker.back() => Some(Nav::Back),
         _ => None,
@@ -327,6 +331,8 @@ pub(crate) struct Mapping {
     /// The keys the Spectrum doesn't have that do an action, by SDL's name for them; each is
     /// `Part::HostKey` of its index.
     host_keys: Vec<String>,
+    /// Each action, by id, for the program to do (the menu's End this game).
+    actions: BTreeMap<String, Does>,
 }
 
 impl Default for Mapping {
@@ -396,10 +402,16 @@ impl Mapping {
                 (state.clone(), parts(&targets))
             })
             .collect();
+        let actions = joy
+            .actions
+            .iter()
+            .map(|a| (a.id.clone(), joy.action(a)))
+            .collect();
         Self {
             default,
             states,
             host_keys,
+            actions,
         }
     }
 
@@ -599,18 +611,29 @@ impl Play {
     /// A part was pressed: starts its tap, and keeps what it holds going for the frames it
     /// lasts at least.
     pub(crate) fn pressed(&mut self, part: Part) {
-        let Some(does) = self.mapping.parts(self.state.as_deref()).get(&part) else {
-            return;
-        };
+        if let Some(does) = self.mapping.parts(self.state.as_deref()).get(&part) {
+            Self::start(&mut self.lasting, does);
+        }
+    }
+
+    /// Does one of the game's actions, by id, as a press that's let go at once: its taps, and
+    /// what it holds for the frames it lasts.
+    pub(crate) fn act(&mut self, id: &str) {
+        if let Some(does) = self.mapping.actions.get(id) {
+            Self::start(&mut self.lasting, does);
+        }
+    }
+
+    fn start(lasting: &mut Vec<Lasting>, does: &Does) {
         if !does.tap.is_empty() {
-            self.lasting.push(Lasting {
+            lasting.push(Lasting {
                 inputs: does.tap.clone(),
                 patches: Vec::new(),
                 left: does.frames,
             });
         }
         if does.lasts > 0 {
-            self.lasting.push(Lasting {
+            lasting.push(Lasting {
                 inputs: does.hold.clone(),
                 patches: does.patches.clone(),
                 left: does.lasts,
@@ -923,6 +946,7 @@ mod tests {
         assert_eq!(nav(Part::South, Maker::Nintendo), Some(Nav::Back));
         assert_eq!(nav(Part::Stick(Way::Down), Maker::Other), Some(Nav::Down));
         assert_eq!(nav(Part::DPad(Way::Up), Maker::Other), Some(Nav::Up));
+        assert_eq!(nav(Part::Stick(Way::Left), Maker::Other), Some(Nav::Left));
         assert_eq!(nav(Part::West, Maker::Other), None);
         assert_eq!(Maker::PlayStation.labels(), PadLabels::Shapes);
         assert_eq!(Maker::Nintendo.labels(), PadLabels::Nintendo);
@@ -1048,6 +1072,19 @@ mod tests {
             [key(Key::Space)],
             "and as long as it's held"
         );
+    }
+
+    #[test]
+    fn the_program_can_do_an_action_by_id() {
+        let mut play = Play::new(Mapping::new(Some(&def(ACTIONS))));
+        play.act("end-game");
+        for _ in 0..3 {
+            assert_eq!(holds(&mut play, &[]), [key(Key::A), key(Key::S)]);
+            play.frame_ran();
+        }
+        assert!(holds(&mut play, &[]).is_empty());
+        play.act("no-such");
+        assert!(holds(&mut play, &[]).is_empty());
     }
 
     #[test]
