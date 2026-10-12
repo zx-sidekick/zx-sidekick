@@ -53,10 +53,9 @@ PR's current head commit. Never merge red or pending CI.
 
 ## Step 2b: every conversation resolved
 
-The ruleset refuses to merge while a review conversation is unresolved
-(zx-recompiled/starquake-recompiled#74). A thread still open is a finding or
-a comment not yet acted on: act on it first (`build-slice`, *Review the whole
-diff*), or ask the maintainer.
+The ruleset refuses to merge while a review conversation is unresolved. A
+thread still open is a finding or a comment not yet acted on: act on it first
+(`build-slice`, *Review the whole diff*), or ask the maintainer.
 
 ```bash
 gh api graphql -f query='{ repository(owner:"zx-sidekick", name:"zx-sidekick") {
@@ -113,8 +112,7 @@ checked. The repo deletes merged branches automatically. Then:
 - **Check every issue the merge closed still deserved closing.** Read its
   plan: if any task is unticked (a maintainer step counts), the `Closes` was
   wrong. Reopen it (`gh issue reopen <n>`), move it to the state of whoever
-  holds that task, and post a Next-steps comment naming it
-  (zx-recompiled/starquake-recompiled#22).
+  holds that task, and post a Next-steps comment naming it.
 - Otherwise the board's `Item closed → Done` workflow moves the card. Check
   that it did (`board.sh get <issue>`); if it didn't, move it and report that
   the workflow is off.

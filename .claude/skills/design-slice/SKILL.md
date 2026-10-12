@@ -24,7 +24,7 @@ maintainer's.
 
 - **First, choose the route.** A card in `Spec` means "your call, go", not
   "write a spec": decide how much process it needs, and say so on the ticket
-  with the reason (zx-recompiled/starquake-recompiled#26).
+  with the reason.
   - **A bug or tweak** small enough to need no plan: comment *"Routing: straight
     to Build — …"*, move it to `Build`, and hand it to `build-slice`. No spec.
   - **No design question left, but work that wants a plan**: move it to
@@ -43,8 +43,7 @@ maintainer's.
   as `Part of #NN` and never with `Closes`, `Fixes` or `Resolves`; nor does
   its plan ask its PR to close the parent. A parent's own plan, while any
   sub-issue is open, ends in `Part of #NN` too:
-  zx-recompiled/starquake-recompiled#76 closed its #1 with four sub-issues
-  still open (zx-recompiled/starquake-recompiled#84).
+  a PR once closed its parent with four sub-issues still open.
 - **The issue exists but is free-form?** Restructure its body into the
   template's sections, keeping everything true that's already there.
 - **The BODY is the living spec; the COMMENTS are the history.** Opposite
