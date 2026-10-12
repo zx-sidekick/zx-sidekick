@@ -3,11 +3,14 @@
 //!
 //! The machine is `rustzx-core` from the zx-sidekick fork of `RustZX`, built on that fork's
 //! `rustzx-z80`. For now this crate wraps it headless: a 48K or 128K Spectrum with the bundled
-//! ROM, run a frame at a time, stopping at a game's sync address on the way. The named values,
-//! cheats, input mapping and saves described in `ZX-SIDEKICK.md` are built on top of this.
+//! ROM, run a frame at a time, stopping at a game's sync address on the way. A [`Session`] plays
+//! a game on it, reading the named values and deciding the state its definition describes, and
+//! writing to it by name. The cheats and saves described in `ZX-SIDEKICK.md` build on these.
 
 mod error;
 mod host;
+mod session;
+mod value;
 mod watch;
 
 pub use error::Error;
@@ -16,6 +19,8 @@ pub use rustzx_core::zx::joy::kempston::KempstonKey as Kempston;
 pub use rustzx_core::zx::keys::{CompoundKey, ZXKey as Key};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
 pub use rustzx_z80::Regs;
+pub use session::{Reading, Session};
+pub use value::{Read, WriteError};
 
 use host::Bytes;
 use rustzx_core::{
