@@ -61,6 +61,9 @@ enum Command {
         /// Run it as the game this definition describes, whether or not it's one of its dumps.
         #[arg(long, value_name = "DEF")]
         definition: Option<PathBuf>,
+        /// Also look for the tape's definition in this folder. Repeat for more.
+        #[arg(long = "games", value_name = "DIR")]
+        games: Vec<PathBuf>,
         /// Print the game's state and every named value after the last frame.
         #[arg(long)]
         values: bool,
@@ -102,6 +105,7 @@ fn main() -> ExitCode {
             Some(Command::Run {
                 tape,
                 definition,
+                games,
                 values,
                 frames,
                 keys,
@@ -110,7 +114,7 @@ fn main() -> ExitCode {
             }),
             _,
         ) => {
-            let run = run_session(&tape, definition.as_deref(), &cli.games).and_then(
+            let run = run_session(&tape, definition.as_deref(), &games).and_then(
                 |(mut session, _, _)| {
                     headless::run(&mut session, frames, &keys, screenshot.as_deref(), scale)?;
                     if values {

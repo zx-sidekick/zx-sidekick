@@ -184,6 +184,54 @@ when = { value = "border", bits = 0x38 }
 }
 
 #[test]
+fn a_tape_is_run_as_the_game_a_folder_s_definition_knows() {
+    let dir = TempDir::new().unwrap();
+    let tape = dir.path().join("wait.tap");
+    fs::write(&tape, wait_then_red()).unwrap();
+    let sha1 = &sidekick_def::tapes_in(&tape).unwrap()[0].sha1;
+    let games = dir.path().join("games");
+    fs::create_dir(&games).unwrap();
+    fs::write(
+        games.join("wait.toml"),
+        format!(
+            r#"
+schema = 1
+[game]
+id = "wait"
+title = "Wait"
+machine = "48k"
+[[media]]
+name = "our own test program"
+sha1 = "{sha1}"
+
+[values.border]
+addr = 23624
+type = "u8"
+"#
+        ),
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_sidekick"))
+        .env("ZX_SIDEKICK_DATA", dir.path().join("data"))
+        .args([
+            "run",
+            tape.to_str().unwrap(),
+            "--games",
+            games.to_str().unwrap(),
+            "--values",
+            "--frames",
+            "150",
+        ])
+        .output()
+        .expect("sidekick runs");
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "state = \"\"\nborder = 56\n"
+    );
+}
+
+#[test]
 fn bad_options_are_refused() {
     let dir = TempDir::new().unwrap();
     let tape = dir.path().join("wait.tap");
