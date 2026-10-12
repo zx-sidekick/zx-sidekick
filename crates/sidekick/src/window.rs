@@ -18,7 +18,7 @@ use sdl3::{
     video::{FullscreenType, WindowContext},
 };
 use sidekick_core::{Machine, SAMPLE_RATE};
-use sidekick_ui::{Fonts, TapePrompt, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH};
+use sidekick_ui::{Fonts, Refusal, TapePrompt, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -153,7 +153,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
             }
         }
         if let Screen::Prompt(prompt) = &mut screen {
-            if let Some(machine) = prompt.take_offer()? {
+            if let Some(machine) = prompt.take_offer() {
                 screen = Screen::Play(Player::new(machine));
             }
         }
@@ -261,19 +261,23 @@ impl Prompt {
         false
     }
 
-    /// A file offered since the last pass, taken as the tape or refused on the page.
-    fn take_offer(&mut self) -> Result<Option<Box<Machine>>, String> {
-        let Some(file) = self.chosen.lock().ok().and_then(|mut c| c.take()) else {
-            return Ok(None);
+    /// A file offered since the last pass, taken as the tape or refused on the page. A tape
+    /// that's the game's but can't be played yet (a `.tzx`) is refused too, not fatal.
+    fn take_offer(&mut self) -> Option<Box<Machine>> {
+        let file = self.chosen.lock().ok().and_then(|mut c| c.take())?;
+        let refusal = match self.game.offer(&file) {
+            Ok(tape) => match self.game.machine(&tape) {
+                Ok(machine) => return Some(Box::new(machine)),
+                Err(e) => Refusal {
+                    heading: "This tape can't be played yet".to_owned(),
+                    detail: e,
+                },
+            },
+            Err(refusal) => refusal,
         };
-        match self.game.offer(&file) {
-            Ok(tape) => self.game.machine(&tape).map(|m| Some(Box::new(m))),
-            Err(refusal) => {
-                self.page.refusal = Some(refusal);
-                self.drawn = None;
-                Ok(None)
-            }
-        }
+        self.page.refusal = Some(refusal);
+        self.drawn = None;
+        None
     }
 
     /// Draws the page at the largest whole scale that fits, drawing it anew when that changed.
