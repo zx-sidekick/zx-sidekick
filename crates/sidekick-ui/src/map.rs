@@ -145,10 +145,21 @@ impl MapGrid {
                 }
             }
         }
+        let is_seen = |x: Option<usize>, y: Option<usize>| match (x, y) {
+            (Some(x), Some(y)) => seen.iter().any(|c| c.x == x && c.y == y),
+            _ => false,
+        };
         for place in &seen {
             let (left, top) = at(place.x, place.y);
             c.rect((left, top, cell, cell), 0.0, Some(GROUND), None);
-            for edge in &place.walls {
+            // A wall between two seen rooms is drawn once, as the east or south of the one
+            // left of or above it.
+            let drawn_by_neighbour = |edge: &Edge| match edge {
+                Edge::North => is_seen(Some(place.x), place.y.checked_sub(1)),
+                Edge::West => is_seen(place.x.checked_sub(1), Some(place.y)),
+                Edge::East | Edge::South => false,
+            };
+            for edge in place.walls.iter().filter(|e| !drawn_by_neighbour(e)) {
                 let line = match edge {
                     Edge::North => (left, top, cell, 1.0),
                     Edge::South => (left, top + cell - 1.0, cell, 1.0),
@@ -158,8 +169,9 @@ impl MapGrid {
                 c.rect(line, 0.0, Some(WALL), None);
             }
         }
-        if !seen.is_empty() {
-            // The map's edge, as the mockup frames its walled map.
+        if seen.len() >= self.width * self.height {
+            // The map's edge, once the whole map is known, as the mockup frames it at level 6;
+            // a map of some rooms (the mockups' levels 2 to 5) has none.
             #[allow(clippy::cast_precision_loss, reason = "a map's few cells")]
             let (w, h) = (self.width as f32 * cell, self.height as f32 * cell);
             c.rect((x, y, w, h), 0.0, None, Some(Line::solid(WALL, 1.0)));

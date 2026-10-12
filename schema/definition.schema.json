@@ -1140,6 +1140,15 @@
         "label": {
           "description": "What the list holds, for \"Forget the …\".",
           "type": "string"
+        },
+        "most": {
+          "description": "The most entries it keeps: past that, the oldest go first.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
         }
       },
       "additionalProperties": false,

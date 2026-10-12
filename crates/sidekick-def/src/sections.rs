@@ -647,6 +647,9 @@ pub struct Persist {
     /// Where its entries come from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub add: Option<Add>,
+    /// The most entries it keeps: past that, the oldest go first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub most: Option<u32>,
 }
 
 /// Where a kept list's entries come from.

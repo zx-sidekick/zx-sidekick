@@ -168,6 +168,12 @@ addr = 0xD5F7
 len = 5
 description = "The last security door's three cards, at every other byte: pictures 9 to 13"
 
+[values.play_area]
+type = "bytes"
+addr = 0x58C0
+len = 576
+description = "The play area's attributes, 32 a row, 18 rows: a cell without BRIGHT blocks BLOB"
+
 [values.door_card_count]
 type = "u8"
 addr = 0xD5F6
@@ -288,12 +294,22 @@ label = "teleport codes"
 file = "teleporter-codes.txt"
 add = "script"
 
+[persist.rooms-walked]
+label = "rooms walked"
+# One a room: the game's seed, the room, and the edges without an opening, as
+# `seed:room:walls` (walls among N, E, S and W). Kept so a continued game shows its map again.
+file = "rooms-walked.txt"
+add = "script"
+# Some games' worth: 512 rooms each at most.
+most = 2048
+
 [persist.doors-met]
 label = "doors met"
 # One a door: the game's seed, the room, and its three cards, as `seed:room:card-card-card`.
 # Kept so a game continued from a save still lists the doors it met.
 file = "doors-met.txt"
 add = "script"
+most = 256
 
 [high_scores]
 title = "CORE OF HEROES"

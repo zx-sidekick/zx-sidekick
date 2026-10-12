@@ -591,3 +591,48 @@ fn the_offer_to_continue() {
     };
     golden("offer.png", &offer.draw(&mut fonts, 1).png());
 }
+
+#[test]
+fn a_map_of_some_rooms_walked_has_no_frame() {
+    let mut fonts = Fonts::new();
+    let walked = [(8, 0, "N"), (9, 0, "NE"), (8, 1, "W"), (8, 2, "SW")];
+    let map = MapGrid {
+        width: 16,
+        height: 32,
+        cells: walked
+            .iter()
+            .map(|&(x, y, walls)| Cell {
+                x,
+                y,
+                walls: walls
+                    .chars()
+                    .map(|c| match c {
+                        'N' => Edge::North,
+                        'E' => Edge::East,
+                        'S' => Edge::South,
+                        _ => Edge::West,
+                    })
+                    .collect(),
+                seen: true,
+            })
+            .collect(),
+        markers: vec![Marker {
+            x: 8,
+            y: 1,
+            kind: MarkerKind::Player,
+            color: None,
+        }],
+        routes: Vec::new(),
+    };
+    let panel = Panel {
+        level: 2,
+        name: "The map you have walked".to_owned(),
+        description: String::new(),
+        widgets: vec![PanelWidget {
+            column: PanelColumn::Left,
+            title: None,
+            body: PanelBody::Map(map),
+        }],
+    };
+    golden("panel-map-walked.png", &panel.draw(&mut fonts, 1).png());
+}

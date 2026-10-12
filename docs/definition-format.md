@@ -351,7 +351,7 @@ file = "teleporter-codes.txt"  # in the game's data folder, one entry per line
 add = { value = "booth_code", in_state = "booth" }   # added when the game shows one
 ```
 
-`add` names a value read while the game is in a state; or `add = "script"`, and the script returns new entries as `kept.<list>` (see Scripts). Entries are kept in the order found, without repeats. An entry is the value's text (trimmed; an empty one is never kept). A list changed in play is saved to its file at once; `sidekick run` reads the lists but never writes them. A chip-list's `source = "persist:<list>"` shows one, and the guidance menu's "Forget the …" row (with a second press) empties every list.
+`most = N` keeps at most `N` entries: past that, the oldest go first. A list a game adds to every play, such as rooms or doors met in each game, uses it so the list doesn't grow for ever. `add` names a value read while the game is in a state; or `add = "script"`, and the script returns new entries as `kept.<list>` (see Scripts). Entries are kept in the order found, without repeats. An entry is the value's text (trimmed; an empty one is never kept). A list changed in play is saved to its file at once; `sidekick run` reads the lists but never writes them. A chip-list's `source = "persist:<list>"` shows one, and the guidance menu's "Forget the …" row (with a second press) empties every list.
 
 ## `[high_scores]`
 

@@ -1,6 +1,6 @@
 // Starquake's script: the map, routes, and the panel's core, teleports and doors.
 // See docs/games/starquake.md and the Scripts section of docs/definition-format.md.
-// The map and routes are still to come: their facts aren't found yet.
+// Routes, and the rooms not reached, are still to come.
 
 // Once, after loading: each room's openings and the graph of places, from the room map.
 fn on_load(mem) {
@@ -109,6 +109,99 @@ fn doors(met, carrying) {
     rows
 }
 
+// Whether two or more cells in a row let BLOB through: cells with BRIGHT in their attribute.
+fn open(cells) {
+    let run = 0;
+    for attr in cells {
+        if (attr & 0x40) != 0 {
+            run += 1;
+            if run >= 2 {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
+// The edges of the room on screen without an opening: some of N, E, S and W.
+fn walls(mem) {
+    let area = mem.value("play_area");
+    let west = [];
+    let east = [];
+    for row in 0..18 {
+        west.push(area[row * 32]);
+        east.push(area[row * 32 + 31]);
+    }
+    let shut = "";
+    if !open(area.extract(0, 32)) {
+        shut += "N";
+    }
+    if !open(east) {
+        shut += "E";
+    }
+    if !open(area.extract(17 * 32, 32)) {
+        shut += "S";
+    }
+    if !open(west) {
+        shut += "W";
+    }
+    shut
+}
+
+// The room BLOB is in, as a kept entry: the game's seed, the room and its walls. Kept once a
+// game, the first time its walls read the same two frames running in play, so a room drawn
+// part-way, or a platform built across an opening later, doesn't change its walls.
+fn room_walked(mem, prev, shut, walked) {
+    let room = mem.value("room");
+    if mem.state != "play" || `${room}` in walked || prev == () || !("room" in prev) {
+        return ();
+    }
+    if prev.room != room || prev.walls != shut {
+        return ();
+    }
+    `${mem.value("seed")}:${room}:${shut}`
+}
+
+// The rooms walked this game, by room number as text, each its walls.
+fn rooms_walked(mem, kept) {
+    let seed = `${mem.value("seed")}:`;
+    let rooms = #{};
+    if "rooms-walked" in kept {
+        for entry in kept["rooms-walked"] {
+            if entry.starts_with(seed) {
+                let parts = entry.split(":");
+                if !(parts[1] in rooms) {
+                    rooms[parts[1]] = if parts.len() > 2 { parts[2] } else { "" };
+                }
+            }
+        }
+    }
+    rooms
+}
+
+// The map of rooms walked: their walls, the teleports and doors in them, and BLOB's room.
+fn map(mem, kept, rooms) {
+    let cells = [];
+    for key in rooms.keys() {
+        let room = parse_int(key);
+        cells.push(#{ x: room % 16, y: room / 16, walls: rooms[key], seen: true });
+    }
+    let markers = [];
+    for teleport in mem.table("teleports") {
+        if `${teleport.room}` in rooms {
+            markers.push(#{ kind: "teleport", x: teleport.room % 16, y: teleport.room / 16 });
+        }
+    }
+    for door in doors_met(mem, kept) {
+        markers.push(#{ kind: "door", x: door.room % 16, y: door.room / 16 });
+    }
+    let here = mem.value("room");
+    markers.push(#{ kind: "player", x: here % 16, y: here / 16 });
+    #{ width: 16, height: 32, cells: cells, markers: markers, routes: [] }
+}
+
 // At each sync point: the panel's data, and codes to keep.
 fn on_frame(mem, loaded, prev, kept, level) {
     let carrying = carried(mem);
@@ -121,12 +214,20 @@ fn on_frame(mem, loaded, prev, kept, level) {
     if door != () {
         keep["doors-met"] = [door];
     }
+    let shut = walls(mem);
+    let rooms = rooms_walked(mem, kept);
+    let walked = room_walked(mem, prev, shut, rooms);
+    if walked != () {
+        keep["rooms-walked"] = [walked];
+    }
     #{
         core: core(mem, carrying),
         teleports: teleports(mem, kept, level),
         doors: doors(doors_met(mem, kept), carrying),
-        map: (),
+        map: map(mem, kept, rooms),
         kept: keep,
+        room: mem.value("room"),
+        walls: shut,
     }
 }
 

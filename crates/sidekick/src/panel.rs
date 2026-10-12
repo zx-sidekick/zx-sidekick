@@ -963,44 +963,63 @@ source = "script:core"
 #[cfg(test)]
 mod real_tape {
     use super::*;
-    use crate::{games::Game, situations};
+    use crate::{
+        games::{Game, Playing},
+        situations,
+    };
     use sidekick_def::{tapes_in, Package};
-    use sidekick_ui::{Look, PanelBody as Body};
+    use sidekick_ui::{Edge, Look, PanelBody as Body};
     use std::path::Path;
+    use tempfile::TempDir;
 
-    #[test]
+    /// A new game of Starquake from the player's tape, at `level`; `None` without the tape.
     #[allow(clippy::print_stderr, reason = "a skipped test says why")]
-    fn starquake_s_level_1_shows_its_core_from_a_new_game() {
+    fn new_game(level: u8) -> Option<(Playing, TempDir)> {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let zip = repo.join("assets/Starquake.tap.zip");
         if !zip.exists() {
             eprintln!("skipped: no {} (the player's own tape)", zip.display());
-            return;
+            return None;
         }
         let tapes = tapes_in(&zip).expect("the zip holds a tape");
         let package = Package::load(&repo.join("games/starquake")).expect("its definition");
-        let data = tempfile::TempDir::new().unwrap();
+        let data = TempDir::new().expect("a folder");
         let mut playing = Game::new(package, data.path())
             .playing(&tapes[0])
             .expect("the tape plays");
         let s = &mut playing.session;
         let file = repo.join("games/starquake/situations/stocked-up.toml");
         situations::load(s, &playing.saves, &file).expect("a new game");
-        s.set_level(1);
+        s.set_level(level);
         for _ in 0..10 {
             s.run_frame().expect("a frame");
         }
         assert_eq!(s.script_off(), None, "the script runs");
-        let panel = of(s, 1, None).expect("a panel");
-        let body = |title: &str| {
-            panel
-                .widgets
-                .iter()
-                .find(|w| w.title.as_deref() == Some(title))
-                .map(|w| w.body.clone())
-                .expect(title)
+        Some((playing, data))
+    }
+
+    /// The body of the widget with `title`, or of the map when `title` is `None`.
+    fn body(s: &Session, level: usize, title: Option<&str>) -> Body {
+        of(s, level, None)
+            .expect("a panel")
+            .widgets
+            .into_iter()
+            .find(|w| {
+                title.map_or(matches!(w.body, Body::Map(_)), |t| {
+                    w.title.as_deref() == Some(t)
+                })
+            })
+            .map(|w| w.body)
+            .expect("the widget")
+    }
+
+    #[test]
+    fn starquake_s_level_1_shows_its_core_from_a_new_game() {
+        let Some((mut playing, _data)) = new_game(1) else {
+            return;
         };
-        let Body::Icons { icons, .. } = body("CORE") else {
+        let s = &mut playing.session;
+        let Body::Icons { icons, .. } = body(s, 1, Some("CORE")) else {
             panic!("the core's icons");
         };
         assert_eq!(icons.len(), 9, "nine slots");
@@ -1014,8 +1033,14 @@ mod real_tape {
                 .all(|i| i.picture.width == 16 && i.picture.height == 16),
             "the game's own pictures"
         );
-        assert_eq!(body("TELEPORTS"), Body::Empty("None yet".to_owned()));
-        assert_eq!(body("DOORS"), Body::Empty("None yet".to_owned()));
+        assert_eq!(
+            body(s, 1, Some("TELEPORTS")),
+            Body::Empty("None yet".to_owned())
+        );
+        assert_eq!(
+            body(s, 1, Some("DOORS")),
+            Body::Empty("None yet".to_owned())
+        );
 
         // The first slot's piece carried, the second delivered: what the game writes then, at
         // the addresses the definition gives.
@@ -1032,13 +1057,7 @@ mod real_tape {
         machine.write(carried + 1, 0x47);
         machine.write(slots + 1, 1);
         s.run_frame().expect("a frame");
-        let panel = of(s, 1, None).expect("a panel");
-        let Some(Body::Icons { icons, .. }) = panel
-            .widgets
-            .iter()
-            .find(|w| w.title.as_deref() == Some("CORE"))
-            .map(|w| w.body.clone())
-        else {
+        let Body::Icons { icons, .. } = body(s, 1, Some("CORE")) else {
             panic!("the core's icons");
         };
         let looks: Vec<Look> = icons.iter().take(3).map(|i| i.look).collect();
@@ -1046,18 +1065,34 @@ mod real_tape {
 
         s.set_level(6);
         s.run_frame().expect("a frame");
-        let Some(Body::Chips(codes)) = of(s, 6, None).and_then(|p| {
-            p.widgets
-                .into_iter()
-                .find(|w| w.title.as_deref() == Some("TELEPORTS"))
-                .map(|w| w.body)
-        }) else {
+        let Body::Chips(codes) = body(s, 6, Some("TELEPORTS")) else {
             panic!("every code at level 6");
         };
         assert_eq!(codes.len(), 15);
         assert!(
             codes.iter().all(|c| c.glyphs.len() == 5),
             "five letters each"
+        );
+    }
+
+    #[test]
+    fn starquake_s_map_starts_with_the_start_room() {
+        let Some((playing, _data)) = new_game(2) else {
+            return;
+        };
+        let Body::Map(map) = body(&playing.session, 2, None) else {
+            panic!("the map at level 2");
+        };
+        let start = &map.cells[0];
+        assert_eq!(
+            (map.cells.len(), start.x, start.y),
+            (1, 8, 0),
+            "the start room"
+        );
+        assert_eq!(
+            start.walls,
+            [Edge::North],
+            "the sky above; open left, right and down"
         );
     }
 }

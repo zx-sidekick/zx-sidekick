@@ -152,3 +152,144 @@ fn level_6_lists_every_teleport_s_code() {
     assert_eq!(codes[0], Fact::Text("AAAAA".to_owned()));
     assert_eq!(codes[14], Fact::Text("OOOOO".to_owned()));
 }
+
+fn field<'a>(fact: &'a Fact, key: &str) -> &'a Fact {
+    match fact {
+        Fact::Map(map) => &map[key],
+        other => panic!("{key} of {other:?}"),
+    }
+}
+
+#[test]
+fn a_room_walked_is_mapped_with_the_edges_the_screen_shuts() {
+    let mut s = session();
+    let (seed, room, area) = (addr(&s, "seed"), addr(&s, "room"), addr(&s, "play_area"));
+    poke(&mut s, seed, &[0x34, 0x12]);
+    poke(&mut s, room, &[8, 0]);
+    // Open everywhere (BRIGHT), but the top row and the right column, which block.
+    let mut cells = [0x47u8; 576];
+    cells[..32].fill(0x07);
+    for row in 0..18 {
+        cells[row * 32 + 31] = 0x07;
+    }
+    // A one-cell gap on the left is too small to count as an opening.
+    for row in 0..18 {
+        cells[row * 32] = if row == 9 { 0x47 } else { 0x07 };
+    }
+    poke(&mut s, area, &cells);
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert_eq!(kept(&s, "rooms-walked"), ["4660:8:NEW"]);
+    // The map is drawn from the kept rooms as the frame began: it shows the room a frame on.
+    s.run_frame().expect("a frame");
+
+    let map = s.script_results()["map"].clone();
+    let Fact::List(rooms) = field(&map, "cells").clone() else {
+        panic!("cells");
+    };
+    assert_eq!(rooms.len(), 1);
+    assert_eq!(field(&rooms[0], "x"), &Fact::Number(8));
+    assert_eq!(field(&rooms[0], "walls"), &Fact::Text("NEW".to_owned()));
+    let Fact::List(markers) = field(&map, "markers").clone() else {
+        panic!("markers");
+    };
+    assert!(markers
+        .iter()
+        .any(|m| field(m, "kind") == &Fact::Text("player".to_owned())));
+
+    poke(&mut s, seed, &[0x35, 0x12]);
+    poke(&mut s, room, &[9, 0]);
+    s.run_frame().expect("a frame");
+    let map = s.script_results()["map"].clone();
+    assert_eq!(
+        field(&map, "cells"),
+        &Fact::List(Vec::new()),
+        "another game: none walked yet"
+    );
+}
+
+/// A room's attributes: open (BRIGHT) everywhere but its bottom row, where only the cells
+/// `gap` let BLOB through.
+fn room_with_floor(gap: std::ops::Range<usize>) -> [u8; 576] {
+    let mut cells = [0x47u8; 576];
+    for column in 0..32 {
+        cells[17 * 32 + column] = if gap.contains(&column) { 0x47 } else { 0x07 };
+    }
+    cells
+}
+
+fn markers(s: &Session) -> Vec<String> {
+    let map = s.script_results()["map"].clone();
+    let Fact::List(markers) = field(&map, "markers").clone() else {
+        panic!("markers");
+    };
+    markers
+        .iter()
+        .map(|m| match field(m, "kind") {
+            Fact::Text(kind) => kind.clone(),
+            other => panic!("{other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn a_room_is_kept_once_a_game_from_two_readings_in_play() {
+    let mut s = session();
+    let (seed, room, area) = (addr(&s, "seed"), addr(&s, "room"), addr(&s, "play_area"));
+    poke(&mut s, seed, &[0x34, 0x12]);
+    poke(&mut s, room, &[8, 0]);
+    // Two open cells at the bottom are a way down: about BLOB's width.
+    poke(&mut s, area, &room_with_floor(5..7));
+    enter(&mut s, "booth");
+    s.run_frame().expect("a frame");
+    assert!(kept(&s, "rooms-walked").is_empty(), "not in play");
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert_eq!(kept(&s, "rooms-walked"), ["4660:8:"], "open all round");
+
+    // The floor shut later (a platform across the gap): the first reading stands.
+    poke(&mut s, area, &room_with_floor(5..6));
+    for _ in 0..3 {
+        s.run_frame().expect("a frame");
+    }
+    assert_eq!(kept(&s, "rooms-walked"), ["4660:8:"], "kept once a game");
+
+    // A new room isn't kept on its first frame, only once read twice the same.
+    poke(&mut s, room, &[9, 0]);
+    s.run_frame().expect("a frame");
+    assert_eq!(kept(&s, "rooms-walked").len(), 1, "not on its first frame");
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        kept(&s, "rooms-walked"),
+        ["4660:8:", "4660:9:S"],
+        "one open cell isn't a way down"
+    );
+}
+
+#[test]
+fn teleports_and_doors_in_rooms_walked_are_marked() {
+    let mut s = session();
+    let (seed, room, area) = (addr(&s, "seed"), addr(&s, "room"), addr(&s, "play_area"));
+    let (teleports, cards, count) = (
+        addr(&s, "teleports"),
+        addr(&s, "door_cards"),
+        addr(&s, "door_card_count"),
+    );
+    poke(&mut s, seed, &[0x34, 0x12]);
+    poke(&mut s, room, &[8, 0]);
+    poke(&mut s, area, &[0x47; 576]);
+    // A teleport in room 8 and one in room 300, which isn't walked.
+    poke(&mut s, teleports, b"AAAAA");
+    poke(&mut s, teleports + 5, &[8, 0]);
+    poke(&mut s, teleports + 7, b"BBBBB");
+    poke(&mut s, teleports + 12, &[0x2C, 1]);
+    // A door met in room 8.
+    poke(&mut s, count, &[3]);
+    poke(&mut s, cards, &[9, 0, 10, 0, 11]);
+    enter(&mut s, "door");
+    enter(&mut s, "play");
+    for _ in 0..2 {
+        s.run_frame().expect("a frame");
+    }
+    assert_eq!(markers(&s), ["teleport", "door", "player"]);
+}
