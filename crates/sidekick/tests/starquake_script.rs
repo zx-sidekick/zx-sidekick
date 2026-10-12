@@ -152,3 +152,58 @@ fn level_6_lists_every_teleport_s_code() {
     assert_eq!(codes[0], Fact::Text("AAAAA".to_owned()));
     assert_eq!(codes[14], Fact::Text("OOOOO".to_owned()));
 }
+
+fn field<'a>(fact: &'a Fact, key: &str) -> &'a Fact {
+    match fact {
+        Fact::Map(map) => &map[key],
+        other => panic!("{key} of {other:?}"),
+    }
+}
+
+#[test]
+fn a_room_walked_is_mapped_with_the_edges_the_screen_shuts() {
+    let mut s = session();
+    let (seed, room, area) = (addr(&s, "seed"), addr(&s, "room"), addr(&s, "play_area"));
+    poke(&mut s, seed, &[0x34, 0x12]);
+    poke(&mut s, room, &[8, 0]);
+    // Open everywhere (BRIGHT), but the top row and the right column, which block.
+    let mut cells = [0x47u8; 576];
+    cells[..32].fill(0x07);
+    for row in 0..18 {
+        cells[row * 32 + 31] = 0x07;
+    }
+    // A one-cell gap on the left is too small to count as an opening.
+    for row in 0..18 {
+        cells[row * 32] = if row == 9 { 0x47 } else { 0x07 };
+    }
+    poke(&mut s, area, &cells);
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert_eq!(kept(&s, "rooms-walked"), ["4660:8:NEW"]);
+    // The map is drawn from the kept rooms as the frame began: it shows the room a frame on.
+    s.run_frame().expect("a frame");
+
+    let map = s.script_results()["map"].clone();
+    let Fact::List(rooms) = field(&map, "cells").clone() else {
+        panic!("cells");
+    };
+    assert_eq!(rooms.len(), 1);
+    assert_eq!(field(&rooms[0], "x"), &Fact::Number(8));
+    assert_eq!(field(&rooms[0], "walls"), &Fact::Text("NEW".to_owned()));
+    let Fact::List(markers) = field(&map, "markers").clone() else {
+        panic!("markers");
+    };
+    assert!(markers
+        .iter()
+        .any(|m| field(m, "kind") == &Fact::Text("player".to_owned())));
+
+    poke(&mut s, seed, &[0x35, 0x12]);
+    poke(&mut s, room, &[9, 0]);
+    s.run_frame().expect("a frame");
+    let map = s.script_results()["map"].clone();
+    assert_eq!(
+        field(&map, "cells"),
+        &Fact::List(Vec::new()),
+        "another game: none walked yet"
+    );
+}
