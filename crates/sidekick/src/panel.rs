@@ -402,10 +402,7 @@ source = "script:route"
         }
     }
 
-    #[test]
-    fn the_game_s_font_and_pictures_draw_what_the_script_returned() {
-        let def = definition(
-            r#"
+    const PICTURED: &str = r#"
 [[panel]]
 kind = "chip-list"
 title = "CODES"
@@ -429,12 +426,19 @@ from_level = 1
 font = "font"
 pictures = "pictures"
 source = "script:doors"
-"#,
-        );
-        let map = |pairs: Vec<(&str, Fact)>| {
-            Fact::Map(pairs.into_iter().map(|(k, v)| (k.to_owned(), v)).collect())
-        };
-        let results = BTreeMap::from([
+"#;
+
+    fn map(pairs: Vec<(&str, Fact)>) -> Fact {
+        Fact::Map(pairs.into_iter().map(|(k, v)| (k.to_owned(), v)).collect())
+    }
+
+    /// What a script might return for the pictured widgets.
+    fn pictured_results() -> BTreeMap<String, Fact> {
+        let card = map(vec![
+            ("picture", Fact::Number(0)),
+            ("answered", Fact::Flag(true)),
+        ]);
+        BTreeMap::from([
             (
                 "codes".to_owned(),
                 Fact::List(vec![
@@ -459,28 +463,32 @@ source = "script:doors"
                 "doors".to_owned(),
                 Fact::List(vec![map(vec![
                     ("label", Fact::Number(1)),
-                    (
-                        "cards",
-                        Fact::List(vec![map(vec![
-                            ("picture", Fact::Number(0)),
-                            ("answered", Fact::Flag(true)),
-                        ])]),
-                    ),
+                    ("cards", Fact::List(vec![card])),
                 ])]),
             ),
-        ]);
-        let running = Script {
-            results: &results,
-            off: None,
-        };
-        let graphics = |_: &Widget| Graphics {
+        ])
+    }
+
+    /// Stand-ins for a game's font, from code 0x31, and its pictures.
+    fn stand_ins(_: &Widget) -> Graphics {
+        Graphics {
             font: Some(Font {
                 first: 0x31,
                 glyphs: (0..18).map(dot).collect(),
             }),
             pictures: (0..4).map(dot).collect(),
+        }
+    }
+
+    #[test]
+    fn words_are_drawn_in_the_game_s_font() {
+        let def = definition(PICTURED);
+        let results = pictured_results();
+        let running = Script {
+            results: &results,
+            off: None,
         };
-        let shown = panel(Some(&def), 1, &reading(), &running, &graphics).expect("a panel");
+        let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
         let px = |n| pixels(&dot(n));
         assert_eq!(
             shown.widgets[0].body,
@@ -497,6 +505,36 @@ source = "script:doors"
             "A and B are the font's 17th and 18th, from 1"
         );
         assert_eq!(
+            shown.widgets[2].body,
+            PanelBody::Cards(vec![CardRow {
+                label: vec![px(0)],
+                cards: vec![(px(0), true)],
+            }])
+        );
+
+        let nothing = BTreeMap::from([("codes".to_owned(), Fact::List(Vec::new()))]);
+        let empty = Script {
+            results: &nothing,
+            off: None,
+        };
+        let shown = panel(Some(&def), 1, &reading(), &empty, &stand_ins).expect("a panel");
+        assert_eq!(
+            shown.widgets[0].body,
+            PanelBody::Empty("None yet".to_owned())
+        );
+    }
+
+    #[test]
+    fn pictures_are_the_game_s_in_their_own_ink() {
+        let def = definition(PICTURED);
+        let results = pictured_results();
+        let running = Script {
+            results: &results,
+            off: None,
+        };
+        let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
+        let px = |n| pixels(&dot(n));
+        assert_eq!(
             shown.widgets[1].body,
             PanelBody::Icons {
                 columns: 2,
@@ -511,24 +549,6 @@ source = "script:doors"
             px(2).color,
             Some(Color::rgb(0xFF, 0, 0)),
             "its own ink: bright red"
-        );
-        assert_eq!(
-            shown.widgets[2].body,
-            PanelBody::Cards(vec![CardRow {
-                label: vec![px(0)],
-                cards: vec![(px(0), true)],
-            }])
-        );
-
-        let nothing = BTreeMap::from([("codes".to_owned(), Fact::List(Vec::new()))]);
-        let empty = Script {
-            results: &nothing,
-            off: None,
-        };
-        let shown = panel(Some(&def), 1, &reading(), &empty, &graphics).expect("a panel");
-        assert_eq!(
-            shown.widgets[0].body,
-            PanelBody::Empty("None yet".to_owned())
         );
     }
 
