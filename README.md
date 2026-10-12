@@ -4,6 +4,10 @@ Play original ZX Spectrum games from your own copy, with a gamepad, optional tra
 
 Early days: the plan is [`ZX-SIDEKICK.md`](ZX-SIDEKICK.md), the definition format is [`docs/definition-format.md`](docs/definition-format.md), and the reference game is [Starquake](docs/games/starquake.md).
 
+[![ZX Sidekick running Starquake: the title menu, play, the guidance menu, the pause notice, saving and loading](docs/media/showcase.gif)](docs/media/showcase.mp4)
+
+A minute of ZX Sidekick running Starquake from the player's own tape: the guidance menu (a level and two training switches), the question before the score shows more, the pause notice, saving with F5 and loading with F9, and the menu's saves row. The captions are the video's own. Starquake's map, core and routes aren't in the panel yet; their facts are still being found. [Full-size video (MP4)](docs/media/showcase.mp4).
+
 **No game is included; you need your own copy.** ZX Sidekick is not affiliated with or endorsed by any game's rights holders. The Spectrum ROMs are included with Amstrad's permission ([`THIRD-PARTY.md`](THIRD-PARTY.md)).
 
 ## Building
