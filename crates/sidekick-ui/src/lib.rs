@@ -32,8 +32,8 @@ pub use map::{
 };
 pub use menu::{Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH};
 pub use panel::{
-    Body as PanelBody, CardRow, Chip, Column as PanelColumn, Icon, Look, Panel, Pixels,
-    Widget as PanelWidget, HEIGHT as PANEL_HEIGHT, WIDTH as PANEL_WIDTH,
+    Body as PanelBody, CardRow, Chip, Column as PanelColumn, Icon, Look, Panel, Pixels, ScoreRow,
+    ThisGame, Widget as PanelWidget, HEIGHT as PANEL_HEIGHT, WIDTH as PANEL_WIDTH,
 };
 pub use pause::{
     NoticeHint, PadMark, PauseNotice, AT as PAUSE_NOTICE_AT, HEIGHT as PAUSE_NOTICE_HEIGHT,
