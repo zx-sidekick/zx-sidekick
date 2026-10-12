@@ -180,7 +180,7 @@ direct maintainer request, and they are named as exceptions.
 | `Your sign-off` | **stop**, UNLESS the maintainer signalled go (a `go`/`approved` comment, OR moved it to `Build`) → build | `build-slice` |
 | `Build` | build the slice → green PR → `Your review`. No plan that fits this repository? Write it into the body first and build it: the move was the go. | `build-slice` |
 | `Your review` | **stop**: only `ready to merge` moves it. Do keep the PR mergeable: CI green, rebased locally if behind, and no thread left open that Claude has acted on (the ruleset refuses to merge with one). | `merge-pr` |
-| reply to one of Claude's review comments | `fix`: fix, push, reply with the commit, **resolve the thread**; `skip`: acknowledge, resolve; `ticket`: file a Backlog issue, reply with the link, resolve; anything else: answer in the thread (zx-recompiled/starquake-recompiled#77) | `build-slice` |
+| reply to one of Claude's review comments | `fix`: fix, push, reply with the commit, **resolve the thread**; `skip`: acknowledge, resolve; `ticket`: file a Backlog issue, reply with the link, resolve; anything else: answer in the thread | `build-slice` |
 | PR with new maintainer comments | address them, re-push | rework |
 | PR carrying `ready to merge` | **merge it** (label + green CI + title + squash) | `merge-pr` |
 | Dependabot PR (cargo or GitHub Actions; no issue, no card) | **never merged by hand**: the auto-merge workflow lands it once the required checks pass. Behind `main`: rebase it locally and `--force-with-lease` (which re-signs its commits), never `update-branch`. Red only because a committed generated file drifted (the definition schema after a `schemars` bump): regenerate it on the branch, commit, push, watch CI. Red on anything else (an API change, a new clippy lint): comment what broke on the PR. No auto-merge enabled on it: say so in the report | rework |
@@ -236,9 +236,9 @@ The maintainer disagrees by dragging the card elsewhere, and that is the
 override. **Never add a Status option to carry a property**: reordering a
 single-select replaces every option and clears every card's value.
 
-**A card the maintainer drags to `Spec` means "your call, go"**
-(zx-recompiled/starquake-recompiled#26). The first step there is choosing the
-route, not writing a spec: comment the route with its reason, and move a bug
+**A card the maintainer drags to `Spec` means "your call, go"**. The first
+step there is choosing the route, not writing a spec: comment the route with
+its reason, and move a bug
 or tweak straight on to `Build` (and build it, within the one-build cap), or a
 ticket with no design question left on to `Plan`. Only a real design question
 gets a spec.

@@ -111,7 +111,7 @@ Open it early as a draft, linked to the ticket. **`Closes #NN` only if this PR
 completes every task in the ticket's plan**; otherwise `Part of #NN`. A task
 left for the maintainer (a settings change, a manual step, a fork PR still
 waiting) counts as open: a `Closes` would shut the ticket on merge with that
-task still undone (zx-recompiled/starquake-recompiled#22).
+task still undone.
 
 **Review is the bottleneck**: the maintainer reviews alone, so the body is a
 guide to reviewing, not a defence. It carries no attribution line, and neither
@@ -134,8 +134,7 @@ the change that moved it.
 ## Review the whole diff
 
 Before the PR is handed over, read the change back as a reviewer would, all
-of it against `main`, not just the last commit
-(zx-recompiled/starquake-recompiled#74):
+of it against `main`, not just the last commit:
 
 ```bash
 git fetch origin && git diff origin/main...HEAD
@@ -158,7 +157,7 @@ The gates prove it formats, lints and passes its tests. They cannot see:
   `docs/re/<game>.md` with its confidence; no tape, snapshot or ROM staged;
   a game's picture only as a screenshot, never extracted graphics as files.
 
-**Sort each finding into one of two kinds** (zx-recompiled/starquake-recompiled#74):
+**Sort each finding into one of two kinds**:
 
 - **A defect**, with one right answer: a bug, leftover code or a stale
   comment, a name from an earlier iteration, a test that does not test what it
@@ -231,9 +230,8 @@ the maintainer's replies are part of the review.
 - **Check the ticket's sub-issues too** before writing `Closes #NN`:
   `gh api repos/zx-sidekick/zx-sidekick/issues/<n>/sub_issues -q '.[] | select(.state=="open") | .number'`.
   Any still open (other than ones this PR closes) means `Part of #NN`:
-  zx-recompiled/starquake-recompiled#76 closed its #1 with four sub-issues
-  still open (zx-recompiled/starquake-recompiled#84). A PR for a sub-issue
-  says `Closes` only for that sub-issue, never for its parent.
+  a PR once closed its parent with four sub-issues still open. A PR for a
+  sub-issue says `Closes` only for that sub-issue, never for its parent.
 - Move the card to **`Your review`** (NOT `Your sign-off`, which is the
   pre-build gate), and post a Next-steps comment: *Next: review the PR and add
   `ready to merge`.* List any task still open after the merge in that comment,
