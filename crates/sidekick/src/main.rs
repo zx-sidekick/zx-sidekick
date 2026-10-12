@@ -12,6 +12,7 @@ mod headless;
 mod keys;
 mod menu;
 mod pad;
+mod panel;
 mod picture;
 mod window;
 

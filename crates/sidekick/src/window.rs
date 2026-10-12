@@ -6,7 +6,8 @@ use crate::{
     keys::{spectrum_key, Spectrum},
     menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
-    picture::{placement, to_rgba},
+    panel,
+    picture::{layout, placement, to_rgba, Layout},
 };
 use sdl3::{
     audio::{AudioFormat, AudioSpec, AudioStreamOwner},
@@ -24,7 +25,7 @@ use sdl3::{
 use sidekick_core::{Machine, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
 use sidekick_ui::{
-    Canvas, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark,
+    Canvas, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark, Panel,
     PauseNotice, Question, Refusal, Row, TapePrompt, MENU_WIDTH, PAUSE_NOTICE_HEIGHT,
     PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
@@ -163,6 +164,8 @@ struct Output<'a> {
     prompt: Option<Texture<'a>>,
     /// The pause notice drawn, and what it was drawn from and at.
     notice: Option<(Texture<'a>, PauseNotice, u32)>,
+    /// The panel, likewise.
+    panel: Option<(Texture<'a>, Panel, u32)>,
     /// The guidance menu and its question, likewise.
     menu: Option<(Texture<'a>, MenuCard, u32)>,
     question: Option<(Texture<'a>, Question, u32)>,
@@ -198,6 +201,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         creator: &creator,
         prompt: None,
         notice: None,
+        panel: None,
         menu: None,
         question: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
@@ -544,9 +548,46 @@ impl Player {
         let dim = if self.paused() { 140 } else { 255 };
         out.picture.set_color_mod(dim, dim, dim);
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
+        let layout = self.layout(output);
         out.canvas
-            .copy(&out.picture, None, frect(placement(output, PICTURE)))
-            .map_err(|e| e.to_string())
+            .copy(&out.picture, None, frect(layout.picture))
+            .map_err(|e| e.to_string())?;
+        if let Some(at) = layout.panel {
+            let panel = panel::panel(
+                self.session.definition(),
+                self.level,
+                self.session.reading(),
+            );
+            if let Some(panel) = panel {
+                cached(
+                    out.creator,
+                    &mut out.panel,
+                    &mut out.fonts,
+                    &panel,
+                    layout.scale,
+                    Panel::draw,
+                )?;
+                if let Some((texture, _, _)) = &mut out.panel {
+                    // Dimmed under the menu, as the picture is; not under the pause notice.
+                    let dim = if self.menu.is_some() { 140 } else { 255 };
+                    texture.set_color_mod(dim, dim, dim);
+                    out.canvas
+                        .copy(texture, None, frect(at))
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Where the picture and, when the game has guidance levels, the panel go.
+    fn layout(&self, output: (u32, u32)) -> Layout {
+        let panel = self
+            .session
+            .definition()
+            .and_then(|d| d.guidance.as_ref())
+            .is_some_and(|g| !g.levels.is_empty());
+        layout(output, PICTURE, panel)
     }
 
     fn paused(&self) -> bool {
@@ -677,8 +718,7 @@ impl Player {
             return Ok(());
         };
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
-        let (_, _, pw, _) = placement(output, PICTURE);
-        let scale = (pw / PICTURE.0 / 3).max(1);
+        let scale = self.layout(output).scale;
         let card = menu.card(labels);
         let (w, h) = (MENU_WIDTH * scale, card.height() * scale);
         let at = (
@@ -733,16 +773,17 @@ impl Player {
         Ok(())
     }
 
-    /// Draws the pause notice over the picture while the game is paused, centred on it, at
-    /// the largest whole scale no more than a third of the picture's (the notice is laid out
-    /// on the picture at three logical pixels to the Spectrum's one).
+    /// Draws the pause notice over the picture while the game is paused, centred on it, at the
+    /// layout's scale (the notice is laid out on the picture at three logical pixels to the
+    /// Spectrum's one).
     fn notice(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
         if !self.paused() {
             return Ok(());
         }
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
-        let (px, py, pw, ph) = placement(output, PICTURE);
-        let scale = (pw / PICTURE.0 / 3).max(1);
+        let layout = self.layout(output);
+        let (px, py, pw, ph) = layout.picture;
+        let scale = layout.scale;
         let notice = pause_notice(self.session.definition(), labels);
         if out
             .notice
