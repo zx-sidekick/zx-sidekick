@@ -661,6 +661,9 @@ pub enum ScriptWord {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HighScores {
+    /// The table's heading in the panel after a game: the game's own name for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// Where the table starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addr: Option<Address>,

@@ -616,6 +616,13 @@
           ],
           "format": "uint32",
           "minimum": 0
+        },
+        "title": {
+          "description": "The table's heading in the panel after a game: the game's own name for it.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false
