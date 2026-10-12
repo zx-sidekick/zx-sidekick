@@ -17,6 +17,8 @@ const MACHINE: &str = "machine.szx";
 const STATE: &str = "state.toml";
 /// The quick slot's file.
 pub(crate) const QUICK: &str = "quick.sav";
+/// The file a game under way is kept in on quitting.
+const QUIT: &str = "quit.sav";
 /// A save's format, so a later program can tell an older save.
 const FORMAT: u32 = 1;
 /// What an SZX snapshot starts with.
@@ -34,6 +36,11 @@ pub(crate) struct Saves {
 }
 
 impl Saves {
+    /// The slot a game under way is kept in on quitting, beside the quick slot.
+    pub(crate) fn quit(&self) -> PathBuf {
+        self.quick.with_file_name(QUIT)
+    }
+
     /// A defined game's: its quick slot in its data folder.
     pub(crate) fn of_game(id: &str, dump: &str, folder: &Path) -> Self {
         Self {
@@ -179,16 +186,11 @@ pub(crate) fn write(session: &mut Session, saves: &Saves, path: &Path) -> Result
         Ok(zip.finish()?.into_inner())
     };
     let bytes = zip().map_err(|e| Unsaved::Failed(e.to_string()))?;
-    let partial = path.with_extension("part");
-    path.parent()
-        .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| fs::write(&partial, bytes))
-        .and_then(|()| fs::rename(&partial, path))
-        .map_err(|e| Unsaved::Failed(format!("{}: {e}", path.display())))
+    write_whole(path, &bytes).map_err(|e| Unsaved::Failed(format!("{}: {e}", path.display())))
 }
 
-/// Loads a save into the session: a `.sav` whole, once it's found to be this game's from this
-/// dump; a plain SZX snapshot as the machine alone.
+/// Loads a save into the session, its game marked loaded: a `.sav` whole, once it's found to
+/// be this game's from this dump; a plain SZX snapshot as the machine alone.
 ///
 /// # Errors
 /// Why it wasn't loaded; the session is left as it was.
@@ -197,12 +199,93 @@ pub(crate) fn read(path: &Path, session: &mut Session, saves: &Saves) -> Result<
         io::ErrorKind::NotFound => Refused::NoSave,
         _ => Refused::NotASave,
     })?;
+    from_bytes(&bytes, session, saves, true)
+}
+
+/// Takes the save kept on quitting, if there is one: its bytes, the file removed, so it's
+/// offered once whatever comes of it.
+pub(crate) fn take_quit(saves: &Saves) -> Option<Vec<u8>> {
+    let quit = saves.quit();
+    let bytes = fs::read(&quit).ok()?;
+    // One that can't be removed would be offered again and again: offered not at all.
+    if let Err(e) = fs::remove_file(&quit) {
+        eprintln!("{}: couldn't be removed: {e}", quit.display());
+        return None;
+    }
+    Some(bytes)
+}
+
+/// Puts back the game kept on quitting, offered and not answered.
+///
+/// # Errors
+/// If the file can't be written.
+pub(crate) fn put_back_quit(saves: &Saves, bytes: &[u8]) -> Result<(), Unsaved> {
+    let quit = saves.quit();
+    write_whole(&quit, bytes).map_err(|e| Unsaved::Failed(format!("{}: {e}", quit.display())))
+}
+
+/// Writes a file beside `path` first, then moves it over, so one cut short never replaces a
+/// good one.
+fn write_whole(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let partial = path.with_extension("part");
+    path.parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| fs::write(&partial, bytes))
+        .and_then(|()| fs::rename(&partial, path))
+}
+
+/// Goes on with the game kept on quitting: the same game, so not marked loaded.
+///
+/// # Errors
+/// Why it wasn't loaded; the session is left as it was.
+pub(crate) fn continue_from(
+    bytes: &[u8],
+    session: &mut Session,
+    saves: &Saves,
+) -> Result<(), Refused> {
+    from_bytes(bytes, session, saves, false)
+}
+
+/// Keeps the game on quitting, when one is under way, in its own slot; otherwise leaves no
+/// slot behind. A game is under way between its start and game over; a game without a
+/// `play` state, once its tape has loaded.
+///
+/// # Errors
+/// If a game under way couldn't be saved.
+pub(crate) fn keep_on_quit(session: &mut Session, saves: &Saves) -> Result<(), Unsaved> {
+    let has_play = session
+        .definition()
+        .is_some_and(|d| d.states.iter().any(|s| s.name == "play"));
+    let progress = session.progress();
+    let under_way = if has_play {
+        progress.in_game && progress.last_known.as_deref() != Some("game_over")
+    } else {
+        session.machine().tape_loaded()
+    };
+    let quit = saves.quit();
+    if under_way {
+        return write(session, saves, &quit);
+    }
+    match fs::remove_file(&quit) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => {
+            Err(Unsaved::Failed(format!("{}: {e}", quit.display())))
+        }
+        _ => Ok(()),
+    }
+}
+
+fn from_bytes(
+    bytes: &[u8],
+    session: &mut Session,
+    saves: &Saves,
+    mark: bool,
+) -> Result<(), Refused> {
     if bytes.starts_with(SZX_MAGIC) {
-        load_machine(session, &bytes)?;
+        load_machine(session, bytes)?;
         session.loaded_snapshot();
         return Ok(());
     }
-    let mut zip = ZipArchive::new(Cursor::new(&bytes)).map_err(|_| Refused::NotASave)?;
+    let mut zip = ZipArchive::new(Cursor::new(bytes)).map_err(|_| Refused::NotASave)?;
     let text = String::from_utf8(entry(&mut zip, STATE)?).map_err(|_| Refused::NotASave)?;
     let state: State = toml::from_str(&text).map_err(|_| Refused::NotASave)?;
     if state.save != FORMAT {
@@ -222,7 +305,7 @@ pub(crate) fn read(path: &Path, session: &mut Session, saves: &Saves) -> Result<
         Record {
             level: state.record.level,
             switches: state.record.switches,
-            loaded: state.record.loaded,
+            loaded: state.record.loaded || mark,
         },
         Progress {
             last_known: state.progress.last_state,
@@ -250,7 +333,7 @@ fn load_machine(session: &mut Session, szx: &[u8]) -> Result<(), Refused> {
 }
 
 /// A file in a save's zip, whole.
-fn entry(zip: &mut ZipArchive<Cursor<&Vec<u8>>>, name: &str) -> Result<Vec<u8>, Refused> {
+fn entry(zip: &mut ZipArchive<Cursor<&[u8]>>, name: &str) -> Result<Vec<u8>, Refused> {
     let mut file = zip.by_name(name).map_err(|_| Refused::NotASave)?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)
@@ -395,6 +478,70 @@ patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }]
         assert!(!fresh.switched_on("no-harm"), "switches forgotten");
         mode(&mut fresh, 2);
         assert!(fresh.record().loaded, "the game it goes on into is marked");
+    }
+
+    #[test]
+    fn a_game_under_way_is_kept_on_quitting_and_offered_once() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = saves(folder.path());
+        let mut s = played();
+        keep_on_quit(&mut s, &saves).unwrap();
+        assert!(saves.quit().exists(), "kept in play");
+        assert_eq!(saves.quit(), folder.path().join("quit.sav"));
+
+        let bytes = take_quit(&saves).expect("offered");
+        assert!(!saves.quit().exists(), "removed as it's offered");
+        assert_eq!(take_quit(&saves), None, "once");
+        put_back_quit(&saves, &bytes).unwrap();
+        assert_eq!(
+            take_quit(&saves).as_deref(),
+            Some(&bytes[..]),
+            "put back, unanswered"
+        );
+        let mut fresh = session();
+        continue_from(&bytes, &mut fresh, &saves).unwrap();
+        assert_eq!(fresh.machine().peek(0x9000), 0x42);
+        assert!(fresh.switched_on("no-harm"));
+        assert!(!fresh.record().loaded, "the same game goes on, not marked");
+    }
+
+    #[test]
+    fn nothing_is_kept_at_the_title_or_game_over() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = saves(folder.path());
+        let mut s = played();
+        keep_on_quit(&mut s, &saves).unwrap();
+        mode(&mut s, 1);
+        keep_on_quit(&mut s, &saves).unwrap();
+        assert!(
+            !saves.quit().exists(),
+            "at the title: none, and the old one gone"
+        );
+        let mut fresh = session();
+        mode(&mut fresh, 0);
+        keep_on_quit(&mut fresh, &saves).unwrap();
+        assert!(!saves.quit().exists(), "before any game");
+    }
+
+    #[test]
+    fn a_plain_tape_is_kept_once_it_has_loaded() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = Saves::of_tape("plain.tap", "ABC123", folder.path());
+        let header = [
+            19, 0, 0, 3, b'x', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', 1, 0, 0, 0x80,
+            0, 0, 0,
+        ];
+        let data = [3, 0, 0xFF, 0, 0xFF];
+        let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+        machine
+            .load_tap(&[&header[..], &data[..]].concat())
+            .expect("the tape goes in");
+        let mut s = Session::new(machine, None);
+        keep_on_quit(&mut s, &saves).unwrap();
+        assert!(!saves.quit().exists(), "not while it loads");
+        s.run_frame().expect("a frame");
+        keep_on_quit(&mut s, &saves).unwrap();
+        assert!(saves.quit().exists(), "once it has");
     }
 
     #[test]

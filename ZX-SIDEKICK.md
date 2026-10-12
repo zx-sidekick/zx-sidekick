@@ -247,7 +247,7 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 - A short notice confirms: "Game saved", "Game loaded", or why not.
 
   ![Game saved](docs/mockups/starquake/saved-note.png)
-- **Saved on quitting:** closing the window during a game saves it to its own slot. So does **Cmd-Q** or Quit in the Mac menu, which never arrives as the window closing, only as the program shutting down; handle both. The next start offers it ("Continue where you left off?"): Enter or A continues, anything else starts afresh, and either way it's removed.
+- **Saved on quitting:** closing the window during a game, or Exit in the menu, saves it to its own slot (`quit.sav`, beside the quick slot); at the title or game over nothing is kept. Going on from it is the same game, so it isn't marked loaded. So does **Cmd-Q** or Quit in the Mac menu, which never arrives as the window closing, only as the program shutting down; handle both. The next start offers it ("Continue where you left off?"): Enter or A continues, anything else starts afresh, and either way it's removed.
 
   ![The offer to continue](docs/mockups/starquake/offer.png)
 - **Wherever the game is** (paused, typing a code, the menu open), a snapshot can be taken. Take it at the sync point wherever possible, so loading resumes cleanly; otherwise at the end of a frame.

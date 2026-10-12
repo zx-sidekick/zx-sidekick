@@ -23,15 +23,15 @@ use sdl3::{
     rect::Rect,
     render::{BlendMode, FRect, ScaleMode, Texture, TextureCreator, WindowCanvas},
     video::{FullscreenType, WindowContext},
-    GamepadSubsystem,
+    EventPump, GamepadSubsystem,
 };
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
 use sidekick_ui::{
-    Canvas, EntryCard, Face, Fonts, LibraryPage, Menu as MenuCard, Note, NoticeHint, PadLabels,
-    PadMark, Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT,
-    ENTRY_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH,
-    QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    Canvas, EntryCard, Face, Fonts, LibraryPage, Menu as MenuCard, Note, NoticeHint, Offer,
+    PadLabels, PadMark, Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame,
+    ENTRY_HEIGHT, ENTRY_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, OFFER_HEIGHT, OFFER_WIDTH,
+    PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
     collections::BTreeMap,
@@ -157,6 +157,8 @@ struct Player {
     opened: Arc<Mutex<Option<PathBuf>>>,
     /// The menu asked for the file dialog.
     choosing: bool,
+    /// The game kept on quitting last time, while it's offered.
+    offer: Option<Vec<u8>>,
     started: Instant,
     frames_run: u64,
     rgba: Vec<u8>,
@@ -195,6 +197,8 @@ struct Output<'a> {
     entry: Option<(Texture<'a>, EntryCard, u32)>,
     /// The notice, likewise.
     note: Option<(Texture<'a>, Note, u32)>,
+    /// The offer to continue, likewise.
+    offer: Option<(Texture<'a>, Offer, u32)>,
     /// The guidance menu and its question, likewise.
     menu: Option<(Texture<'a>, MenuCard, u32)>,
     question: Option<(Texture<'a>, Question, u32)>,
@@ -235,6 +239,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         this_game: None,
         entry: None,
         note: None,
+        offer: None,
         menu: None,
         question: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
@@ -251,10 +256,26 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         last: Maker::default(),
     };
 
-    'run: loop {
+    // Whichever way out, a game under way is kept.
+    let ran = run_loop(&mut events, &mut out, &mut screen, &mut gamepads);
+    screen.quit();
+    ran
+}
+
+/// Takes events and draws the screen until the program is to quit.
+///
+/// # Errors
+/// If SDL can't draw, or the machine fails.
+fn run_loop(
+    events: &mut EventPump,
+    out: &mut Output,
+    screen: &mut Screen,
+    gamepads: &mut Gamepads,
+) -> Result<(), String> {
+    loop {
         for event in events.poll_iter() {
             match event {
-                Event::Quit { .. } => break 'run,
+                Event::Quit { .. } => return Ok(()),
                 Event::KeyDown {
                     scancode: Some(scancode),
                     keymod,
@@ -267,8 +288,9 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                 }
                 event => {
                     let mut presses = gamepads.event(&event);
-                    if let Screen::Play(player) = &mut screen {
-                        if player.save_keys(&event, &mut gamepads.pads)
+                    if let Screen::Play(player) = &mut *screen {
+                        if player.offer_event(&event, &presses, &mut gamepads.pads)
+                            || player.save_keys(&event, &mut gamepads.pads)
                             || player.held(&event, &presses, &mut gamepads.pads)
                         {
                             continue;
@@ -276,7 +298,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                         match player.menu_event(&event, &presses, &mut gamepads.pads) {
                             MenuEvent::NotMine => {}
                             MenuEvent::Taken => continue,
-                            MenuEvent::Quit => break 'run,
+                            MenuEvent::Quit => return Ok(()),
                         }
                         if player.entry_event(&presses, &mut gamepads.pads) {
                             continue;
@@ -285,11 +307,11 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                     }
                     match screen.event(&event, &presses, &out.canvas) {
                         Choice::Stay => {}
-                        Choice::Quit => break 'run,
+                        Choice::Quit => return Ok(()),
                         Choice::Play(i) => {
-                            if let Screen::Library(library) = &mut screen {
+                            if let Screen::Library(library) = &mut *screen {
                                 let game = library.games.swap_remove(i);
-                                screen = open_game(game, &mut out.canvas)?;
+                                *screen = open_game(game, &mut out.canvas)?;
                                 gamepads.pads.hold_back();
                             }
                         }
@@ -297,22 +319,42 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                 }
             }
         }
-        if let Screen::Play(player) = &mut screen {
-            player.take_opened(&mut gamepads.pads, &out.canvas);
-        }
-        if let Screen::Prompt(prompt) = &mut screen {
-            if let Some(playing) = prompt.take_offer() {
-                screen = Screen::Play(Box::new(Player::new(playing)));
-                gamepads.pads.hold_back();
-            }
-        }
-        gamepads.label(&mut screen);
-        screen.draw(&mut out, &mut gamepads)?;
+        screen.between_passes(&out.canvas, &mut gamepads.pads);
+        gamepads.label(screen);
+        screen.draw(out, gamepads)?;
     }
-    Ok(())
 }
 
 impl Screen {
+    /// What comes between passes: a save the file dialog chose is loaded; a tape offered to
+    /// the prompt starts its game.
+    fn between_passes(&mut self, canvas: &WindowCanvas, pads: &mut Pads) {
+        match self {
+            Self::Play(player) => player.take_opened(pads, canvas),
+            Self::Prompt(prompt) => {
+                if let Some(playing) = prompt.take_offer() {
+                    *self = Self::Play(Box::new(Player::new(playing)));
+                    pads.hold_back();
+                }
+            }
+            Self::Library(_) => {}
+        }
+    }
+
+    /// The program is quitting: a game under way is kept for the next start.
+    fn quit(&mut self) {
+        if let Self::Play(player) = self {
+            // Quitting at the offer keeps the offered game for next time.
+            let kept = match &player.offer {
+                Some(bytes) => saves::put_back_quit(&player.saves, bytes),
+                None => saves::keep_on_quit(&mut player.session, &player.saves),
+            };
+            if let Err(Unsaved::Failed(why)) = kept {
+                eprintln!("The game couldn't be kept on quitting: {why}");
+            }
+        }
+    }
+
     /// Runs the frames due, and draws the screen.
     fn draw(&mut self, out: &mut Output, gamepads: &mut Gamepads) -> Result<(), String> {
         out.canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -325,6 +367,7 @@ impl Screen {
                 } else {
                     player.notice(out, gamepads.last.labels())?;
                     player.draw_entry(out, gamepads.last.labels())?;
+                    player.draw_offer(out, gamepads.last.labels())?;
                 }
                 player.draw_note(out)?;
             }
@@ -506,6 +549,7 @@ const fn maker(kind: GamepadType) -> Maker {
 
 impl Player {
     fn new(playing: Playing) -> Self {
+        let offer = saves::take_quit(&playing.saves);
         Self {
             session: Box::new(playing.session),
             play: Play::new(playing.mapping),
@@ -522,6 +566,7 @@ impl Player {
             note: None,
             opened: Arc::new(Mutex::new(None)),
             choosing: false,
+            offer,
             started: Instant::now(),
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
@@ -558,7 +603,7 @@ impl Player {
             std::thread::sleep(Duration::from_millis(1));
         }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
-            if self.session.holding() || self.menu.is_some() {
+            if self.session.holding() || self.menu.is_some() || self.offer.is_some() {
                 break;
             }
             pads.hold_back_parts(&self.play.enter(self.session.state()));
@@ -754,9 +799,34 @@ impl Player {
     /// Loads a save, and says how it went. The game goes on from it with nothing held, and
     /// the menu, card and page after a game closed.
     fn load(&mut self, path: &Path, pads: &mut Pads) {
-        if let Err(refused) = saves::read(path, &mut self.session, &self.saves) {
-            self.say(refused.words());
+        let result = saves::read(path, &mut self.session, &self.saves);
+        if self.after_load(result, pads) {
+            self.say("Game loaded");
+        }
+    }
+
+    /// Answers the offer to continue: `go_on` loads the game kept on quitting; either way the
+    /// offer goes, and the game starts.
+    fn answer_offer(&mut self, go_on: bool, pads: &mut Pads) {
+        let Some(bytes) = self.offer.take() else {
             return;
+        };
+        if go_on {
+            let result = saves::continue_from(&bytes, &mut self.session, &self.saves);
+            self.after_load(result, pads);
+        }
+        self.started = Instant::now();
+        self.frames_run = 0;
+        pads.hold_back();
+    }
+
+    /// After a save was loaded, or refused: the game goes on from it with nothing held, and
+    /// the menu, card and page after a game closed. A refusal is said. Returns whether it
+    /// loaded.
+    fn after_load(&mut self, result: Result<(), saves::Refused>, pads: &mut Pads) -> bool {
+        if let Err(refused) = result {
+            self.say(refused.words());
+            return false;
         }
         self.level = usize::from(self.session.level());
         if let Some(typing) = self.typing.take() {
@@ -774,7 +844,64 @@ impl Player {
         self.started = Instant::now();
         self.frames_run = 0;
         pads.hold_back();
-        self.say("Game loaded");
+        true
+    }
+
+    /// Takes an event while the offer to continue is open: Enter or the confirm button goes
+    /// on with the kept game; any other key, button or click starts afresh. Returns whether
+    /// it took the event.
+    fn offer_event(&mut self, event: &Event, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
+        if self.offer.is_none() {
+            return false;
+        }
+        let key = match *event {
+            Event::KeyDown {
+                scancode: Some(scancode),
+                repeat: false,
+                ..
+            } => key_answers_offer(scancode),
+            Event::MouseButtonDown { .. } => Some(false),
+            _ => None,
+        };
+        let pad = presses
+            .first()
+            .map(|&(part, maker)| pad::nav(part, maker) == Some(Nav::Confirm));
+        if let Some(go_on) = key.or(pad) {
+            self.answer_offer(go_on, pads);
+        }
+        true
+    }
+
+    /// Draws the offer to continue over the picture, centred on it.
+    fn draw_offer(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
+        if self.offer.is_none() {
+            out.offer = None;
+            return Ok(());
+        }
+        let output = out.canvas.output_size().map_err(|e| e.to_string())?;
+        let layout = self.layout(output);
+        let (px, py, pw, ph) = layout.picture;
+        let scale = layout.scale;
+        let offer = Offer {
+            title: self.title.clone(),
+            pad: labels,
+        };
+        cached(
+            out.creator,
+            &mut out.offer,
+            &mut out.fonts,
+            &offer,
+            scale,
+            Offer::draw,
+        )?;
+        let (w, h) = (OFFER_WIDTH * scale, OFFER_HEIGHT * scale);
+        let at = (px + (pw - w.min(pw)) / 2, py + (ph - h.min(ph)) / 2, w, h);
+        if let Some((texture, _, _)) = &out.offer {
+            out.canvas
+                .copy(texture, None, frect(at))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Opens the file dialog to choose a save; it's loaded on the pass after it's chosen.
@@ -927,7 +1054,7 @@ impl Player {
     }
 
     fn paused(&self) -> bool {
-        self.menu.is_some() || self.session.state() == Some("paused")
+        self.menu.is_some() || self.offer.is_some() || self.session.state() == Some("paused")
     }
 
     /// Takes an event for the guidance menu: Esc or Select opens it in play; while it's open,
@@ -1587,6 +1714,25 @@ const fn is_press(event: &Event) -> bool {
     )
 }
 
+/// What a key says to the offer to continue: Enter goes on, other keys start afresh, and a
+/// modifier says nothing, since it may begin Cmd-Q, Alt-F4 or the fullscreen keys.
+const fn key_answers_offer(scancode: Scancode) -> Option<bool> {
+    match scancode {
+        Scancode::LCtrl
+        | Scancode::RCtrl
+        | Scancode::LShift
+        | Scancode::RShift
+        | Scancode::LAlt
+        | Scancode::RAlt
+        | Scancode::LGui
+        | Scancode::RGui
+        | Scancode::CapsLock
+        | Scancode::Mode => None,
+        Scancode::Return | Scancode::KpEnter => Some(true),
+        _ => Some(false),
+    }
+}
+
 /// Switches the window between fullscreen and windowed.
 fn toggle_fullscreen(canvas: &mut WindowCanvas) -> Result<(), String> {
     let window = canvas.window_mut();
@@ -1645,4 +1791,29 @@ fn open_sound(sdl: &sdl3::Sdl) -> Option<AudioStreamOwner> {
 fn frames_due(elapsed: Duration, run: u64) -> usize {
     let should = elapsed.as_nanos() / FRAME.as_nanos();
     usize::try_from(should.saturating_sub(u128::from(run))).unwrap_or(usize::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_offer_goes_on_with_enter_and_ignores_modifiers() {
+        assert_eq!(key_answers_offer(Scancode::Return), Some(true));
+        assert_eq!(key_answers_offer(Scancode::KpEnter), Some(true));
+        assert_eq!(key_answers_offer(Scancode::Escape), Some(false));
+        assert_eq!(key_answers_offer(Scancode::F9), Some(false));
+        for modifier in [
+            Scancode::LGui,
+            Scancode::RGui,
+            Scancode::LAlt,
+            Scancode::LCtrl,
+        ] {
+            assert_eq!(
+                key_answers_offer(modifier),
+                None,
+                "{modifier:?} may begin a way out"
+            );
+        }
+    }
 }
