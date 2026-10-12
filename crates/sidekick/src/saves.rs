@@ -2,7 +2,7 @@
 //! and the checks before one is loaded.
 
 use serde::{Deserialize, Serialize};
-use sidekick_core::{Progress, Record, Session};
+use sidekick_core::{Error, Progress, Record, Session};
 use std::{
     collections::BTreeSet,
     fs, io,
@@ -43,16 +43,17 @@ impl Saves {
         }
     }
 
-    /// A tape played plainly: its quick slot in a folder of the tape's name in the data
-    /// folder's `tapes/`.
+    /// A tape played plainly: its quick slot in the data folder's `tapes/`, in a folder of the
+    /// tape's name and the start of its SHA-1, so two tapes of one name keep apart.
     pub(crate) fn of_tape(name: &str, dump: &str, data: &Path) -> Self {
         let stem = Path::new(name)
             .file_stem()
             .map_or_else(|| name.to_owned(), |s| s.to_string_lossy().into_owned());
+        let folder = format!("{stem}-{}", dump.get(..8).unwrap_or(dump));
         Self {
             game: None,
             dump: dump.to_owned(),
-            quick: data.join("tapes").join(stem).join(QUICK),
+            quick: data.join("tapes").join(folder).join(QUICK),
         }
     }
 }
@@ -85,6 +86,25 @@ struct Got {
     in_game: bool,
 }
 
+/// Why the game wasn't saved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Unsaved {
+    /// The tape is still loading, and a save doesn't hold the tape.
+    TapeLoading,
+    /// The machine or the file failed, and how.
+    Failed(String),
+}
+
+impl Unsaved {
+    /// What the notice says.
+    pub(crate) const fn words(&self) -> &'static str {
+        match self {
+            Self::TapeLoading => "Not while the tape loads",
+            Self::Failed(_) => "The game couldn't be saved",
+        }
+    }
+}
+
 /// Why a save wasn't loaded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Refused {
@@ -92,6 +112,8 @@ pub(crate) enum Refused {
     NoSave,
     /// Not a save, or one this program can't read.
     NotASave,
+    /// A save whose snapshot the machine couldn't read.
+    Damaged,
     /// Another game's.
     OtherGame,
     /// The game's, from another dump.
@@ -106,6 +128,7 @@ impl Refused {
         match self {
             Self::NoSave => "No save yet",
             Self::NotASave => "That isn't a save",
+            Self::Damaged => "That save is damaged",
             Self::OtherGame => "That save is of another game",
             Self::OtherDump => "That save is from another tape",
             Self::OtherMachine => "That save is for another Spectrum",
@@ -118,12 +141,15 @@ impl Refused {
 /// short never replaces a good one.
 ///
 /// # Errors
-/// If the machine can't be saved or the file can't be written.
-pub(crate) fn write(session: &mut Session, saves: &Saves, path: &Path) -> Result<(), String> {
+/// While the tape loads, or if the machine can't be saved or the file can't be written.
+pub(crate) fn write(session: &mut Session, saves: &Saves, path: &Path) -> Result<(), Unsaved> {
+    if session.machine().tape_loading() {
+        return Err(Unsaved::TapeLoading);
+    }
     let szx = session
         .machine_mut()
         .save_szx()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| Unsaved::Failed(e.to_string()))?;
     let record = session.record();
     let progress = session.progress();
     let state = State {
@@ -143,7 +169,7 @@ pub(crate) fn write(session: &mut Session, saves: &Saves, path: &Path) -> Result
             in_game: progress.in_game,
         },
     };
-    let text = toml::to_string(&state).map_err(|e| e.to_string())?;
+    let text = toml::to_string(&state).map_err(|e| Unsaved::Failed(e.to_string()))?;
     let zip = || -> zip::result::ZipResult<Vec<u8>> {
         let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
         zip.start_file(MACHINE, SimpleFileOptions::default())?;
@@ -152,31 +178,27 @@ pub(crate) fn write(session: &mut Session, saves: &Saves, path: &Path) -> Result
         zip.write_all(text.as_bytes())?;
         Ok(zip.finish()?.into_inner())
     };
-    let bytes = zip().map_err(|e| e.to_string())?;
+    let bytes = zip().map_err(|e| Unsaved::Failed(e.to_string()))?;
     let partial = path.with_extension("part");
     path.parent()
         .map_or(Ok(()), fs::create_dir_all)
         .and_then(|()| fs::write(&partial, bytes))
         .and_then(|()| fs::rename(&partial, path))
-        .map_err(|e| format!("{}: {e}", path.display()))
+        .map_err(|e| Unsaved::Failed(format!("{}: {e}", path.display())))
 }
 
 /// Loads a save into the session: a `.sav` whole, once it's found to be this game's from this
 /// dump; a plain SZX snapshot as the machine alone.
 ///
 /// # Errors
-/// Why it wasn't loaded; the session is left as it was, unless the machine itself refused
-/// the snapshot part-way.
+/// Why it wasn't loaded; the session is left as it was.
 pub(crate) fn read(path: &Path, session: &mut Session, saves: &Saves) -> Result<(), Refused> {
     let bytes = fs::read(path).map_err(|e| match e.kind() {
         io::ErrorKind::NotFound => Refused::NoSave,
         _ => Refused::NotASave,
     })?;
     if bytes.starts_with(SZX_MAGIC) {
-        session
-            .machine_mut()
-            .load_szx(&bytes)
-            .map_err(|_| Refused::OtherMachine)?;
+        load_machine(session, &bytes)?;
         session.loaded_snapshot();
         return Ok(());
     }
@@ -193,10 +215,7 @@ pub(crate) fn read(path: &Path, session: &mut Session, saves: &Saves) -> Result<
         return Err(Refused::OtherDump);
     }
     let szx = entry(&mut zip, MACHINE)?;
-    session
-        .machine_mut()
-        .load_szx(&szx)
-        .map_err(|_| Refused::OtherMachine)?;
+    load_machine(session, &szx)?;
     session.restore(
         state.level,
         &state.switches,
@@ -212,6 +231,22 @@ pub(crate) fn read(path: &Path, session: &mut Session, saves: &Saves) -> Result<
         },
     );
     Ok(())
+}
+
+/// Loads a snapshot into the machine. One the machine refuses part-way leaves it as it was:
+/// what it held is put back.
+fn load_machine(session: &mut Session, szx: &[u8]) -> Result<(), Refused> {
+    let machine = session.machine_mut();
+    let before = machine.save_szx().map_err(|_| Refused::Damaged)?;
+    machine.load_szx(szx).map_err(|e| {
+        if let Error::OtherModel | Error::UnknownModel = e {
+            Refused::OtherMachine
+        } else {
+            // Its own snapshot, just taken: the machine reads it back.
+            let _ = machine.load_szx(&before);
+            Refused::Damaged
+        }
+    })
 }
 
 /// A file in a save's zip, whole.
@@ -363,11 +398,78 @@ patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }]
     }
 
     #[test]
-    fn a_plain_tape_s_quick_slot_is_under_its_name() {
+    fn a_plain_tape_s_quick_slot_is_under_its_name_and_dump() {
         let data = Path::new("data");
         assert_eq!(
-            Saves::of_tape("Jet Set.tap", "x", data).quick,
-            data.join("tapes").join("Jet Set").join(QUICK)
+            Saves::of_tape("Jet Set.tap", "0123456789abcdef", data).quick,
+            data.join("tapes").join("Jet Set-01234567").join(QUICK)
         );
+    }
+
+    #[test]
+    fn a_damaged_snapshot_leaves_the_machine_as_it_was() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let mut s = played();
+        let mut szx = s.machine_mut().save_szx().unwrap();
+        szx.truncate(szx.len() - 100);
+        let damaged = folder.path().join("damaged.szx");
+        fs::write(&damaged, &szx).unwrap();
+        let mut fresh = session();
+        fresh.machine_mut().write(0x9000, 0x17);
+        let pc = fresh.machine().registers().get_pc();
+        assert_eq!(
+            read(&damaged, &mut fresh, &saves(folder.path())),
+            Err(Refused::Damaged)
+        );
+        assert_eq!(fresh.machine().peek(0x9000), 0x17);
+        assert_eq!(fresh.machine().registers().get_pc(), pc);
+        assert!(!fresh.record().loaded);
+    }
+
+    #[test]
+    fn a_hold_switch_holds_the_loaded_game_s_value_not_the_one_before() {
+        let text = format!(
+            "{DEFINITION}\n[values.lives]\naddr = 0x8020\ntype = \"u8\"\nwritable = true\n\n[[cheats]]\nid = \"lives\"\nlabel = \"Endless lives\"\nhold = \"lives\"\n"
+        );
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = saves(folder.path());
+        let definition = Definition::from_toml(&text).expect("the definition parses");
+        let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+        for _ in 0..BOOT_FRAMES {
+            machine.run_frame().expect("a frame");
+        }
+        let mut s = Session::new(machine, Some(definition));
+        mode(&mut s, 2);
+        s.machine_mut().write(0x8020, 3);
+        s.switch("lives", true).expect("it goes on");
+        mode(&mut s, 2);
+        write(&mut s, &saves, &saves.quick).unwrap();
+        s.machine_mut().write(0x8020, 4);
+        mode(&mut s, 2);
+        read(&saves.quick, &mut s, &saves).unwrap();
+        mode(&mut s, 2);
+        assert_eq!(s.machine().peek(0x8020), 3, "the saved game's lives");
+    }
+
+    #[test]
+    fn a_save_isn_t_taken_while_the_tape_loads() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = saves(folder.path());
+        let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+        // A header block and a data block, of 1 byte, neither loaded yet.
+        let header = [
+            19, 0, 0, 3, b'x', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', 1, 0, 0, 0x80,
+            0, 0, 0,
+        ];
+        let data = [3, 0, 0xFF, 0, 0xFF];
+        machine
+            .load_tap(&[&header[..], &data[..]].concat())
+            .expect("the tape goes in");
+        let mut s = Session::new(machine, None);
+        assert_eq!(
+            write(&mut s, &saves, &saves.quick),
+            Err(Unsaved::TapeLoading)
+        );
+        assert!(!saves.quick.exists());
     }
 }

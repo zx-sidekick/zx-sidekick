@@ -635,10 +635,18 @@ impl Session {
             loaded: true,
             ..record
         };
-        // The game the save was taken in goes on, not a new one.
+        // The game the save was taken in goes on, not a new one, in the state it was in.
+        self.state.clone_from(&progress.last_known);
         self.progress = progress;
         self.loaded_next = false;
         self.holding = false;
+        self.reading_anew();
+    }
+
+    /// The values read from the machine as it is now, so the next frame's are told against
+    /// them: a hold switch mustn't take the machine before a load for the game's own.
+    fn reading_anew(&mut self) {
+        self.reading = self.read();
     }
 
     /// A snapshot alone was loaded into the machine: the switches are forgotten, since what
@@ -651,6 +659,8 @@ impl Session {
         self.progress.last_known = None;
         self.progress.in_game = false;
         self.holding = false;
+        self.state = None;
+        self.reading_anew();
     }
 
     /// Whether a switch could go on now, without turning it on.

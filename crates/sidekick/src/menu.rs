@@ -313,6 +313,11 @@ impl Menu {
         }
     }
 
+    /// The quick slot has been saved to: Load is there to press.
+    pub(crate) const fn saved(&mut self) {
+        self.can_load = true;
+    }
+
     /// The guidance level chosen.
     pub(crate) const fn level(&self) -> usize {
         self.level

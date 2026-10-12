@@ -72,8 +72,9 @@ pub struct Machine {
     /// The watch's addresses passed, as of the last `run` (the core lends its debug interface
     /// mutably only).
     passed: Vec<u16>,
-    /// Whether the tape has loaded, as of the last `run`.
+    /// Whether the tape has loaded, and whether it's loading, as of the last `run`.
     tape_loaded: bool,
+    tape_loading: bool,
     /// The border and screen together, as of the last frame's end.
     picture: Picture,
     /// The last frame's sound, left and right.
@@ -110,6 +111,7 @@ impl Machine {
             frame_ended: false,
             passed: Vec::new(),
             tape_loaded: false,
+            tape_loading: false,
             picture: Picture::new(320, BORDER.height(), FrameBufferSource::Border, ()),
             sound: Vec::with_capacity(SAMPLE_RATE / 50),
         })
@@ -273,6 +275,7 @@ impl Machine {
         self.emulator
             .load_tape(Tape::Tap(BufferCursor::new(tap.to_vec())))?;
         self.watch_mut().new_tape(blocks);
+        self.copy_passed();
         self.frame_ended = true;
         Ok(())
     }
@@ -306,7 +309,8 @@ impl Machine {
         Ok(szx)
     }
 
-    /// Puts the machine in the state an SZX snapshot holds. The next `run` starts a new frame.
+    /// Puts the machine in the state an SZX snapshot holds, and counts the tape as loaded,
+    /// since what it was loading into is gone. The next `run` starts a new frame.
     ///
     /// # Errors
     /// If the snapshot is for another model, or the core can't read it.
@@ -322,6 +326,8 @@ impl Machine {
         self.emulator
             .load_snapshot(Snapshot::Szx(BufferCursor::new(szx.to_vec())))?;
         self.frame_ended = true;
+        self.watch_mut().finish_tape();
+        self.copy_passed();
         Ok(())
     }
 
@@ -348,6 +354,7 @@ impl Machine {
     fn copy_passed(&mut self) {
         let watch = self.emulator.debug_interface().expect(WATCH_SET);
         self.tape_loaded = watch.tape_loaded();
+        self.tape_loading = watch.tape_loading();
         self.passed.clear();
         self.passed.extend_from_slice(watch.passed());
     }
@@ -356,5 +363,11 @@ impl Machine {
     #[must_use]
     pub const fn tape_loaded(&self) -> bool {
         self.tape_loaded
+    }
+
+    /// Whether a tape is in and still loading: a snapshot now wouldn't hold the rest of it.
+    #[must_use]
+    pub const fn tape_loading(&self) -> bool {
+        self.tape_loading
     }
 }

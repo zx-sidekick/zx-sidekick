@@ -9,7 +9,7 @@ use crate::{
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
     picture::{layout, placement, to_rgba, Layout},
-    saves::{self, Saves},
+    saves::{self, Saves, Unsaved},
     scores,
 };
 use sdl3::{
@@ -729,14 +729,20 @@ impl Player {
 
     /// Saves to the quick slot, and says how it went.
     fn quick_save(&mut self) {
-        let words = match saves::write(&mut self.session, &self.saves, &self.saves.quick) {
-            Ok(()) => "Game saved",
-            Err(e) => {
-                eprintln!("The game couldn't be saved: {e}");
-                "The game couldn't be saved"
+        match saves::write(&mut self.session, &self.saves, &self.saves.quick) {
+            Ok(()) => {
+                if let Some(menu) = &mut self.menu {
+                    menu.saved();
+                }
+                self.say("Game saved");
             }
-        };
-        self.say(words);
+            Err(unsaved) => {
+                if let Unsaved::Failed(why) = &unsaved {
+                    eprintln!("The game couldn't be saved: {why}");
+                }
+                self.say(unsaved.words());
+            }
+        }
     }
 
     /// Loads the quick slot.
@@ -829,7 +835,7 @@ impl Player {
         };
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let (px, py, _, _) = layout.picture;
+        let (px, py, pw, ph) = layout.picture;
         let scale = layout.scale;
         cached(
             out.creator,
@@ -840,7 +846,15 @@ impl Player {
             Note::draw,
         )?;
         let (w, h) = (note.width(&mut out.fonts) * scale, NOTE_HEIGHT * scale);
-        let at = (px + NOTE_AT.0 * scale - w / 2, py + NOTE_AT.1 * scale, w, h);
+        // Placed as on the mockup's picture, three logical pixels to a Spectrum one, whatever
+        // the picture's own scale.
+        let (lw, lh) = (PICTURE.0 * 3, PICTURE.1 * 3);
+        let at = (
+            (px + pw * NOTE_AT.0 / lw).saturating_sub(w / 2),
+            py + ph * NOTE_AT.1 / lh,
+            w,
+            h,
+        );
         if let Some((texture, _, _)) = &out.note {
             out.canvas
                 .copy(texture, None, frect(at))
@@ -1031,10 +1045,8 @@ impl Player {
                 }
             }
             Outcome::Exit => return MenuEvent::Quit,
-            Outcome::Save => {
-                self.close_menu(pads);
-                self.quick_save();
-            }
+            // The menu stays open, its changes still waiting for Back to the game.
+            Outcome::Save => self.quick_save(),
             Outcome::Load => {
                 self.close_menu(pads);
                 self.quick_load(pads);
