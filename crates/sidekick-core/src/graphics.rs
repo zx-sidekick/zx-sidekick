@@ -2,7 +2,7 @@
 //! values say: never shipped, always the player's own copy's.
 
 use crate::{Machine, Read};
-use sidekick_def::{Mask, Value, ValueType};
+use sidekick_def::{Layout, Mask, Value, ValueType};
 
 /// A picture of one bit a pixel: its ink, where its bits are set.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,6 +66,19 @@ fn bitmap(bytes: &[u8], width: usize, height: usize) -> Bitmap {
     }
 }
 
+/// A picture stored in 8 × 8 cells, as rows: each row of each cell in turn.
+fn from_cells(cells: &[u8], width: usize, height: usize) -> Vec<u8> {
+    let across = width.div_ceil(8);
+    (0..height)
+        .flat_map(|y| {
+            (0..across).map(move |cell| {
+                let at = ((y / 8) * across + cell) * 8 + y % 8;
+                cells.get(at).copied().unwrap_or(0)
+            })
+        })
+        .collect()
+}
+
 fn bytes(machine: &Machine, addr: u32, len: u32) -> Vec<u8> {
     (addr..addr.saturating_add(len))
         .map(|a| u16::try_from(a).map_or(0, |a| machine.peek(a)))
@@ -125,6 +138,10 @@ pub(crate) fn sprites(
                 Mask::None => raw,
                 Mask::Interleaved => raw.iter().skip(1).step_by(2).copied().collect(),
                 Mask::After => raw.into_iter().take(size as usize).collect(),
+            };
+            let data = match value.layout.unwrap_or_default() {
+                Layout::Rows => data,
+                Layout::Cells => from_cells(&data, width as usize, height as usize),
             };
             let mut picture = bitmap(&data, width as usize, height as usize);
             picture.color = colors.and_then(|c| ink(c, i as usize));

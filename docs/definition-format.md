@@ -214,8 +214,11 @@ width = 16         # pixels, a multiple of 8
 height = 16
 stride = 32        # bytes from one picture to the next (default width/8 × height)
 mask = "none"      # "none", "interleaved" (mask byte before each byte), or "after" (mask after the picture)
+layout = "rows"    # "rows", or "cells": 8 × 8 character cells, left to right then top to bottom
 colors = { value = "item_colors" }   # optional: a table or bytes giving each picture's ink
 ```
+
+Pictures are usually stored row by row. Some games keep them as the screen's characters are, in 8 × 8 cells, each cell's eight rows together. `layout = "cells"` reads those, and wants a height that's a multiple of 8, as the width always is.
 
 ## `[[cheats]]`: training switches
 

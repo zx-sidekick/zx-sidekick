@@ -44,7 +44,7 @@ Each level adds to the ones below it (`[[guidance.levels]]`, with these names an
 
 Levels 0 to 3 show only what the player could have written down; 4 and up tell things they couldn't have known.
 
-**Widgets:** CORE is an `icon-grid` (3 columns); TELEPORTS a `chip-list` in the game's font, from `persist:teleport-codes` up to level 5 and from the script at level 6; DOORS a `card-set`; the map a `map-grid`. All of them take their data from `scripts/starquake.rhai`, except TELEPORTS below level 6.
+**Widgets:** CORE is an `icon-grid` (3 columns); TELEPORTS a `chip-list` in the game's font, from `persist:teleport-codes` up to level 5 and from the script at level 6; DOORS a `card-set`; the map a `map-grid`. All of them take their data from `scripts/starquake.rhai`, except TELEPORTS below level 6. DOORS lists the doors met this game, numbered as met: a door's cards are worked out when BLOB meets it, from the game's seed and the room (`docs/re/starquake.md`), so the script notes each door as its cards appear. A card is answered when BLOB carries it.
 
 **Routes** are a breadth-first search over a graph of places, not just rooms. A room can be divided by walls, so a place is the part of a room that can be walked between. Edges are the openings, the teleports (any seen code can be typed), and lifts. The script builds the graph in `on_load` and searches it in `on_frame`; `next-route` steps through the nearest pieces.
 

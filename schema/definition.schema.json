@@ -685,6 +685,21 @@
         }
       ]
     },
+    "Layout": {
+      "description": "The order of a picture's bytes.",
+      "oneOf": [
+        {
+          "description": "Row by row, top to bottom, each row left to right.",
+          "type": "string",
+          "const": "rows"
+        },
+        {
+          "description": "In 8 × 8 character cells, left to right then top to bottom, each cell's eight rows in\nturn, as the screen's characters are drawn.",
+          "type": "string",
+          "const": "cells"
+        }
+      ]
+    },
     "Level": {
       "description": "A guidance level.",
       "type": "object",
@@ -1551,6 +1566,17 @@
           ],
           "format": "uint32",
           "minimum": 0
+        },
+        "layout": {
+          "description": "For sprites: the order of their bytes.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Layout"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "len": {
           "description": "Its length in bytes, for the multi-byte types.",
