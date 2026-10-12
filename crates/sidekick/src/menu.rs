@@ -40,6 +40,7 @@ pub(crate) enum Outcome {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     Back,
+    Forget,
     EndGame,
     Exit,
 }
@@ -96,6 +97,12 @@ impl Menu {
             })
             .collect();
         let mut actions = vec![(Action::Back, "Back to the game".to_owned())];
+        if session.kept().values().any(|list| !list.is_empty()) {
+            actions.push((
+                Action::Forget,
+                format!("Forget the {}", kept_words(definition)),
+            ));
+        }
         if can_end_game(definition, session.state()) {
             actions.push((Action::EndGame, "End this game".to_owned()));
         }
@@ -223,12 +230,18 @@ impl Menu {
                         Outcome::Stay
                     }
                 }
-                Some(action @ (Action::EndGame | Action::Exit)) => {
+                Some(action @ (Action::Forget | Action::EndGame | Action::Exit)) => {
                     if self.armed == Some(i) {
-                        if action == Action::Exit {
-                            Outcome::Exit
-                        } else {
-                            Outcome::EndGame
+                        self.armed = None;
+                        match action {
+                            Action::Exit => Outcome::Exit,
+                            Action::EndGame => Outcome::EndGame,
+                            _ => {
+                                // Forgotten at once; the row goes, its place taken by the next.
+                                session.forget_kept();
+                                self.actions.remove(i);
+                                Outcome::Stay
+                            }
                         }
                     } else {
                         self.armed = Some(i);
@@ -298,12 +311,16 @@ impl Menu {
             actions: self.actions.iter().map(|(_, a)| a.clone()).collect(),
             chosen: self.chosen,
             armed: self.armed.and_then(|i| {
-                let what = match self.actions.get(i)?.0 {
-                    Action::EndGame => "end this game",
-                    Action::Exit => "exit",
+                let (action, words) = self.actions.get(i)?;
+                let what = match action {
+                    Action::EndGame => "end this game".to_owned(),
+                    Action::Exit => "exit".to_owned(),
+                    Action::Forget => {
+                        format!("forget {}", words.strip_prefix("Forget ").unwrap_or(words))
+                    }
                     Action::Back => return None,
                 };
-                Some((i, what.to_owned()))
+                Some((i, what))
             }),
             pad,
         }
@@ -315,6 +332,20 @@ impl Menu {
             items: items.clone(),
             pad,
         })
+    }
+}
+
+/// What the Forget row names: the kept list's label when there's one, the kept lists when
+/// there are more.
+fn kept_words(definition: Option<&Definition>) -> String {
+    let labels: Vec<&str> = definition
+        .into_iter()
+        .flat_map(|d| d.persist.values())
+        .map(|p| p.label.as_str())
+        .collect();
+    match labels.as_slice() {
+        [one] => (*one).to_owned(),
+        _ => "kept lists".to_owned(),
     }
 }
 
@@ -485,6 +516,42 @@ frames = 5
         let card = menu.card(PadLabels::Letters);
         assert!(card.switches[2].on, "pressed again, it goes on");
         assert_eq!(card.switches[2].refusal, None);
+    }
+
+    #[test]
+    fn forgetting_the_kept_lists_wants_a_second_press() {
+        let text = format!(
+            "{DEFINITION}\n[persist.codes]\nlabel = \"teleport codes\"\nfile = \"codes.txt\"\n"
+        );
+        let mut s = session(&text);
+        assert!(
+            !Menu::open(&s, 0, "Test")
+                .card(PadLabels::Letters)
+                .actions
+                .iter()
+                .any(|a| a.starts_with("Forget")),
+            "nothing kept: no row"
+        );
+        s.set_kept(std::collections::BTreeMap::from([(
+            "codes".to_owned(),
+            vec!["TOPAZ".to_owned()],
+        )]));
+        let mut menu = Menu::open(&s, 0, "Test");
+        let card = menu.card(PadLabels::Letters);
+        assert_eq!(card.actions[1], "Forget the teleport codes");
+        let forget = Row::Action(1);
+        assert_eq!(menu.input(Input::Click(forget), &mut s), Outcome::Stay);
+        assert_eq!(
+            menu.card(PadLabels::Letters).armed,
+            Some((1, "forget the teleport codes".to_owned()))
+        );
+        assert_eq!(menu.input(Input::Click(forget), &mut s), Outcome::Stay);
+        assert!(s.kept()["codes"].is_empty(), "forgotten");
+        assert_eq!(
+            menu.card(PadLabels::Letters).actions,
+            ["Back to the game", "End this game", "Exit Test"],
+            "the row goes"
+        );
     }
 
     #[test]
