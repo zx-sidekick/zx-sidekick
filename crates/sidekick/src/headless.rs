@@ -29,19 +29,49 @@ impl std::str::FromStr for KeyPress {
     }
 }
 
-/// Runs `frames` frames, pressing the keys when their frames come, then writes the picture to
-/// `screenshot`, `scale` times larger.
+/// A training switch turned on at a frame, from `ID@FRAME`.
+#[derive(Clone)]
+pub(crate) struct SwitchAt {
+    id: String,
+    frame: u32,
+}
+
+impl std::str::FromStr for SwitchAt {
+    type Err = String;
+
+    fn from_str(spec: &str) -> Result<Self, String> {
+        let (id, frame) = spec.rsplit_once('@').ok_or_else(|| {
+            format!("{spec:?}: write a switch as ID@FRAME, like endless-lives@2000")
+        })?;
+        let frame = frame
+            .parse()
+            .map_err(|_| format!("{frame:?} isn't a frame number"))?;
+        Ok(Self {
+            id: id.to_owned(),
+            frame,
+        })
+    }
+}
+
+/// Runs `frames` frames, pressing the keys and turning the switches on when their frames
+/// come, then writes the picture to `screenshot`, `scale` times larger.
 ///
 /// # Errors
-/// If the machine fails, or the PNG can't be written.
+/// If the machine fails, a switch won't go on, or the PNG can't be written.
 pub(crate) fn run(
     session: &mut Session,
     frames: u32,
     keys: &[KeyPress],
+    switches: &[SwitchAt],
     screenshot: Option<&Path>,
     scale: u32,
 ) -> Result<(), String> {
     for frame in 0..frames {
+        for switch in switches.iter().filter(|s| s.frame == frame) {
+            session
+                .switch(&switch.id, true)
+                .map_err(|e| format!("{} at frame {frame}: {e}", switch.id))?;
+        }
         for press in keys {
             if frame == press.frame {
                 session.machine_mut().key(press.key, true);
@@ -63,10 +93,19 @@ pub(crate) fn run(
     Ok(())
 }
 
-/// The game's state and every named value as of the last frame, a `name = value` line each,
-/// the state first (`""` when none matched).
+/// The game's state, the record of the game being played, and every named value as of the
+/// last frame, a `name = value` line each (the state `""` when none matched).
 pub(crate) fn values(session: &Session) -> String {
-    let mut lines = vec![format!("state = {:?}", session.state().unwrap_or(""))];
+    let record = session.record();
+    let switches: Vec<String> = record.switches.iter().map(|s| format!("{s:?}")).collect();
+    let mut lines = vec![
+        format!("state = {:?}", session.state().unwrap_or("")),
+        format!(
+            "record = {{ level = {}, switches = [{}] }}",
+            record.level,
+            switches.join(", ")
+        ),
+    ];
     lines.extend(
         session
             .reading()

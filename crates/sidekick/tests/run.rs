@@ -173,12 +173,12 @@ when = { value = "border", bits = 0x38 }
     };
     assert_eq!(
         run("150"),
-        "state = \"white\"\nborder = 56\nprog = 23755\n",
+        "state = \"white\"\nrecord = { level = 0, switches = [] }\nborder = 56\nprog = 23755\n",
         "waiting for a key"
     );
     assert_eq!(
         run("250"),
-        "state = \"red\"\nborder = 23\nprog = 23755\n",
+        "state = \"red\"\nrecord = { level = 0, switches = [] }\nborder = 23\nprog = 23755\n",
         "BORDER 2, with white ink for the lower screen"
     );
 }
@@ -227,7 +227,74 @@ type = "u8"
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "state = \"\"\nborder = 56\n"
+        "state = \"\"\nrecord = { level = 0, switches = [] }\nborder = 56\n"
+    );
+}
+
+#[test]
+fn a_switch_goes_on_at_its_frame_and_shows_in_the_record() {
+    let dir = TempDir::new().unwrap();
+    let tape = dir.path().join("wait.tap");
+    fs::write(&tape, wait_then_red()).unwrap();
+    let definition = dir.path().join("wait.toml");
+    fs::write(
+        &definition,
+        r#"
+schema = 1
+[game]
+id = "wait"
+title = "Wait"
+machine = "48k"
+[[media]]
+name = "our own test program"
+
+[values.flag]
+addr = 0x8000
+type = "u8"
+writable = true
+
+[[cheats]]
+id = "seven"
+label = "Seven"
+set = { value = "flag", to = 7 }
+
+[[cheats]]
+id = "mismatched"
+label = "Mismatched"
+patch = [{ addr = 0x8001, bytes = "00", expect = "AB" }]
+"#,
+    )
+    .unwrap();
+    let run = |switch: &str| {
+        Command::new(env!("CARGO_BIN_EXE_sidekick"))
+            .env("ZX_SIDEKICK_DATA", dir.path())
+            .args([
+                "run",
+                tape.to_str().unwrap(),
+                "--definition",
+                definition.to_str().unwrap(),
+                "--values",
+                "--frames",
+                "150",
+                "--switch",
+                switch,
+            ])
+            .output()
+            .expect("sidekick runs")
+    };
+    let on = run("seven@120");
+    assert!(on.status.success(), "{on:?}");
+    assert_eq!(
+        String::from_utf8(on.stdout).unwrap(),
+        "state = \"\"\nrecord = { level = 0, switches = [\"seven\"] }\nflag = 7\n"
+    );
+    let refused = run("mismatched@120");
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains(
+            "mismatched at frame 120: the game's code at 0x8001 isn't what the definition expects"
+        ),
+        "{refused:?}"
     );
 }
 
