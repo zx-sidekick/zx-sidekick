@@ -20,6 +20,8 @@ pub struct Session {
     definition: Option<Definition>,
     reading: Reading,
     state: Option<String>,
+    /// Held on the loading screen, until released.
+    holding: bool,
 }
 
 impl Session {
@@ -34,6 +36,11 @@ impl Session {
             .and_then(|r| r.sync)
             .map(|a| a.0);
         machine.set_sync(sync);
+        let hold = definition
+            .as_ref()
+            .and_then(|d| d.run.as_ref())
+            .is_some_and(|r| r.hold_loading_screen);
+        machine.stop_when_loaded(hold);
         let watched: Vec<u16> = definition
             .iter()
             .flat_map(|d| &d.states)
@@ -46,25 +53,53 @@ impl Session {
             definition,
             reading: Reading::new(),
             state: None,
+            holding: false,
         }
     }
 
     /// Runs a frame: the values are read when it reaches the sync address, or at its end if
-    /// it doesn't, and the state is decided at its end.
+    /// it doesn't, and the state is decided at its end. When the definition holds the loading
+    /// screen (`[run] hold_loading_screen`), the frame stops where the tape has just loaded,
+    /// before the game's own code runs, with the screen drawn from memory; nothing runs until
+    /// [`Session::release`], and the next call carries the frame on.
     ///
     /// # Errors
     /// If the machine fails.
     pub fn run_frame(&mut self) -> Result<(), Error> {
+        if self.holding {
+            return Ok(());
+        }
         let mut read = false;
-        while self.machine.run()? == Stop::Sync {
-            self.reading = self.read();
-            read = true;
+        loop {
+            match self.machine.run()? {
+                Stop::Sync => {
+                    self.reading = self.read();
+                    read = true;
+                }
+                Stop::Loaded => {
+                    self.holding = true;
+                    self.machine.draw_screen_from_memory();
+                    return Ok(());
+                }
+                Stop::FrameEnd => break,
+            }
         }
         if !read {
             self.reading = self.read();
         }
         self.state = self.decide();
         Ok(())
+    }
+
+    /// Whether the game is held on its loading screen.
+    #[must_use]
+    pub const fn holding(&self) -> bool {
+        self.holding
+    }
+
+    /// Lets the game go on from its loading screen.
+    pub const fn release(&mut self) {
+        self.holding = false;
     }
 
     /// Every named value, as of now.

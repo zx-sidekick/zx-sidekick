@@ -1,8 +1,15 @@
-//! What the machine watches for as it runs: the sync address, and the addresses whose running a
-//! definition's states ask about.
+//! What the machine watches for as it runs: the sync address, the addresses whose running a
+//! definition's states ask about, and the tape's blocks going in through the ROM's loader.
 
 use rustzx_core::host::DebugInterface;
 use rustzx_z80::Breakpoints;
+
+/// Where the 48K ROM's loader (LD-BYTES) hands a block to the core's fast loader: reached once
+/// for each block the tape gives up.
+const LOADER_TRAP: u16 = 0x056B;
+
+/// The first address past the 48K ROM.
+const RAM: u16 = 0x4000;
 
 /// Asked by the core about every instruction, through its `DebugInterface`.
 #[derive(Clone)]
@@ -12,6 +19,12 @@ pub struct Watch {
     synced: bool,
     watched: Box<Breakpoints>,
     passed: Vec<u16>,
+    /// The tape's blocks, and how many the ROM's loader has taken.
+    blocks: usize,
+    loads: usize,
+    /// Whether to stop once the tape has loaded, and whether that's why it stopped last.
+    stop_when_loaded: bool,
+    loaded: bool,
 }
 
 impl Watch {
@@ -21,7 +34,26 @@ impl Watch {
             synced: false,
             watched: Box::new(Breakpoints::new()),
             passed: Vec::new(),
+            blocks: 0,
+            loads: 0,
+            stop_when_loaded: false,
+            loaded: false,
         }
+    }
+
+    /// A tape of `blocks` blocks has gone in: none of them loaded yet.
+    pub const fn new_tape(&mut self, blocks: usize) {
+        self.blocks = blocks;
+        self.loads = 0;
+    }
+
+    pub const fn set_stop_when_loaded(&mut self, stop: bool) {
+        self.stop_when_loaded = stop;
+    }
+
+    /// Whether the last stop was the tape having loaded; asking clears it.
+    pub const fn take_loaded(&mut self) -> bool {
+        std::mem::replace(&mut self.loaded, false)
     }
 
     pub const fn set_sync(&mut self, sync: Option<u16>) {
@@ -49,6 +81,14 @@ impl Watch {
 
 impl DebugInterface for Watch {
     fn check_pc_breakpoint(&mut self, addr: u16) -> bool {
+        if addr == LOADER_TRAP {
+            self.loads += 1;
+        }
+        if self.stop_when_loaded && self.blocks > 0 && self.loads >= self.blocks && addr >= RAM {
+            self.stop_when_loaded = false;
+            self.loaded = true;
+            return true;
+        }
         if self.watched.contains(addr) && !self.passed.contains(&addr) {
             self.passed.push(addr);
         }

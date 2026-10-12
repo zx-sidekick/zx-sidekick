@@ -51,6 +51,10 @@ pub enum Stop {
     Sync,
     /// The frame ended: time to present the picture and sound.
     FrameEnd,
+    /// The tape's last block has loaded, and the processor is about to run the first
+    /// instruction outside the ROM since: the game's own code. Only when asked for, with
+    /// [`Machine::stop_when_loaded`], and only for tapes loaded through the ROM's loader.
+    Loaded,
 }
 
 /// A Spectrum with the bundled ROM and nothing loaded, run a frame at a time.
@@ -134,6 +138,7 @@ impl Machine {
             self.watch_mut().new_frame();
         }
         let stop = match self.emulator.emulate_frames(FRAME_HOST_LIMIT)?.stop_reason {
+            EmulationStopReason::Breakpoint if self.watch_mut().take_loaded() => Stop::Loaded,
             EmulationStopReason::Breakpoint => Stop::Sync,
             // `FrameCount(1)` never times out; a timeout would only mean a slow host.
             EmulationStopReason::Completed | EmulationStopReason::Timeout => {
@@ -154,6 +159,40 @@ impl Machine {
         };
         self.copy_passed();
         Ok(stop)
+    }
+
+    /// Asks `run` to stop once the tape has loaded ([`Stop::Loaded`]), once.
+    pub fn stop_when_loaded(&mut self, stop: bool) {
+        self.watch_mut().set_stop_when_loaded(stop);
+    }
+
+    /// Draws the screen into the picture from screen memory as it is now, inside the border as
+    /// last drawn: the picture mid-frame, as when the tape has just loaded. Flashing
+    /// characters show their ink as ink.
+    pub fn draw_screen_from_memory(&mut self) {
+        let top = BORDER.canvas_y();
+        for y in 0..192u16 {
+            let row = 0x4000 | ((y & 0xC0) << 5) | ((y & 0x07) << 8) | ((y & 0x38) << 2);
+            for column in 0..32u16 {
+                let bits = self.peek(row | column);
+                let attr = self.peek(0x5800 + (y / 8) * 32 + column);
+                let bright = (attr >> 6) & 1;
+                let ink = (attr & 7) + bright * 8;
+                let paper = ((attr >> 3) & 7) + bright * 8;
+                for bit in 0..8u16 {
+                    let color = if bits & (0x80 >> bit) == 0 {
+                        paper
+                    } else {
+                        ink
+                    };
+                    self.picture.set(
+                        32 + usize::from(column * 8 + bit),
+                        top + usize::from(y),
+                        color,
+                    );
+                }
+            }
+        }
     }
 
     /// Runs the machine to the end of the frame, through any sync stop.
@@ -210,6 +249,7 @@ impl Machine {
     /// for its flag and checksum. (Checksums aren't checked: some tapes break them on purpose.)
     pub fn load_tap(&mut self, tap: &[u8]) -> Result<(), Error> {
         let mut rest = tap;
+        let mut blocks = 0;
         while !rest.is_empty() {
             let [lo, hi, after @ ..] = rest else {
                 return Err(Error::BadTape);
@@ -219,12 +259,14 @@ impl Machine {
                 return Err(Error::BadTape);
             }
             rest = &after[len..];
+            blocks += 1;
         }
         if tap.is_empty() {
             return Err(Error::BadTape);
         }
         self.emulator
             .load_tape(Tape::Tap(BufferCursor::new(tap.to_vec())))?;
+        self.watch_mut().new_tape(blocks);
         self.frame_ended = true;
         Ok(())
     }
