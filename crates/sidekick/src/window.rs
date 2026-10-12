@@ -9,6 +9,7 @@ use crate::{
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
     picture::{layout, placement, to_rgba, Layout},
+    saves::{self, Saves},
     scores,
 };
 use sdl3::{
@@ -27,14 +28,14 @@ use sdl3::{
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
 use sidekick_ui::{
-    Canvas, EntryCard, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark,
-    Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT,
-    ENTRY_WIDTH, MENU_WIDTH, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH,
-    TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    Canvas, EntryCard, Face, Fonts, LibraryPage, Menu as MenuCard, Note, NoticeHint, PadLabels,
+    PadMark, Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT,
+    ENTRY_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH,
+    QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
     collections::BTreeMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -48,6 +49,9 @@ const QUEUED_FRAMES: usize = 3;
 
 /// The most frames run between two presented pictures, so a stall can't snowball.
 const MOST_FRAMES_A_PASS: usize = 5;
+
+/// How long a notice such as "Game saved" shows.
+const NOTE_TIME: Duration = Duration::from_secs(2);
 
 /// The menu card's width, for halving it.
 #[allow(clippy::cast_precision_loss, reason = "a card's width")]
@@ -146,6 +150,13 @@ struct Player {
     /// The high-score table as kept, and the panel's page after a game, until the next.
     table: Vec<scores::Kept>,
     this_game: Option<ThisGame>,
+    /// What the game's saves are of; a notice and when it was said; and the save the file
+    /// dialog chose.
+    saves: Saves,
+    note: Option<(Note, Instant)>,
+    opened: Arc<Mutex<Option<PathBuf>>>,
+    /// The menu asked for the file dialog.
+    choosing: bool,
     started: Instant,
     frames_run: u64,
     rgba: Vec<u8>,
@@ -182,6 +193,8 @@ struct Output<'a> {
     this_game: Option<(Texture<'a>, ThisGame, u32)>,
     /// The text-entry card, likewise.
     entry: Option<(Texture<'a>, EntryCard, u32)>,
+    /// The notice, likewise.
+    note: Option<(Texture<'a>, Note, u32)>,
     /// The guidance menu and its question, likewise.
     menu: Option<(Texture<'a>, MenuCard, u32)>,
     question: Option<(Texture<'a>, Question, u32)>,
@@ -221,6 +234,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         pins: None,
         this_game: None,
         entry: None,
+        note: None,
         menu: None,
         question: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
@@ -248,17 +262,15 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                     ..
                 } if is_fullscreen_toggle(scancode, keymod) => {
                     if !repeat {
-                        let window = out.canvas.window_mut();
-                        let fullscreen = window.fullscreen_state() != FullscreenType::Off;
-                        window
-                            .set_fullscreen(!fullscreen)
-                            .map_err(|e| e.to_string())?;
+                        toggle_fullscreen(&mut out.canvas)?;
                     }
                 }
                 event => {
                     let mut presses = gamepads.event(&event);
                     if let Screen::Play(player) = &mut screen {
-                        if player.held(&event, &presses, &mut gamepads.pads) {
+                        if player.save_keys(&event, &mut gamepads.pads)
+                            || player.held(&event, &presses, &mut gamepads.pads)
+                        {
                             continue;
                         }
                         match player.menu_event(&event, &presses, &mut gamepads.pads) {
@@ -284,6 +296,9 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                     }
                 }
             }
+        }
+        if let Screen::Play(player) = &mut screen {
+            player.take_opened(&mut gamepads.pads, &out.canvas);
         }
         if let Screen::Prompt(prompt) = &mut screen {
             if let Some(playing) = prompt.take_offer() {
@@ -311,6 +326,7 @@ impl Screen {
                     player.notice(out, gamepads.last.labels())?;
                     player.draw_entry(out, gamepads.last.labels())?;
                 }
+                player.draw_note(out)?;
             }
             Self::Prompt(prompt) => {
                 let page = &prompt.page;
@@ -502,6 +518,10 @@ impl Player {
             typing: None,
             table: Vec::new(),
             this_game: None,
+            saves: playing.saves,
+            note: None,
+            opened: Arc::new(Mutex::new(None)),
+            choosing: false,
             started: Instant::now(),
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
@@ -669,18 +689,164 @@ impl Player {
         }
         for milestone in self.session.take_milestones() {
             match milestone {
-                Milestone::FirstTitle => {
-                    let kept = self.folder.as_deref().map(scores::load).unwrap_or_default();
-                    let entries: Vec<_> = kept.iter().map(|k| k.entry.clone()).collect();
-                    self.session.set_scores(&entries);
-                    // What the game has now: the kept entries, and any of its own they didn't
-                    // cover (fewer kept than it holds), which are the tape's.
-                    let now = self.session.scores().unwrap_or_default();
-                    self.table = scores::after_game(&kept, now, "from the tape", false).0;
-                }
+                Milestone::FirstTitle => self.put_scores_in(),
                 Milestone::GameEnded => self.game_ended(),
             }
         }
+    }
+
+    /// Puts the kept high scores into the game.
+    fn put_scores_in(&mut self) {
+        let kept = self.folder.as_deref().map(scores::load).unwrap_or_default();
+        let entries: Vec<_> = kept.iter().map(|k| k.entry.clone()).collect();
+        self.session.set_scores(&entries);
+        // What the game has now: the kept entries, and any of its own they didn't cover
+        // (fewer kept than it holds), which are the tape's.
+        let now = self.session.scores().unwrap_or_default();
+        self.table = scores::after_game(&kept, now, "from the tape", false).0;
+    }
+
+    /// F5 saves to the quick slot and F9 loads it, wherever the game is. Returns whether the
+    /// event was one of them.
+    fn save_keys(&mut self, event: &Event, pads: &mut Pads) -> bool {
+        let Event::KeyDown {
+            scancode: Some(scancode @ (Scancode::F5 | Scancode::F9)),
+            repeat,
+            ..
+        } = *event
+        else {
+            return false;
+        };
+        if !repeat {
+            if scancode == Scancode::F5 {
+                self.quick_save();
+            } else {
+                self.quick_load(pads);
+            }
+        }
+        true
+    }
+
+    /// Saves to the quick slot, and says how it went.
+    fn quick_save(&mut self) {
+        let words = match saves::write(&mut self.session, &self.saves, &self.saves.quick) {
+            Ok(()) => "Game saved",
+            Err(e) => {
+                eprintln!("The game couldn't be saved: {e}");
+                "The game couldn't be saved"
+            }
+        };
+        self.say(words);
+    }
+
+    /// Loads the quick slot.
+    fn quick_load(&mut self, pads: &mut Pads) {
+        let quick = self.saves.quick.clone();
+        self.load(&quick, pads);
+    }
+
+    /// Loads a save, and says how it went. The game goes on from it with nothing held, and
+    /// the menu, card and page after a game closed.
+    fn load(&mut self, path: &Path, pads: &mut Pads) {
+        if let Err(refused) = saves::read(path, &mut self.session, &self.saves) {
+            self.say(refused.words());
+            return;
+        }
+        self.level = usize::from(self.session.level());
+        if let Some(typing) = self.typing.take() {
+            for &key in typing.keys() {
+                self.session.machine_mut().key(key, false);
+            }
+        }
+        self.menu = None;
+        self.entry = None;
+        self.this_game = None;
+        // The kept table, not the save's: a new entry is told against it after a game.
+        if self.session.progress().seen_title {
+            self.put_scores_in();
+        }
+        self.started = Instant::now();
+        self.frames_run = 0;
+        pads.hold_back();
+        self.say("Game loaded");
+    }
+
+    /// Opens the file dialog to choose a save; it's loaded on the pass after it's chosen.
+    fn choose_save(&self, canvas: &WindowCanvas) {
+        let opened = Arc::clone(&self.opened);
+        let filters = [DialogFileFilter {
+            name: "Saves",
+            pattern: "sav;szx;SAV;SZX",
+        }];
+        let folder = self.saves.quick.parent().map(Path::to_owned);
+        // A dialog that won't open leaves the game as it was.
+        let _ = show_open_file_dialog(
+            &filters,
+            folder.filter(|f| f.is_dir()),
+            false,
+            canvas.window(),
+            Box::new(move |result, _| {
+                if let (Ok(paths), Ok(mut opened)) = (result, opened.lock()) {
+                    *opened = paths.into_iter().next();
+                }
+            }),
+        );
+    }
+
+    /// Opens the file dialog when the menu asked for it, and loads the save it chose, once it
+    /// has.
+    fn take_opened(&mut self, pads: &mut Pads, canvas: &WindowCanvas) {
+        if std::mem::take(&mut self.choosing) {
+            self.choose_save(canvas);
+        }
+        let path = self.opened.lock().ok().and_then(|mut o| o.take());
+        if let Some(path) = path {
+            self.load(&path, pads);
+        }
+    }
+
+    fn say(&mut self, words: &str) {
+        self.note = Some((
+            Note {
+                text: words.to_owned(),
+            },
+            Instant::now(),
+        ));
+    }
+
+    /// Draws the notice over the picture's foot for a while after it's said.
+    fn draw_note(&mut self, out: &mut Output) -> Result<(), String> {
+        if self
+            .note
+            .as_ref()
+            .is_some_and(|(_, at)| at.elapsed() >= NOTE_TIME)
+        {
+            self.note = None;
+        }
+        let Some((note, _)) = &self.note else {
+            out.note = None;
+            return Ok(());
+        };
+        let output = out.canvas.output_size().map_err(|e| e.to_string())?;
+        let layout = self.layout(output);
+        let (px, py, _, _) = layout.picture;
+        let scale = layout.scale;
+        cached(
+            out.creator,
+            &mut out.note,
+            &mut out.fonts,
+            note,
+            scale,
+            Note::draw,
+        )?;
+        let (w, h) = (note.width(&mut out.fonts) * scale, NOTE_HEIGHT * scale);
+        let at = (px + NOTE_AT.0 * scale - w / 2, py + NOTE_AT.1 * scale, w, h);
+        if let Some((texture, _, _)) = &out.note {
+            out.canvas
+                .copy(texture, None, frect(at))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Reads the high scores back after a game, marks this game's entry, keeps the table
@@ -768,7 +934,8 @@ impl Player {
                 }
             );
             if esc || presses.iter().any(|&(p, _)| p == Part::Select) {
-                self.menu = Some(Menu::open(&self.session, self.level, &self.title));
+                let can_load = self.saves.quick.exists();
+                self.menu = Some(Menu::open(&self.session, self.level, &self.title, can_load));
                 return MenuEvent::Taken;
             }
             return MenuEvent::NotMine;
@@ -845,6 +1012,11 @@ impl Player {
         // The menu may have forgotten the kept lists; no frame runs while it's open, so save
         // now, before an Exit could leave the old ones on disk.
         self.save_kept();
+        self.menu_outcome(outcome, level, pads)
+    }
+
+    /// Acts on what came of the menu's inputs; `level` is the guidance level it had chosen.
+    fn menu_outcome(&mut self, outcome: Outcome, level: usize, pads: &mut Pads) -> MenuEvent {
         match outcome {
             Outcome::Stay => {}
             Outcome::Cancelled => self.close_menu(pads),
@@ -859,6 +1031,18 @@ impl Player {
                 }
             }
             Outcome::Exit => return MenuEvent::Quit,
+            Outcome::Save => {
+                self.close_menu(pads);
+                self.quick_save();
+            }
+            Outcome::Load => {
+                self.close_menu(pads);
+                self.quick_load(pads);
+            }
+            Outcome::OpenSave => {
+                self.close_menu(pads);
+                self.choosing = true;
+            }
         }
         MenuEvent::Taken
     }
@@ -1389,6 +1573,15 @@ const fn is_press(event: &Event) -> bool {
         event,
         Event::KeyDown { repeat: false, .. } | Event::MouseButtonDown { .. }
     )
+}
+
+/// Switches the window between fullscreen and windowed.
+fn toggle_fullscreen(canvas: &mut WindowCanvas) -> Result<(), String> {
+    let window = canvas.window_mut();
+    let fullscreen = window.fullscreen_state() != FullscreenType::Off;
+    window
+        .set_fullscreen(!fullscreen)
+        .map_err(|e| e.to_string())
 }
 
 /// F11 everywhere; on a Mac also Control-Command-F, since F11 never reaches a program there.

@@ -22,7 +22,7 @@ pub(crate) enum Input {
 }
 
 /// What comes of an input.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
     /// The menu stays open.
     Stay,
@@ -34,6 +34,12 @@ pub(crate) enum Outcome {
     EndGame,
     /// The program is to quit.
     Exit,
+    /// Closed to save to the quick slot.
+    Save,
+    /// Closed to load the quick slot.
+    Load,
+    /// Closed to choose a save to load.
+    OpenSave,
 }
 
 /// One of the actions at the menu's foot.
@@ -66,6 +72,8 @@ pub(crate) struct Menu {
     armed: Option<usize>,
     /// What the score would show anew, while the question is asked.
     question: Option<Vec<String>>,
+    /// Whether the quick slot holds a save.
+    can_load: bool,
 }
 
 /// What a refused switch's row says.
@@ -73,8 +81,8 @@ const REFUSED: &str = "Not this tape's code here: the switch can't go on.";
 
 impl Menu {
     /// The menu for the game being played, as its settings stand: `level` is the guidance
-    /// level in use.
-    pub(crate) fn open(session: &Session, level: usize, title: &str) -> Self {
+    /// level in use; `can_load`, whether the quick slot holds a save.
+    pub(crate) fn open(session: &Session, level: usize, title: &str, can_load: bool) -> Self {
         let definition = session.definition();
         let levels: Vec<(String, String)> = definition
             .and_then(|d| d.guidance.as_ref())
@@ -124,16 +132,20 @@ impl Menu {
             chosen,
             armed: None,
             question: None,
+            can_load,
         }
     }
 
-    /// The rows, in order.
+    /// The rows, in order: the saves row, after the first action, as its first button.
     fn rows(&self) -> Vec<Row> {
         let level = (!self.levels.is_empty()).then_some(Row::Level);
         level
             .into_iter()
             .chain((0..self.switches.len()).map(Row::Switch))
-            .chain((0..self.actions.len()).map(Row::Action))
+            .chain((0..self.actions.len()).flat_map(|i| {
+                let saves = (i == 0).then_some(Row::Save(0));
+                std::iter::once(Row::Action(i)).chain(saves)
+            }))
             .collect()
     }
 
@@ -154,7 +166,11 @@ impl Menu {
             Input::Up | Input::Down => {
                 self.armed = None;
                 let rows = self.rows();
-                let at = rows.iter().position(|&r| r == self.chosen).unwrap_or(0);
+                let row = match self.chosen {
+                    Row::Save(_) => Row::Save(0),
+                    row => row,
+                };
+                let at = rows.iter().position(|&r| r == row).unwrap_or(0);
                 let next = if input == Input::Up {
                     at.saturating_sub(1)
                 } else {
@@ -209,6 +225,13 @@ impl Menu {
                 }
                 switch.on = on;
             }
+            Row::Save(i) => {
+                self.chosen = Row::Save(if up {
+                    (i + 1).min(2)
+                } else {
+                    i.saturating_sub(1)
+                });
+            }
             Row::Action(_) => {}
         }
     }
@@ -220,6 +243,9 @@ impl Menu {
                 self.change(true, true, session);
                 Outcome::Stay
             }
+            Row::Save(0) => Outcome::Save,
+            Row::Save(1) => Outcome::Load,
+            Row::Save(_) => Outcome::OpenSave,
             Row::Action(i) => match self.actions.get(i).map(|&(a, _)| a) {
                 Some(Action::Back) => {
                     let items = self.new_in_record(session.record());
@@ -309,6 +335,7 @@ impl Menu {
                 })
                 .collect(),
             actions: self.actions.iter().map(|(_, a)| a.clone()).collect(),
+            saves: Some(self.can_load),
             chosen: self.chosen,
             armed: self.armed.and_then(|i| {
                 let (action, words) = self.actions.get(i)?;
@@ -425,7 +452,7 @@ frames = 5
     #[test]
     fn its_rows_come_from_the_definition() {
         let s = session(DEFINITION);
-        let menu = Menu::open(&s, 0, "Test");
+        let menu = Menu::open(&s, 0, "Test", false);
         let card = menu.card(PadLabels::Letters);
         assert!(card.levels.is_some());
         assert_eq!(card.switches.len(), 3);
@@ -438,7 +465,7 @@ frames = 5
         let plain = session(
             "schema = 1\n[game]\nid = \"p\"\ntitle = \"P\"\nmachine = \"48k\"\n[[media]]\nname = \"t\"\n",
         );
-        let card = Menu::open(&plain, 0, "P").card(PadLabels::Letters);
+        let card = Menu::open(&plain, 0, "P", false).card(PadLabels::Letters);
         assert!(card.levels.is_none());
         assert!(card.switches.is_empty());
         assert_eq!(card.actions, ["Back to the game", "Exit P"]);
@@ -448,7 +475,7 @@ frames = 5
     #[test]
     fn changes_wait_for_back_to_the_game_and_esc_drops_them() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test");
+        let mut menu = Menu::open(&s, 0, "Test", false);
         press(
             &mut menu,
             &mut s,
@@ -464,7 +491,7 @@ frames = 5
     #[test]
     fn the_question_comes_first_when_the_score_would_show_more() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test");
+        let mut menu = Menu::open(&s, 0, "Test", false);
         let to_back = [Input::Down, Input::Down, Input::Down, Input::Down];
         press(&mut menu, &mut s, &[Input::Right, Input::Right]);
         press(&mut menu, &mut s, &[Input::Down, Input::Confirm]);
@@ -490,7 +517,7 @@ frames = 5
         assert!(s.switched_on("full-energy") && s.switched_on("practice"));
         assert_eq!(s.record().level, 2);
 
-        let mut again = Menu::open(&s, 2, "Test");
+        let mut again = Menu::open(&s, 2, "Test", false);
         let rows = [Input::Down, Input::Down, Input::Down, Input::Down];
         assert_eq!(
             press(&mut again, &mut s, &[&rows[..], &[Input::Confirm]].concat()),
@@ -502,7 +529,7 @@ frames = 5
     #[test]
     fn a_switch_that_can_t_go_on_stays_off_and_says_why() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test");
+        let mut menu = Menu::open(&s, 0, "Test", false);
         press(
             &mut menu,
             &mut s,
@@ -525,7 +552,7 @@ frames = 5
         );
         let mut s = session(&text);
         assert!(
-            !Menu::open(&s, 0, "Test")
+            !Menu::open(&s, 0, "Test", false)
                 .card(PadLabels::Letters)
                 .actions
                 .iter()
@@ -536,7 +563,7 @@ frames = 5
             "codes".to_owned(),
             vec!["TOPAZ".to_owned()],
         )]));
-        let mut menu = Menu::open(&s, 0, "Test");
+        let mut menu = Menu::open(&s, 0, "Test", false);
         let card = menu.card(PadLabels::Letters);
         assert_eq!(card.actions[1], "Forget the teleport codes");
         let forget = Row::Action(1);
@@ -557,7 +584,7 @@ frames = 5
     #[test]
     fn end_and_exit_want_a_second_press() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test");
+        let mut menu = Menu::open(&s, 0, "Test", false);
         let end = Row::Action(1);
         assert_eq!(menu.input(Input::Click(end), &mut s), Outcome::Stay);
         assert_eq!(
@@ -576,7 +603,7 @@ frames = 5
     #[test]
     fn choosing_a_row_doesn_t_press_it() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test");
+        let mut menu = Menu::open(&s, 0, "Test", false);
         menu.input(Input::Choose(Row::Switch(0)), &mut s);
         assert_eq!(menu.card(PadLabels::Letters).chosen, Row::Switch(0));
         assert!(!menu.card(PadLabels::Letters).switches[0].on);
@@ -586,9 +613,43 @@ frames = 5
     }
 
     #[test]
+    fn the_saves_row_comes_after_back_to_the_game() {
+        let mut s = session(DEFINITION);
+        let mut menu = Menu::open(&s, 0, "Test", true);
+        assert_eq!(menu.card(PadLabels::Letters).saves, Some(true));
+        let down = [Input::Down; 5];
+        press(&mut menu, &mut s, &down);
+        assert_eq!(menu.card(PadLabels::Letters).chosen, Row::Save(0));
+        press(
+            &mut menu,
+            &mut s,
+            &[Input::Right, Input::Right, Input::Right],
+        );
+        assert_eq!(
+            menu.card(PadLabels::Letters).chosen,
+            Row::Save(2),
+            "no further"
+        );
+        assert_eq!(menu.input(Input::Confirm, &mut s), Outcome::OpenSave);
+        press(&mut menu, &mut s, &[Input::Left, Input::Down]);
+        assert_eq!(
+            menu.card(PadLabels::Letters).chosen,
+            Row::Action(1),
+            "down from any button"
+        );
+        press(&mut menu, &mut s, &[Input::Up]);
+        assert_eq!(menu.card(PadLabels::Letters).chosen, Row::Save(0));
+        assert_eq!(menu.input(Input::Confirm, &mut s), Outcome::Save);
+        assert_eq!(
+            menu.input(Input::Click(Row::Save(1)), &mut s),
+            Outcome::Load
+        );
+    }
+
+    #[test]
     fn enter_on_the_level_steps_up_and_wraps_round() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 2, "Test");
+        let mut menu = Menu::open(&s, 2, "Test", false);
         press(&mut menu, &mut s, &[Input::Confirm]);
         assert_eq!(menu.level(), 0);
         press(&mut menu, &mut s, &[Input::Left, Input::Confirm]);

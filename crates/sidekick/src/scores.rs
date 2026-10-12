@@ -59,6 +59,9 @@ pub(crate) fn mark(record: &Record, level_name: Option<&str>) -> String {
         (n, Some(name)) => format!("level {n} · {name}"),
         (n, None) => format!("level {n}"),
     };
+    if record.loaded {
+        mark.push_str(" · loaded");
+    }
     if !record.switches.is_empty() {
         mark.push_str(" · training");
     }
@@ -193,6 +196,7 @@ mod tests {
         let record = Record {
             level: 2,
             switches: std::collections::BTreeSet::from(["full-energy".to_owned()]),
+            ..Record::default()
         };
         let mark = mark(&record, Some("Map"));
         assert_eq!(mark, "level 2 · Map · training");
@@ -236,5 +240,11 @@ mod tests {
         );
         assert_eq!(load(folder.path()), table);
         assert_eq!(mark(&Record::default(), None), "no guidance");
+        let loaded = Record {
+            level: 5,
+            loaded: true,
+            ..Record::default()
+        };
+        assert_eq!(mark(&loaded, Some("Routes")), "level 5 · Routes · loaded");
     }
 }

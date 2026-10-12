@@ -199,6 +199,11 @@ impl Typing {
         }
     }
 
+    /// The word's keys, to let go if it's stopped part-way.
+    pub(crate) fn keys(&self) -> &[Key] {
+        &self.keys
+    }
+
     /// What to press or let go before the next frame; `None` once the word is typed.
     pub(crate) fn next(&mut self) -> Option<Stroke> {
         let each = self.down + self.up;

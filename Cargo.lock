@@ -918,10 +918,12 @@ dependencies = [
  "directories",
  "miniz_oxide",
  "sdl3",
+ "serde",
  "sidekick-core",
  "sidekick-def",
  "sidekick-ui",
  "tempfile",
+ "toml",
  "zip",
 ]
 

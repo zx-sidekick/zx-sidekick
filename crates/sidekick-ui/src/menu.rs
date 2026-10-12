@@ -46,6 +46,8 @@ pub enum Row {
     Switch(usize),
     /// An action (Back to the game, End this game, Exit), by index.
     Action(usize),
+    /// One of the saves row's buttons: 0 Save, 1 Load, 2 Open a save….
+    Save(usize),
 }
 
 /// The guidance menu, as it stands.
@@ -64,7 +66,16 @@ pub struct Menu {
     pub armed: Option<(usize, String)>,
     /// How the last pad used marks its buttons.
     pub pad: PadLabels,
+    /// The saves row, after the first action, when saves can be made: whether there's a save
+    /// to load.
+    pub saves: Option<bool>,
 }
+
+/// The saves row's buttons: their words and keys.
+const SAVE_BUTTONS: [(&str, &str); 3] = [("Save", "F5"), ("Load", "F9"), ("Open a save…", "")];
+/// From the first action to the saves row, and the room it takes.
+const TO_SAVES: f32 = 33.0;
+const SAVES_ROOM: f32 = 44.0;
 
 /// Where everything goes, for a menu's contents.
 struct Layout {
@@ -76,6 +87,8 @@ struct Layout {
     switches: Vec<f32>,
     /// The rule above the actions.
     rule: f32,
+    /// The saves row's top.
+    saves: Option<f32>,
     /// Each action's text top.
     actions: Vec<f32>,
     /// The rule above the hints.
@@ -121,10 +134,21 @@ impl Menu {
             }
         }
         let rule = y + 1.0;
+        let room = if self.saves.is_some() {
+            SAVES_ROOM
+        } else {
+            0.0
+        };
         #[allow(clippy::cast_precision_loss, reason = "a few actions")]
         let actions: Vec<f32> = (0..self.actions.len())
-            .map(|i| rule + TO_ACTIONS + i as f32 * ACTION_STEP)
+            .map(|i| {
+                let after_saves = if i > 0 { room } else { 0.0 };
+                rule + TO_ACTIONS + i as f32 * ACTION_STEP + after_saves
+            })
             .collect();
+        let saves = self
+            .saves
+            .and_then(|_| actions.first().map(|first| first + TO_SAVES));
         let bottom_rule = actions
             .last()
             .map_or(rule + TO_ACTIONS, |a| a + TO_BOTTOM_RULE);
@@ -133,6 +157,7 @@ impl Menu {
             training,
             switches,
             rule,
+            saves,
             actions,
             bottom_rule,
             height: bottom_rule + TO_BOTTOM,
@@ -161,6 +186,17 @@ impl Menu {
         if let Some(top) = layout.level {
             if (top..top + LEVEL_BOX).contains(&y) {
                 return Some(Row::Level);
+            }
+        }
+        if let Some(top) = layout.saves {
+            if (top..top + 39.0).contains(&y) {
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "clamped to the three buttons first"
+                )]
+                let button = ((x - 12.0) / 168.0).clamp(0.0, 2.0) as usize;
+                return Some(Row::Save(button));
             }
         }
         let within = |top: f32| (top - 9.0..top + 25.0).contains(&y);
@@ -217,6 +253,9 @@ impl Menu {
         c.rect((1.0, layout.rule, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
         for (i, (action, &top)) in self.actions.iter().zip(&layout.actions).enumerate() {
             self.action_row(&mut c, fonts, top, i, action);
+        }
+        if let (Some(top), Some(can_load)) = (layout.saves, self.saves) {
+            self.saves_row(&mut c, fonts, top, can_load);
         }
         c.rect(
             (1.0, layout.bottom_rule, w - 2.0, 1.0),
@@ -382,6 +421,62 @@ impl Menu {
         if let Some(refusal) = &row.refusal {
             let red = Style::new(12.0, colors::RED);
             span(c, fonts, refusal, (27.0, top + 22.0), Align::Left, &red);
+        }
+    }
+
+    fn saves_row(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, can_load: bool) {
+        let words = Style::new(15.0, colors::TEXT).weight(Weight::Medium);
+        let key = Style::new(12.0, colors::FAINT);
+        for (i, (word, keys)) in SAVE_BUTTONS.iter().enumerate() {
+            #[allow(clippy::cast_precision_loss, reason = "three buttons")]
+            let x = 12.0 + i as f32 * 168.0;
+            if self.chosen == Row::Save(i) {
+                Self::chosen_box(c, (x, top, 160.0, 39.0));
+            } else {
+                c.rect(
+                    (x, top, 160.0, 39.0),
+                    6.0,
+                    None,
+                    Some(Line::solid(colors::EDGE, 1.0)),
+                );
+            }
+            // Load waits for a save, faded as the mockup has it.
+            let alpha = if i == 1 && !can_load { 115 } else { 255 };
+            let words = Style {
+                color: Color {
+                    a: alpha,
+                    ..words.color
+                },
+                ..words
+            };
+            let key_style = Style {
+                color: Color {
+                    a: alpha,
+                    ..key.color
+                },
+                ..key
+            };
+            // As the mockup's markup has it: a space, then the key 6 pixels on; without a
+            // key the space falls at the line's end and goes, the 6 pixels stay.
+            let space = if keys.is_empty() {
+                0.0
+            } else {
+                fonts.measure(" ", &words)
+            };
+            let gap = space + 6.0;
+            let width = fonts.measure(word, &words) + gap + fonts.measure(keys, &key_style);
+            let left = x + (160.0 - width) / 2.0;
+            let advance = c.text(fonts, word, (left, top + 1.0), 37.0, Align::Left, &words);
+            if !keys.is_empty() {
+                c.text(
+                    fonts,
+                    keys,
+                    (left + advance + gap, top + 1.0),
+                    37.0,
+                    Align::Left,
+                    &key_style,
+                );
+            }
         }
     }
 

@@ -241,8 +241,9 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 
 ![Game over: the record and the table](docs/mockups/starquake/game-over.png)
 
-**Save games** work for every game, defined or not: a save is a snapshot of the whole machine, stored as a standard `.szx`, with the program's own state alongside (game id, training switches, guidance record, kept-list entries found this game).
-- **F5** saves to a quick slot (`quick.sav` in the game's data folder); **F9** loads it, on the title screen too. The menu's row offers the same, plus **Open a save…** for any file, through the system's own dialog. On a Mac that dialog must run on the main thread.
+**Save games** work for every game, defined or not: a save is a zip of a snapshot of the whole machine, stored as a standard `machine.szx`, and the program's own state in `state.toml` (game id, the tape's SHA-1, guidance level, training switches, the game's record, and how far the game had got). Kept lists are saved to their own files as they change, so a save doesn't carry them.
+- **F5** saves to a quick slot (`quick.sav` in the game's data folder, or in `tapes/<tape name>/` for a tape played plainly); **F9** loads it, on the title screen too. The menu's row offers the same, plus **Open a save…** for any file, through the system's own dialog. On a Mac that dialog must run on the main thread. A plain `.szx` loads the machine alone; its switches are forgotten, and its game is marked loaded.
+- A switch on in a save stays on when it's loaded, without being applied again: its patches are in the saved memory. A save of another game, or from another tape, is refused.
 - A short notice confirms: "Game saved", "Game loaded", or why not.
 
   ![Game saved](docs/mockups/starquake/saved-note.png)

@@ -1,6 +1,6 @@
 //! Games: where their definitions and tapes are, and which tape a game takes.
 
-use crate::pad::Mapping;
+use crate::{pad::Mapping, saves::Saves};
 use sidekick_core::{Machine, Model, Script, Session};
 use sidekick_def::{
     tapes_in, Definition, Library, LoadError, Machine as Spectrum, Package, Tape, TapeFormat,
@@ -274,13 +274,14 @@ pub(crate) fn save_kept(
     Ok(())
 }
 
-/// A game ready to play: its session, title and pad mapping, and the folder its kept lists
-/// are saved in (none for a tape played plainly).
+/// A game ready to play: its session, title and pad mapping, the folder its kept lists
+/// are saved in (none for a tape played plainly), and what its saves are of.
 pub(crate) struct Playing {
     pub(crate) session: Session,
     pub(crate) title: String,
     pub(crate) mapping: Mapping,
     pub(crate) folder: Option<PathBuf>,
+    pub(crate) saves: Saves,
 }
 
 impl Game {
@@ -294,6 +295,7 @@ impl Game {
             title: self.title(),
             mapping: self.mapping(),
             folder: Some(self.folder.clone()),
+            saves: Saves::of_game(&self.definition().game.id, &tape.sha1, &self.folder),
         })
     }
 }

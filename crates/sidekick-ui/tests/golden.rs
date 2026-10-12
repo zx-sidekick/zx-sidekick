@@ -3,8 +3,8 @@
 
 use sidekick_ui::{
     pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Levels, LibraryEntry,
-    LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, NoticeHint, PadLabels, PadMark, Panel,
-    PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question, Refusal, Route,
+    LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, PadLabels, PadMark,
+    Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question, Refusal, Route,
     RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
@@ -181,6 +181,7 @@ fn starquake_menu() -> Menu {
         chosen: Row::Level,
         armed: None,
         pad: PadLabels::Letters,
+        saves: Some(false),
     }
 }
 
@@ -221,7 +222,9 @@ fn a_click_finds_the_menu_s_row() {
     assert_eq!(menu.row_at(100.0, 285.0), Some(Row::Switch(0)));
     assert_eq!(menu.row_at(100.0, 420.0), Some(Row::Switch(4)));
     assert_eq!(menu.row_at(100.0, 478.0), Some(Row::Action(0)));
-    assert_eq!(menu.row_at(100.0, 566.0), Some(Row::Action(2)));
+    assert_eq!(menu.row_at(100.0, 524.0), Some(Row::Save(0)));
+    assert_eq!(menu.row_at(450.0, 524.0), Some(Row::Save(2)));
+    assert_eq!(menu.row_at(100.0, 610.0), Some(Row::Action(2)));
     assert_eq!(menu.row_at(5.0, 478.0), None);
     assert_eq!(menu.row_at(100.0, 451.0), None, "the rule between");
 }
@@ -567,4 +570,14 @@ fn the_panel_after_a_game() {
         ],
     };
     golden("panel-this-game.png", &page.draw(&mut fonts, 1).png());
+}
+
+#[test]
+fn the_notice() {
+    let mut fonts = Fonts::new();
+    let note = Note {
+        text: "Game saved".to_owned(),
+    };
+    assert_eq!(note.width(&mut fonts), 128, "the mockup's pill");
+    golden("note.png", &note.draw(&mut fonts, 1).png());
 }
