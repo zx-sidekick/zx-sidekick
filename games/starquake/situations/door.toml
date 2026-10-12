@@ -1,0 +1,6 @@
+# A new game two steps from a security door's right-hand side (room 176), with creatures that
+# do no harm: walk left into it. Entering the room lines BLOB up 8 pixels lower, at 63.
+room = 176
+blob_x = 192
+blob_y = 71
+cheats = ["no-harm"]

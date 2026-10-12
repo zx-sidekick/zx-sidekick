@@ -1,10 +1,10 @@
 //! The real Starquake tape loads and its game starts. Needs the player's tape in `assets/`
 //! (`Starquake.tap.zip` from World of Spectrum); skipped without it, as in CI.
 
-use sidekick_core::{Kempston, Key, Machine, Model, Session};
-use sidekick_def::{tapes_in, Package};
+use sidekick_core::{Fact, Kempston, Key, Machine, Model, Script, Session};
+use sidekick_def::{tapes_in, Package, Situation};
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[test]
 #[allow(clippy::print_stderr, reason = "a skipped test says why")]
@@ -254,4 +254,125 @@ fn no_harm_keeps_blob_s_lives_against_deadly_scenery() {
     );
     s.switch("no-harm", true).expect("it goes on");
     assert_eq!(lives_lost_walking(&mut s, 1200), 0, "with the switch, none");
+}
+
+fn repo() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// Gives the session Starquake's script, at a guidance level.
+fn with_script(s: &mut Session, level: u8) {
+    let source = std::fs::read_to_string(repo().join("games/starquake/scripts/starquake.rhai"))
+        .expect("its script");
+    s.set_script(Script::compile(&source).map_err(|e| e.to_string()));
+    s.set_level(level);
+}
+
+/// Enters a room as a crafted situation does: at the sync point, the values written, then the
+/// definition's room entry called, returning to the sync point.
+fn enter_room(s: &mut Session, values: &[(&str, i64)]) {
+    let definition = s.definition().expect("its definition");
+    let sync = definition
+        .run
+        .as_ref()
+        .and_then(|r| r.sync)
+        .expect("a sync")
+        .0;
+    let enter = definition
+        .situations
+        .as_ref()
+        .and_then(|st| st.enter)
+        .expect("a room entry")
+        .0;
+    assert!(
+        (0..200).any(|_| s.run_to_sync().expect("a frame")),
+        "the sync point"
+    );
+    for &(name, number) in values {
+        s.write(name, number).expect("writable");
+    }
+    s.machine_mut().call(enter, sync);
+}
+
+fn field<'a>(fact: &'a Fact, key: &str) -> &'a Fact {
+    match fact {
+        Fact::Map(map) => &map[key],
+        other => panic!("{key} of {other:?}"),
+    }
+}
+
+fn list(fact: &Fact) -> &[Fact] {
+    match fact {
+        Fact::List(items) => items,
+        other => panic!("a list: {other:?}"),
+    }
+}
+
+#[test]
+fn starquake_s_rooms_decoded_from_its_data_have_the_walls_the_screen_shows() {
+    let Some(mut s) = in_play() else {
+        return;
+    };
+    with_script(&mut s, 6);
+    for room in [8, 9, 24, 176, 300, 511] {
+        enter_room(&mut s, &[("room", room)]);
+        // Entering plays a transition; the room is drawn once play comes back.
+        assert!(until(&mut s, 50, |s| s.state() != Some("play")));
+        assert!(until(&mut s, 200, |s| s.state() == Some("play")));
+        s.run_frame().expect("a frame");
+        assert_eq!(s.script_off(), None);
+        let results = s.script_results();
+        assert_eq!(results["room"], Fact::Number(room));
+        let map = &results["map"];
+        let cells = list(field(map, "cells"));
+        assert_eq!(cells.len(), 512, "level 6: every room");
+        let at = usize::try_from(room).expect("a room");
+        assert_eq!(
+            field(&cells[at], "walls"),
+            &results["walls"],
+            "room {room}: decoded, and read from the screen"
+        );
+    }
+}
+
+#[test]
+fn a_security_door_s_cards_are_the_ones_the_script_works_out() {
+    let Some(mut s) = in_play_on_the_joystick() else {
+        return;
+    };
+    with_script(&mut s, 6);
+    let text = std::fs::read_to_string(repo().join("games/starquake/situations/door.toml"))
+        .expect("the door situation");
+    let situation = Situation::from_toml(&text).expect("it parses");
+    let values: Vec<(&str, i64)> = situation
+        .values
+        .iter()
+        .map(|(name, &number)| (name.as_str(), number))
+        .collect();
+    enter_room(&mut s, &values);
+    s.machine_mut().kempston(Kempston::Left, true);
+    let met = until(&mut s, 200, |s| {
+        !s.kept().get("doors-met").is_none_or(Vec::is_empty)
+    });
+    s.machine_mut().kempston(Kempston::Left, false);
+    assert!(met, "walking left meets the door");
+    let kept = s.kept()["doors-met"][0].clone();
+    let room = situation.values["room"];
+    assert!(kept.contains(&format!(":{room}:")), "{kept}");
+
+    s.run_frame().expect("a frame");
+    // Level 6 lists every door, by room: the situation's is the first.
+    let doors = list(&s.script_results()["doors"]);
+    assert_eq!(doors.len(), 8, "eight security doors");
+    let worked_out: Vec<String> = list(field(&doors[0], "cards"))
+        .iter()
+        .map(|card| match field(card, "picture") {
+            Fact::Number(n) => n.to_string(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert!(
+        kept.ends_with(&format!(":{}", worked_out.join("-"))),
+        "met {kept}, worked out {worked_out:?}"
+    );
 }
