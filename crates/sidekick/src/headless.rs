@@ -50,6 +50,11 @@ pub(crate) fn run(
             }
         }
         session.run_frame().map_err(|e| e.to_string())?;
+        // Nobody's there to press a key: a loading screen held goes straight on.
+        while session.holding() {
+            session.release();
+            session.run_frame().map_err(|e| e.to_string())?;
+        }
     }
     if let Some(path) = screenshot {
         write_png(session.machine().picture(), scale, path)

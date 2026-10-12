@@ -175,7 +175,10 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                 }
                 event => {
                     let mut presses = gamepads.event(&event);
-                    if let Screen::Play(player) = &screen {
+                    if let Screen::Play(player) = &mut screen {
+                        if player.held(&event, &presses, &mut gamepads.pads) {
+                            continue;
+                        }
                         presses.extend(gamepads.host_key(&event, player.play.mapping()));
                     }
                     match screen.event(&event, &presses, &out.canvas) {
@@ -390,6 +393,21 @@ impl Player {
         }
     }
 
+    /// Whether the game is held on its loading screen, taking the event. Any key or button
+    /// lets it go, and doesn't reach the game; its time starts again from then.
+    fn held(&mut self, event: &Event, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
+        if !self.session.holding() {
+            return false;
+        }
+        if is_press(event) || !presses.is_empty() {
+            self.session.release();
+            self.started = Instant::now();
+            self.frames_run = 0;
+            pads.hold_back();
+        }
+        true
+    }
+
     /// Runs the frames that are due, queues their sound, and draws the latest picture.
     fn frame(&mut self, out: &mut Output, pads: &mut Pads) -> Result<(), String> {
         let due = out.sound.as_ref().map_or_else(
@@ -404,6 +422,9 @@ impl Player {
             std::thread::sleep(Duration::from_millis(1));
         }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
+            if self.session.holding() {
+                break;
+            }
             pads.hold_back_parts(&self.play.enter(self.session.state()));
             let mut changes = self.play.update(pads.held());
             let patches = std::mem::take(&mut changes.patches);
@@ -734,6 +755,14 @@ fn logical_point(canvas: &WindowCanvas, x: f32, y: f32) -> Option<(f32, f32)> {
 
 fn inside((x, y, w, h): (f32, f32, f32, f32), px: f32, py: f32) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
+}
+
+/// A key pressed (not repeating), or a mouse button.
+const fn is_press(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::KeyDown { repeat: false, .. } | Event::MouseButtonDown { .. }
+    )
 }
 
 /// F11 everywhere; on a Mac also Control-Command-F, since F11 never reaches a program there.
