@@ -1,7 +1,10 @@
 //! The program's screens, compared with golden images byte for byte. `UPDATE_GOLDEN=1`
 //! rewrites them; look at a changed image before committing it.
 
-use sidekick_ui::{Fonts, LibraryEntry, LibraryPage, PadLabels, Refusal, TapePrompt};
+use sidekick_ui::{
+    Face, Fonts, LibraryEntry, LibraryPage, NoticeHint, PadLabels, PadMark, PauseNotice, Refusal,
+    TapePrompt,
+};
 use std::path::PathBuf;
 
 fn golden(name: &str, png: &[u8]) {
@@ -100,5 +103,40 @@ fn the_library() {
     golden(
         "library-playstation.png",
         &playstation.draw(&mut fonts, 1).png(),
+    );
+}
+
+fn paused(pad: PadLabels) -> PauseNotice {
+    PauseNotice {
+        text: "Move or fire to go on.".to_owned(),
+        hints: vec![
+            NoticeHint {
+                keys: Some("← ↑ → ↓".to_owned()),
+                pad: Some(PadMark::Directions),
+                does: "move".to_owned(),
+            },
+            NoticeHint {
+                keys: Some("Alt".to_owned()),
+                pad: Some(PadMark::Face(Face::West)),
+                does: "fire".to_owned(),
+            },
+        ],
+        pad,
+    }
+}
+
+#[test]
+fn the_pause_notice() {
+    let mut fonts = Fonts::new();
+    let card = paused(PadLabels::Letters).draw(&mut fonts, 1);
+    assert_eq!(card.size(), (438, 158));
+    golden("paused.png", &card.png());
+    golden(
+        "paused-playstation.png",
+        &paused(PadLabels::Shapes).draw(&mut fonts, 1).png(),
+    );
+    golden(
+        "paused-unworded.png",
+        &PauseNotice::default().draw(&mut fonts, 1).png(),
     );
 }
