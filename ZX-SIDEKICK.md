@@ -137,7 +137,7 @@ Most of what a definition says is plain data. A few things are computations no d
 
 - **One frame at a time.** The program runs the emulated machine to the next frame boundary, then reads its memory, draws, plays sound and feeds input. Everything in this plan happens between frames.
 - **A consistent point between frames.** Most games' main loops have a top: the address they return to once per frame of play. When a definition names it (`[run] sync`), each frame runs *to that address*, not to an arbitrary T-state. Every readout, save and injected write then sees the game between two of its own frames. Without it, frames end at the interrupt. Outside play (title screen, menus, death, game over) games wait in their own loops; the definition's `[[states]]` tell those apart.
-- **Reading the game.** `[values]` turn bytes at known addresses into named facts. The panel, the training switches, crafted situations and scripts all use those names, never raw addresses.
+- **Reading the game.** `[values]` turn bytes at known addresses into named facts, read once a frame: at the sync address when the frame reaches it, otherwise at its end. The game's state is decided at the frame's end from those values and the addresses the frame ran. The panel, the training switches, crafted situations and scripts all use those names, never raw addresses.
 - **Writing to the game.** Every write (a training switch, a typed key, a restored save, a crafted situation) goes through one place in `sidekick-core`, by name.
 
 ## 8. The window

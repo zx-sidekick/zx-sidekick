@@ -1,7 +1,7 @@
 //! Running a machine without a window, and writing its picture as a PNG.
 
 use crate::{keys::key_named, picture::to_rgba};
-use sidekick_core::{Key, Machine, Picture};
+use sidekick_core::{Key, Picture, Session};
 use std::{fs, path::Path};
 
 /// How many frames a `--key` holds its key: enough for a game to see it.
@@ -35,7 +35,7 @@ impl std::str::FromStr for KeyPress {
 /// # Errors
 /// If the machine fails, or the PNG can't be written.
 pub(crate) fn run(
-    machine: &mut Machine,
+    session: &mut Session,
     frames: u32,
     keys: &[KeyPress],
     screenshot: Option<&Path>,
@@ -44,18 +44,31 @@ pub(crate) fn run(
     for frame in 0..frames {
         for press in keys {
             if frame == press.frame {
-                machine.key(press.key, true);
+                session.machine_mut().key(press.key, true);
             } else if frame == press.frame + KEY_FRAMES {
-                machine.key(press.key, false);
+                session.machine_mut().key(press.key, false);
             }
         }
-        machine.run_frame().map_err(|e| e.to_string())?;
+        session.run_frame().map_err(|e| e.to_string())?;
     }
     if let Some(path) = screenshot {
-        write_png(machine.picture(), scale, path)
+        write_png(session.machine().picture(), scale, path)
             .map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok(())
+}
+
+/// The game's state and every named value as of the last frame, a `name = value` line each,
+/// the state first (`""` when none matched).
+pub(crate) fn values(session: &Session) -> String {
+    let mut lines = vec![format!("state = {:?}", session.state().unwrap_or(""))];
+    lines.extend(
+        session
+            .reading()
+            .iter()
+            .map(|(name, value)| format!("{name} = {value}")),
+    );
+    lines.join("\n") + "\n"
 }
 
 /// Writes the picture as a PNG, each Spectrum pixel `scale` × `scale` pixels.

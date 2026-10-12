@@ -117,6 +117,73 @@ fn a_key_reaches_the_program() {
 }
 
 #[test]
+fn values_and_the_state_are_printed_after_the_last_frame() {
+    let dir = TempDir::new().unwrap();
+    let tape = dir.path().join("wait.tap");
+    fs::write(&tape, wait_then_red()).unwrap();
+    let definition = dir.path().join("wait.toml");
+    fs::write(
+        &definition,
+        r#"
+schema = 1
+[game]
+id = "wait"
+title = "Wait"
+machine = "48k"
+[[media]]
+name = "our own test program"
+
+# BORDCR, where the ROM keeps the border's colour times eight.
+[values.border]
+addr = 23624
+type = "u8"
+
+[values.prog]
+addr = 23635
+type = "u16"
+
+[[states]]
+name = "red"
+when = { value = "border", at_least = 16, at_most = 23 }
+
+[[states]]
+name = "white"
+when = { value = "border", bits = 0x38 }
+"#,
+    )
+    .unwrap();
+    let run = |frames: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_sidekick"))
+            .env("ZX_SIDEKICK_DATA", dir.path())
+            .args([
+                "run",
+                tape.to_str().unwrap(),
+                "--definition",
+                definition.to_str().unwrap(),
+                "--values",
+                "--frames",
+                frames,
+                "--key",
+                "SPACE@200",
+            ])
+            .output()
+            .expect("sidekick runs");
+        assert!(output.status.success(), "{output:?}");
+        String::from_utf8(output.stdout).unwrap()
+    };
+    assert_eq!(
+        run("150"),
+        "state = \"white\"\nborder = 56\nprog = 23755\n",
+        "waiting for a key"
+    );
+    assert_eq!(
+        run("250"),
+        "state = \"red\"\nborder = 23\nprog = 23755\n",
+        "BORDER 2, with white ink for the lower screen"
+    );
+}
+
+#[test]
 fn bad_options_are_refused() {
     let dir = TempDir::new().unwrap();
     let tape = dir.path().join("wait.tap");

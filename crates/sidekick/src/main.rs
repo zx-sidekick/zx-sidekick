@@ -17,7 +17,7 @@ mod window;
 use clap::{Parser, Subcommand};
 use games::Game;
 use pad::Mapping;
-use sidekick_core::{Machine, Model};
+use sidekick_core::{Machine, Model, Session};
 use sidekick_def::{tapes_in, Definition, Identified, Library, Package, TapeFormat};
 use std::{
     fs,
@@ -55,8 +55,15 @@ enum Command {
     },
     /// Runs a tape without a window, and writes its picture as a PNG.
     Run {
-        /// A tape to run: a .tap, or the .zip it came in.
+        /// A tape to run: a .tap, or the .zip it came in. A tape a definition knows runs as
+        /// that game.
         tape: PathBuf,
+        /// Run it as the game this definition describes, whether or not it's one of its dumps.
+        #[arg(long, value_name = "DEF")]
+        definition: Option<PathBuf>,
+        /// Print the game's state and every named value after the last frame.
+        #[arg(long)]
+        values: bool,
         /// Frames to run (50 a second).
         #[arg(long, default_value_t = 250)]
         frames: u32,
@@ -94,27 +101,32 @@ fn main() -> ExitCode {
         (
             Some(Command::Run {
                 tape,
+                definition,
+                values,
                 frames,
                 keys,
                 screenshot,
                 scale,
             }),
             _,
-        ) => match tape_file(&tape) {
-            Ok((mut machine, _)) => {
-                match headless::run(&mut machine, frames, &keys, screenshot.as_deref(), scale) {
-                    Ok(()) => ExitCode::SUCCESS,
-                    Err(e) => {
-                        eprintln!("{e}");
-                        ExitCode::from(UNREADABLE)
+        ) => {
+            let run = run_session(&tape, definition.as_deref(), &cli.games).and_then(
+                |(mut session, _, _)| {
+                    headless::run(&mut session, frames, &keys, screenshot.as_deref(), scale)?;
+                    if values {
+                        print!("{}", headless::values(&session));
                     }
+                    Ok(())
+                },
+            );
+            match run {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::from(UNREADABLE)
                 }
             }
-            Err(e) => {
-                eprintln!("{e}");
-                ExitCode::from(UNREADABLE)
-            }
-        },
+        }
         (None, target) => match open(target.as_deref(), &cli.games).and_then(window::run) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -133,14 +145,8 @@ fn open(target: Option<&str>, extra: &[PathBuf]) -> Result<Start, String> {
         eprintln!("{problem}");
     }
     if let Some(file) = target.map(Path::new).filter(|p| p.exists()) {
-        // A tape a definition knows plays on its game's machine, and is kept for it.
-        if let Ok(Identified::Game { package, tape, .. }) = library.identify(file) {
-            let game = Game::new(package.clone(), &data);
-            let machine = game.machine(&tape)?;
-            return Ok(Start::Play(Box::new(machine), game.title(), game.mapping()));
-        }
-        let (machine, title) = tape_file(file)?;
-        return Ok(Start::Play(Box::new(machine), title, Mapping::default()));
+        let (session, title, mapping) = tape_session(file, &library, &data)?;
+        return Ok(Start::Play(Box::new(session), title, mapping));
     }
     let package = if let Some(id) = target {
         library
@@ -167,11 +173,46 @@ fn open(target: Option<&str>, extra: &[PathBuf]) -> Result<Start, String> {
 fn start_game(game: Game) -> Result<Start, String> {
     match game.kept_tape() {
         Some(tape) => {
-            let machine = game.machine(&tape)?;
-            Ok(Start::Play(Box::new(machine), game.title(), game.mapping()))
+            let session = game.session(&tape)?;
+            Ok(Start::Play(Box::new(session), game.title(), game.mapping()))
         }
         None => Ok(Start::Prompt(Box::new(game))),
     }
+}
+
+/// A tape file played as the game a definition knows it to be, on its game's machine; or
+/// plainly, on a 48K. With its title and what a pad does in it.
+fn tape_session(
+    file: &Path,
+    library: &Library,
+    data: &Path,
+) -> Result<(Session, String, Mapping), String> {
+    if let Ok(Identified::Game { package, tape, .. }) = library.identify(file) {
+        let game = Game::new(package.clone(), data);
+        return Ok((game.session(&tape)?, game.title(), game.mapping()));
+    }
+    let (machine, title) = tape_file(file)?;
+    Ok((Session::new(machine, None), title, Mapping::default()))
+}
+
+/// `sidekick run`'s game: the tape as `definition` describes it, or as the library knows it.
+fn run_session(
+    file: &Path,
+    definition: Option<&Path>,
+    extra: &[PathBuf],
+) -> Result<(Session, String, Mapping), String> {
+    let data = games::data_folder();
+    if let Some(definition) = definition {
+        let package = Package::load(definition).map_err(|e| e.to_string())?;
+        let game = Game::new(package, &data);
+        let tapes = tapes_in(file).map_err(|e| e.to_string())?;
+        let tape = tapes
+            .first()
+            .ok_or_else(|| format!("{}: no tape in it", file.display()))?;
+        return Ok((game.session(tape)?, game.title(), game.mapping()));
+    }
+    let (library, _) = games::library(&data, extra);
+    tape_session(file, &library, &data)
 }
 
 /// A 48K with the tape in a file going in, as `LOAD ""` loads it, and the tape's name.
