@@ -70,7 +70,7 @@ fn starquake_s_draft_parses_and_lists_what_is_left_to_find() {
         "the dump's SHA-1 is recorded"
     );
     assert!(
-        problems.iter().any(|p| p == "values.visited.addr: missing"),
+        problems.iter().any(|p| p == "high_scores.addr: missing"),
         "{problems:#?}"
     );
     assert!(

@@ -114,10 +114,10 @@ addr = 0xD2CF
 max = 127
 
 [values.visited]
-type = "bitset"
-# addr = TODO
-# len = TODO
-description = "Rooms visited, kept by the game for its first-visit bonus"
+type = "bytes"
+addr = 0xA390
+len = 64
+description = "Rooms not yet visited, kept by the game for its first-visit bonus: a bit a room, the first room the top bit of the first byte, cleared on entering"
 
 [values.booth_code]
 type = "text"
@@ -327,15 +327,6 @@ key_up_frames = 1
 label = "teleport codes"
 file = "teleporter-codes.txt"
 add = "script"
-
-[persist.rooms-walked]
-label = "rooms walked"
-# One a room: the game's seed, the room, and the edges without an opening, as
-# `seed:room:walls` (walls among N, E, S and W). Kept so a continued game shows its map again.
-file = "rooms-walked.txt"
-add = "script"
-# Some games' worth: 512 rooms each at most.
-most = 2048
 
 [persist.doors-met]
 label = "doors met"

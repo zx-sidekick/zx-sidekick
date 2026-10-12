@@ -16,6 +16,7 @@ Dump: Starquake (Bubble Bus Software), as World of Spectrum distributes it: `STA
 | Abandoning a game | — | A, S, D, F and G held together end the game | read | (#78) |
 | Entering a room | `0xA426` | The routine that starts play in the current room: it lines BLOB up on the room's grid, draws the room and sets up its creatures. For `[situations] enter` | read | (#78) |
 | Lining BLOB up | — | Entering a room brings BLOB's height down to a multiple of 8, less one: 71 becomes 63, and 63 becomes 55. A transition plays for about ten frames before play goes on | confirmed | Entered rooms with BLOB's place written (#101) |
+| Rooms not yet visited | `0xA390` | 64 bytes, a bit a room: room 0 is the top bit of the first byte. A new game sets them all; entering a room clears its bit (the start room's at once). The 64 bytes before it are set at a new game too, and some rooms clear a bit there as well; what for isn't known | confirmed | Entered rooms 0, 9, 24, 300 and 511 and watched the bits (#124) |
 | The room | `0xD2C8` (word) | The room BLOB is in: 16 rooms to a row, 0 at the top left; a game starts in room 8 | confirmed | Walked down a room: 8 became 24 (#78) |
 | BLOB's position | `0xDD1D`, `0xDD1E` | BLOB's x in pixels, and his height in pixels, counted up from the screen's bottom | confirmed | x rose 8 a step moving right (#78); placed by them next to a door (#101) |
 | Lives | `0xD2CC` | Lives left: 4 at the start; the status line shows it as two digits | confirmed | Fell by one with each life lost (#78) |

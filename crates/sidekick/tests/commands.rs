@@ -62,9 +62,7 @@ fn starquake_s_draft_lists_what_is_left_to_find() {
     let run = sidekick(&["check", path(&draft)]);
     assert_eq!(run.status, 1);
     assert!(
-        run.stdout
-            .lines()
-            .any(|l| l == "values.visited.addr: missing"),
+        run.stdout.lines().any(|l| l == "high_scores.addr: missing"),
         "{}",
         run.stdout
     );

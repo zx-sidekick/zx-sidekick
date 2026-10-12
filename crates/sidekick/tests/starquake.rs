@@ -385,3 +385,31 @@ fn a_security_door_s_cards_are_the_ones_the_script_works_out() {
         "met {kept}, worked out {worked_out:?}"
     );
 }
+
+/// The rooms on the map, by number.
+fn rooms_on_the_map(s: &Session) -> Vec<i64> {
+    let map = &s.script_results()["map"];
+    let mut rooms: Vec<i64> = list(field(map, "cells"))
+        .iter()
+        .map(|cell| match (field(cell, "x"), field(cell, "y")) {
+            (Fact::Number(x), Fact::Number(y)) => y * 16 + x,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    rooms.sort_unstable();
+    rooms
+}
+
+#[test]
+fn the_rooms_walked_are_the_game_s_own() {
+    let Some(mut s) = in_play_from(|s| with_script(s, 2)) else {
+        return;
+    };
+    s.run_frame().expect("a frame");
+    assert_eq!(rooms_on_the_map(&s), [8], "the start room");
+    enter_room(&mut s, &[("room", 9)]);
+    assert!(until(&mut s, 50, |s| s.state() != Some("play")));
+    assert!(until(&mut s, 200, |s| s.state() == Some("play")));
+    s.run_frame().expect("a frame");
+    assert_eq!(rooms_on_the_map(&s), [8, 9], "and the room entered");
+}
