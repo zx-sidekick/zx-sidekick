@@ -222,6 +222,35 @@ east = {{ keys = ["H"], frames = 3 }}
 }
 
 #[test]
+fn an_action_s_host_key_is_one_the_spectrum_lacks() {
+    let problems = |key: &str| -> Vec<String> {
+        let text = format!(
+            "{HEADER}\n[[actions]]\nid = \"jump\"\nkeys = [\"SPACE\"]\nhost_key = \"{key}\"\n"
+        );
+        let def = Definition::from_toml(&text).expect("it parses");
+        def.check()
+            .iter()
+            .map(ToString::to_string)
+            .filter(|p| p.starts_with("actions"))
+            .collect()
+    };
+    assert!(problems("Tab").is_empty());
+    assert!(problems("PageDown").is_empty());
+    assert_eq!(
+        problems("F9"),
+        ["actions[0].host_key: F9 is the program's own"]
+    );
+    let q = problems("Q");
+    assert_eq!(q.len(), 1);
+    assert!(
+        q[0].starts_with(
+            "actions[0].host_key: \"Q\" isn't one of the keys the Spectrum lacks: Tab, F1,"
+        ),
+        "{q:?}"
+    );
+}
+
+#[test]
 fn the_committed_schema_is_the_generated_one() {
     assert!(
         repo("schema/definition.schema.json") == schema(),
