@@ -337,7 +337,7 @@ key_down_frames = 1
 key_up_frames = 1
 ```
 
-The card opens on the first pad press while the game is in `state`. A word entered is typed on the keys, one letter held for `key_down_frames` and released for `key_up_frames`.
+The card opens on the first pad press while the game is in `state`, its top at the character row `card_row` so the game's own echo of the letters stays in sight. It offers the words of the `choices` list from `choices_from_level` up, and otherwise opens on spelling; the west button switches between the two, and the back button clears what's spelled. A word entered is typed on the keys, one letter held for `key_down_frames` and released for `key_up_frames` (a frame each when not given). While the card is open the pad drives only the card; the keyboard never opens it.
 
 ## `[persist]`: lists kept between games
 

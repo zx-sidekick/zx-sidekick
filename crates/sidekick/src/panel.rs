@@ -12,11 +12,12 @@ use std::collections::BTreeMap;
 
 /// The panel for a session's game at guidance level `level`; `None` when its definition has
 /// no guidance levels, and so no panel.
-pub(crate) fn of(session: &Session, level: usize) -> Option<Panel> {
+pub(crate) fn of(session: &Session, level: usize, chosen: Option<&str>) -> Option<Panel> {
     let script = Script {
         results: session.script_results(),
         off: session.script_off(),
         kept: session.kept(),
+        chosen,
     };
     let graphics = |w: &Widget| Graphics {
         font: w.font.as_deref().and_then(|f| session.font(f)),
@@ -80,6 +81,8 @@ pub(crate) struct Script<'a> {
     pub(crate) results: &'a BTreeMap<String, Fact>,
     pub(crate) off: Option<&'a str>,
     pub(crate) kept: &'a BTreeMap<String, Vec<String>>,
+    /// The word chosen on the text-entry card, outlined where a chip shows it.
+    pub(crate) chosen: Option<&'a str>,
 }
 
 /// What a widget's `source` names.
@@ -126,7 +129,7 @@ pub(crate) fn panel(
                 (
                     WidgetKind::ChipList | WidgetKind::IconGrid | WidgetKind::CardSet,
                     Source::Script(fact),
-                ) => pictured(w, fact, &graphics(w))?,
+                ) => pictured(w, fact, &graphics(w), script.chosen)?,
                 (WidgetKind::MapGrid, Source::Script(fact)) => {
                     PanelBody::Map(map(fact, &graphics(w))?)
                 }
@@ -324,7 +327,12 @@ pub(crate) fn pins(panel: &Panel) -> Vec<Pin> {
 
 /// A widget drawn in the game's font or pictures, from what the script returned: its
 /// `empty` words when there's nothing to show.
-fn pictured(widget: &Widget, fact: &Fact, graphics: &Graphics) -> Option<PanelBody> {
+fn pictured(
+    widget: &Widget,
+    fact: &Fact,
+    graphics: &Graphics,
+    chosen: Option<&str>,
+) -> Option<PanelBody> {
     let Fact::List(items) = fact else {
         return None;
     };
@@ -350,7 +358,11 @@ fn pictured(widget: &Widget, fact: &Fact, graphics: &Graphics) -> Option<PanelBo
                     };
                     Some(Chip {
                         glyphs: graphics.word(&text)?,
-                        outline: outline(field(item, "outlined").as_ref()),
+                        outline: if chosen == Some(text.as_str()) {
+                            Some(sidekick_ui::colors::ACCENT)
+                        } else {
+                            outline(field(item, "outlined").as_ref())
+                        },
                     })
                 })
                 .collect(),
@@ -491,6 +503,7 @@ len = 4
             results: NO_RESULTS,
             off: None,
             kept: NO_KEPT,
+            chosen: None,
         }
     }
 
@@ -533,6 +546,7 @@ source = "script:route"
             results: &results,
             off: None,
             kept: NO_KEPT,
+            chosen: None,
         };
         let shown = panel(Some(&def), 1, &reading(), &running, &no_graphics).expect("a panel");
         let bodies: Vec<PanelBody> = shown.widgets.into_iter().map(|w| w.body).collect();
@@ -548,6 +562,7 @@ source = "script:route"
             results: &results,
             off: Some("on_frame: took too many steps"),
             kept: NO_KEPT,
+            chosen: None,
         };
         let shown = panel(Some(&def), 1, &reading(), &stopped, &no_graphics).expect("a panel");
         assert_eq!(
@@ -654,6 +669,7 @@ source = "script:doors"
             results: &results,
             off: None,
             kept: NO_KEPT,
+            chosen: None,
         };
         let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
         let px = |n| pixels(&dot(n));
@@ -684,6 +700,7 @@ source = "script:doors"
             results: &nothing,
             off: None,
             kept: NO_KEPT,
+            chosen: None,
         };
         let shown = panel(Some(&def), 1, &reading(), &empty, &stand_ins).expect("a panel");
         assert_eq!(
@@ -700,6 +717,7 @@ source = "script:doors"
             results: &results,
             off: None,
             kept: NO_KEPT,
+            chosen: None,
         };
         let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
         let px = |n| pixels(&dot(n));
@@ -783,6 +801,7 @@ source = "script:map"
             results: &results,
             off: None,
             kept: NO_KEPT,
+            chosen: None,
         };
         let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
         let PanelBody::Map(grid) = &shown.widgets[0].body else {
@@ -837,6 +856,7 @@ empty = "None yet"
             results: NO_RESULTS,
             off: None,
             kept: &kept,
+            chosen: None,
         };
         let shown = panel(Some(&def), 1, &reading(), &script, &stand_ins).expect("a panel");
         assert_eq!(
@@ -850,6 +870,19 @@ empty = "None yet"
         assert_eq!(
             shown.widgets[0].body,
             PanelBody::Empty("None yet".to_owned())
+        );
+        let choosing = Script {
+            chosen: Some("AB"),
+            ..script
+        };
+        let shown = panel(Some(&def), 1, &reading(), &choosing, &stand_ins).expect("a panel");
+        let PanelBody::Chips(chips) = &shown.widgets[0].body else {
+            panic!("chips")
+        };
+        assert_eq!(
+            chips[0].outline,
+            Some(sidekick_ui::colors::ACCENT),
+            "the word chosen on the card"
         );
     }
 
