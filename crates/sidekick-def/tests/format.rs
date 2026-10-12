@@ -65,8 +65,11 @@ fn the_reference_s_first_definition_is_complete() {
 fn starquake_s_draft_parses_and_lists_what_is_left_to_find() {
     let def = Definition::from_toml(&repo("games/starquake/game.toml")).expect("the draft parses");
     let problems: Vec<String> = def.check().iter().map(ToString::to_string).collect();
+    assert!(
+        !problems.iter().any(|p| p.starts_with("media")),
+        "the dump's SHA-1 is recorded"
+    );
     for expected in [
-        "media[0].sha1: missing",
         "values.room.addr: missing",
         "values.items.count: missing",
         "situations.enter: missing",

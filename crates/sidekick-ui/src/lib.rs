@@ -17,7 +17,9 @@ pub mod png;
 mod tape_prompt;
 mod text;
 
-pub use tape_prompt::{TapePrompt, WrongDump};
+pub use tape_prompt::{
+    Refusal, TapePrompt, HEIGHT as TAPE_PROMPT_HEIGHT, WIDTH as TAPE_PROMPT_WIDTH,
+};
 pub use text::{Fonts, Style, Weight};
 
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
