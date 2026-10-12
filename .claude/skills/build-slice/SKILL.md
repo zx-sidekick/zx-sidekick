@@ -58,7 +58,8 @@ one goes back to `Plan`.
    golden image) travels with the change that moved it, since the tests fail
    on drift. Golden images show the program's own drawing over a plain
    stand-in for the game's picture, since CI has no tape. Screenshots of a
-   game running may be committed (`docs/mockups/`); extracted graphics may not.
+   game running may be committed (`docs/media/`, apart from `docs/mockups/`,
+   whose images never show a game); extracted graphics may not.
 3. **A change to the machine is made in the fork first.** `rustzx-core` and
    `rustzx-z80` come from [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx),
    pinned by `rev`. Build against a local checkout with the ignored
@@ -213,9 +214,14 @@ the maintainer's replies are part of the review.
   `ZX-SIDEKICK.md` if the plan it records moved, `docs/definition-format.md`
   if the format did, and `docs/re/<game>.md` for every fact the change found
   or confirmed.
-- **A mockup in the ticket?** Its image must reach `main` in this PR. Once
-  merged, repoint the embed from `/raw/<branch>/` to `/raw/main/`, because
-  merging deletes the branch and a branch embed 404s.
+- **Images in the PR body are linked by commit**, `https://github.com/zx-sidekick/zx-sidekick/raw/<sha>/<path>`,
+  the commit that holds the image as shown: never `/raw/<branch>/`, which
+  404s once merging deletes the branch (11 merged PRs lost their images that
+  way). GitHub keeps every PR's commits, so a commit link outlives the branch
+  and keeps showing the image as it was. A later push that changes the image
+  moves the link to the new commit.
+- **A mockup in the ticket?** Its image must reach `main` in this PR, and its
+  embed is linked by commit too.
 - `gh pr ready <n>`, watch CI green, then **STOP. Never merge.** The
   `ready to merge` label is the maintainer's; `merge-pr` lands it once they
   add it.
