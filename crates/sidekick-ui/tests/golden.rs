@@ -2,9 +2,9 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    Face, Fonts, Levels, LibraryEntry, LibraryPage, Menu, NoticeHint, PadLabels, PadMark, Panel,
-    PanelBody, PanelColumn, PanelWidget, PauseNotice, Question, Refusal, Row, SwitchRow,
-    TapePrompt,
+    CardRow, Chip, Face, Fonts, Icon, Levels, LibraryEntry, LibraryPage, Look, Menu, NoticeHint,
+    PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pixels, Question,
+    Refusal, Row, SwitchRow, TapePrompt,
 };
 use std::path::PathBuf;
 
@@ -281,4 +281,84 @@ fn the_panel() {
         ],
     };
     golden("panel-plain.png", &plain.draw(&mut fonts, 1).png());
+}
+
+/// A stand-in picture: an 8 × 8 pattern, mirrored left to right, from a seed. Plainly not any
+/// game's.
+fn stand_in(seed: u32) -> Pixels {
+    let mut state = seed.wrapping_mul(2_654_435_761);
+    let mut ink = vec![false; 64];
+    for y in 0..8 {
+        for x in 0..4 {
+            state = state.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            let on = (state >> 16) & 1 == 1 || (x == 3 && (2..6).contains(&y));
+            ink[y * 8 + x] = on;
+            ink[y * 8 + 7 - x] = on;
+        }
+    }
+    Pixels {
+        width: 8,
+        height: 8,
+        ink,
+        color: None,
+    }
+}
+
+/// A stand-in word: a picture a letter.
+fn stand_in_word(word: &str) -> Vec<Pixels> {
+    word.bytes().map(|b| stand_in(u32::from(b) + 100)).collect()
+}
+
+#[test]
+fn the_panel_in_the_game_s_own_font_and_pictures() {
+    let mut fonts = Fonts::new();
+    let icons = (1..=9)
+        .map(|i| Icon {
+            picture: stand_in(i),
+            look: match i {
+                1 => Look::Outlined,
+                4 | 8 => Look::Dim,
+                _ => Look::Bright,
+            },
+        })
+        .collect();
+    let chips = ["LUMEN", "TOPAZ", "NIV"]
+        .iter()
+        .enumerate()
+        .map(|(i, w)| Chip {
+            glyphs: stand_in_word(w),
+            outlined: i == 1,
+        })
+        .collect();
+    let cards = (1..=3)
+        .map(|r| CardRow {
+            label: stand_in_word(&r.to_string()),
+            cards: (0..3)
+                .map(|c| (stand_in(40 + r * 3 + c), (r + c) % 3 == 0))
+                .collect(),
+        })
+        .collect();
+    let panel = Panel {
+        level: 6,
+        name: "Everything".to_owned(),
+        description: String::new(),
+        widgets: vec![
+            PanelWidget {
+                column: PanelColumn::Left,
+                title: Some("Core".to_owned()),
+                body: PanelBody::Icons { columns: 3, icons },
+            },
+            PanelWidget {
+                column: PanelColumn::Right,
+                title: Some("Teleports".to_owned()),
+                body: PanelBody::Chips(chips),
+            },
+            PanelWidget {
+                column: PanelColumn::Right,
+                title: Some("Doors".to_owned()),
+                body: PanelBody::Cards(cards),
+            },
+        ],
+    };
+    golden("panel-game-pictures.png", &panel.draw(&mut fonts, 1).png());
 }

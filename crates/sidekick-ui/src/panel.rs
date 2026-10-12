@@ -1,7 +1,7 @@
 //! The panel beside the picture: the guidance level, and the widgets it shows
 //! (`docs/mockups/starquake/play-level*.png`).
 
-use crate::{colors, Align, Canvas, Color, Fonts, Style, Weight};
+use crate::{colors, Align, Canvas, Color, Fonts, Line, Style, Weight};
 
 /// The panel's width, in logical pixels.
 pub const WIDTH: u32 = 408;
@@ -52,6 +52,119 @@ pub enum Body {
     },
     /// Nothing yet, in these words.
     Empty(String),
+    /// Short words in the game's font.
+    Chips(Vec<Chip>),
+    /// Pictures in a grid, `columns` a row.
+    Icons {
+        /// Pictures a row.
+        columns: usize,
+        /// The pictures.
+        icons: Vec<Icon>,
+    },
+    /// Groups of pictures, each with a label in the game's font.
+    Cards(Vec<CardRow>),
+}
+
+/// A picture of the game's, one bit a pixel.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pixels {
+    /// Its width, in the game's pixels.
+    pub width: usize,
+    /// Its height, in the game's pixels.
+    pub height: usize,
+    /// Row by row, whether each pixel is ink.
+    pub ink: Vec<bool>,
+    /// Its own ink, when the game gives one.
+    pub color: Option<Color>,
+}
+
+impl Pixels {
+    fn at(&self, x: usize, y: usize) -> bool {
+        x < self.width && y < self.height && self.ink[y * self.width + x]
+    }
+}
+
+/// How a picture or chip stands out.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Look {
+    /// Plainly.
+    #[default]
+    Bright,
+    /// Faded.
+    Dim,
+    /// With an outline.
+    Outlined,
+}
+
+/// A word in the game's font: its characters.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Chip {
+    /// Its characters, in order.
+    pub glyphs: Vec<Pixels>,
+    /// Whether it's outlined.
+    pub outlined: bool,
+}
+
+/// A picture in a grid.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Icon {
+    /// The picture.
+    pub picture: Pixels,
+    /// How it stands out.
+    pub look: Look,
+}
+
+/// A group of pictures, labelled.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CardRow {
+    /// Its label's characters, in the game's font.
+    pub label: Vec<Pixels>,
+    /// Its pictures, each answered or not yet.
+    pub cards: Vec<(Pixels, bool)>,
+}
+
+const TEAL: Color = Color::rgb(0x6F, 0xD6, 0xC4);
+const TEAL_BG: Color = Color::rgb(0x1D, 0x35, 0x32);
+const TILE: Color = Color::rgb(0x1D, 0x20, 0x27);
+/// Logical pixels to a game pixel: the font's, and the pictures'.
+const FONT_PIXEL: f32 = 2.0;
+const ICON_PIXEL: f32 = 4.0;
+const CARD_PIXEL: f32 = 2.0;
+
+/// Draws a picture's ink, each game pixel `size` logical pixels square, from (`x`, `y`).
+fn pixels(c: &mut Canvas, picture: &Pixels, (x, y): (f32, f32), size: f32, color: Color) {
+    for py in 0..picture.height {
+        for px in 0..picture.width {
+            if picture.at(px, py) {
+                #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
+                let at = (x + px as f32 * size, y + py as f32 * size);
+                c.rect((at.0, at.1, size, size), 0.0, Some(color), None);
+            }
+        }
+    }
+}
+
+/// A colour at some opacity.
+const fn faded(color: Color, alpha: u8) -> Color {
+    Color { a: alpha, ..color }
+}
+
+/// A word's width in the game's font, in logical pixels.
+fn word_width(glyphs: &[Pixels]) -> f32 {
+    #[allow(clippy::cast_precision_loss, reason = "a word's few pixels")]
+    let width = glyphs.iter().map(|g| g.width).sum::<usize>() as f32;
+    width * FONT_PIXEL
+}
+
+/// Draws a word in the game's font from (`x`, `y`).
+fn word(c: &mut Canvas, glyphs: &[Pixels], (x, y): (f32, f32), color: Color) {
+    let mut left = x;
+    for glyph in glyphs {
+        pixels(c, glyph, (left, y), FONT_PIXEL, color);
+        #[allow(clippy::cast_precision_loss, reason = "a glyph's few pixels")]
+        let advance = glyph.width as f32 * FONT_PIXEL;
+        left += advance;
+    }
 }
 
 /// A widget in the panel.
@@ -246,7 +359,120 @@ impl Panel {
                     );
                 }
             }
+            Body::Chips(chips) => return Self::chips(c, chips, (x, top), align),
+            Body::Icons { columns, icons } => {
+                return Self::icons(c, *columns, icons, (x, top), align);
+            }
+            Body::Cards(rows) => return Self::cards(c, rows, (x, top), align),
         }
         top + LINE
+    }
+
+    /// Chips a line each, as wide as their words; returns where they end.
+    fn chips(c: &mut Canvas, chips: &[Chip], (x, top): (f32, f32), align: Align) -> f32 {
+        let mut y = top;
+        for chip in chips {
+            let width = word_width(&chip.glyphs) + 16.0;
+            let left = if align == Align::Right { x - width } else { x };
+            let line = chip.outlined.then(|| Line::solid(colors::ACCENT, 1.5));
+            c.rect((left, y, width, 22.0), 3.0, Some(TEAL_BG), line);
+            let height = chip.glyphs.first().map_or(8.0, |g| {
+                #[allow(clippy::cast_precision_loss, reason = "a glyph's few pixels")]
+                let h = g.height as f32;
+                h
+            });
+            word(
+                c,
+                &chip.glyphs,
+                (left + 8.0, y + (22.0 - height * FONT_PIXEL) / 2.0),
+                TEAL,
+            );
+            y += 23.0;
+        }
+        y - 1.0
+    }
+
+    /// Pictures on tiles, `columns` a row; returns where they end.
+    fn icons(
+        c: &mut Canvas,
+        columns: usize,
+        icons: &[Icon],
+        (x, top): (f32, f32),
+        align: Align,
+    ) -> f32 {
+        let columns = columns.max(1);
+        #[allow(clippy::cast_precision_loss, reason = "a few columns")]
+        let width = columns as f32 * 42.0 - 6.0;
+        let left = if align == Align::Right { x - width } else { x };
+        let mut bottom = top;
+        for (i, icon) in icons.iter().enumerate() {
+            #[allow(clippy::cast_precision_loss, reason = "a few pictures")]
+            let (tx, ty) = (
+                left + (i % columns) as f32 * 42.0,
+                top - 1.0 + (i / columns) as f32 * 42.0,
+            );
+            let outline = (icon.look == Look::Outlined).then(|| Line::solid(colors::TEXT, 1.5));
+            c.rect((tx, ty, 36.0, 36.0), 4.0, Some(TILE), outline);
+            let ink = icon.picture.color.unwrap_or(colors::TEXT);
+            let ink = if icon.look == Look::Dim {
+                faded(ink, 89)
+            } else {
+                ink
+            };
+            #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
+            let (pw, ph) = (
+                icon.picture.width as f32 * ICON_PIXEL,
+                icon.picture.height as f32 * ICON_PIXEL,
+            );
+            pixels(
+                c,
+                &icon.picture,
+                (tx + (36.0 - pw) / 2.0, ty + (36.0 - ph) / 2.0),
+                ICON_PIXEL,
+                ink,
+            );
+            bottom = ty + 36.0;
+        }
+        bottom
+    }
+
+    /// Groups of pictures a row each, labelled to their left; returns where they end.
+    fn cards(c: &mut Canvas, rows: &[CardRow], (x, top): (f32, f32), align: Align) -> f32 {
+        let mut bottom = top;
+        for (r, row) in rows.iter().enumerate() {
+            #[allow(clippy::cast_precision_loss, reason = "a few rows and cards")]
+            let (y, width) = (
+                top - 2.0 + r as f32 * 23.0,
+                row.cards.len() as f32 * 22.0 - 2.0,
+            );
+            let label = word_width(&row.label);
+            let cards_left = if align == Align::Right {
+                x - width
+            } else {
+                x + label + 3.0
+            };
+            word(c, &row.label, (cards_left - 3.0 - label, y + 2.0), TEAL);
+            for (i, (picture, answered)) in row.cards.iter().enumerate() {
+                #[allow(clippy::cast_precision_loss, reason = "a few cards")]
+                let cx = cards_left + i as f32 * 22.0;
+                let alpha = if *answered { 255 } else { 115 };
+                c.rect((cx, y, 20.0, 20.0), 4.0, Some(faded(TEAL_BG, alpha)), None);
+                #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
+                let (pw, ph) = (
+                    picture.width as f32 * CARD_PIXEL,
+                    picture.height as f32 * CARD_PIXEL,
+                );
+                let ink = faded(picture.color.unwrap_or(TEAL), alpha);
+                pixels(
+                    c,
+                    picture,
+                    (cx + (20.0 - pw) / 2.0, y + (20.0 - ph) / 2.0),
+                    CARD_PIXEL,
+                    ink,
+                );
+            }
+            bottom = y + 20.0;
+        }
+        bottom
     }
 }
