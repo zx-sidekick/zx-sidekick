@@ -15,7 +15,7 @@ use crate::{
 use sdl3::{
     audio::{AudioFormat, AudioSpec, AudioStreamOwner},
     dialog::{show_open_file_dialog, DialogFileFilter},
-    event::Event,
+    event::{Event, WindowEvent},
     gamepad::{Axis, Button, Gamepad, GamepadType},
     keyboard::{Mod, Scancode},
     mouse::MouseButton,
@@ -34,6 +34,7 @@ use sidekick_ui::{
     PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -209,6 +210,28 @@ struct Output<'a> {
     fonts: Fonts,
 }
 
+/// The window and what's on it, where the live-resize watch can reach it.
+struct App {
+    out: Output<'static>,
+    screen: Screen,
+    gamepads: Gamepads,
+    /// What went wrong in a pass the watch ran, for the main loop to return.
+    failed: Option<String>,
+}
+
+/// What came of an event for the main loop.
+#[derive(PartialEq, Eq)]
+enum Flow {
+    Go,
+    Quit,
+}
+
+thread_local! {
+    /// The window, between events. The main loop takes it for each event and each pass; while
+    /// a window's edge is dragged, SDL keeps the main loop waiting and the watch draws with it.
+    static APP: RefCell<Option<App>> = const { RefCell::new(None) };
+}
+
 /// Runs the window until it's closed.
 ///
 /// # Errors
@@ -230,11 +253,12 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let canvas = window.into_canvas();
-    let creator = canvas.texture_creator();
-    let mut out = Output {
-        picture: new_texture(&creator, PICTURE.0, PICTURE.1)?,
+    // The textures live as long as the window, which lives as long as the program.
+    let creator = Box::leak(Box::new(canvas.texture_creator()));
+    let out = Output {
+        picture: new_texture(creator, PICTURE.0, PICTURE.1)?,
         canvas,
-        creator: &creator,
+        creator,
         prompt: None,
         notice: None,
         panel: None,
@@ -250,18 +274,42 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         fonts: Fonts::new(),
     };
     let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
-    let mut screen = first_screen(start);
-    let mut gamepads = Gamepads {
+    let gamepads = Gamepads {
         // No gamepad support is no reason not to play by keyboard.
         subsystem: sdl.gamepad().ok(),
         open: BTreeMap::new(),
         pads: Pads::default(),
         last: Maker::default(),
     };
+    APP.set(Some(App {
+        out,
+        screen: first_screen(start),
+        gamepads,
+        failed: None,
+    }));
+    // Dragging a window's edge keeps the main loop waiting until it's let go (macOS,
+    // Windows); SDL sends the window an expose 60 times a second meanwhile, to draw from here.
+    let watch = sdl
+        .event()
+        .map_err(|e| e.to_string())?
+        .add_event_watch(|event| {
+            if matches!(
+                event,
+                Event::Window {
+                    win_event: WindowEvent::Exposed,
+                    ..
+                }
+            ) {
+                APP.with(|app| if_free(app, App::pass_from_watch));
+            }
+        });
 
+    let ran = run_loop(&mut events);
+    drop(watch);
     // Whichever way out, a game under way is kept.
-    let ran = run_loop(&mut events, &mut out, &mut screen, &mut gamepads);
-    screen.quit();
+    if let Some(mut app) = APP.take() {
+        app.screen.quit();
+    }
     ran
 }
 
@@ -269,62 +317,113 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
 ///
 /// # Errors
 /// If SDL can't draw, or the machine fails.
-fn run_loop(
-    events: &mut EventPump,
-    out: &mut Output,
-    screen: &mut Screen,
-    gamepads: &mut Gamepads,
-) -> Result<(), String> {
+fn run_loop(events: &mut EventPump) -> Result<(), String> {
     loop {
-        for event in events.poll_iter() {
-            match event {
-                Event::Quit { .. } => return Ok(()),
-                Event::KeyDown {
-                    scancode: Some(scancode),
-                    keymod,
-                    repeat,
-                    ..
-                } if is_fullscreen_toggle(scancode, keymod) => {
-                    if !repeat {
-                        toggle_fullscreen(&mut out.canvas)?;
-                    }
+        // The window isn't held while SDL waits for events, so the watch can draw with it.
+        while let Some(event) = events.poll_event() {
+            if with_app(|app| app.event(event))? == Flow::Quit {
+                return Ok(());
+            }
+        }
+        with_app(App::pass)?;
+    }
+}
+
+/// Runs `f` on the window, or returns what went wrong in a pass the watch ran.
+fn with_app<T>(f: impl FnOnce(&mut App) -> Result<T, String>) -> Result<T, String> {
+    APP.with_borrow_mut(|app| {
+        let app = app.as_mut().ok_or("the window is closed")?;
+        app.failed.take().map_or_else(|| f(app), Err)
+    })
+}
+
+/// Runs `f` on what's in the cell, unless it's empty or already in use: an event SDL raised
+/// while the main loop has it.
+fn if_free<T>(cell: &RefCell<Option<T>>, f: impl FnOnce(&mut T)) {
+    if let Ok(mut held) = cell.try_borrow_mut() {
+        if let Some(value) = held.as_mut() {
+            f(value);
+        }
+    }
+}
+
+impl App {
+    /// Handles an event.
+    ///
+    /// # Errors
+    /// If SDL can't draw, or the machine fails.
+    fn event(&mut self, event: Event) -> Result<Flow, String> {
+        let Self {
+            out,
+            screen,
+            gamepads,
+            ..
+        } = self;
+        match event {
+            Event::Quit { .. } => return Ok(Flow::Quit),
+            Event::KeyDown {
+                scancode: Some(scancode),
+                keymod,
+                repeat,
+                ..
+            } if is_fullscreen_toggle(scancode, keymod) => {
+                if !repeat {
+                    toggle_fullscreen(&mut out.canvas)?;
                 }
-                event => {
-                    let mut presses = gamepads.event(&event);
-                    if let Screen::Play(player) = &mut *screen {
-                        if player.offer_event(&event, &presses, &mut gamepads.pads)
-                            || player.save_keys(&event, &mut gamepads.pads)
-                            || player.held(&event, &presses, &mut gamepads.pads)
-                        {
-                            continue;
-                        }
-                        match player.menu_event(&event, &presses, &mut gamepads.pads) {
-                            MenuEvent::NotMine => {}
-                            MenuEvent::Taken => continue,
-                            MenuEvent::Quit => return Ok(()),
-                        }
-                        if player.entry_event(&presses, &mut gamepads.pads) {
-                            continue;
-                        }
-                        presses.extend(gamepads.host_key(&event, player.play.mapping()));
+            }
+            event => {
+                let mut presses = gamepads.event(&event);
+                if let Screen::Play(player) = &mut *screen {
+                    if player.offer_event(&event, &presses, &mut gamepads.pads)
+                        || player.save_keys(&event, &mut gamepads.pads)
+                        || player.held(&event, &presses, &mut gamepads.pads)
+                    {
+                        return Ok(Flow::Go);
                     }
-                    match screen.event(&event, &presses, &out.canvas) {
-                        Choice::Stay => {}
-                        Choice::Quit => return Ok(()),
-                        Choice::Play(i) => {
-                            if let Screen::Library(library) = &mut *screen {
-                                let game = library.games.swap_remove(i);
-                                *screen = open_game(game, &mut out.canvas)?;
-                                gamepads.pads.hold_back();
-                            }
+                    match player.menu_event(&event, &presses, &mut gamepads.pads) {
+                        MenuEvent::NotMine => {}
+                        MenuEvent::Taken => return Ok(Flow::Go),
+                        MenuEvent::Quit => return Ok(Flow::Quit),
+                    }
+                    if player.entry_event(&presses, &mut gamepads.pads) {
+                        return Ok(Flow::Go);
+                    }
+                    presses.extend(gamepads.host_key(&event, player.play.mapping()));
+                }
+                match screen.event(&event, &presses, &out.canvas) {
+                    Choice::Stay => {}
+                    Choice::Quit => return Ok(Flow::Quit),
+                    Choice::Play(i) => {
+                        if let Screen::Library(library) = &mut *screen {
+                            let game = library.games.swap_remove(i);
+                            *screen = open_game(game, &mut out.canvas)?;
+                            gamepads.pads.hold_back();
                         }
                     }
                 }
             }
         }
-        screen.between_passes(&out.canvas, &mut gamepads.pads);
-        gamepads.label(screen);
-        screen.draw(out, gamepads)?;
+        Ok(Flow::Go)
+    }
+
+    /// Runs the frames due and draws the screen.
+    ///
+    /// # Errors
+    /// If SDL can't draw, or the machine fails.
+    fn pass(&mut self) -> Result<(), String> {
+        self.screen
+            .between_passes(&self.out.canvas, &mut self.gamepads.pads);
+        self.gamepads.label(&mut self.screen);
+        self.screen.draw(&mut self.out, &mut self.gamepads)
+    }
+
+    /// A pass for the watch, which has no one to return an error to: the main loop returns it.
+    fn pass_from_watch(&mut self) {
+        if self.failed.is_none() {
+            if let Err(why) = self.pass() {
+                self.failed = Some(why);
+            }
+        }
     }
 }
 
@@ -1852,6 +1951,21 @@ notice = { text = "Press fire." }
         let definition = Definition::from_toml(text).expect("the test definition parses");
         let notice = pause_notice(Some(&definition), PadLabels::Letters);
         assert_eq!(notice.text, "Press fire.");
+    }
+
+    #[test]
+    fn the_watch_draws_only_with_a_window_no_one_else_has() {
+        let cell = RefCell::new(Some(0));
+        if_free(&cell, |passes| *passes += 1);
+        assert_eq!(cell.borrow().as_ref(), Some(&1));
+
+        let held = cell.borrow_mut();
+        if_free(&cell, |passes| *passes += 1);
+        drop(held);
+        assert_eq!(cell.borrow().as_ref(), Some(&1), "mid-event, it waits");
+
+        let closed: RefCell<Option<i32>> = RefCell::new(None);
+        if_free(&closed, |_| panic!("no window to draw with"));
     }
 
     #[test]

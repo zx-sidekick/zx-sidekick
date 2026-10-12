@@ -144,7 +144,7 @@ Most of what a definition says is plain data. A few things are computations no d
 
 **Mockup:** every screenshot below shows the window: the picture on the left (the Spectrum's 320×256 with its border, three times over), the panel on the right. A game with no panel widgets gets the whole width.
 
-- **The picture:** scaled by a whole number, never blurred. A game **starts fullscreen**, at the largest whole scale the screen allows. **F11** switches between fullscreen and a window; on a Mac **Control-Command-F** does, since F11 never reaches a program there.
+- **The picture:** scaled by a whole number, never blurred. A game **starts fullscreen**, at the largest whole scale the screen allows. **F11** switches between fullscreen and a window; on a Mac **Control-Command-F** does, since F11 never reaches a program there. In a window, the picture follows the window's size as its edge is dragged, at the largest whole scale that fits, and the game keeps running.
 - **The window's title bar** follows the system's light or dark appearance.
 - **The tape prompt** appears when a game's tape isn't found. It shows the game's title, a short explanation ("This needs your copy of the game. Nothing from the original is included; it runs from your own tape"), a **Locate the tape…** button, drag-and-drop onto the window, and a link to where the tape can be downloaded, all from the game's `[[media]]`. It accepts the tape, or the `.zip` it's distributed in, in any upper or lower case. A located tape is kept in the game's data folder, so it's found next time. A different dump is refused with a clear message naming the dump that's needed.
 
