@@ -5,7 +5,7 @@ use crate::{
     value::{self, Read, WriteError},
     Error, Machine, Stop,
 };
-use sidekick_def::{Definition, State, Test};
+use sidekick_def::{Definition, Patch, State, Test};
 use std::collections::BTreeMap;
 
 /// Every named value, as read at one moment.
@@ -140,6 +140,37 @@ impl Session {
             self.machine.write(at, byte);
         }
         Ok(())
+    }
+
+    /// Writes a patch's bytes over the game's, if its `expect` bytes are there. Returns
+    /// whether it was applied. A patch reaching into the ROM or past the top of memory, or into
+    /// a 128K bank (which comes with 128K play), is never applied.
+    pub fn patch(&mut self, patch: &Patch) -> bool {
+        self.swap(patch, &patch.expect.0, &patch.bytes.0)
+    }
+
+    /// Puts the game's bytes back where a patch was applied, if the patch's bytes are still
+    /// there. Returns whether it was undone.
+    pub fn unpatch(&mut self, patch: &Patch) -> bool {
+        self.swap(patch, &patch.bytes.0, &patch.expect.0)
+    }
+
+    /// Writes `to` at a patch's address if `from` is there.
+    fn swap(&mut self, patch: &Patch, from: &[u8], to: &[u8]) -> bool {
+        let Some(addr) = patch.addr.map(|a| a.0) else {
+            return false;
+        };
+        let fits = u32::from(addr) + u32::try_from(to.len()).unwrap_or(u32::MAX) <= 0x1_0000;
+        let there = (addr..)
+            .zip(from)
+            .all(|(at, &byte)| self.machine.peek(at) == byte);
+        if patch.bank.is_some() || addr < 0x4000 || !fits || from.len() != to.len() || !there {
+            return false;
+        }
+        for (at, &byte) in (addr..).zip(to) {
+            self.machine.write(at, byte);
+        }
+        true
     }
 
     /// The machine.

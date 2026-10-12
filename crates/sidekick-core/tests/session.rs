@@ -1,7 +1,7 @@
 //! A game's named values read each frame, its state decided, and writes to it by name.
 
 use sidekick_core::{Machine, Model, Read, Session, WriteError};
-use sidekick_def::Definition;
+use sidekick_def::{Address, Bytes, Definition, Patch};
 
 /// Frames for the 48K ROM to start up and settle into its editor.
 const BOOT_FRAMES: usize = 100;
@@ -330,4 +330,34 @@ fn a_tape_without_a_definition_names_nothing() {
     s.run_frame().expect("a frame");
     assert!(s.reading().is_empty());
     assert_eq!(s.state(), None);
+}
+
+#[test]
+fn a_patch_lands_only_on_its_expected_bytes_and_is_undone() {
+    let mut s = session("");
+    let patch = |addr: u16, bytes: &[u8], expect: &[u8]| Patch {
+        addr: Some(Address(addr)),
+        bank: None,
+        bytes: Bytes(bytes.to_vec()),
+        expect: Bytes(expect.to_vec()),
+    };
+    poke(&mut s, FREE, &[0x20, 0x05]);
+    let jump = patch(FREE, &[0x18, 0x05], &[0x20, 0x05]);
+    assert!(s.patch(&jump));
+    assert_eq!(
+        [s.machine().peek(FREE), s.machine().peek(FREE + 1)],
+        [0x18, 0x05]
+    );
+    assert!(!s.patch(&jump), "not twice: its expected bytes are gone");
+    assert!(s.unpatch(&jump));
+    assert_eq!(s.machine().peek(FREE), 0x20);
+    assert!(!s.unpatch(&jump), "nothing left to undo");
+
+    poke(&mut s, FREE, &[0x28, 0x05]);
+    assert!(!s.patch(&jump), "different code: left alone");
+    assert_eq!(s.machine().peek(FREE), 0x28);
+
+    let rom = patch(0x0038, &[0xC9], &[0xF5]);
+    assert!(!s.patch(&rom), "never the ROM");
+    assert_eq!(s.machine().peek(0x0038), 0xF5);
 }
