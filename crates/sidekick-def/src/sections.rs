@@ -97,6 +97,25 @@ pub struct Run {
     /// What the pad's directions drive in play.
     #[serde(default)]
     pub joystick: Joystick,
+    /// With `joystick = "keys"`: the game's own keys for each direction and fire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<DirectionKeys>,
+}
+
+/// A game's own keys for the joystick's directions and fire.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DirectionKeys {
+    /// Up.
+    pub up: String,
+    /// Down.
+    pub down: String,
+    /// Left.
+    pub left: String,
+    /// Right.
+    pub right: String,
+    /// Fire.
+    pub fire: String,
 }
 
 /// What a pad's directions drive.
@@ -112,7 +131,7 @@ pub enum Joystick {
     Sinclair2,
     /// The cursor keys (5–8, 0 to fire).
     Cursor,
-    /// The game's own keys, named in `[pad]`.
+    /// The game's own keys, named in `[run] keys`.
     Keys,
 }
 

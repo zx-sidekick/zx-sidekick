@@ -387,6 +387,40 @@
         }
       ]
     },
+    "DirectionKeys": {
+      "description": "A game's own keys for the joystick's directions and fire.",
+      "type": "object",
+      "properties": {
+        "down": {
+          "description": "Down.",
+          "type": "string"
+        },
+        "fire": {
+          "description": "Fire.",
+          "type": "string"
+        },
+        "left": {
+          "description": "Left.",
+          "type": "string"
+        },
+        "right": {
+          "description": "Right.",
+          "type": "string"
+        },
+        "up": {
+          "description": "Up.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "up",
+        "down",
+        "left",
+        "right",
+        "fire"
+      ]
+    },
     "Field": {
       "description": "A field of a table's records, or of a high-score entry.",
       "type": "object",
@@ -590,7 +624,7 @@
           "const": "cursor"
         },
         {
-          "description": "The game's own keys, named in `[pad]`.",
+          "description": "The game's own keys, named in `[run] keys`.",
           "type": "string",
           "const": "keys"
         }
@@ -1035,6 +1069,17 @@
           "description": "What the pad's directions drive in play.",
           "$ref": "#/$defs/Joystick",
           "default": "kempston"
+        },
+        "keys": {
+          "description": "With `joystick = \"keys\"`: the game's own keys for each direction and fire.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DirectionKeys"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "sync": {
           "description": "The top of the game's main loop, reached once per frame of play.",
