@@ -24,6 +24,7 @@ Dump: Starquake (Bubble Bus Software), as World of Spectrum distributes it: `STA
 | The bars' most | — | Picking something up adds to lives, energy, platforms or laser in turn, and the three bars are capped at 127 | read | (#78) |
 | Creatures touching BLOB | `0xA53A` | The main loop checks BLOB against each creature on the screen; one marked deadly that's close enough kills him outright, through the call at `0xA56A`. Creatures don't take energy | read | (#78), for the "no harm" switch (#79) |
 | Dying | `0xC350` | The way into the routine that takes a life: from a deadly touch, or with A = 2 when energy has run out (from `0xA537`) | read | (#78) |
+| No harm | `0xA56A` | Three bytes, `C4 50 C3`: the call that kills BLOB on a deadly creature's touch. Writing `00 00 00` there skips it, and the game plays on; putting the bytes back restores it | confirmed (the bytes), read (what skipping does) | The "no harm" switch on and off in play, on the real tape (#79) |
 | The control method | `0x5E58` | The menu's choice: 1 Kempston, 4 the keyboard (the default), and so on | confirmed | Chose Kempston: 4 became 1 (#78) |
 
 `docs/games/starquake.md`, "Facts to find", lists what's still needed.

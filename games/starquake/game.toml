@@ -198,8 +198,9 @@ hold = "lives"
 [[cheats]]
 id = "no-harm"
 label = "No harm from enemies"
-# patch = TODO: where the game decides an enemy has hurt BLOB, or a write that undoes the hit
-note = "Stops enemies taking energy or lives."
+# Skips the call that hurts BLOB when a creature touches him (docs/re/starquake.md).
+patch = [{ addr = 0xA56A, bytes = "00 00 00", expect = "C4 50 C3" }]
+note = "Stops creatures taking energy, and so lives, when they touch BLOB."
 
 # The pad.
 

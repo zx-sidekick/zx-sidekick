@@ -114,3 +114,58 @@ fn starquake_s_states_and_values_read_what_the_game_shows() {
         "and energy refills"
     );
 }
+
+/// Starquake in play from its real tape, with its definition; `None` without the tape.
+#[allow(clippy::print_stderr, reason = "a skipped test says why")]
+fn in_play() -> Option<Session> {
+    let zip = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/Starquake.tap.zip");
+    if !zip.exists() {
+        eprintln!("skipped: no {} (the player's own tape)", zip.display());
+        return None;
+    }
+    let tapes = tapes_in(&zip).expect("the zip holds a tape");
+    let package =
+        Package::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../games/starquake"))
+            .expect("Starquake's definition");
+    let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K");
+    machine.load_tap(&tapes[0].bytes).expect("the tape goes in");
+    let mut s = Session::new(machine, Some(package.definition));
+    until(&mut s, 400, |_| false);
+    press(&mut s, Key::Space);
+    assert!(until(&mut s, 1500, |s| s.state() == Some("title")));
+    let started = (0..10).any(|_| {
+        press(&mut s, Key::N0);
+        until(&mut s, 200, |s| s.state() == Some("play"))
+    });
+    assert!(started, "play");
+    Some(s)
+}
+
+#[test]
+fn starquake_s_training_switches_work_on_the_game() {
+    let Some(mut s) = in_play() else { return };
+    let number = |s: &Session, name: &str| s.reading()[name].number();
+
+    s.switch("full-energy", true).expect("full energy goes on");
+    until(&mut s, 3000, |_| false);
+    assert_eq!(number(&s, "lives"), Some(4), "the timer took no life");
+    assert_eq!(number(&s, "energy"), Some(127));
+
+    s.switch("full-platforms", true)
+        .expect("full platforms goes on");
+    until(&mut s, 2, |_| false);
+    assert_eq!(number(&s, "platforms"), Some(127));
+    press(&mut s, Key::A);
+    until(&mut s, 4, |_| false);
+    assert_eq!(
+        number(&s, "platforms"),
+        Some(127),
+        "a platform built, still full"
+    );
+
+    s.switch("no-harm", true)
+        .expect("its patch finds the game's bytes in play");
+    assert_eq!(s.machine().peek(0xA56A), 0x00);
+    s.switch("no-harm", false).expect("and comes off");
+    assert_eq!(s.machine().peek(0xA56A), 0xC4, "the game's own bytes back");
+}
