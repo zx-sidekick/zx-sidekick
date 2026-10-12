@@ -2,13 +2,14 @@
 //! the largest whole scale, its sound, and the keyboard.
 
 use crate::{
+    compose::{self, PICTURE},
     entry::{self, Entry, Stroke, Typing},
     games::{self, Game, Playing},
     keys::{spectrum_key, Spectrum},
     menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
-    picture::{layout, placement, to_rgba, Layout},
+    picture::{placement, to_rgba, Layout},
     saves::{self, Saves, Unsaved},
     scores,
 };
@@ -26,12 +27,12 @@ use sdl3::{
     EventPump, GamepadSubsystem,
 };
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
-use sidekick_def::{Definition, Role};
+use sidekick_def::Role;
 use sidekick_ui::{
-    Canvas, EntryCard, Face, Fonts, LibraryPage, Menu as MenuCard, Note, NoticeHint, Offer,
-    PadLabels, PadMark, Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame,
-    ENTRY_HEIGHT, ENTRY_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, OFFER_HEIGHT, OFFER_WIDTH,
-    PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    Canvas, EntryCard, Fonts, LibraryPage, Menu as MenuCard, Note, Offer, PadLabels, Panel,
+    PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT, ENTRY_WIDTH,
+    MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, OFFER_HEIGHT, OFFER_WIDTH, QUESTION_WIDTH,
+    TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
     cell::RefCell,
@@ -97,9 +98,6 @@ fn cached<'a, T: Clone + PartialEq>(
 
 /// The keyboard, as a pad, for the keys that do a game's actions: an id no pad SDL opens has.
 const KEYBOARD: u32 = u32::MAX;
-
-/// The picture's size: the screen with 32 pixels of border all round.
-const PICTURE: (u32, u32) = (320, 256);
 
 /// The tape prompt's size, in its logical pixels.
 const PROMPT: (u32, u32) = (TAPE_PROMPT_WIDTH, TAPE_PROMPT_HEIGHT);
@@ -769,7 +767,7 @@ impl Player {
             .update(None::<Rect>, &self.rgba, PICTURE.0 as usize * 4)
             .map_err(|e| e.to_string())?;
         // Dimmed to 55% while the game is paused, under the notice.
-        let dim = if self.paused() { 140 } else { 255 };
+        let dim = if self.paused() { compose::DIMMED } else { 255 };
         out.picture.set_color_mod(dim, dim, dim);
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
@@ -811,7 +809,11 @@ impl Player {
                 )?;
                 if let Some((texture, _, _)) = &mut out.panel {
                     // Dimmed under the menu, as the picture is; not under the pause notice.
-                    let dim = if self.menu.is_some() { 140 } else { 255 };
+                    let dim = if self.menu.is_some() {
+                        compose::DIMMED
+                    } else {
+                        255
+                    };
                     texture.set_color_mod(dim, dim, dim);
                     out.canvas
                         .copy(texture, None, frect(at))
@@ -829,7 +831,7 @@ impl Player {
                     )?;
                     if let Some((texture, _, _)) = &mut out.pins {
                         // Dimmed with the picture.
-                        let dim = if self.paused() { 140 } else { 255 };
+                        let dim = if self.paused() { compose::DIMMED } else { 255 };
                         texture.set_color_mod(dim, dim, dim);
                         out.canvas
                             .copy(texture, None, frect(layout.picture))
@@ -1163,19 +1165,12 @@ impl Player {
 
     /// Where the picture and, when the game has guidance levels, the panel go.
     fn layout(&self, output: (u32, u32)) -> Layout {
-        let panel = self
-            .session
-            .definition()
-            .and_then(|d| d.guidance.as_ref())
-            .is_some_and(|g| !g.levels.is_empty());
-        layout(output, PICTURE, panel)
+        compose::layout_for(self.session.definition(), output)
     }
 
     /// Whether the game is in the state with `role`.
     fn in_role(&self, role: Role) -> bool {
-        self.session
-            .definition()
-            .is_some_and(|d| d.is(self.session.state(), role))
+        compose::in_role(&self.session, role)
     }
 
     fn paused(&self) -> bool {
@@ -1485,9 +1480,8 @@ impl Player {
         }
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let (px, py, pw, ph) = layout.picture;
         let scale = layout.scale;
-        let notice = pause_notice(self.session.definition(), labels);
+        let notice = compose::pause_notice(self.session.definition(), labels);
         if out
             .notice
             .as_ref()
@@ -1502,49 +1496,13 @@ impl Player {
             texture.set_blend_mode(BlendMode::Blend);
             out.notice = Some((texture, notice, scale));
         }
-        let (w, h) = (PAUSE_NOTICE_WIDTH * scale, PAUSE_NOTICE_HEIGHT * scale);
-        let at = (px + (pw - w) / 2, py + (ph - h) / 2, w, h);
+        let at = compose::notice_at(layout);
         if let Some((texture, _, _)) = &out.notice {
             out.canvas
                 .copy(texture, None, frect(at))
                 .map_err(|e| e.to_string())?;
         }
         Ok(())
-    }
-}
-
-/// The pause notice a definition words, for a pad marked as `labels` says.
-fn pause_notice(definition: Option<&Definition>, labels: PadLabels) -> PauseNotice {
-    let notice = definition
-        .into_iter()
-        .flat_map(|d| &d.states)
-        .find(|s| s.role == Some(Role::Paused))
-        .and_then(|s| s.notice.as_ref());
-    let Some(notice) = notice else {
-        return PauseNotice {
-            pad: labels,
-            ..PauseNotice::default()
-        };
-    };
-    PauseNotice {
-        text: notice.text.clone(),
-        hints: notice
-            .hints
-            .iter()
-            .map(|hint| NoticeHint {
-                keys: hint.keys.clone(),
-                pad: hint.pad.as_deref().and_then(|part| match part {
-                    "west" => Some(PadMark::Face(Face::West)),
-                    "south" => Some(PadMark::Face(Face::South)),
-                    "east" => Some(PadMark::Face(Face::East)),
-                    "north" => Some(PadMark::Face(Face::North)),
-                    "dpad" | "stick" => Some(PadMark::Directions),
-                    _ => None,
-                }),
-                does: hint.does.clone(),
-            })
-            .collect(),
-        pad: labels,
     }
 }
 
@@ -1927,6 +1885,7 @@ fn frames_due(elapsed: Duration, run: u64) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sidekick_def::Definition;
 
     #[test]
     fn the_pause_notice_is_the_paused_role_s_whatever_its_name() {
@@ -1949,7 +1908,7 @@ pc = 0x6001
 notice = { text = "Press fire." }
 "#;
         let definition = Definition::from_toml(text).expect("the test definition parses");
-        let notice = pause_notice(Some(&definition), PadLabels::Letters);
+        let notice = compose::pause_notice(Some(&definition), PadLabels::Letters);
         assert_eq!(notice.text, "Press fire.");
     }
 

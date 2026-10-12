@@ -1,7 +1,8 @@
 //! Running a machine without a window, and writing its picture as a PNG.
 
-use crate::{keys::key_named, picture::to_rgba};
+use crate::{compose, keys::key_named, picture::to_rgba};
 use sidekick_core::{Key, Picture, Session};
+use sidekick_ui::{Fonts, PadLabels};
 use std::{fs, path::Path};
 
 /// How many frames a `--key` holds its key: enough for a game to see it.
@@ -53,8 +54,34 @@ impl std::str::FromStr for SwitchAt {
     }
 }
 
+/// What a screenshot shows.
+#[derive(Clone, Copy)]
+pub(crate) enum Shot {
+    /// The Spectrum's picture alone, each pixel `scale` × `scale` pixels.
+    Picture { scale: u32 },
+    /// The whole window, `size` screen pixels, played at guidance `level`.
+    Window { level: u8, size: (u32, u32) },
+}
+
+/// A window size from `WIDTHxHEIGHT`, like 1368x768.
+///
+/// # Errors
+/// If it isn't two numbers, each at least 1.
+pub(crate) fn size(spec: &str) -> Result<(u32, u32), String> {
+    let wrong = || format!("{spec:?}: write a size as WIDTHxHEIGHT, like 1368x768");
+    let (w, h) = spec.split_once(['x', '×']).ok_or_else(wrong)?;
+    let (w, h): (u32, u32) = (
+        w.parse().map_err(|_| wrong())?,
+        h.parse().map_err(|_| wrong())?,
+    );
+    if w == 0 || h == 0 {
+        return Err(wrong());
+    }
+    Ok((w, h))
+}
+
 /// Runs `frames` frames, pressing the keys and turning the switches on when their frames
-/// come, then writes the picture to `screenshot`, `scale` times larger.
+/// come, then writes the screenshot, if one is asked for, as a PNG.
 ///
 /// # Errors
 /// If the machine fails, a switch won't go on, or the PNG can't be written.
@@ -63,9 +90,11 @@ pub(crate) fn run(
     frames: u32,
     keys: &[KeyPress],
     switches: &[SwitchAt],
-    screenshot: Option<&Path>,
-    scale: u32,
+    screenshot: Option<(&Path, Shot)>,
 ) -> Result<(), String> {
+    if let Some((_, Shot::Window { level, .. })) = screenshot {
+        session.set_level(level);
+    }
     for frame in 0..frames {
         for switch in switches.iter().filter(|s| s.frame == frame) {
             session
@@ -86,11 +115,23 @@ pub(crate) fn run(
             session.run_frame().map_err(|e| e.to_string())?;
         }
     }
-    if let Some(path) = screenshot {
-        write_png(session.machine().picture(), scale, path)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-    }
-    Ok(())
+    let Some((path, shot)) = screenshot else {
+        return Ok(());
+    };
+    let written = match shot {
+        Shot::Picture { scale } => write_png(session.machine().picture(), scale, path),
+        Shot::Window { level, size } => {
+            let rgba = compose::window(
+                session,
+                usize::from(level),
+                size,
+                PadLabels::Letters,
+                &mut Fonts::new(),
+            );
+            fs::write(path, sidekick_ui::png::encode(&rgba, size.0, size.1))
+        }
+    };
+    written.map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// The game's state, the record of the game being played, and every named value as of the
@@ -136,4 +177,18 @@ fn write_png(picture: &Picture, scale: u32, path: &Path) -> std::io::Result<()> 
         path,
         sidekick_ui::png::encode(&scaled, size(width), size(height)),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_size_is_two_numbers() {
+        assert_eq!(size("1368x768"), Ok((1368, 768)));
+        assert_eq!(size("800×600"), Ok((800, 600)));
+        for wrong in ["1368", "0x768", "ax768", ""] {
+            assert!(size(wrong).is_err(), "{wrong:?}");
+        }
+    }
 }
