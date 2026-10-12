@@ -316,19 +316,11 @@ fn from_bytes(
     Ok(())
 }
 
-/// Loads a snapshot into the machine. One the machine refuses part-way leaves it as it was:
-/// what it held is put back.
+/// Loads a snapshot into the machine, which refuses a damaged one whole: it's left as it was.
 fn load_machine(session: &mut Session, szx: &[u8]) -> Result<(), Refused> {
-    let machine = session.machine_mut();
-    let before = machine.save_szx().map_err(|_| Refused::Damaged)?;
-    machine.load_szx(szx).map_err(|e| {
-        if let Error::OtherModel | Error::UnknownModel = e {
-            Refused::OtherMachine
-        } else {
-            // Its own snapshot, just taken: the machine reads it back.
-            let _ = machine.load_szx(&before);
-            Refused::Damaged
-        }
+    session.machine_mut().load_szx(szx).map_err(|e| match e {
+        Error::OtherModel | Error::UnknownModel => Refused::OtherMachine,
+        _ => Refused::Damaged,
     })
 }
 

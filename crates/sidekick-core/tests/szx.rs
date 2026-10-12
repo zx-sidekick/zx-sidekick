@@ -66,3 +66,46 @@ fn something_that_isnt_a_snapshot_is_refused() {
     assert!(machine.load_szx(b"not a snapshot").is_err());
     assert!(machine.load_szx(&[]).is_err());
 }
+
+/// A block as a snapshot holds it: its id, its size and its bytes.
+fn block(id: [u8; 4], data: &[u8]) -> Vec<u8> {
+    let size = u32::try_from(data.len()).expect("a small block");
+    [&id[..], &size.to_le_bytes(), data].concat()
+}
+
+#[test]
+fn a_damaged_snapshot_is_refused_and_changes_nothing() {
+    let szx = booted(Model::Sinclair48K).save_szx().expect("it saves");
+    let header = &szx[..8];
+    let mut bad_id = szx.clone();
+    bad_id[8..12].copy_from_slice(&[0xFF, 0xFE, 0xFD, 0xFC]);
+    let mut huge = szx.clone();
+    huge[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
+    let mut short_page = vec![0, 0, 0];
+    short_page.extend_from_slice(&[0x55; 100]);
+    let damaged: Vec<(&str, Vec<u8>)> = vec![
+        ("cut short", szx[..szx.len() - 100].to_vec()),
+        ("an id that isn't text", bad_id),
+        ("a size past the end", huge),
+        (
+            "a Z80R too short",
+            [header, &block(*b"Z80R", &[0; 10])].concat(),
+        ),
+        (
+            "a page a 48K doesn't have",
+            [header, &block(*b"RAMP", &[0, 0, 9, 0])].concat(),
+        ),
+        (
+            "less than a page of data",
+            [header, &block(*b"RAMP", &short_page)].concat(),
+        ),
+    ];
+    for (what, bytes) in damaged {
+        let mut machine = booted(Model::Sinclair48K);
+        machine.write(0x9000, 0x17);
+        let (memory, pc) = (ram(&machine), machine.registers().get_pc());
+        assert!(machine.load_szx(&bytes).is_err(), "{what}: refused");
+        assert!(ram(&machine) == memory, "{what}: the same memory");
+        assert_eq!(machine.registers().get_pc(), pc, "{what}: the same PC");
+    }
+}
