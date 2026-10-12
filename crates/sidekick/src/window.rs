@@ -25,7 +25,7 @@ use sidekick_core::{Machine, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
 use sidekick_ui::{
     Canvas, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark,
-    PauseNotice, Question, Refusal, TapePrompt, MENU_WIDTH, PAUSE_NOTICE_HEIGHT,
+    PauseNotice, Question, Refusal, Row, TapePrompt, MENU_WIDTH, PAUSE_NOTICE_HEIGHT,
     PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
@@ -44,6 +44,10 @@ const QUEUED_FRAMES: usize = 3;
 
 /// The most frames run between two presented pictures, so a stall can't snowball.
 const MOST_FRAMES_A_PASS: usize = 5;
+
+/// The menu card's width, for halving it.
+#[allow(clippy::cast_precision_loss, reason = "a card's width")]
+const MENU_WIDTH_F: f32 = MENU_WIDTH as f32;
 
 /// What came of an event for the guidance menu.
 enum MenuEvent {
@@ -613,11 +617,22 @@ impl Player {
                 if let Some((left, top, scale, density)) = self.menu_at {
                     let card = menu.card(PadLabels::default());
                     // Clicks come in window points; the card was placed in device pixels.
-                    let row = card.row_at(
+                    let (lx, ly) = (
                         x.mul_add(density, -left) / scale,
                         y.mul_add(density, -top) / scale,
                     );
-                    inputs.extend(row.map(menu::Input::Click));
+                    match card.row_at(lx, ly) {
+                        // The level box's halves step it the way their arrows point.
+                        Some(Row::Level) => inputs.extend([
+                            menu::Input::Choose(Row::Level),
+                            if lx < f32::midpoint(0.0, MENU_WIDTH_F) {
+                                menu::Input::Left
+                            } else {
+                                menu::Input::Right
+                            },
+                        ]),
+                        row => inputs.extend(row.map(menu::Input::Click)),
+                    }
                 }
             }
             _ => {}

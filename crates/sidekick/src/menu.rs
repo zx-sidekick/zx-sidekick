@@ -17,6 +17,8 @@ pub(crate) enum Input {
     Back,
     /// A click on a row: chooses it and presses it.
     Click(Row),
+    /// Chooses a row without pressing it.
+    Choose(Row),
 }
 
 /// What comes of an input.
@@ -160,12 +162,16 @@ impl Menu {
             }
             Input::Back => Outcome::Cancelled,
             Input::Confirm => self.press(session),
-            Input::Click(row) => {
+            Input::Click(row) | Input::Choose(row) => {
                 if self.chosen != row {
                     self.armed = None;
                 }
                 self.chosen = row;
-                self.press(session)
+                if matches!(input, Input::Click(_)) {
+                    self.press(session)
+                } else {
+                    Outcome::Stay
+                }
             }
         }
     }
@@ -498,6 +504,18 @@ frames = 5
         let exit = Row::Action(2);
         menu.input(Input::Click(exit), &mut s);
         assert_eq!(menu.input(Input::Click(exit), &mut s), Outcome::Exit);
+    }
+
+    #[test]
+    fn choosing_a_row_doesn_t_press_it() {
+        let mut s = session(DEFINITION);
+        let mut menu = Menu::open(&s, 0, "Test");
+        menu.input(Input::Choose(Row::Switch(0)), &mut s);
+        assert_eq!(menu.card(PadLabels::Letters).chosen, Row::Switch(0));
+        assert!(!menu.card(PadLabels::Letters).switches[0].on);
+        menu.input(Input::Choose(Row::Level), &mut s);
+        menu.input(Input::Left, &mut s);
+        assert_eq!(menu.level(), 0, "no wrapping round down");
     }
 
     #[test]
