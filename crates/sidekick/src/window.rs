@@ -23,7 +23,7 @@ use sdl3::{
     rect::Rect,
     render::{BlendMode, FRect, ScaleMode, Texture, TextureCreator, WindowCanvas},
     video::{FullscreenType, WindowContext},
-    GamepadSubsystem,
+    EventPump, GamepadSubsystem,
 };
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
@@ -256,10 +256,26 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         last: Maker::default(),
     };
 
-    'run: loop {
+    // Whichever way out, a game under way is kept.
+    let ran = run_loop(&mut events, &mut out, &mut screen, &mut gamepads);
+    screen.quit();
+    ran
+}
+
+/// Takes events and draws the screen until the program is to quit.
+///
+/// # Errors
+/// If SDL can't draw, or the machine fails.
+fn run_loop(
+    events: &mut EventPump,
+    out: &mut Output,
+    screen: &mut Screen,
+    gamepads: &mut Gamepads,
+) -> Result<(), String> {
+    loop {
         for event in events.poll_iter() {
             match event {
-                Event::Quit { .. } => break 'run,
+                Event::Quit { .. } => return Ok(()),
                 Event::KeyDown {
                     scancode: Some(scancode),
                     keymod,
@@ -272,7 +288,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                 }
                 event => {
                     let mut presses = gamepads.event(&event);
-                    if let Screen::Play(player) = &mut screen {
+                    if let Screen::Play(player) = &mut *screen {
                         if player.offer_event(&event, &presses, &mut gamepads.pads)
                             || player.save_keys(&event, &mut gamepads.pads)
                             || player.held(&event, &presses, &mut gamepads.pads)
@@ -282,7 +298,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                         match player.menu_event(&event, &presses, &mut gamepads.pads) {
                             MenuEvent::NotMine => {}
                             MenuEvent::Taken => continue,
-                            MenuEvent::Quit => break 'run,
+                            MenuEvent::Quit => return Ok(()),
                         }
                         if player.entry_event(&presses, &mut gamepads.pads) {
                             continue;
@@ -291,11 +307,11 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                     }
                     match screen.event(&event, &presses, &out.canvas) {
                         Choice::Stay => {}
-                        Choice::Quit => break 'run,
+                        Choice::Quit => return Ok(()),
                         Choice::Play(i) => {
-                            if let Screen::Library(library) = &mut screen {
+                            if let Screen::Library(library) = &mut *screen {
                                 let game = library.games.swap_remove(i);
-                                screen = open_game(game, &mut out.canvas)?;
+                                *screen = open_game(game, &mut out.canvas)?;
                                 gamepads.pads.hold_back();
                             }
                         }
@@ -304,11 +320,9 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
             }
         }
         screen.between_passes(&out.canvas, &mut gamepads.pads);
-        gamepads.label(&mut screen);
-        screen.draw(&mut out, &mut gamepads)?;
+        gamepads.label(screen);
+        screen.draw(out, gamepads)?;
     }
-    screen.quit();
-    Ok(())
 }
 
 impl Screen {
@@ -845,7 +859,7 @@ impl Player {
                 scancode: Some(scancode),
                 repeat: false,
                 ..
-            } => Some(matches!(scancode, Scancode::Return | Scancode::KpEnter)),
+            } => key_answers_offer(scancode),
             Event::MouseButtonDown { .. } => Some(false),
             _ => None,
         };
@@ -1700,6 +1714,25 @@ const fn is_press(event: &Event) -> bool {
     )
 }
 
+/// What a key says to the offer to continue: Enter goes on, other keys start afresh, and a
+/// modifier says nothing, since it may begin Cmd-Q, Alt-F4 or the fullscreen keys.
+const fn key_answers_offer(scancode: Scancode) -> Option<bool> {
+    match scancode {
+        Scancode::LCtrl
+        | Scancode::RCtrl
+        | Scancode::LShift
+        | Scancode::RShift
+        | Scancode::LAlt
+        | Scancode::RAlt
+        | Scancode::LGui
+        | Scancode::RGui
+        | Scancode::CapsLock
+        | Scancode::Mode => None,
+        Scancode::Return | Scancode::KpEnter => Some(true),
+        _ => Some(false),
+    }
+}
+
 /// Switches the window between fullscreen and windowed.
 fn toggle_fullscreen(canvas: &mut WindowCanvas) -> Result<(), String> {
     let window = canvas.window_mut();
@@ -1758,4 +1791,29 @@ fn open_sound(sdl: &sdl3::Sdl) -> Option<AudioStreamOwner> {
 fn frames_due(elapsed: Duration, run: u64) -> usize {
     let should = elapsed.as_nanos() / FRAME.as_nanos();
     usize::try_from(should.saturating_sub(u128::from(run))).unwrap_or(usize::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_offer_goes_on_with_enter_and_ignores_modifiers() {
+        assert_eq!(key_answers_offer(Scancode::Return), Some(true));
+        assert_eq!(key_answers_offer(Scancode::KpEnter), Some(true));
+        assert_eq!(key_answers_offer(Scancode::Escape), Some(false));
+        assert_eq!(key_answers_offer(Scancode::F9), Some(false));
+        for modifier in [
+            Scancode::LGui,
+            Scancode::RGui,
+            Scancode::LAlt,
+            Scancode::LCtrl,
+        ] {
+            assert_eq!(
+                key_answers_offer(modifier),
+                None,
+                "{modifier:?} may begin a way out"
+            );
+        }
+    }
 }

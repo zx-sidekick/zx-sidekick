@@ -186,12 +186,7 @@ pub(crate) fn write(session: &mut Session, saves: &Saves, path: &Path) -> Result
         Ok(zip.finish()?.into_inner())
     };
     let bytes = zip().map_err(|e| Unsaved::Failed(e.to_string()))?;
-    let partial = path.with_extension("part");
-    path.parent()
-        .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| fs::write(&partial, bytes))
-        .and_then(|()| fs::rename(&partial, path))
-        .map_err(|e| Unsaved::Failed(format!("{}: {e}", path.display())))
+    write_whole(path, &bytes).map_err(|e| Unsaved::Failed(format!("{}: {e}", path.display())))
 }
 
 /// Loads a save into the session, its game marked loaded: a `.sav` whole, once it's found to
@@ -212,8 +207,10 @@ pub(crate) fn read(path: &Path, session: &mut Session, saves: &Saves) -> Result<
 pub(crate) fn take_quit(saves: &Saves) -> Option<Vec<u8>> {
     let quit = saves.quit();
     let bytes = fs::read(&quit).ok()?;
+    // One that can't be removed would be offered again and again: offered not at all.
     if let Err(e) = fs::remove_file(&quit) {
         eprintln!("{}: couldn't be removed: {e}", quit.display());
+        return None;
     }
     Some(bytes)
 }
@@ -224,7 +221,17 @@ pub(crate) fn take_quit(saves: &Saves) -> Option<Vec<u8>> {
 /// If the file can't be written.
 pub(crate) fn put_back_quit(saves: &Saves, bytes: &[u8]) -> Result<(), Unsaved> {
     let quit = saves.quit();
-    fs::write(&quit, bytes).map_err(|e| Unsaved::Failed(format!("{}: {e}", quit.display())))
+    write_whole(&quit, bytes).map_err(|e| Unsaved::Failed(format!("{}: {e}", quit.display())))
+}
+
+/// Writes a file beside `path` first, then moves it over, so one cut short never replaces a
+/// good one.
+fn write_whole(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let partial = path.with_extension("part");
+    path.parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| fs::write(&partial, bytes))
+        .and_then(|()| fs::rename(&partial, path))
 }
 
 /// Goes on with the game kept on quitting: the same game, so not marked loaded.
