@@ -51,8 +51,8 @@ pub enum Stop {
     Sync,
     /// The frame ended: time to present the picture and sound.
     FrameEnd,
-    /// The tape's last block has loaded, and the processor is about to run the first
-    /// instruction outside the ROM since: the game's own code. Only when asked for, with
+    /// The tape's last block has just loaded, before the loader runs another instruction: the
+    /// screen is as the tape left it, and the game's code hasn't run. Only when asked for, with
     /// [`Machine::stop_when_loaded`], and only for tapes loaded through the ROM's loader.
     Loaded,
 }

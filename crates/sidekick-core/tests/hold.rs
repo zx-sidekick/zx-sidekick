@@ -1,5 +1,5 @@
-//! The loading screen held: the frame stops where the tape has just loaded, before the game's
-//! own code runs, with the screen drawn from memory.
+//! The loading screen held: the frame stops the moment the tape's last block has loaded,
+//! before the loader or the game runs on, with the screen drawn from memory.
 
 use sidekick_core::{Machine, Model, Session};
 use sidekick_def::Definition;
@@ -31,11 +31,12 @@ fn header(kind: u8, name: &[u8; 10], len: u16, one: u16, two: u16) -> Vec<u8> {
     block(0x00, &data)
 }
 
-/// A tape of our own: `10 LOAD ""SCREEN$: LOAD ""CODE: RANDOMIZE USR 32768`, auto-running; a
-/// screen all red paper; and two bytes of code at 32768 that loop on the spot (`JR $`).
+/// A tape of our own: `10 LOAD ""SCREEN$: LOAD ""CODE: CLS: RANDOMIZE USR 32768`,
+/// auto-running; a screen all red paper; and two bytes of code at 32768 that loop on the spot
+/// (`JR $`). The `CLS` after the last block would wipe the screen if the hold came later.
 fn tape() -> Vec<u8> {
     let mut line = vec![
-        0xEF, b'"', b'"', 0xAA, b':', 0xEF, b'"', b'"', 0xAF, b':', 0xF9, 0xC0,
+        0xEF, b'"', b'"', 0xAA, b':', 0xEF, b'"', b'"', 0xAF, b':', 0xFB, b':', 0xF9, 0xC0,
     ];
     line.extend_from_slice(b"32768");
     line.extend_from_slice(&[0x0E, 0x00, 0x00, 0x00, 0x80, 0x00, 0x0D]);
@@ -77,7 +78,7 @@ hold_loading_screen = {hold}
 }
 
 #[test]
-fn the_game_waits_on_its_loading_screen_before_its_first_instruction() {
+fn the_game_waits_on_its_loading_screen_the_moment_the_tape_has_loaded() {
     let mut s = session(true);
     let mut frames = 0;
     while !s.holding() {
@@ -85,20 +86,18 @@ fn the_game_waits_on_its_loading_screen_before_its_first_instruction() {
         s.run_frame().expect("a frame");
         frames += 1;
     }
-    assert_eq!(
-        s.machine().registers().get_pc(),
-        CODE,
-        "not a step into the game"
-    );
+    let held_at = s.machine().registers().get_pc();
+    assert!(held_at < 0x4000, "still in the ROM's loader: {held_at:04X}");
+    assert_eq!(s.machine().peek(CODE), 0x18, "the code is in");
     let picture = s.machine().picture();
     assert_eq!(picture.color(32, 32), 2, "the screen's top left: red paper");
     assert_eq!(picture.color(32 + 255, 32 + 191), 2, "and its bottom right");
 
     s.run_frame().expect("nothing runs while held");
-    assert_eq!(s.machine().registers().get_pc(), CODE);
+    assert_eq!(s.machine().registers().get_pc(), held_at);
 
     s.release();
-    for _ in 0..10 {
+    for _ in 0..50 {
         s.run_frame().expect("a frame");
         assert!(!s.holding(), "held once only");
     }

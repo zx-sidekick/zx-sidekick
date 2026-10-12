@@ -59,8 +59,8 @@ impl Session {
 
     /// Runs a frame: the values are read when it reaches the sync address, or at its end if
     /// it doesn't, and the state is decided at its end. When the definition holds the loading
-    /// screen (`[run] hold_loading_screen`), the frame stops where the tape has just loaded,
-    /// before the game's own code runs, with the screen drawn from memory; nothing runs until
+    /// screen (`[run] hold_loading_screen`), the frame stops the moment the tape's last block
+    /// has loaded, with the screen drawn from memory; nothing runs until
     /// [`Session::release`], and the next call carries the frame on.
     ///
     /// # Errors

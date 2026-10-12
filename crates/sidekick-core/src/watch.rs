@@ -8,9 +8,6 @@ use rustzx_z80::Breakpoints;
 /// for each block the tape gives up.
 const LOADER_TRAP: u16 = 0x056B;
 
-/// The first address past the 48K ROM.
-const RAM: u16 = 0x4000;
-
 /// Asked by the core about every instruction, through its `DebugInterface`.
 #[derive(Clone)]
 pub struct Watch {
@@ -81,13 +78,18 @@ impl Watch {
 
 impl DebugInterface for Watch {
     fn check_pc_breakpoint(&mut self, addr: u16) -> bool {
-        if addr == LOADER_TRAP {
-            self.loads += 1;
-        }
-        if self.stop_when_loaded && self.blocks > 0 && self.loads >= self.blocks && addr >= RAM {
+        // The instruction after the trap is the first after the block has loaded.
+        if self.stop_when_loaded
+            && self.blocks > 0
+            && self.loads >= self.blocks
+            && addr != LOADER_TRAP
+        {
             self.stop_when_loaded = false;
             self.loaded = true;
             return true;
+        }
+        if addr == LOADER_TRAP {
+            self.loads += 1;
         }
         if self.watched.contains(addr) && !self.passed.contains(&addr) {
             self.passed.push(addr);
