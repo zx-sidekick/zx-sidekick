@@ -7,6 +7,7 @@
     reason = "a command line's results and errors are printed"
 )]
 
+mod entry;
 mod games;
 mod headless;
 mod keys;

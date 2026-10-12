@@ -13,6 +13,7 @@
     reason = "layout arithmetic stays as written: plain sums and products, the same on every platform"
 )]
 
+mod entry;
 pub mod hints;
 mod library;
 mod map;
@@ -23,6 +24,7 @@ pub mod png;
 mod tape_prompt;
 mod text;
 
+pub use entry::{EntryCard, EntryMode, HEIGHT as ENTRY_HEIGHT, WIDTH as ENTRY_WIDTH};
 pub use hints::{Face, PadLabels};
 pub use library::{LibraryEntry, LibraryPage};
 pub use map::{

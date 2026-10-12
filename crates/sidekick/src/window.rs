@@ -2,6 +2,7 @@
 //! the largest whole scale, its sound, and the keyboard.
 
 use crate::{
+    entry::{self, Entry, Stroke, Typing},
     games::{self, Game, Playing},
     keys::{spectrum_key, Spectrum},
     menu::{self, Menu, Outcome},
@@ -25,9 +26,10 @@ use sdl3::{
 use sidekick_core::{Machine, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
 use sidekick_ui::{
-    Canvas, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark, Panel,
-    PauseNotice, Pin, Question, Refusal, Row, TapePrompt, MENU_WIDTH, PAUSE_NOTICE_HEIGHT,
-    PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    Canvas, EntryCard, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark,
+    Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ENTRY_HEIGHT, ENTRY_WIDTH,
+    MENU_WIDTH, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT,
+    TAPE_PROMPT_WIDTH,
 };
 use std::{
     collections::BTreeMap,
@@ -137,6 +139,9 @@ struct Player {
     /// in the window's device pixels, its scale, and device pixels to a window point.
     menu: Option<Menu>,
     menu_at: Option<(f32, f32, f32, f32)>,
+    /// The text-entry card while it's open, and a word being typed.
+    entry: Option<Entry>,
+    typing: Option<Typing>,
     started: Instant,
     frames_run: u64,
     rgba: Vec<u8>,
@@ -169,6 +174,8 @@ struct Output<'a> {
     /// The panel, likewise, and the pins it puts over the picture.
     panel: Option<(Texture<'a>, Panel, u32)>,
     pins: Option<(Texture<'a>, Vec<Pin>, u32)>,
+    /// The text-entry card, likewise.
+    entry: Option<(Texture<'a>, EntryCard, u32)>,
     /// The guidance menu and its question, likewise.
     menu: Option<(Texture<'a>, MenuCard, u32)>,
     question: Option<(Texture<'a>, Question, u32)>,
@@ -206,6 +213,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         notice: None,
         panel: None,
         pins: None,
+        entry: None,
         menu: None,
         question: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
@@ -251,6 +259,9 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                             MenuEvent::Taken => continue,
                             MenuEvent::Quit => break 'run,
                         }
+                        if player.entry_event(&presses, &mut gamepads.pads) {
+                            continue;
+                        }
                         presses.extend(gamepads.host_key(&event, player.play.mapping()));
                     }
                     match screen.event(&event, &presses, &out.canvas) {
@@ -291,6 +302,7 @@ impl Screen {
                     player.draw_menu(out, gamepads.last.labels())?;
                 } else {
                     player.notice(out, gamepads.last.labels())?;
+                    player.draw_entry(out, gamepads.last.labels())?;
                 }
             }
             Self::Prompt(prompt) => {
@@ -479,6 +491,8 @@ impl Player {
             level: 0,
             menu: None,
             menu_at: None,
+            entry: None,
+            typing: None,
             started: Instant::now(),
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
@@ -519,7 +533,14 @@ impl Player {
                 break;
             }
             pads.hold_back_parts(&self.play.enter(self.session.state()));
-            let mut changes = self.play.update(pads.held());
+            self.type_word();
+            // While the card is open, the pad drives only the card.
+            let held: Vec<Part> = if self.entry.is_some() {
+                Vec::new()
+            } else {
+                pads.held().collect()
+            };
+            let mut changes = self.play.update(held.into_iter());
             let patches = std::mem::take(&mut changes.patches);
             send(self.session.machine_mut(), changes);
             let applied: Vec<_> = patches
@@ -532,6 +553,11 @@ impl Player {
             }
             ran.map_err(|e| e.to_string())?;
             self.play.frame_ran();
+            // The card goes when the game leaves its state, press or no press.
+            if self.entry.is_some() && self.text_entry().is_none() {
+                self.entry = None;
+                pads.hold_back();
+            }
             self.save_kept();
             self.frames_run += 1;
             if let Some(stream) = &out.sound {
@@ -560,8 +586,14 @@ impl Player {
         out.canvas
             .copy(&out.picture, None, frect(layout.picture))
             .map_err(|e| e.to_string())?;
+        self.draw_panel(out, layout)
+    }
+
+    /// Draws the panel beside the picture, and the pins it puts over the picture.
+    fn draw_panel(&self, out: &mut Output, layout: Layout) -> Result<(), String> {
         if let Some(at) = layout.panel {
-            let panel = panel::of(&self.session, self.level);
+            let chosen = self.entry.as_ref().and_then(Entry::chosen);
+            let panel = panel::of(&self.session, self.level, chosen);
             if let Some(panel) = panel {
                 cached(
                     out.creator,
@@ -744,6 +776,94 @@ impl Player {
             Outcome::Exit => return MenuEvent::Quit,
         }
         MenuEvent::Taken
+    }
+
+    /// The definition's text entry, when the game is in its state.
+    fn text_entry(&self) -> Option<sidekick_def::TextEntry> {
+        let text_entry = self.session.definition()?.text_entry.as_ref()?;
+        (self.session.state() == Some(text_entry.state.as_str())).then(|| text_entry.clone())
+    }
+
+    /// Takes pad presses for the text-entry card: the first one in its state opens it, and
+    /// while it's open they're all its. Returns whether it took them.
+    fn entry_event(&mut self, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
+        let Some(text_entry) = self.text_entry() else {
+            self.entry = None;
+            return false;
+        };
+        if presses.is_empty() || self.typing.is_some() {
+            return self.entry.is_some();
+        }
+        let Some(entry) = &mut self.entry else {
+            self.entry = Some(Entry::open(&text_entry, self.session.kept(), self.level));
+            pads.hold_back();
+            return true;
+        };
+        for &(part, maker) in presses {
+            let input = if part == Part::West {
+                Some(entry::Input::Switch)
+            } else {
+                pad::nav(part, maker).map(|nav| match nav {
+                    Nav::Up => entry::Input::Up,
+                    Nav::Down => entry::Input::Down,
+                    Nav::Left => entry::Input::Left,
+                    Nav::Right => entry::Input::Right,
+                    Nav::Confirm => entry::Input::Confirm,
+                    Nav::Back => entry::Input::Back,
+                })
+            };
+            if let Some(word) = input.and_then(|i| entry.input(i)) {
+                self.typing = Some(Typing::new(&word, &text_entry));
+                self.entry = None;
+                pads.hold_back();
+                break;
+            }
+        }
+        true
+    }
+
+    /// Presses or lets go the next key of a word being typed, before a frame.
+    fn type_word(&mut self) {
+        let Some(typing) = &mut self.typing else {
+            return;
+        };
+        match typing.next() {
+            Some(Stroke::Press(key)) => self.session.machine_mut().key(key, true),
+            Some(Stroke::Release(key)) => self.session.machine_mut().key(key, false),
+            Some(Stroke::Wait) => {}
+            None => self.typing = None,
+        }
+    }
+
+    /// Draws the text-entry card over the picture, its top at the definition's character row.
+    fn draw_entry(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
+        let Some(entry) = &self.entry else {
+            out.entry = None;
+            return Ok(());
+        };
+        let row = self.text_entry().and_then(|t| t.card_row).unwrap_or(20);
+        let output = out.canvas.output_size().map_err(|e| e.to_string())?;
+        let layout = self.layout(output);
+        let (px, py, pw, _) = layout.picture;
+        let scale = layout.scale;
+        let card = entry.card(labels);
+        cached(
+            out.creator,
+            &mut out.entry,
+            &mut out.fonts,
+            &card,
+            scale,
+            EntryCard::draw,
+        )?;
+        let (w, h) = (ENTRY_WIDTH * scale, ENTRY_HEIGHT * scale);
+        // Three logical pixels to a Spectrum pixel, below the 32-pixel border.
+        let at = (px + (pw - w) / 2, py + (32 + row * 8) * 3 * scale, w, h);
+        if let Some((texture, _, _)) = &out.entry {
+            out.canvas
+                .copy(texture, None, frect(at))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Closes the menu: the game's time starts again from now, and what's held is held back.

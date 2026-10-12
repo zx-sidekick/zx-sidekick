@@ -2,10 +2,10 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    pins, CardRow, Cell, Chip, Edge, Face, Fonts, Icon, Levels, LibraryEntry, LibraryPage, Look,
-    MapGrid, Marker, MarkerKind, Menu, NoticeHint, PadLabels, PadMark, Panel, PanelBody,
-    PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question, Refusal, Route, RouteColor, Row,
-    SwitchRow, TapePrompt,
+    pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Levels, LibraryEntry,
+    LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, NoticeHint, PadLabels, PadMark, Panel,
+    PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question, Refusal, Route,
+    RouteColor, Row, SwitchRow, TapePrompt,
 };
 use std::path::PathBuf;
 
@@ -512,4 +512,33 @@ fn the_map() {
         )
         .png(),
     );
+}
+
+#[test]
+fn the_text_entry_card() {
+    let mut fonts = Fonts::new();
+    let word = |w: &str| w.chars().map(Some).collect::<Vec<_>>();
+    let choosing = EntryCard {
+        title_choose: "Choose a code".to_owned(),
+        title_spell: "Spell the code".to_owned(),
+        letters: word("TOPAZ"),
+        mode: EntryMode::Choosing { at: 1, of: 4 },
+        can_choose: true,
+        pad: PadLabels::Letters,
+    };
+    golden("entry-choose.png", &choosing.draw(&mut fonts, 1).png());
+    let spelling = EntryCard {
+        letters: word("TOMAZ"),
+        mode: EntryMode::Spelling { slot: 2 },
+        ..choosing.clone()
+    };
+    golden("entry-spell.png", &spelling.draw(&mut fonts, 1).png());
+    let blank = EntryCard {
+        letters: vec![Some('T'), None, None, None, None],
+        mode: EntryMode::Spelling { slot: 1 },
+        can_choose: false,
+        pad: PadLabels::Shapes,
+        ..choosing
+    };
+    golden("entry-spell-blank.png", &blank.draw(&mut fonts, 1).png());
 }
