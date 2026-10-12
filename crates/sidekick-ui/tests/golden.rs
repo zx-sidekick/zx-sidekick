@@ -2,8 +2,8 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    Face, Fonts, LibraryEntry, LibraryPage, NoticeHint, PadLabels, PadMark, PauseNotice, Refusal,
-    TapePrompt,
+    Face, Fonts, Levels, LibraryEntry, LibraryPage, Menu, NoticeHint, PadLabels, PadMark,
+    PauseNotice, Question, Refusal, Row, SwitchRow, TapePrompt,
 };
 use std::path::PathBuf;
 
@@ -139,4 +139,87 @@ fn the_pause_notice() {
         "paused-unworded.png",
         &PauseNotice::default().draw(&mut fonts, 1).png(),
     );
+}
+
+fn starquake_menu() -> Menu {
+    let level = |name: &str, line: &str| (name.to_owned(), line.to_owned());
+    let switch = |label: &str| SwitchRow {
+        label: label.to_owned(),
+        on: false,
+        refusal: None,
+    };
+    Menu {
+        levels: Some(Levels {
+            levels: vec![
+                level("Off", ""),
+                level("Codes and the core", ""),
+                level("The map you have walked", ""),
+                level(
+                    "What you have seen",
+                    "Core pieces still needed, in the rooms you have walked through.",
+                ),
+                level("What you have not", ""),
+                level("Routes", ""),
+                level("Everything", ""),
+            ],
+            level: 3,
+        }),
+        switches: [
+            "Full energy",
+            "Full bridging platforms",
+            "Full laser",
+            "Endless lives",
+            "No harm from enemies",
+        ]
+        .map(switch)
+        .to_vec(),
+        actions: ["Back to the game", "End this game", "Exit Starquake"]
+            .map(str::to_owned)
+            .to_vec(),
+        chosen: Row::Level,
+        armed: None,
+        pad: PadLabels::Letters,
+    }
+}
+
+#[test]
+fn the_guidance_menu() {
+    let mut fonts = Fonts::new();
+    let menu = starquake_menu();
+    golden("menu.png", &menu.draw(&mut fonts, 1).png());
+
+    let mut refused = starquake_menu();
+    refused.switches[0].on = true;
+    refused.switches[4].refusal =
+        Some("Not this tape's code here: the switch can't go on.".to_owned());
+    refused.chosen = Row::Switch(4);
+    golden("menu-refused.png", &refused.draw(&mut fonts, 1).png());
+
+    let armed = Menu {
+        levels: None,
+        switches: Vec::new(),
+        chosen: Row::Action(1),
+        armed: Some((1, "end this game".to_owned())),
+        pad: PadLabels::Shapes,
+        ..starquake_menu()
+    };
+    golden("menu-plain-armed.png", &armed.draw(&mut fonts, 1).png());
+
+    let question = Question {
+        items: vec!["Guidance level 4".to_owned(), "Full energy".to_owned()],
+        pad: PadLabels::Letters,
+    };
+    golden("question.png", &question.draw(&mut fonts, 1).png());
+}
+
+#[test]
+fn a_click_finds_the_menu_s_row() {
+    let menu = starquake_menu();
+    assert_eq!(menu.row_at(100.0, 150.0), Some(Row::Level));
+    assert_eq!(menu.row_at(100.0, 285.0), Some(Row::Switch(0)));
+    assert_eq!(menu.row_at(100.0, 420.0), Some(Row::Switch(4)));
+    assert_eq!(menu.row_at(100.0, 478.0), Some(Row::Action(0)));
+    assert_eq!(menu.row_at(100.0, 566.0), Some(Row::Action(2)));
+    assert_eq!(menu.row_at(5.0, 478.0), None);
+    assert_eq!(menu.row_at(100.0, 451.0), None, "the rule between");
 }

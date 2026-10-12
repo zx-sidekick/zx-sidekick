@@ -15,6 +15,7 @@
 
 pub mod hints;
 mod library;
+mod menu;
 mod pause;
 pub mod png;
 mod tape_prompt;
@@ -22,6 +23,7 @@ mod text;
 
 pub use hints::{Face, PadLabels};
 pub use library::{LibraryEntry, LibraryPage};
+pub use menu::{Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH};
 pub use pause::{
     NoticeHint, PadMark, PauseNotice, AT as PAUSE_NOTICE_AT, HEIGHT as PAUSE_NOTICE_HEIGHT,
     WIDTH as PAUSE_NOTICE_WIDTH,
@@ -244,6 +246,29 @@ impl Canvas {
             fill,
             line,
         );
+    }
+
+    /// A filled polygon through these points.
+    pub fn polygon(&mut self, points: &[(f32, f32)], color: Color) {
+        let s = self.scale;
+        let mut pb = PathBuilder::new();
+        for (i, &(x, y)) in points.iter().enumerate() {
+            if i == 0 {
+                pb.move_to(x * s, y * s);
+            } else {
+                pb.line_to(x * s, y * s);
+            }
+        }
+        pb.close();
+        if let Some(path) = pb.finish() {
+            self.pixmap.fill_path(
+                &path,
+                &paint(color),
+                FillRule::Winding,
+                Transform::identity(),
+                None,
+            );
+        }
     }
 
     /// A straight line between two points, with round ends.
