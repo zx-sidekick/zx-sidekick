@@ -61,26 +61,37 @@ fn is_code(text) {
     true
 }
 
-// The doors met this game: when the last door's cards change, the room BLOB is in has a door
-// with those cards. Kept in the results, and started afresh with each game's seed.
-fn doors_met(mem, prev) {
-    let seed = mem.value("seed");
-    let met = if prev != () && "doors_met" in prev && prev.seed == seed {
-        prev.doors_met
-    } else {
-        []
-    };
+// The door BLOB is meeting, as a kept entry: the game's seed, the room and the three cards.
+// `()` unless the game is in its door routine with cards worked out.
+fn door_met(mem) {
+    if mem.state != "door" || mem.value("door_card_count") != 3 {
+        return ();
+    }
     let raw = mem.value("door_cards");
     let cards = [raw[0], raw[2], raw[4]];
-    let last = if prev != () && "last_cards" in prev { prev.last_cards } else { cards };
-    let valid = cards.all(|c| c >= 9 && c <= 13);
-    if valid && cards != last {
-        let room = mem.value("room");
-        if !met.some(|door| door.room == room) {
-            met.push(#{ room: room, cards: cards });
+    if !cards.all(|c| c >= 9 && c <= 13) {
+        return ();
+    }
+    `${mem.value("seed")}:${mem.value("room")}:${cards[0]}-${cards[1]}-${cards[2]}`
+}
+
+// The doors met this game, from the kept entries with this game's seed, in the order met.
+fn doors_met(mem, kept) {
+    let seed = `${mem.value("seed")}:`;
+    let met = [];
+    if "doors-met" in kept {
+        for entry in kept["doors-met"] {
+            if entry.starts_with(seed) {
+                let parts = entry.split(":");
+                let cards = [];
+                for card in parts[2].split("-") {
+                    cards.push(parse_int(card));
+                }
+                met.push(#{ room: parse_int(parts[1]), cards: cards });
+            }
         }
     }
-    #{ seed: seed, met: met, cards: cards }
+    met
 }
 
 // The doors for the panel, numbered as met, each card answered when BLOB carries it.
@@ -101,21 +112,21 @@ fn doors(met, carrying) {
 // At each sync point: the panel's data, and codes to keep.
 fn on_frame(mem, loaded, prev, kept, level) {
     let carrying = carried(mem);
-    let met = doors_met(mem, prev);
     let keep = #{};
     let shown = mem.value("booth_code");
     if mem.state == "booth" && is_code(shown) {
         keep["teleport-codes"] = [shown];
     }
+    let door = door_met(mem);
+    if door != () {
+        keep["doors-met"] = [door];
+    }
     #{
         core: core(mem, carrying),
         teleports: teleports(mem, kept, level),
-        doors: doors(met.met, carrying),
+        doors: doors(doors_met(mem, kept), carrying),
         map: (),
         kept: keep,
-        seed: met.seed,
-        doors_met: met.met,
-        last_cards: met.cards,
     }
 }
 

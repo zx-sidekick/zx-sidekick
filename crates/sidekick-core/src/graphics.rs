@@ -121,6 +121,10 @@ pub(crate) fn sprites(
     }
     let addr = u32::from(value.addr?.0);
     let (width, height) = (value.width.unwrap_or(8), value.height.unwrap_or(8));
+    // Cells are whole: a picture in cells ends on a cell's edge, or it isn't one.
+    if value.layout == Some(Layout::Cells) && height % 8 != 0 {
+        return None;
+    }
     let size = width.div_ceil(8) * height;
     let mask = value.mask.unwrap_or(Mask::None);
     let stored = if mask == Mask::None { size } else { size * 2 };

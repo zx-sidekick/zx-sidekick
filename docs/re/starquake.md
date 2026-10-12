@@ -34,6 +34,7 @@ Dump: Starquake (Bubble Bus Software), as World of Spectrum distributes it: `STA
 | The teleports | `0xD036` | 15 records of 7 bytes: the five-letter code, in capitals, then the room (a word) it sends BLOB to | read | The booth's lookup of a typed code (#80) |
 | The booth | `0xCF93`, `0xCF9A` | The booth's wait for each letter of a code: the `booth` state. The booth shows its own code from `0xCF3D` (five letters) | read | (#80) |
 | Security doors | `0xD5F7` | A door's three cards, at every other byte (pictures 9 to 13), worked out when BLOB meets it from the game's seed (`0xD2C6`, a word set at the start) and the room: one door's cards a room, the same all game | read | The door routine (#80) |
+| The card routine | `0xD5FD`, `0xD64E` | Entered at `0xD5FD` with how many cards it asks for (kept at `0xD5F6`: 3 at a security door). It sets the cards to 3, waits 15 frames, works them out, then runs its loop at `0xD64E` while the main loop waits: the `door` state | read | (#80) |
 | The control method | `0x5E58` | The menu's choice: 1 Kempston, 4 the keyboard (the default), and so on | confirmed | Chose Kempston: 4 became 1 (#78) |
 
 `docs/games/starquake.md`, "Facts to find", lists what's still needed.

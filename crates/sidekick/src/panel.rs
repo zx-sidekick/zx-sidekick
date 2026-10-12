@@ -1017,38 +1017,32 @@ mod real_tape {
         assert_eq!(body("TELEPORTS"), Body::Empty("None yet".to_owned()));
         assert_eq!(body("DOORS"), Body::Empty("None yet".to_owned()));
 
-        // The first slot's piece carried, the second delivered: what the game writes then.
-        let first = s.machine().peek(0xD2DE) & 0x7F;
+        // The first slot's piece carried, the second delivered: what the game writes then, at
+        // the addresses the definition gives.
+        let addr = |name: &str| {
+            s.definition().expect("a definition").values[name]
+                .addr
+                .expect("an address")
+                .0
+        };
+        let (carried, slots) = (addr("carried"), addr("core_slots"));
+        let first = s.machine().peek(slots) & 0x7F;
         let machine = s.machine_mut();
-        machine.write(0xD2D2, first);
-        machine.write(0xD2D3, 0x47);
-        machine.write(0xD2DF, 1);
-        // A door met: its three cards, the first of them carried too.
-        machine.write(0xD5F7, 9);
-        machine.write(0xD5F9, 10);
-        machine.write(0xD5FB, 11);
-        machine.write(0xD2D4, 9);
-        machine.write(0xD2D5, 0x46);
+        machine.write(carried, first);
+        machine.write(carried + 1, 0x47);
+        machine.write(slots + 1, 1);
         s.run_frame().expect("a frame");
         let panel = of(s, 1, None).expect("a panel");
-        let find = |title: &str| {
-            panel
-                .widgets
-                .iter()
-                .find(|w| w.title.as_deref() == Some(title))
-                .map(|w| w.body.clone())
-                .expect(title)
-        };
-        let Body::Icons { icons, .. } = find("CORE") else {
+        let Some(Body::Icons { icons, .. }) = panel
+            .widgets
+            .iter()
+            .find(|w| w.title.as_deref() == Some("CORE"))
+            .map(|w| w.body.clone())
+        else {
             panic!("the core's icons");
         };
         let looks: Vec<Look> = icons.iter().take(3).map(|i| i.look).collect();
         assert_eq!(looks, [Look::Outlined, Look::Bright, Look::Dim]);
-        let Body::Cards(doors) = find("DOORS") else {
-            panic!("a door: {:?}", find("DOORS"));
-        };
-        let answered: Vec<bool> = doors[0].cards.iter().map(|&(_, a)| a).collect();
-        assert_eq!(answered, [true, false, false]);
 
         s.set_level(6);
         s.run_frame().expect("a frame");

@@ -59,6 +59,22 @@ count = 1
 width = 16
 height = 16
 layout = "cells"
+
+[values.wide]
+type = "sprites"
+addr = 0x8600
+count = 1
+width = 24
+height = 8
+layout = "cells"
+
+[values.partial]
+type = "sprites"
+addr = 0x8700
+count = 1
+width = 16
+height = 12
+layout = "cells"
 "#;
 
 fn session() -> Session {
@@ -141,4 +157,20 @@ fn pictures_in_cells_are_read_cell_by_cell() {
     assert_eq!(picture[0], "#........#......", "the top cells side by side");
     assert_eq!(picture[8], "..#........#....", "then the bottom ones");
     assert_eq!(picture[1], "................");
+}
+
+#[test]
+fn a_wide_picture_in_cells_reads_left_to_right_and_a_partial_cell_none() {
+    let mut s = session();
+    poke(
+        &mut s,
+        0x8600,
+        &[0x80, 0, 0, 0, 0, 0, 0, 0, 0x40, 0, 0, 0, 0, 0, 0, 0, 0x01],
+    );
+    let picture = rows(&s.sprites("wide").expect("pictures")[0]);
+    assert_eq!(picture[0], "#........#.............#");
+    assert!(
+        s.sprites("partial").is_none(),
+        "12 rows don't fill whole cells"
+    );
 }
