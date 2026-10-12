@@ -216,9 +216,10 @@ impl Session {
         View {
             memory: (0..=u16::MAX).map(|a| self.machine.peek(a)).collect(),
             values: self
-                .reading
+                .definition
                 .iter()
-                .map(|(k, v)| (k.clone(), fact(v)))
+                .flat_map(|d| d.values.keys())
+                .map(|k| (k.clone(), self.reading.get(k).map_or(Fact::Nothing, fact)))
                 .collect(),
             state: self.state.clone(),
             level: i64::from(self.level),

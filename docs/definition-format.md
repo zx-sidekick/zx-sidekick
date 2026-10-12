@@ -450,7 +450,7 @@ What a script can use:
 | | |
 |---|---|
 | `mem.peek(addr)`, `mem.peek16(addr)` | Bytes and words |
-| `mem.value(name)` | A named value |
+| `mem.value(name)` | A named value (`()` when it couldn't be read this frame; a name that isn't a value stops the script, so a typo shows) |
 | `mem.table(name)` | A table, as a list of maps of its fields |
 | `mem.state` | The game's state's name |
 | `mem.write(name, v)` | Only for `writable` values, and only in action functions |

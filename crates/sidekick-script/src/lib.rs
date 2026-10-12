@@ -95,7 +95,8 @@ impl Fact {
 pub struct View {
     /// The 64K the processor sees.
     pub memory: Vec<u8>,
-    /// The named values, as read this frame.
+    /// Every named value, as read this frame: one that couldn't be read is `Nothing`. A name
+    /// that isn't here isn't a value, and asking for it is an error.
     pub values: BTreeMap<String, Fact>,
     /// The game's state.
     pub state: Option<String>,
@@ -119,6 +120,14 @@ struct Mem {
 }
 
 impl Mem {
+    /// A named value; a name the definition doesn't have is an error, so a typo shows.
+    fn value(&self, name: &str) -> Result<Dynamic, Box<EvalAltResult>> {
+        self.values
+            .get(name)
+            .map(|v| v.clone().into_dynamic())
+            .ok_or_else(|| format!("no value named {name}").into())
+    }
+
     fn byte(&self, addr: i64) -> i64 {
         usize::try_from(addr)
             .ok()
@@ -201,20 +210,8 @@ fn engine() -> Engine {
         .register_fn("peek16", |m: &mut Mem, addr: i64| {
             m.byte(addr) | (m.byte(addr + 1) << 8)
         })
-        .register_fn("value", |m: &mut Mem, name: &str| {
-            m.values
-                .get(name)
-                .cloned()
-                .unwrap_or_default()
-                .into_dynamic()
-        })
-        .register_fn("table", |m: &mut Mem, name: &str| {
-            m.values
-                .get(name)
-                .cloned()
-                .unwrap_or_default()
-                .into_dynamic()
-        })
+        .register_fn("value", |m: &mut Mem, name: &str| m.value(name))
+        .register_fn("table", |m: &mut Mem, name: &str| m.value(name))
         .register_get("state", |m: &mut Mem| {
             m.state
                 .as_ref()
@@ -532,6 +529,22 @@ mod tests {
             script.on_frame(&view()).unwrap()["loaded"],
             Fact::Number(0x34)
         );
+    }
+
+    #[test]
+    fn a_name_that_isn_t_a_value_stops_the_script() {
+        let mut script =
+            Script::compile(r#"fn on_frame(mem) { #{ lives: mem.value("lifes") } }"#).unwrap();
+        assert!(script
+            .on_frame(&view())
+            .unwrap_err()
+            .contains("no value named lifes"));
+        let mut unread =
+            Script::compile(r#"fn on_frame(mem) { #{ none: mem.value("unread") == () } }"#)
+                .unwrap();
+        let mut seen = view();
+        seen.values.insert("unread".to_owned(), Fact::Nothing);
+        assert_eq!(unread.on_frame(&seen).unwrap()["none"], Fact::Flag(true));
     }
 
     #[test]
