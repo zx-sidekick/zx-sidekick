@@ -70,6 +70,55 @@ pub(crate) const fn spectrum_key(scancode: Scancode) -> Option<Spectrum> {
     Some(Spectrum::Key(key))
 }
 
+/// A Spectrum key by the name definitions give it: `A`, `1`, `ENTER`, `SPACE`, `CAPS SHIFT`,
+/// `SYMBOL SHIFT`.
+pub(crate) fn key_named(name: &str) -> Option<Key> {
+    let key = match name {
+        "1" => Key::N1,
+        "2" => Key::N2,
+        "3" => Key::N3,
+        "4" => Key::N4,
+        "5" => Key::N5,
+        "6" => Key::N6,
+        "7" => Key::N7,
+        "8" => Key::N8,
+        "9" => Key::N9,
+        "0" => Key::N0,
+        "Q" => Key::Q,
+        "W" => Key::W,
+        "E" => Key::E,
+        "R" => Key::R,
+        "T" => Key::T,
+        "Y" => Key::Y,
+        "U" => Key::U,
+        "I" => Key::I,
+        "O" => Key::O,
+        "P" => Key::P,
+        "A" => Key::A,
+        "S" => Key::S,
+        "D" => Key::D,
+        "F" => Key::F,
+        "G" => Key::G,
+        "H" => Key::H,
+        "J" => Key::J,
+        "K" => Key::K,
+        "L" => Key::L,
+        "ENTER" => Key::Enter,
+        "CAPS SHIFT" => Key::Shift,
+        "Z" => Key::Z,
+        "X" => Key::X,
+        "C" => Key::C,
+        "V" => Key::V,
+        "B" => Key::B,
+        "N" => Key::N,
+        "M" => Key::M,
+        "SYMBOL SHIFT" => Key::SymShift,
+        "SPACE" => Key::Space,
+        _ => return None,
+    };
+    Some(key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,6 +157,18 @@ mod tests {
             spectrum_key(Scancode::Backspace),
             Some(Spectrum::Compound(CompoundKey::Delete))
         ));
+    }
+
+    #[test]
+    fn keys_go_by_the_names_definitions_use() {
+        assert!(matches!(key_named("SPACE"), Some(Key::Space)));
+        assert!(matches!(key_named("CAPS SHIFT"), Some(Key::Shift)));
+        assert!(matches!(key_named("7"), Some(Key::N7)));
+        assert!(
+            key_named("space").is_none(),
+            "names are as the format writes them"
+        );
+        assert!(key_named("F1").is_none());
     }
 
     #[test]

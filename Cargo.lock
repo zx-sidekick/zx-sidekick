@@ -683,6 +683,7 @@ name = "sidekick"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "miniz_oxide",
  "sdl3",
  "sidekick-core",
  "sidekick-def",
@@ -844,9 +845,9 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "zip"
-version = "9.0.1"
+version = "9.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e49ade69c4434c55dd651d36fe05f38e0578db948b773cbc01c48c4b5e560692"
+checksum = "9e2fc56a6707efb066c40aead2409ebb1224e6dde24a074e9fbc78ced500507b"
 dependencies = [
  "crc32fast",
  "flate2",
