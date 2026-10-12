@@ -26,7 +26,7 @@ use sidekick_core::{Machine, Session, SAMPLE_RATE};
 use sidekick_def::Definition;
 use sidekick_ui::{
     Canvas, Face, Fonts, LibraryPage, Menu as MenuCard, NoticeHint, PadLabels, PadMark, Panel,
-    PauseNotice, Question, Refusal, Row, TapePrompt, MENU_WIDTH, PAUSE_NOTICE_HEIGHT,
+    PauseNotice, Pin, Question, Refusal, Row, TapePrompt, MENU_WIDTH, PAUSE_NOTICE_HEIGHT,
     PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
@@ -164,8 +164,9 @@ struct Output<'a> {
     prompt: Option<Texture<'a>>,
     /// The pause notice drawn, and what it was drawn from and at.
     notice: Option<(Texture<'a>, PauseNotice, u32)>,
-    /// The panel, likewise.
+    /// The panel, likewise, and the pins it puts over the picture.
     panel: Option<(Texture<'a>, Panel, u32)>,
+    pins: Option<(Texture<'a>, Vec<Pin>, u32)>,
     /// The guidance menu and its question, likewise.
     menu: Option<(Texture<'a>, MenuCard, u32)>,
     question: Option<(Texture<'a>, Question, u32)>,
@@ -202,6 +203,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         prompt: None,
         notice: None,
         panel: None,
+        pins: None,
         menu: None,
         question: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
@@ -573,6 +575,22 @@ impl Player {
                     out.canvas
                         .copy(texture, None, frect(at))
                         .map_err(|e| e.to_string())?;
+                }
+                let pins = panel::pins(&panel);
+                if !pins.is_empty() {
+                    cached(
+                        out.creator,
+                        &mut out.pins,
+                        &mut out.fonts,
+                        &pins,
+                        layout.scale,
+                        |p, f, s| sidekick_ui::pins(p, f, s),
+                    )?;
+                    if let Some((texture, _, _)) = &out.pins {
+                        out.canvas
+                            .copy(texture, None, frect(layout.picture))
+                            .map_err(|e| e.to_string())?;
+                    }
                 }
             }
         }

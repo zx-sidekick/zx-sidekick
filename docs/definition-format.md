@@ -412,12 +412,12 @@ source = "value:energy"
 | `text` | A line of text | a string |
 | `counter` | A number | a number |
 | `meter` | A bar, against the value's `max` | a number, and optionally `max` |
-| `chip-list` | Short words in the game's font; one may be outlined | a list of `{ text, outlined }`, or of words |
+| `chip-list` | Short words in the game's font; one may be outlined | a list of `{ text, outlined }`, or of words; `outlined` is `true` (the accent), or `"first"` or `"second"` for a route's colour |
 | `icon-grid` | Pictures from `pictures`, each bright, dim or outlined | a list of `{ picture, look = "bright" / "dim" / "outlined" }` |
 | `card-set` | Numbered groups of pictures, each dim until answered | a list of `{ label, cards = [{ picture, answered }] }` |
-| `map-grid` | Places on a grid, walls, markers, routes, and exit arrows at the picture's edge | `{ width, height, cells = [{ x, y, walls = "NESW", seen }], markers = [{ x, y, kind, picture?, color? }], routes = [{ color, steps = [[x, y], …], exit = "N" }] }` |
+| `map-grid` | Places on a grid, walls, markers, routes, and exit arrows at the picture's edge | `{ width, height, cells = [{ x, y, walls = "NESW", seen }], markers = [{ x, y, kind, picture?, color? }], routes = [{ color, steps = [[x, y], …], label?, exit? }] }` |
 
-`map-grid` `kind`s for markers are `player`, `teleport`, `door`, `item` and `target`; route `color`s are `first` and `second`.
+`map-grid` `kind`s for markers are `player`, `teleport`, `door`, `item` (its `picture`, from the widget's `pictures`) and `target`; a marker's `color` is `"first"`, `"second"` or a Spectrum colour 0 to 15. Route `color`s are `first` (pink) and `second` (gold). A cell is drawn with its walls once it's `seen`, and as a dot before. Cells are as large as fits, up to 15 pixels. A route's `label` is shown underlined in its colour just above the map; its `exit` (`N`, `E`, `S` or `W`) puts a pin at that edge of the game's picture, saying the label's first word.
 
 ## `[situations]`
 
