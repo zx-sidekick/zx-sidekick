@@ -271,16 +271,22 @@ impl Session {
     /// Adds an entry to a kept list the definition has, unless it's there or empty.
     fn keep(&mut self, list: &str, entry: &str) {
         let entry = entry.trim();
-        let known = self
-            .definition
-            .as_ref()
-            .is_some_and(|d| d.persist.contains_key(list));
-        if entry.is_empty() || !known {
+        let Some(persist) = self.definition.as_ref().and_then(|d| d.persist.get(list)) else {
+            return;
+        };
+        if entry.is_empty() {
             return;
         }
+        let most = persist
+            .most
+            .and_then(|m| usize::try_from(m).ok())
+            .unwrap_or(usize::MAX);
         let entries = self.kept.entry(list.to_owned()).or_default();
         if !entries.iter().any(|e| e == entry) {
             entries.push(entry.to_owned());
+            // The oldest go first, past the list's most.
+            let over = entries.len().saturating_sub(most);
+            entries.drain(..over);
             self.kept_changed.insert(list.to_owned());
         }
     }

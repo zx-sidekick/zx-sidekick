@@ -300,6 +300,8 @@ label = "rooms walked"
 # `seed:room:walls` (walls among N, E, S and W). Kept so a continued game shows its map again.
 file = "rooms-walked.txt"
 add = "script"
+# Some games' worth: 512 rooms each at most.
+most = 2048
 
 [persist.doors-met]
 label = "doors met"
@@ -307,6 +309,7 @@ label = "doors met"
 # Kept so a game continued from a save still lists the doors it met.
 file = "doors-met.txt"
 add = "script"
+most = 256
 
 [high_scores]
 title = "CORE OF HEROES"

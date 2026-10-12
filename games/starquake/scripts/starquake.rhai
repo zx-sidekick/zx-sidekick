@@ -150,17 +150,21 @@ fn walls(mem) {
     shut
 }
 
-// The room BLOB is in, as a kept entry, once he's been in it since the last frame (so it's
-// drawn whole): the game's seed, the room and its walls.
-fn room_walked(mem, prev) {
+// The room BLOB is in, as a kept entry: the game's seed, the room and its walls. Kept once a
+// game, the first time its walls read the same two frames running in play, so a room drawn
+// part-way, or a platform built across an opening later, doesn't change its walls.
+fn room_walked(mem, prev, shut, walked) {
     let room = mem.value("room");
-    if mem.state != "play" || prev == () || !("room" in prev) || prev.room != room {
+    if mem.state != "play" || `${room}` in walked || prev == () || !("room" in prev) {
         return ();
     }
-    `${mem.value("seed")}:${room}:${walls(mem)}`
+    if prev.room != room || prev.walls != shut {
+        return ();
+    }
+    `${mem.value("seed")}:${room}:${shut}`
 }
 
-// The rooms walked this game, by room number as text, each its walls; the latest entry wins.
+// The rooms walked this game, by room number as text, each its walls.
 fn rooms_walked(mem, kept) {
     let seed = `${mem.value("seed")}:`;
     let rooms = #{};
@@ -168,7 +172,9 @@ fn rooms_walked(mem, kept) {
         for entry in kept["rooms-walked"] {
             if entry.starts_with(seed) {
                 let parts = entry.split(":");
-                rooms[parts[1]] = if parts.len() > 2 { parts[2] } else { "" };
+                if !(parts[1] in rooms) {
+                    rooms[parts[1]] = if parts.len() > 2 { parts[2] } else { "" };
+                }
             }
         }
     }
@@ -176,8 +182,7 @@ fn rooms_walked(mem, kept) {
 }
 
 // The map of rooms walked: their walls, the teleports and doors in them, and BLOB's room.
-fn map(mem, kept) {
-    let rooms = rooms_walked(mem, kept);
+fn map(mem, kept, rooms) {
     let cells = [];
     for key in rooms.keys() {
         let room = parse_int(key);
@@ -209,7 +214,9 @@ fn on_frame(mem, loaded, prev, kept, level) {
     if door != () {
         keep["doors-met"] = [door];
     }
-    let walked = room_walked(mem, prev);
+    let shut = walls(mem);
+    let rooms = rooms_walked(mem, kept);
+    let walked = room_walked(mem, prev, shut, rooms);
     if walked != () {
         keep["rooms-walked"] = [walked];
     }
@@ -217,9 +224,10 @@ fn on_frame(mem, loaded, prev, kept, level) {
         core: core(mem, carrying),
         teleports: teleports(mem, kept, level),
         doors: doors(doors_met(mem, kept), carrying),
-        map: map(mem, kept),
+        map: map(mem, kept, rooms),
         kept: keep,
         room: mem.value("room"),
+        walls: shut,
     }
 }
 

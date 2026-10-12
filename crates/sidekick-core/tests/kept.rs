@@ -35,6 +35,7 @@ when = { value = "mode", equals = 1 }
 label = "codes"
 file = "codes.txt"
 add = { value = "code", in_state = "booth" }
+most = 2
 
 [persist.seen]
 label = "places seen"
@@ -76,6 +77,12 @@ fn a_value_shown_in_its_state_is_kept_once() {
     assert_eq!(s.kept()["codes"], ["TOPAZ"], "never an empty one");
     show(&mut s, *b"LUMEN", 1);
     assert_eq!(s.kept()["codes"], ["TOPAZ", "LUMEN"], "in the order found");
+    show(&mut s, *b"ORBIT", 1);
+    assert_eq!(
+        s.kept()["codes"],
+        ["LUMEN", "ORBIT"],
+        "at its most, the oldest goes"
+    );
 }
 
 #[test]

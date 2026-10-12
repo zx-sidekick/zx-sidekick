@@ -145,10 +145,21 @@ impl MapGrid {
                 }
             }
         }
+        let is_seen = |x: Option<usize>, y: Option<usize>| match (x, y) {
+            (Some(x), Some(y)) => seen.iter().any(|c| c.x == x && c.y == y),
+            _ => false,
+        };
         for place in &seen {
             let (left, top) = at(place.x, place.y);
             c.rect((left, top, cell, cell), 0.0, Some(GROUND), None);
-            for edge in &place.walls {
+            // A wall between two seen rooms is drawn once, as the east or south of the one
+            // left of or above it.
+            let drawn_by_neighbour = |edge: &Edge| match edge {
+                Edge::North => is_seen(Some(place.x), place.y.checked_sub(1)),
+                Edge::West => is_seen(place.x.checked_sub(1), Some(place.y)),
+                Edge::East | Edge::South => false,
+            };
+            for edge in place.walls.iter().filter(|e| !drawn_by_neighbour(e)) {
                 let line = match edge {
                     Edge::North => (left, top, cell, 1.0),
                     Edge::South => (left, top + cell - 1.0, cell, 1.0),
