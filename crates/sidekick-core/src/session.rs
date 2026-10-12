@@ -5,11 +5,51 @@ use crate::{
     value::{self, Read, WriteError},
     Error, Machine, Stop,
 };
-use sidekick_def::{Definition, Patch, State, Test};
-use std::collections::BTreeMap;
+use sidekick_def::{Amount, Cheat, Definition, Patch, State, Test};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 /// Every named value, as read at one moment.
 pub type Reading = BTreeMap<String, Read>;
+
+/// What a game was played with: the highest guidance level, and the training switches on at
+/// any time that mark the score.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Record {
+    /// The highest guidance level used.
+    pub level: u8,
+    /// The switches used, by id.
+    pub switches: BTreeSet<String>,
+}
+
+/// Why a switch didn't go on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SwitchError {
+    /// No training switch has that id.
+    Unknown,
+    /// A patch's `expect` bytes aren't in memory at its address: the tape, or the moment, isn't
+    /// what the definition expects.
+    Mismatch {
+        /// The patch's address.
+        addr: u16,
+    },
+}
+
+impl fmt::Display for SwitchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unknown => f.write_str("no training switch has that id"),
+            Self::Mismatch { addr } => write!(
+                f,
+                "the game's code at 0x{addr:04X} isn't what the definition expects"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SwitchError {}
 
 /// A game being played: the machine, and what its definition says about it.
 #[derive(Clone)]
@@ -22,6 +62,13 @@ pub struct Session {
     state: Option<String>,
     /// Held on the loading screen, until released.
     holding: bool,
+    /// The training switches on, by id.
+    switches: BTreeSet<String>,
+    /// The guidance level, and what the game being played has used.
+    level: u8,
+    record: Record,
+    /// The last state that matched, through frames that matched none.
+    last_known: Option<String>,
 }
 
 impl Session {
@@ -54,6 +101,10 @@ impl Session {
             reading: Reading::new(),
             state: None,
             holding: false,
+            switches: BTreeSet::new(),
+            level: 0,
+            record: Record::default(),
+            last_known: None,
         }
     }
 
@@ -73,7 +124,7 @@ impl Session {
         loop {
             match self.machine.run()? {
                 Stop::Sync => {
-                    self.reading = self.read();
+                    self.take_reading();
                     read = true;
                 }
                 Stop::Loaded => {
@@ -85,10 +136,161 @@ impl Session {
             }
         }
         if !read {
-            self.reading = self.read();
+            self.take_reading();
         }
         self.state = self.decide();
+        self.track_games();
         Ok(())
+    }
+
+    /// Reads the values for this frame, and lets the switches that are on act on them: only in
+    /// play when the definition names a `play` state (the last state known, so a frame that
+    /// matches none doesn't skip), since outside it a game may use the same memory for other
+    /// things.
+    fn take_reading(&mut self) {
+        let now = self.read();
+        let previous = std::mem::replace(&mut self.reading, now);
+        let Some(definition) = self.definition.take() else {
+            return;
+        };
+        let has_play = definition.states.iter().any(|s| s.name == "play");
+        if has_play && self.last_known.as_deref() != Some("play") {
+            self.definition = Some(definition);
+            return;
+        }
+        let on: Vec<&Cheat> = definition
+            .cheats
+            .iter()
+            .filter(|c| self.switches.contains(&c.id))
+            .collect();
+        for cheat in on {
+            for set in cheat.set.iter().flatten() {
+                let to = match &set.to {
+                    Amount::Number(n) => Some(*n),
+                    Amount::Max(_) => definition.values.get(&set.value).and_then(|v| v.max),
+                };
+                if let Some(to) = to {
+                    self.write_now(&definition, &set.value, to);
+                }
+            }
+            for name in cheat.hold.iter().flatten() {
+                let before = previous.get(name).and_then(Read::number);
+                let now = self.reading.get(name).and_then(Read::number);
+                if let (Some(before), Some(now)) = (before, now) {
+                    if now < before {
+                        self.write_now(&definition, name, before);
+                    }
+                }
+            }
+        }
+        self.definition = Some(definition);
+    }
+
+    /// Writes a value and keeps this frame's reading in step with it. A write refused (a
+    /// definition `sidekick check` would fault) does nothing.
+    fn write_now(&mut self, definition: &Definition, name: &str, number: i64) {
+        let Some(value) = definition.values.get(name) else {
+            return;
+        };
+        if let Ok((addr, bytes)) = value::encode(value, number) {
+            for (at, byte) in (addr..).zip(bytes) {
+                self.machine.write(at, byte);
+            }
+            self.reading.insert(name.to_owned(), Read::Number(number));
+        }
+    }
+
+    /// Starts a new game's record when play begins after the title, a game over, or nothing
+    /// known yet. Frames that match no state don't count, so a flicker isn't a new game.
+    fn track_games(&mut self) {
+        let Some(state) = self.state.clone() else {
+            return;
+        };
+        let after = self.last_known.as_deref();
+        if state == "play" && matches!(after, None | Some("title" | "game_over")) {
+            self.record = Record::default();
+            self.note_use();
+        }
+        self.last_known = Some(state);
+    }
+
+    /// Adds the guidance level and the switches on now to the record.
+    fn note_use(&mut self) {
+        self.record.level = self.record.level.max(self.level);
+        let Some(definition) = &self.definition else {
+            return;
+        };
+        let marking = definition
+            .cheats
+            .iter()
+            .filter(|c| c.marks_score && self.switches.contains(&c.id))
+            .map(|c| c.id.clone());
+        self.record.switches.extend(marking);
+    }
+
+    /// Turns a training switch on or off. On, its patches are applied, all or none; off, the
+    /// game's bytes are put back.
+    ///
+    /// # Errors
+    /// If there's no such switch, or one of its patches doesn't find its `expect` bytes; the
+    /// switch then stays off and nothing is written.
+    pub fn switch(&mut self, id: &str, on: bool) -> Result<(), SwitchError> {
+        let cheat: Cheat = self
+            .definition
+            .as_ref()
+            .and_then(|d| d.cheats.iter().find(|c| c.id == id))
+            .cloned()
+            .ok_or(SwitchError::Unknown)?;
+        if on == self.switches.contains(id) {
+            return Ok(());
+        }
+        if on {
+            if let Some(patch) = cheat.patch.iter().find(|p| !self.expected(p)) {
+                return Err(SwitchError::Mismatch {
+                    addr: patch.addr.map_or(0, |a| a.0),
+                });
+            }
+            for patch in &cheat.patch {
+                self.patch(patch);
+            }
+            self.switches.insert(id.to_owned());
+            self.note_use();
+        } else {
+            for patch in &cheat.patch {
+                self.unpatch(patch);
+            }
+            self.switches.remove(id);
+        }
+        Ok(())
+    }
+
+    /// Whether a patch's `expect` bytes are where it would go, in RAM.
+    fn expected(&self, patch: &Patch) -> bool {
+        patch.bank.is_none()
+            && patch.addr.is_some_and(|a| {
+                a.0 >= 0x4000
+                    && (a.0..)
+                        .zip(&patch.expect.0)
+                        .all(|(at, &byte)| self.machine.peek(at) == byte)
+            })
+    }
+
+    /// Whether a training switch is on.
+    #[must_use]
+    pub fn switched_on(&self, id: &str) -> bool {
+        self.switches.contains(id)
+    }
+
+    /// Sets the guidance level, for the record.
+    pub fn set_level(&mut self, level: u8) {
+        self.level = level;
+        self.note_use();
+    }
+
+    /// What the game being played has used.
+    #[must_use]
+    pub const fn record(&self) -> &Record {
+        &self.record
     }
 
     /// Whether the game is held on its loading screen.

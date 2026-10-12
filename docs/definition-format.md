@@ -231,11 +231,13 @@ note = "Skips the call that takes energy when an enemy touches the player."
 | Key | Meaning |
 |---|---|
 | `id`, `label` | Its name, and its text in the menu. |
-| `set` | One or a list of `{ value, to }`: `to` is a number or `"max"`. Written at each sync point while the switch is on. |
-| `hold` | One or a list of value names that may not go down while the switch is on. |
-| `patch` | A list of `{ addr, bytes, expect }`. Applied when the switch goes on, and the original bytes put back when it goes off. If memory doesn't hold `expect` when applying, the switch is turned off with a notice: the dump or the moment is not what the definition expects. |
+| `set` | One or a list of `{ value, to }`: `to` is a number or `"max"`. Written each frame while the switch is on, right after the values are read (at the sync point, or the frame's end without one), so the game sees it at the start of its next frame. When the definition names a `play` state, only in play: elsewhere a game may use the same memory for other things. |
+| `hold` | One or a list of value names that may not go down while the switch is on: one that went down since the last frame is put back, at the same moment as `set`. |
+| `patch` | A list of `{ addr, bytes, expect }`. Applied when the switch goes on, and the original bytes put back when it goes off. If memory doesn't hold every patch's `expect` when the switch goes on, it stays off and none of them is applied, with a notice: the dump or the moment is not what the definition expects. |
 | `marks_score` | `true` (the default): a game played with this switch on is a training game (`ZX-SIDEKICK.md` §13). |
 | `note` | Why and how it works, in your own words. |
+
+A game remembers the highest guidance level it was played at and every switch with `marks_score` that was on. A game starts when the state becomes `play` after `title`, `game_over` or none; without those states, everything from loading is one game. `sidekick run TAPE --switch ID@FRAME --values` turns a switch on at a frame and prints the record.
 
 `sidekick import-pok FILE.pok` writes `[[cheats]]` entries from a `.pok` file, each as a `patch` or a `set`.
 

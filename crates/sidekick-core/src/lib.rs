@@ -19,7 +19,7 @@ pub use rustzx_core::zx::joy::kempston::KempstonKey as Kempston;
 pub use rustzx_core::zx::keys::{CompoundKey, ZXKey as Key};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
 pub use rustzx_z80::Regs;
-pub use session::{Reading, Session};
+pub use session::{Reading, Record, Session, SwitchError};
 pub use value::{Read, WriteError};
 
 use host::Bytes;

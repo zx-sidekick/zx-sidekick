@@ -74,6 +74,10 @@ enum Command {
         /// for more.
         #[arg(long = "key", value_name = "NAME@FRAME")]
         keys: Vec<headless::KeyPress>,
+        /// A training switch to turn on at a frame: ID@FRAME, like endless-lives@2000. Repeat
+        /// for more.
+        #[arg(long = "switch", value_name = "ID@FRAME")]
+        switches: Vec<headless::SwitchAt>,
         /// Where to write the picture after the last frame, as a PNG.
         #[arg(long, value_name = "FILE")]
         screenshot: Option<PathBuf>,
@@ -109,6 +113,7 @@ fn main() -> ExitCode {
                 values,
                 frames,
                 keys,
+                switches,
                 screenshot,
                 scale,
             }),
@@ -116,7 +121,14 @@ fn main() -> ExitCode {
         ) => {
             let run = run_session(&tape, definition.as_deref(), &games).and_then(
                 |(mut session, _, _)| {
-                    headless::run(&mut session, frames, &keys, screenshot.as_deref(), scale)?;
+                    headless::run(
+                        &mut session,
+                        frames,
+                        &keys,
+                        &switches,
+                        screenshot.as_deref(),
+                        scale,
+                    )?;
                     if values {
                         print!("{}", headless::values(&session));
                     }
