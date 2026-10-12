@@ -236,3 +236,42 @@ fn the_record_keeps_the_switches_and_level_of_the_game_being_played() {
         ["endless-lives"]
     );
 }
+
+#[test]
+fn a_definition_reloaded_keeps_the_switches_it_still_has() {
+    let mut s = session();
+    poke(&mut s, FREE + 0x10, &[0xCD, 0x40, 0x75]);
+    poke(&mut s, FREE + 0x20, &[0xF5]);
+    play(&mut s);
+    s.switch("no-harm", true).expect("its bytes are there");
+    s.switch("full-energy", true).expect("a set");
+    assert_eq!(s.machine().peek(FREE + 0x20), 0xC9);
+
+    // Edited: no harm now patches only its first place, with other bytes; full energy is gone.
+    let edited = DEFINITION
+        .replace(
+            r#"  { addr = 0x8010, bytes = "00 00 00", expect = "CD 40 75" },
+  { addr = 0x8020, bytes = "C9", expect = "F5" },"#,
+            r#"  { addr = 0x8010, bytes = "11 11 11", expect = "CD 40 75" },"#,
+        )
+        .replace(
+            "[[cheats]]\nid = \"full-energy\"\nlabel = \"Full energy\"\nset = { value = \"energy\", to = \"max\" }\n",
+            "",
+        );
+    assert_ne!(edited, DEFINITION);
+    let left = s.reload(Definition::from_toml(&edited).expect("it parses"));
+    assert_eq!(left, ["full-energy"], "gone from the definition");
+    assert!(s.switched_on("no-harm"));
+    assert_eq!(
+        (0..3)
+            .map(|k| s.machine().peek(FREE + 0x10 + k))
+            .collect::<Vec<_>>(),
+        [0x11; 3],
+        "its new bytes"
+    );
+    assert_eq!(
+        s.machine().peek(FREE + 0x20),
+        0xF5,
+        "the place it left, put back"
+    );
+}

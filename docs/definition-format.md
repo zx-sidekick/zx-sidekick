@@ -259,6 +259,8 @@ A game remembers the highest guidance level it was played at and every switch wi
 
 `sidekick import-pok FILE.pok` writes `[[cheats]]` entries from a `.pok` file, the POKE format Fuse and ZXDB use, to paste into a definition (`-o FILE` writes them to a file). Each trainer becomes a switch with a `patch` for each of its pokes, the byte that was there as its `expect`, and the bank on a 128K. A trainer that asks the player for a value is left out, with a comment saying so.
 
+While a game runs, the program looks at its definition's files about once a second, the definition and the files in its folder and the folders in that, and reads it again when one has changed: its values, states and switches, its script, and what the pad does. A notice says it reloaded, naming any switch it had to leave off (gone from the definition, or whose patch no longer finds its bytes), or why it couldn't, in which case the game goes on as it was.
+
 ## `[pad]`: the controller
 
 Per state, what each part of a pad does. `[pad.default]` applies in every state; `[pad.<state>]` overrides it, entry by entry, while that state is the game's (as of the last frame's end). Without a `[pad]`, the D-pad and stick drive the joystick, west fires, and the other buttons do nothing in the game; `[pad.default]` changes that entry by entry.

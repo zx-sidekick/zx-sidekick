@@ -284,6 +284,7 @@ fn tape_session(file: &Path, library: &Library, data: &Path) -> Result<Playing, 
         saves: Saves::of_tape(&tape.name, &tape.sha1, data),
         quit_slot: true,
         keep_lists: true,
+        source: None,
     })
 }
 
@@ -464,6 +465,7 @@ mod tests {
             saves: Saves::of_tape("plain.tap", "ABC123", data),
             quit_slot: true,
             keep_lists: true,
+            source: None,
         }
     }
 

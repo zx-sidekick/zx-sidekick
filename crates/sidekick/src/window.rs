@@ -27,7 +27,7 @@ use sdl3::{
     EventPump, GamepadSubsystem,
 };
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
-use sidekick_def::Role;
+use sidekick_def::{Definition, Package, Role};
 use sidekick_ui::{
     Canvas, EntryCard, Fonts, LibraryPage, Menu as MenuCard, Note, Offer, PadLabels, Panel,
     PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT, ENTRY_WIDTH,
@@ -39,7 +39,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 /// A frame of the 48K: 69,888 T-states at 3.5 MHz.
@@ -51,6 +51,9 @@ const QUEUED_FRAMES: usize = 3;
 
 /// The most frames run between two presented pictures, so a stall can't snowball.
 const MOST_FRAMES_A_PASS: usize = 5;
+
+/// How often a game's definition is looked at for a change, to reload it.
+const RELOAD_CHECK: Duration = Duration::from_secs(1);
 
 /// How long a notice such as "Game saved" shows.
 const NOTE_TIME: Duration = Duration::from_secs(2);
@@ -161,6 +164,11 @@ struct Player {
     /// Whether the quit slot and the kept lists are this session's to write (`Playing`).
     quit_slot: bool,
     keep_lists: bool,
+    /// Where the game's definition was read from, when its files last changed, and when they
+    /// were last looked at.
+    source: Option<PathBuf>,
+    changed: Option<SystemTime>,
+    checked: Instant,
     started: Instant,
     frames_run: u64,
     rgba: Vec<u8>,
@@ -674,6 +682,9 @@ impl Player {
             offer,
             quit_slot: playing.quit_slot,
             keep_lists: playing.keep_lists,
+            changed: playing.source.as_deref().and_then(games::changed),
+            source: playing.source,
+            checked: Instant::now(),
             started: Instant::now(),
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
@@ -1046,12 +1057,58 @@ impl Player {
     /// Opens the file dialog when the menu asked for it, and loads the save it chose, once it
     /// has.
     fn take_opened(&mut self, pads: &mut Pads, canvas: &WindowCanvas) {
+        if self.reload_if_changed() {
+            pads.hold_back();
+        }
         if std::mem::take(&mut self.choosing) {
             self.choose_save(canvas);
         }
         let path = self.opened.lock().ok().and_then(|mut o| o.take());
         if let Some(path) = path {
             self.load(&path, pads);
+        }
+    }
+
+    /// Reads the game's definition again when its files have changed since they were last
+    /// read, looking about once a second: the definition, its script and what the pad does. A
+    /// notice says it reloaded, with any switch it had to leave off, or why it couldn't; a
+    /// definition that doesn't load leaves the game as it was. Returns whether it reloaded.
+    fn reload_if_changed(&mut self) -> bool {
+        if self.checked.elapsed() < RELOAD_CHECK {
+            return false;
+        }
+        self.checked = Instant::now();
+        let Some(path) = self.source.clone() else {
+            return false;
+        };
+        let changed = games::changed(&path);
+        if changed.is_none() || changed == self.changed {
+            return false;
+        }
+        self.changed = changed;
+        match Package::load(&path) {
+            Ok(package) => {
+                let left = self.session.reload(package.definition.clone());
+                if let Some(script) = games::script(&package) {
+                    self.session.set_script(script);
+                }
+                self.play = Play::new(Mapping::new(Some(&package.definition)));
+                if left.is_empty() {
+                    self.say("Definition reloaded");
+                } else {
+                    self.say(&format!(
+                        "Definition reloaded; left off: {}",
+                        left.join(", ")
+                    ));
+                }
+                true
+            }
+            Err(e) => {
+                let why = e.to_string();
+                let first = why.lines().next().unwrap_or_default();
+                self.say(&format!("Definition not reloaded: {first}"));
+                false
+            }
         }
     }
 
