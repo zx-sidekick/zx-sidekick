@@ -671,13 +671,12 @@ impl Player {
             match milestone {
                 Milestone::FirstTitle => {
                     let kept = self.folder.as_deref().map(scores::load).unwrap_or_default();
-                    if kept.is_empty() {
-                        self.table = scores::from_tape(self.session.scores().unwrap_or_default());
-                    } else {
-                        let entries: Vec<_> = kept.iter().map(|k| k.entry.clone()).collect();
-                        self.session.set_scores(&entries);
-                        self.table = kept;
-                    }
+                    let entries: Vec<_> = kept.iter().map(|k| k.entry.clone()).collect();
+                    self.session.set_scores(&entries);
+                    // What the game has now: the kept entries, and any of its own they didn't
+                    // cover (fewer kept than it holds), which are the tape's.
+                    let now = self.session.scores().unwrap_or_default();
+                    self.table = scores::after_game(&kept, now, "from the tape", false).0;
                 }
                 Milestone::GameEnded => self.game_ended(),
             }

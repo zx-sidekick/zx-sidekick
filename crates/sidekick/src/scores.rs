@@ -217,6 +217,26 @@ mod tests {
     }
 
     #[test]
+    fn rows_the_kept_table_doesn_t_cover_are_the_tape_s() {
+        let kept = vec![Kept {
+            entry: entry("ANN", "500"),
+            mark: "level 1 · Codes".to_owned(),
+            training: false,
+        }];
+        let now = vec![entry("ANN", "500"), entry("HAL", "10")];
+        let (table, _) = after_game(&kept, now, "from the tape", false);
+        let marks: Vec<&str> = table.iter().map(|k| k.mark.as_str()).collect();
+        assert_eq!(marks, ["level 1 · Codes", "from the tape"]);
+        let (_, mine) = after_game(
+            &table,
+            vec![entry("ANN", "500"), entry("HAL", "10")],
+            "x",
+            false,
+        );
+        assert_eq!(mine, None, "so HAL isn't taken for the next game's");
+    }
+
+    #[test]
     fn the_file_is_read_back_as_written() {
         let folder = tempfile::TempDir::new().unwrap();
         let table = from_tape(vec![entry("ANN", "12500"), entry("BOB", "900")]);
