@@ -30,8 +30,8 @@ pub(crate) enum Outcome {
     Cancelled,
     /// Closed with the settings applied.
     Applied,
-    /// Closed to end the game with the definition's `end-game` action.
-    EndGame,
+    /// Closed to do the definition's action at this index, the one its row stands for.
+    Act(usize),
     /// The program is to quit.
     Exit,
     /// Closed to save to the quick slot.
@@ -47,7 +47,8 @@ pub(crate) enum Outcome {
 enum Action {
     Back,
     Forget,
-    EndGame,
+    /// The definition's action at this index.
+    Game(usize),
     Exit,
 }
 
@@ -111,8 +112,8 @@ impl Menu {
                 format!("Forget the {}", kept_words(definition)),
             ));
         }
-        if can_end_game(definition, session.state()) {
-            actions.push((Action::EndGame, "End this game".to_owned()));
+        for (i, words) in menu_actions(definition, session.state()) {
+            actions.push((Action::Game(i), words));
         }
         actions.push((Action::Exit, format!("Exit {title}")));
         let chosen = if levels.is_empty() {
@@ -256,12 +257,12 @@ impl Menu {
                         Outcome::Stay
                     }
                 }
-                Some(action @ (Action::Forget | Action::EndGame | Action::Exit)) => {
+                Some(action @ (Action::Forget | Action::Game(_) | Action::Exit)) => {
                     if self.armed == Some(i) {
                         self.armed = None;
                         match action {
                             Action::Exit => Outcome::Exit,
-                            Action::EndGame => Outcome::EndGame,
+                            Action::Game(index) => Outcome::Act(index),
                             _ => {
                                 // Forgotten at once; the row goes, its place taken by the next.
                                 session.forget_kept();
@@ -345,7 +346,7 @@ impl Menu {
             armed: self.armed.and_then(|i| {
                 let (action, words) = self.actions.get(i)?;
                 let what = match action {
-                    Action::EndGame => "end this game".to_owned(),
+                    Action::Game(_) => lower_first(words),
                     Action::Exit => "exit".to_owned(),
                     Action::Forget => {
                         format!("forget {}", words.strip_prefix("Forget ").unwrap_or(words))
@@ -381,15 +382,27 @@ fn kept_words(definition: Option<&Definition>) -> String {
     }
 }
 
-/// Whether the menu offers End this game: the definition says how, and the game is in play
-/// (or has no `play` state to say otherwise).
-fn can_end_game(definition: Option<&Definition>, state: Option<&str>) -> bool {
-    let Some(definition) = definition else {
-        return false;
-    };
-    let has_action = definition.actions.iter().any(|a| a.id == "end-game");
-    let has_play = definition.states.iter().any(|s| s.name == "play");
-    has_action && (!has_play || state == Some("play"))
+/// The definition's actions with a row in the menu, offered in `state`: each one's index and
+/// words.
+fn menu_actions(definition: Option<&Definition>, state: Option<&str>) -> Vec<(usize, String)> {
+    definition
+        .into_iter()
+        .flat_map(|d| d.actions.iter().enumerate())
+        .filter_map(|(i, action)| {
+            let words = action.menu.clone()?;
+            let offered = action.menu_in.is_empty()
+                || state.is_some_and(|s| action.menu_in.iter().any(|m| m == s));
+            offered.then_some((i, words))
+        })
+        .collect()
+}
+
+/// Words as the second press's prompt says them: "End this game" as "end this game".
+fn lower_first(words: &str) -> String {
+    let mut chars = words.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_lowercase().chain(chars).collect()
+    })
 }
 
 #[cfg(test)]
@@ -435,9 +448,14 @@ type = "u8"
 writable = true
 
 [[actions]]
-id = "end-game"
+id = "jump"
+tap = ["Q"]
+
+[[actions]]
+id = "abandon"
 tap = ["A", "S", "D", "F", "G"]
 frames = 5
+menu = "End this game"
 "#;
 
     fn session(text: &str) -> Session {
@@ -599,10 +617,36 @@ frames = 5
         assert_eq!(menu.input(Input::Up, &mut s), Outcome::Stay, "moving away");
         assert_eq!(menu.card(PadLabels::Letters).armed, None);
         assert_eq!(menu.input(Input::Click(end), &mut s), Outcome::Stay);
-        assert_eq!(menu.input(Input::Confirm, &mut s), Outcome::EndGame);
+        assert_eq!(
+            menu.input(Input::Confirm, &mut s),
+            Outcome::Act(1),
+            "the definition's action, past one with no row"
+        );
         let exit = Row::Action(2);
         menu.input(Input::Click(exit), &mut s);
         assert_eq!(menu.input(Input::Click(exit), &mut s), Outcome::Exit);
+    }
+
+    #[test]
+    fn an_action_s_row_is_offered_only_in_its_states() {
+        let text = format!(
+            "{}\nmenu_in = [\"running\"]\n\n[values.mode]\naddr = 0x8100\ntype = \"u8\"\n\n[[states]]\nname = \"running\"\nwhen = {{ value = \"mode\", equals = 2 }}\n",
+            DEFINITION.trim_end()
+        );
+        let mut s = session(&text);
+        let rows = |s: &Session| {
+            Menu::open(s, 0, "Test", false)
+                .card(PadLabels::Letters)
+                .actions
+        };
+        assert_eq!(
+            rows(&s),
+            ["Back to the game", "Exit Test"],
+            "not running yet"
+        );
+        s.machine_mut().write(0x8100, 2);
+        s.run_frame().expect("a frame");
+        assert_eq!(rows(&s), ["Back to the game", "End this game", "Exit Test"]);
     }
 
     #[test]

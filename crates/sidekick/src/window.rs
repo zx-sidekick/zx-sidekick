@@ -26,7 +26,7 @@ use sdl3::{
     EventPump, GamepadSubsystem,
 };
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
-use sidekick_def::Definition;
+use sidekick_def::{Definition, Role};
 use sidekick_ui::{
     Canvas, EntryCard, Face, Fonts, LibraryPage, Menu as MenuCard, Note, NoticeHint, Offer,
     PadLabels, PadMark, Panel, PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame,
@@ -745,7 +745,7 @@ impl Player {
     /// Acts on the session's milestones: the kept high scores put in at the first title, and
     /// read back after each game.
     fn milestones(&mut self) {
-        if self.session.state() == Some("play") {
+        if self.in_role(Role::Play) {
             self.this_game = None;
         }
         for milestone in self.session.take_milestones() {
@@ -1072,8 +1072,15 @@ impl Player {
         layout(output, PICTURE, panel)
     }
 
+    /// Whether the game is in the state with `role`.
+    fn in_role(&self, role: Role) -> bool {
+        self.session
+            .definition()
+            .is_some_and(|d| d.is(self.session.state(), role))
+    }
+
     fn paused(&self) -> bool {
-        self.menu.is_some() || self.offer.is_some() || self.session.state() == Some("paused")
+        self.menu.is_some() || self.offer.is_some() || self.in_role(Role::Paused)
     }
 
     /// Takes an event for the guidance menu: Esc or Select opens it in play; while it's open,
@@ -1184,9 +1191,15 @@ impl Player {
                 self.level = level;
                 self.close_menu(pads);
             }
-            Outcome::EndGame => {
+            Outcome::Act(index) => {
                 self.close_menu(pads);
-                if let Some(function) = self.play.act("end-game") {
+                let id = self
+                    .session
+                    .definition()
+                    .and_then(|d| d.actions.get(index))
+                    .map(|a| a.id.clone());
+                // A script action that fails turns the script off, which the panel shows.
+                if let Some(function) = id.and_then(|id| self.play.act(&id)) {
                     let _ = self.session.script_action(&function);
                 }
             }
@@ -1406,7 +1419,7 @@ fn pause_notice(definition: Option<&Definition>, labels: PadLabels) -> PauseNoti
     let notice = definition
         .into_iter()
         .flat_map(|d| &d.states)
-        .find(|s| s.name == "paused")
+        .find(|s| s.role == Some(Role::Paused))
         .and_then(|s| s.notice.as_ref());
     let Some(notice) = notice else {
         return PauseNotice {
@@ -1815,6 +1828,31 @@ fn frames_due(elapsed: Duration, run: u64) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pause_notice_is_the_paused_role_s_whatever_its_name() {
+        let text = r#"
+schema = 1
+[game]
+id = "test"
+title = "Test"
+machine = "48k"
+[[media]]
+name = "the tape"
+[[states]]
+name = "paused"
+pc = 0x6000
+notice = { text = "A state merely named paused." }
+[[states]]
+name = "frozen"
+role = "paused"
+pc = 0x6001
+notice = { text = "Press fire." }
+"#;
+        let definition = Definition::from_toml(text).expect("the test definition parses");
+        let notice = pause_notice(Some(&definition), PadLabels::Letters);
+        assert_eq!(notice.text, "Press fire.");
+    }
 
     #[test]
     fn the_offer_goes_on_with_enter_and_ignores_modifiers() {

@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use sidekick_core::{Error, Progress, Record, Session};
+use sidekick_def::Role;
 use std::{
     collections::BTreeSet,
     fs, io,
@@ -253,12 +254,12 @@ pub(crate) fn continue_from(
 /// # Errors
 /// If a game under way couldn't be saved.
 pub(crate) fn keep_on_quit(session: &mut Session, saves: &Saves) -> Result<(), Unsaved> {
-    let has_play = session
-        .definition()
-        .is_some_and(|d| d.states.iter().any(|s| s.name == "play"));
+    let definition = session.definition();
+    let has_play = definition.is_some_and(|d| d.state_for(Role::Play).is_some());
     let progress = session.progress();
+    let over = definition.is_some_and(|d| d.is(progress.last_known.as_deref(), Role::GameOver));
     let under_way = if has_play {
-        progress.in_game && progress.last_known.as_deref() != Some("game_over")
+        progress.in_game && !over
     } else {
         session.machine().tape_loaded()
     };
@@ -354,9 +355,11 @@ type = "u8"
 
 [[states]]
 name = "title"
+role = "title"
 when = { value = "mode", equals = 1 }
 [[states]]
 name = "play"
+role = "play"
 when = { value = "mode", equals = 2 }
 
 [[cheats]]
@@ -534,6 +537,32 @@ patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }]
         s.run_frame().expect("a frame");
         keep_on_quit(&mut s, &saves).unwrap();
         assert!(saves.quit().exists(), "once it has");
+    }
+
+    #[test]
+    fn game_over_is_the_state_with_its_role_whatever_its_name() {
+        let text = DEFINITION.replace(
+            "[[cheats]]",
+            "[[states]]\nname = \"wrecked\"\nrole = \"game_over\"\nwhen = { value = \"mode\", equals = 4 }\n\n[[cheats]]",
+        );
+        let definition = Definition::from_toml(&text).expect("the test definition parses");
+        let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+        for _ in 0..BOOT_FRAMES {
+            machine.run_frame().expect("a frame");
+        }
+        let mut s = Session::new(machine, Some(definition));
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = saves(folder.path());
+        mode(&mut s, 1);
+        mode(&mut s, 2);
+        keep_on_quit(&mut s, &saves).unwrap();
+        assert!(saves.quit().exists(), "kept in play");
+        mode(&mut s, 4);
+        keep_on_quit(&mut s, &saves).unwrap();
+        assert!(
+            !saves.quit().exists(),
+            "the state with role game_over: nothing kept"
+        );
     }
 
     #[test]

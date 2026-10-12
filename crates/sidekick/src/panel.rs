@@ -3,7 +3,7 @@
 
 use crate::picture::color;
 use sidekick_core::{Bitmap, Fact, Font, Read, Reading, Session};
-use sidekick_def::{Column, Definition, Widget, WidgetKind};
+use sidekick_def::{Column, Definition, MarkerShape, Widget, WidgetKind};
 use sidekick_ui::{
     CardRow, Cell, Chip, Color, Edge, Icon, Look, MapGrid, Marker, MarkerKind, Panel, PanelBody,
     PanelColumn, PanelWidget, Pin, Pixels, Route, RouteColor,
@@ -131,7 +131,7 @@ pub(crate) fn panel(
                     Source::Script(fact),
                 ) => pictured(w, fact, &graphics(w), script.chosen)?,
                 (WidgetKind::MapGrid, Source::Script(fact)) => {
-                    PanelBody::Map(map(fact, &graphics(w))?)
+                    PanelBody::Map(map(fact, &graphics(w), &w.markers)?)
                 }
                 (WidgetKind::Text, Source::Value(read, _)) => PanelBody::Text(read.as_text()),
                 (WidgetKind::Counter, Source::Value(read, _)) => PanelBody::Counter(read.number()?),
@@ -222,7 +222,11 @@ fn words(fact: Option<&Fact>) -> Option<&str> {
 }
 
 /// The script's map: `{ width, height, cells, markers, routes }`.
-fn map(fact: &Fact, graphics: &Graphics) -> Option<MapGrid> {
+fn map(
+    fact: &Fact,
+    graphics: &Graphics,
+    shapes: &BTreeMap<String, MarkerShape>,
+) -> Option<MapGrid> {
     let list = |key: &str| match get(fact, key) {
         Some(Fact::List(items)) => items.as_slice(),
         _ => &[],
@@ -245,13 +249,16 @@ fn map(fact: &Fact, graphics: &Graphics) -> Option<MapGrid> {
     let markers = list("markers")
         .iter()
         .filter_map(|marker| {
-            let kind = match words(get(marker, "kind"))? {
-                "player" => MarkerKind::Player,
-                "teleport" => MarkerKind::Teleport,
-                "door" => MarkerKind::Door,
-                "target" => MarkerKind::Target,
-                "item" => MarkerKind::Item(graphics.picture(get(marker, "picture"))),
-                _ => return None,
+            // The script's kind, drawn as the widget's markers say; one it doesn't list isn't
+            // drawn.
+            let kind = match shapes.get(words(get(marker, "kind"))?)? {
+                MarkerShape::Player => MarkerKind::Player,
+                MarkerShape::Diamond => MarkerKind::Diamond,
+                MarkerShape::Square => MarkerKind::Square,
+                MarkerShape::Ring => MarkerKind::Ring,
+                MarkerShape::Picture => {
+                    MarkerKind::Picture(graphics.picture(get(marker, "picture")))
+                }
             };
             let color = match get(marker, "color") {
                 Some(Fact::Text(t)) => route_color(t).map(RouteColor::color),
@@ -739,6 +746,15 @@ source = "script:doors"
         );
     }
 
+    /// A map marker as a script returns it.
+    fn at(x: i64, y: i64, kind: &str) -> Fact {
+        map(vec![
+            ("x", Fact::Number(x)),
+            ("y", Fact::Number(y)),
+            ("kind", Fact::Text(kind.to_owned())),
+        ])
+    }
+
     #[test]
     fn the_script_s_map_becomes_the_map_and_its_pins() {
         let def = definition(
@@ -748,6 +764,7 @@ kind = "map-grid"
 from_level = 1
 pictures = "pictures"
 source = "script:map"
+markers = { player = "player", item = "picture", door = "square" }
 "#,
         );
         let xy = |x, y| Fact::List(vec![Fact::Number(x), Fact::Number(y)]);
@@ -767,11 +784,7 @@ source = "script:map"
             (
                 "markers",
                 Fact::List(vec![
-                    map(vec![
-                        ("x", Fact::Number(0)),
-                        ("y", Fact::Number(1)),
-                        ("kind", text("player")),
-                    ]),
+                    at(0, 1, "player"),
                     map(vec![
                         ("x", Fact::Number(1)),
                         ("y", Fact::Number(1)),
@@ -779,11 +792,8 @@ source = "script:map"
                         ("picture", Fact::Number(2)),
                         ("color", text("second")),
                     ]),
-                    map(vec![
-                        ("x", Fact::Number(0)),
-                        ("y", Fact::Number(0)),
-                        ("kind", text("ghost")),
-                    ]),
+                    at(0, 0, "ghost"),
+                    at(1, 0, "door"),
                 ]),
             ),
             (
@@ -817,13 +827,18 @@ source = "script:map"
                 seen: true
             }]
         );
-        assert_eq!(grid.markers.len(), 2, "a kind it doesn't know is left out");
+        assert_eq!(grid.markers.len(), 3, "a kind it doesn't know is left out");
+        assert_eq!(
+            grid.markers[2].kind,
+            MarkerKind::Square,
+            "a kind drawn as the shape the widget gives it"
+        );
         assert_eq!(
             grid.markers[1],
             Marker {
                 x: 1,
                 y: 1,
-                kind: MarkerKind::Item(Some(pixels(&dot(2)))),
+                kind: MarkerKind::Picture(Some(pixels(&dot(2)))),
                 color: Some(RouteColor::Second.color()),
             }
         );

@@ -104,6 +104,21 @@ impl std::error::Error for Error {
 }
 
 impl Definition {
+    /// The name of the state with `role`, if one has it.
+    #[must_use]
+    pub fn state_for(&self, role: Role) -> Option<&str> {
+        self.states
+            .iter()
+            .find(|s| s.role == Some(role))
+            .map(|s| s.name.as_str())
+    }
+
+    /// Whether `state` is the state with `role`.
+    #[must_use]
+    pub fn is(&self, state: Option<&str>, role: Role) -> bool {
+        state.is_some_and(|s| self.state_for(role) == Some(s))
+    }
+
     /// Reads a definition from TOML.
     ///
     /// # Errors

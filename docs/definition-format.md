@@ -124,19 +124,22 @@ when = { value = "paused_flag", equals = 1 }
 
 [[states]]
 name = "play"
+role = "play"          # what it means to the program
 pc = 0x6A00            # the frame stopped at, or passed through, this address
 
 [[states]]
 name = "title"
+role = "title"
 pc = [0x5F10, 0x5F42]  # any of these
 ```
 
 | Key | Meaning |
 |---|---|
-| `name` | The state's name. `title`, `play`, `paused` and `game_over` have meanings to the program (the pause notice, Start on the title screen, the high-score table); others are yours. |
+| `name` | The state's name: yours, meaning nothing to the program by itself. Other sections name it (`[pad.<state>]`, `text_entry.state`, `menu_in`), and a script sees it as `mem.state`. |
+| `role` | What it means to the program, if anything: `title` (the kept high scores go in when it's first reached; coming back to it ends a game), `play` (training switches apply; coming to it from the title, game over or nothing starts a game's record; a crafted situation enters it), `paused` (the picture dims and the pause notice shows) or `game_over` (no game is under way, so nothing is kept on quitting). At most one state has each. `sidekick check` points out a state named after a role without it. |
 | `pc` | One address or a list: matches if the processor executed it during the frame. |
 | `when` | A test of a value: `equals`, `not`, `in = [..]`, `at_least`, `at_most`, or `bits = 0x80` (all set). `all = [..]` and `any = [..]` combine tests. |
-| `notice` | For `paused` only: what the pause notice says while the game is paused. `text` is its line; `hints` are what to press, each with `keys` (the keyboard's, as shown: `"Alt"`, or arrows such as `"← ↑ → ↓"`), `pad` (a pad part by position: `dpad`, `stick`, `west`, `south`, `east` or `north`, shown as the pad's maker marks it) or both, and `does`. Without it, the notice says "Press a key or a button to go on." |
+| `notice` | For the state with `role = "paused"` only: what the pause notice says while the game is paused. `text` is its line; `hints` are what to press, each with `keys` (the keyboard's, as shown: `"Alt"`, or arrows such as `"← ↑ → ↓"`), `pad` (a pad part by position: `dpad`, `stick`, `west`, `south`, `east` or `north`, shown as the pad's maker marks it) or both, and `does`. Without it, the notice says "Press a key or a button to go on." |
 
 ```toml
 [[states]]
@@ -245,13 +248,13 @@ note = "Skips the call that takes energy when an enemy touches the player."
 | Key | Meaning |
 |---|---|
 | `id`, `label` | Its name, and its text in the menu. |
-| `set` | One or a list of `{ value, to }`: `to` is a number or `"max"`. Written each frame while the switch is on, right after the values are read (at the sync point, or the frame's end without one), so the game sees it at the start of its next frame. When the definition names a `play` state, only in play: elsewhere a game may use the same memory for other things. |
+| `set` | One or a list of `{ value, to }`: `to` is a number or `"max"`. Written each frame while the switch is on, right after the values are read (at the sync point, or the frame's end without one), so the game sees it at the start of its next frame. When a state has role `play`, only in that state: elsewhere a game may use the same memory for other things. |
 | `hold` | One or a list of value names that may not go down while the switch is on: one that went down since the last frame is put back, at the same moment as `set`. |
 | `patch` | A list of `{ addr, bytes, expect }`. Applied when the switch goes on, and the original bytes put back when it goes off. If memory doesn't hold every patch's `expect` when the switch goes on, it stays off and none of them is applied, with a notice: the dump or the moment is not what the definition expects. |
 | `marks_score` | `true` (the default): a game played with this switch on is a training game (`ZX-SIDEKICK.md` §13). |
 | `note` | Why and how it works, in your own words. |
 
-A game remembers the highest guidance level it was played at and every switch with `marks_score` that was on. A game starts when the state becomes `play` after `title`, `game_over` or none; without those states, everything from loading is one game. `sidekick run TAPE --switch ID@FRAME --values` turns a switch on at a frame and prints the record.
+A game remembers the highest guidance level it was played at and every switch with `marks_score` that was on. A game starts when the state becomes the one with role `play` after the ones with `title` or `game_over`, or none; without those roles, everything from loading is one game. `sidekick run TAPE --switch ID@FRAME --values` turns a switch on at a frame and prints the record.
 
 `sidekick import-pok FILE.pok` writes `[[cheats]]` entries from a `.pok` file, each as a `patch` or a `set`.
 
@@ -301,6 +304,8 @@ id = "end-game"
 label = "End this game"
 tap = ["A", "S", "D", "F", "G"]
 frames = 5
+menu = "End this game"   # a row in the guidance menu
+menu_in = ["play"]       # offered only in these states
 
 [[actions]]
 id = "pick-up"
@@ -316,7 +321,8 @@ host_key = "Tab"
 
 | Key | Meaning |
 |---|---|
-| `id`, `label` | Its name, and its text where shown. `end-game` is the guidance menu's "End this game". |
+| `id`, `label` | Its name, and its text where shown. |
+| `menu`, `menu_in` | A row in the guidance menu, in `menu`'s words, offered in the states `menu_in` names (every state when left out). Like Exit, it wants a second press, and then the menu closes and the action is done. |
 | `keys`, `tap`, `frames`, `joystick` | What reaches the game, as in `[pad]`. |
 | `patch_for_frame` | Patches applied for the frames the action lasts, then undone; `expect` as in `[[cheats]]`. This is how a pad splits a direction's two meanings. |
 | `script` | A function of the script to call (see Scripts). |
@@ -423,7 +429,7 @@ source = "value:energy"
 | `card-set` | Numbered groups of pictures, each dim until answered | a list of `{ label, cards = [{ picture, answered }] }` |
 | `map-grid` | Places on a grid, walls, markers, routes, and exit arrows at the picture's edge | `{ width, height, cells = [{ x, y, walls = "NESW", seen }], markers = [{ x, y, kind, picture?, color? }], routes = [{ color, steps = [[x, y], …], label?, exit? }] }` |
 
-`map-grid` `kind`s for markers are `player`, `teleport`, `door`, `item` (its `picture`, from the widget's `pictures`) and `target`; a marker's `color` is `"first"`, `"second"` or a Spectrum colour 0 to 15. Route `color`s are `first` (pink) and `second` (gold). A cell is drawn with its walls once it's `seen`, and as a dot before. Cells are as large as fits, up to 15 pixels. A route's `label` is shown underlined in its colour just above the map; its `exit` (`N`, `E`, `S` or `W`) puts a pin at that edge of the game's picture, saying the label's first word.
+A `map-grid`'s `markers` say how each kind of marker its script uses is drawn: `markers = { you = "player", teleport = "diamond", door = "square", target = "ring", item = "picture" }`. The shapes are `player` (a box, with a bar above its cell), `diamond`, `square`, `ring` and `picture` (the marker's `picture`, from the widget's `pictures`). A kind the widget doesn't list isn't drawn. A marker's `color` is `"first"`, `"second"` or a Spectrum colour 0 to 15. Route `color`s are `first` (pink) and `second` (gold). A cell is drawn with its walls once it's `seen`, and as a dot before. Cells are as large as fits, up to 15 pixels. A route's `label` is shown underlined in its colour just above the map; its `exit` (`N`, `E`, `S` or `W`) puts a pin at that edge of the game's picture, saying the label's first word.
 
 ## `[situations]`
 
@@ -440,7 +446,7 @@ lives = 9
 cheats = ["no-harm"]
 ```
 
-The program starts a new game by tapping the `start` keys in turn. Each is tapped a second after the state last changed, and again every forty seconds while it stays the same. Once the game is in `play`, at the sync address, the program writes the values, turns the switches on and adds the kept entries. Then it calls `enter`, with the sync address as its return, so the main loop carries on after it. The game is marked loaded. `sidekick TAPE --load FILE.toml`, or `sidekick run TAPE --load FILE.toml`, starts from one.
+The program starts a new game by tapping the `start` keys in turn. Each is tapped a second after the state last changed, and again every forty seconds while it stays the same. Once the game is in the state with role `play` (which a situation needs), at the sync address, the program writes the values, turns the switches on and adds the kept entries. Then it calls `enter`, with the sync address as its return, so the main loop carries on after it. The game is marked loaded. `sidekick TAPE --load FILE.toml`, or `sidekick run TAPE --load FILE.toml`, starts from one.
 
 ## Scripts
 
@@ -484,7 +490,9 @@ A script can't touch files, the network or the clock, and can't `eval`. Each cal
 - what's still missing (an address not found yet), names used but not defined, and values used in ways their type doesn't allow;
 - given a tape, or a zip of tapes: whether it's one of `[[media]]`'s dumps, by SHA-1.
 
-It exits 0 with no problems, 1 with problems, and 2 when something couldn't be read. Checking each patch's `expect` bytes in the loaded game comes with `sidekick author`.
+It also says what works but may not be what was meant, as `path: warning: message`: a state named `play`, `title`, `paused` or `game_over` without that `role`, an action named `end-game` without a `menu` row, and a `map-grid` without `markers`. Those names meant something to the program once; now only `role`, `menu` and `markers` do.
+
+It exits 0 with no problems (warnings or not), 1 with problems, and 2 when something couldn't be read. Checking each patch's `expect` bytes in the loaded game comes with `sidekick author`.
 
 `sidekick convert FILE [-o OUT]` turns a TOML definition into JSON, or a JSON one into TOML.
 

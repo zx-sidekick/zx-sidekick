@@ -139,17 +139,50 @@ pub enum Joystick {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct State {
-    /// Its name. `title`, `play`, `paused` and `game_over` mean something to the program.
+    /// Its name, the definition's own.
     pub name: String,
+    /// What it means to the program, if anything.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
     /// Matches if the processor executed one of these during the frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pc: Option<OneOrMany<Address>>,
     /// Matches if this test of a value holds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub when: Option<Test>,
-    /// For `paused`: what the pause notice says.
+    /// For the `paused` role: what the pause notice says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notice: Option<Notice>,
+}
+
+/// What a state means to the program. At most one state has each.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    /// The title screen: the kept high scores go in, and a game in hand ends.
+    Title,
+    /// A game being played: training switches apply, a game's record starts, and a crafted
+    /// situation enters.
+    Play,
+    /// Paused: the picture dims, and the notice shows.
+    Paused,
+    /// Game over: no game is under way.
+    GameOver,
+}
+
+impl Role {
+    /// The role's name, as a definition writes it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Title => "title",
+            Self::Play => "play",
+            Self::Paused => "paused",
+            Self::GameOver => "game_over",
+        }
+    }
 }
 
 /// What a card over the picture says: a line, and hints along its bottom.
@@ -572,8 +605,14 @@ pub struct PadTable {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Action {
-    /// Its name. `end-game` is the menu's "End this game".
+    /// Its name.
     pub id: String,
+    /// Its row in the guidance menu, in these words ("End this game"); wants a second press.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub menu: Option<String>,
+    /// The states in which the menu offers it; every state when left out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub menu_in: Vec<String>,
     /// Its text where shown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
@@ -747,6 +786,25 @@ pub struct Widget {
     /// What it says when there's nothing to show.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub empty: Option<String>,
+    /// For `map-grid`: the shape each kind of marker the script uses is drawn as.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub markers: BTreeMap<String, MarkerShape>,
+}
+
+/// A shape the map draws a marker as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum MarkerShape {
+    /// Where the player is: a box, with a bar above its cell.
+    Player,
+    /// A diamond.
+    Diamond,
+    /// A small square.
+    Square,
+    /// A ring.
+    Ring,
+    /// The marker's own picture, from the widget's `pictures`.
+    Picture,
 }
 
 /// Where a widget goes in the panel.

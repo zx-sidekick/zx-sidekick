@@ -21,9 +21,11 @@ type = "u8"
 
 [[states]]
 name = "title"
+role = "title"
 when = { value = "mode", equals = 1 }
 [[states]]
 name = "play"
+role = "play"
 when = { value = "mode", equals = 2 }
 
 [high_scores]
@@ -111,4 +113,73 @@ fn the_first_title_and_each_game_s_end_are_milestones() {
     mode(&mut s, 0);
     mode(&mut s, 1);
     assert!(s.take_milestones().is_empty(), "no game since");
+}
+
+/// The same game with its states named otherwise: their meanings come from their roles.
+const RENAMED: &str = r#"
+schema = 1
+[game]
+id = "test"
+title = "Test"
+machine = "48k"
+[[media]]
+name = "the tape"
+
+[values.mode]
+addr = 0x8100
+type = "u8"
+
+[values.energy]
+addr = 0x8101
+type = "u8"
+writable = true
+
+[[states]]
+name = "menu"
+role = "title"
+when = { value = "mode", equals = 1 }
+[[states]]
+name = "running"
+role = "play"
+when = { value = "mode", equals = 2 }
+[[states]]
+name = "play"
+when = { value = "mode", equals = 3 }
+
+[[cheats]]
+id = "full"
+label = "Full"
+set = { value = "energy", to = 9 }
+"#;
+
+#[test]
+fn a_state_s_meaning_comes_from_its_role_not_its_name() {
+    let definition = Definition::from_toml(RENAMED).expect("the test definition parses");
+    let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+    for _ in 0..BOOT_FRAMES {
+        machine.run_frame().expect("a frame");
+    }
+    let mut s = Session::new(machine, Some(definition));
+    mode(&mut s, 1);
+    assert_eq!(s.take_milestones(), [Milestone::FirstTitle], "role title");
+    s.switch("full", true).expect("it goes on");
+    mode(&mut s, 2);
+    mode(&mut s, 2);
+    assert_eq!(s.machine().peek(0x8101), 9, "role play: the switch applies");
+    // Values are read before a frame's state is decided: the first frame in a new state
+    // still counts as the one before.
+    mode(&mut s, 3);
+    s.machine_mut().write(0x8101, 0);
+    mode(&mut s, 3);
+    assert_eq!(
+        s.machine().peek(0x8101),
+        0,
+        "a state merely named play isn't play: no switch applies"
+    );
+    mode(&mut s, 1);
+    assert_eq!(
+        s.take_milestones(),
+        [Milestone::GameEnded],
+        "back to the title ends it"
+    );
 }

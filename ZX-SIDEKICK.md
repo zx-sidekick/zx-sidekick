@@ -109,7 +109,7 @@ The full reference is [`docs/definition-format.md`](docs/definition-format.md). 
 | `[game]` | id, title, year, publisher, machine (`48k`, `128k`), notice |
 | `[[media]]` | the dumps supported: name, SHA-1, where to download it, the file names it's distributed under |
 | `[run]` | the sync address (the top of the main loop), the loading screen hold, which joystick the game expects |
-| `[[states]]` | named moments of the game (`title`, `play`, `paused`, `booth`, `game_over`…), each told by the program counter or a memory test |
+| `[[states]]` | named moments of the game, each told by the program counter or a memory test; a `role` (`title`, `play`, `paused`, `game_over`) gives one its meaning to the program |
 | `[values.*]` | named facts: an address and a type, or a table of records; the game's font and graphics, read from memory at run time |
 | `[[cheats]]` | training switches: a value set each frame, a value held from going down, or a patch |
 | `[pad]` | how a pad drives the game, per state: the D-pad and stick, buttons by position, Start and Select |

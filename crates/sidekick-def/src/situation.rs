@@ -56,6 +56,7 @@ impl Situation {
             problems.push(Problem {
                 path,
                 message: message.to_owned(),
+                warning: false,
             });
         };
         if def.situations.as_ref().and_then(|s| s.enter).is_none() {
@@ -133,6 +134,11 @@ patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }]
 [persist.codes]
 label = "codes"
 file = "codes.txt"
+
+[[states]]
+name = "running"
+role = "play"
+pc = 0x6000
 
 [situations]
 enter = 0x6400
