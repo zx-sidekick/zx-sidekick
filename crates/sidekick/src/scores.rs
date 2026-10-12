@@ -52,18 +52,6 @@ pub(crate) fn save(folder: &Path, table: &[Kept]) -> io::Result<()> {
     fs::write(folder.join(FILE), text)
 }
 
-/// The table as the game had it before anything here: every entry from the tape.
-pub(crate) fn from_tape(entries: Vec<ScoreEntry>) -> Vec<Kept> {
-    entries
-        .into_iter()
-        .map(|entry| Kept {
-            entry,
-            mark: "from the tape".to_owned(),
-            training: false,
-        })
-        .collect()
-}
-
 /// How a game was played, as its entry says: its guidance and whether it trained.
 pub(crate) fn mark(record: &Record, level_name: Option<&str>) -> String {
     let mut mark = match (record.level, level_name) {
@@ -239,7 +227,8 @@ mod tests {
     #[test]
     fn the_file_is_read_back_as_written() {
         let folder = tempfile::TempDir::new().unwrap();
-        let table = from_tape(vec![entry("ANN", "12500"), entry("BOB", "900")]);
+        let read = vec![entry("ANN", "12500"), entry("BOB", "900")];
+        let (table, _) = after_game(&[], read, "from the tape", false);
         save(folder.path(), &table).unwrap();
         assert_eq!(
             fs::read_to_string(folder.path().join(FILE)).unwrap(),
