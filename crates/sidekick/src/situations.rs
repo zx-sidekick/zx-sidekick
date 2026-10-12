@@ -42,7 +42,13 @@ pub(crate) fn start(session: &mut Session, situation: &Situation) -> Result<(), 
     let situations = definition.situations.clone().unwrap_or_default();
     let enter = situations.enter.ok_or("situations.enter: missing")?;
     reach_play(session, &situations.start)?;
-    let at_sync = (0..SYNC_TRIES).any(|_| session.run_to_sync().unwrap_or(false));
+    let mut at_sync = false;
+    for _ in 0..SYNC_TRIES {
+        if session.run_to_sync().map_err(|e| e.to_string())? {
+            at_sync = true;
+            break;
+        }
+    }
     if !at_sync {
         return Err("the game never reached its sync address in play".to_owned());
     }
@@ -66,6 +72,8 @@ pub(crate) fn start(session: &mut Session, situation: &Situation) -> Result<(), 
         }
     }
     session.set_kept(kept);
+    // Told against what was written, so a hold switch keeps the situation's value.
+    session.reading_anew();
     session.machine_mut().call(enter.0, sync.0);
     session.mark_loaded();
     Ok(())
@@ -165,6 +173,10 @@ mod tests {
             .collect();
         files.sort();
         assert!(!files.is_empty());
+        // Lower than a new game's, under a switch that holds it from going down.
+        let held = data.path().join("held.toml");
+        fs::write(&held, "lives = 1\ncheats = [\"endless-lives\"]\n").unwrap();
+        files.push(held);
         for file in files {
             let mut playing = game.playing(&tapes[0]).expect("the tape plays");
             let s = &mut playing.session;

@@ -64,6 +64,12 @@ impl Situation {
                 "the definition doesn't say how a situation enters play",
             );
         }
+        if def.situations.as_ref().is_none_or(|s| s.start.is_empty()) {
+            report(
+                "situations.start".to_owned(),
+                "the definition doesn't say which keys start a game",
+            );
+        }
         for name in self.values.keys() {
             match def.values.get(name) {
                 None => report(name.clone(), "no such value"),

@@ -159,6 +159,9 @@ struct Player {
     choosing: bool,
     /// The game kept on quitting last time, while it's offered.
     offer: Option<Vec<u8>>,
+    /// Whether the quit slot and the kept lists are this session's to write (`Playing`).
+    quit_slot: bool,
+    keep_lists: bool,
     started: Instant,
     frames_run: u64,
     rgba: Vec<u8>,
@@ -346,6 +349,7 @@ impl Screen {
         if let Self::Play(player) = self {
             // Quitting at the offer keeps the offered game for next time.
             let kept = match &player.offer {
+                _ if !player.quit_slot => Ok(()),
                 Some(bytes) => saves::put_back_quit(&player.saves, bytes),
                 None => saves::keep_on_quit(&mut player.session, &player.saves),
             };
@@ -549,7 +553,7 @@ const fn maker(kind: GamepadType) -> Maker {
 
 impl Player {
     fn new(playing: Playing) -> Self {
-        let offer = if playing.offer {
+        let offer = if playing.quit_slot {
             saves::take_quit(&playing.saves)
         } else {
             None
@@ -571,6 +575,8 @@ impl Player {
             opened: Arc::new(Mutex::new(None)),
             choosing: false,
             offer,
+            quit_slot: playing.quit_slot,
+            keep_lists: playing.keep_lists,
             started: Instant::now(),
             frames_run: 0,
             rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
@@ -1040,6 +1046,9 @@ impl Player {
     /// Saves the kept lists that changed, at once, so nothing is lost if the program stops.
     fn save_kept(&mut self) {
         let changed = self.session.take_kept_changes();
+        if !self.keep_lists {
+            return;
+        }
         let (Some(folder), Some(definition)) = (&self.folder, self.session.definition()) else {
             return;
         };

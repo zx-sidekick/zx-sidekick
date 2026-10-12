@@ -1230,7 +1230,7 @@
           ]
         },
         "start": {
-          "description": "The keys that take the game from its loaded tape to play, in turn: each tapped every\nsecond until the game's state changes.",
+          "description": "The keys that take the game from its loaded tape to play, in turn: each tapped a\nsecond after the game's state last changed, and again every forty seconds while it\nstays.",
           "type": "array",
           "items": {
             "type": "string"

@@ -54,3 +54,21 @@ fn a_routine_called_at_the_sync_point_runs_and_returns() {
         "the interrupt handler goes on counting after it"
     );
 }
+
+#[test]
+fn without_a_sync_address_running_to_it_ends_the_frame() {
+    let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+    for _ in 0..BOOT_FRAMES {
+        machine.run_frame().expect("a frame");
+    }
+    let definition = Definition::from_toml(&DEFINITION.replace("[run]\nsync = 0x0038\n", ""))
+        .expect("the test definition parses");
+    let mut s = Session::new(machine, Some(definition));
+    let frames = s.machine().peek(FRAMES);
+    assert!(!s.run_to_sync().expect("a run"), "no sync point to stop at");
+    assert_eq!(
+        s.machine().peek(FRAMES),
+        frames.wrapping_add(1),
+        "a whole frame ran"
+    );
+}

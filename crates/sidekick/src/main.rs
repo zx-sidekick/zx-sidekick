@@ -215,7 +215,8 @@ fn loading(start: Start, load: Option<&Path>) -> Result<Start, String> {
     match start {
         Start::Play(mut playing) => {
             situations::load(&mut playing.session, &playing.saves, file)?;
-            playing.offer = false;
+            playing.quit_slot = false;
+            playing.keep_lists = !is_situation(file);
             Ok(Start::Play(playing))
         }
         Start::Prompt(_) => Err(format!(
@@ -227,6 +228,12 @@ fn loading(start: Start, load: Option<&Path>) -> Result<Start, String> {
             file.display()
         )),
     }
+}
+
+/// Whether `--load`'s file is a crafted situation rather than a save.
+fn is_situation(file: &Path) -> bool {
+    file.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("toml"))
 }
 
 /// A game opened from its kept tape, or on its tape prompt.
@@ -253,7 +260,8 @@ fn tape_session(file: &Path, library: &Library, data: &Path) -> Result<Playing, 
         mapping: Mapping::default(),
         folder: None,
         saves: Saves::of_tape(&tape.name, &tape.sha1, data),
-        offer: true,
+        quit_slot: true,
+        keep_lists: true,
     })
 }
 
@@ -388,5 +396,55 @@ fn convert(file: &Path, output: Option<&Path>) -> ExitCode {
                 ExitCode::from(UNREADABLE)
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn plain(data: &Path) -> Playing {
+        let machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+        Playing {
+            session: Session::new(machine, None),
+            title: "Plain".to_owned(),
+            mapping: Mapping::default(),
+            folder: None,
+            saves: Saves::of_tape("plain.tap", "ABC123", data),
+            quit_slot: true,
+            keep_lists: true,
+        }
+    }
+
+    #[test]
+    fn load_starts_from_a_save_and_leaves_the_quit_slot_alone() {
+        let data = tempfile::TempDir::new().unwrap();
+        let mut first = plain(data.path());
+        first.session.machine_mut().write(0x9000, 0x42);
+        let file = data.path().join("game.sav");
+        saves::write(&mut first.session, &first.saves, &file).unwrap();
+        let Ok(Start::Play(playing)) =
+            loading(Start::Play(Box::new(plain(data.path()))), Some(&file))
+        else {
+            panic!("it plays");
+        };
+        assert_eq!(playing.session.machine().peek(0x9000), 0x42);
+        assert!(playing.session.record().loaded);
+        assert!(!playing.quit_slot, "neither offered nor written over");
+        assert!(playing.keep_lists, "a save's lists are the player's");
+        assert!(is_situation(Path::new("a/stocked-up.TOML")));
+    }
+
+    #[test]
+    fn load_wants_a_game_to_load_into() {
+        let file = Path::new("game.sav");
+        let error = loading(Start::Library(Vec::new()), Some(file))
+            .err()
+            .expect("refused");
+        assert!(error.contains("name the game"), "{error}");
+        assert!(matches!(
+            loading(Start::Library(Vec::new()), None),
+            Ok(Start::Library(_))
+        ));
     }
 }
