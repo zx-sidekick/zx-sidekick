@@ -70,9 +70,11 @@ const PANEL_WIDTH: u32 = 408;
 const HEIGHT: u32 = 768;
 
 /// Where the picture (`picture`, its size in Spectrum pixels) and, with `panel`, the panel go
-/// in a window of `output` device pixels.
+/// in a window of `output` device pixels. A window too small for both at scale 1 gets the
+/// picture alone, so everything stays whole-pixel.
 pub(crate) fn layout(output: (u32, u32), picture: (u32, u32), panel: bool) -> Layout {
-    if !panel {
+    let width = PICTURE_WIDTH + PANEL_WIDTH;
+    if !panel || output.0 < width || output.1 < HEIGHT {
         let picture = placement(output, picture);
         let scale = (picture.2 / PICTURE_WIDTH).max(1);
         return Layout {
@@ -81,8 +83,7 @@ pub(crate) fn layout(output: (u32, u32), picture: (u32, u32), panel: bool) -> La
             scale,
         };
     }
-    let width = PICTURE_WIDTH + PANEL_WIDTH;
-    let scale = (output.0 / width).min(output.1 / HEIGHT).max(1);
+    let scale = (output.0 / width).min(output.1 / HEIGHT);
     let x = output.0.saturating_sub(width * scale) / 2;
     let y = output.1.saturating_sub(HEIGHT * scale) / 2;
     Layout {
@@ -111,6 +112,9 @@ mod tests {
         assert_eq!(retina.scale, 2);
         assert_eq!(retina.picture, (102, 188, 1920, 1536));
         assert_eq!(retina.panel, Some((2022, 188, 816, 1536)));
+        let small = layout((1280, 800), (320, 256), true);
+        assert_eq!(small.panel, None, "too small for both: the picture alone");
+        assert_eq!(small.picture, (160, 16, 960, 768));
         let without = layout((2560, 1600), (320, 256), false);
         assert_eq!(
             (without.picture, without.panel, without.scale),
