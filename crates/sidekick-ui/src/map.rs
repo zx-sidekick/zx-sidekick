@@ -158,8 +158,9 @@ impl MapGrid {
                 c.rect(line, 0.0, Some(WALL), None);
             }
         }
-        if !seen.is_empty() {
-            // The map's edge, as the mockup frames its walled map.
+        if seen.len() >= self.width * self.height {
+            // The map's edge, once the whole map is known, as the mockup frames it at level 6;
+            // a map of some rooms (the mockups' levels 2 to 5) has none.
             #[allow(clippy::cast_precision_loss, reason = "a map's few cells")]
             let (w, h) = (self.width as f32 * cell, self.height as f32 * cell);
             c.rect((x, y, w, h), 0.0, None, Some(Line::solid(WALL, 1.0)));
