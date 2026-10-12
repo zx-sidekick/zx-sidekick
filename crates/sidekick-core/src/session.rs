@@ -676,9 +676,10 @@ impl Session {
         &self.progress
     }
 
-    /// Puts back what a save held of the program's own: the guidance level, the switches on
-    /// (not applied again: their patches are in the saved memory), the record, and where the
-    /// session had got. Switches the definition doesn't have are left off.
+    /// Puts back what a save held of the program's own: the guidance level, the switches on,
+    /// the record, and where the session had got. Switches the definition doesn't have are left
+    /// off. A switch's patches are in the saved memory, but one the switch has gained since the
+    /// save was taken isn't: it's applied now, where the game's own bytes still are.
     pub fn restore(
         &mut self,
         level: u8,
@@ -694,6 +695,17 @@ impl Session {
             .collect();
         self.level = level;
         self.switches = switches.intersection(&known).cloned().collect();
+        let patches: Vec<Patch> = self
+            .definition
+            .iter()
+            .flat_map(|d| &d.cheats)
+            .filter(|c| self.switches.contains(&c.id))
+            .flat_map(|c| c.patch.iter().cloned())
+            .collect();
+        for patch in &patches {
+            // Writes only over the game's own bytes: a patch already in the save stays as it is.
+            self.patch(patch);
+        }
         self.record = record;
         // The game the save was taken in goes on, not a new one, in the state it was in.
         self.state.clone_from(&progress.last_known);
