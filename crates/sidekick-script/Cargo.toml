@@ -1,0 +1,16 @@
+[package]
+name = "sidekick-script"
+description = "ZX Sidekick's scripts: a definition's Rhai, sandboxed, reading the game and returning facts"
+publish = false
+
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+rhai.workspace = true
+
+[lints]
+workspace = true

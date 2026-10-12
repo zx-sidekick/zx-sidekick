@@ -1,3 +1,6 @@
 allow-unwrap-in-tests = true
 # A maker's name, not code.
 doc-valid-idents = ["PlayStation", ".."]
+# One version of each crate, but for syn 2 beside syn 3: Rhai's macro crate (rhai_codegen) is
+# still on syn 2. It runs only while building; the program itself has one version of every crate.
+allowed-duplicate-crates = ["syn"]
