@@ -10,7 +10,7 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 ## Keys and pad
 
-**Keyboard:** exactly as the original: its five control methods, defined keys, **P** to pause, **A S D F G** together to abandon a game. **Tab** switches level 5's route between pieces (`[[actions]] next-route`, `host_key = "Tab"`).
+**Keyboard:** exactly as the original: its five control methods, defined keys, **SPACE** to pause, **A S D F G** together to abandon a game. **Tab** switches level 5's route between pieces (`[[actions]] next-route`, `host_key = "Tab"`).
 
 **Pad**, in play, on the Kempston joystick (`[run] joystick = "kempston"`), whichever control method the game's menu chose:
 
