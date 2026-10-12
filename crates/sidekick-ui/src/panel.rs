@@ -297,7 +297,8 @@ impl Panel {
                 Column::Right => (RIGHT, Align::Right, right),
                 Column::Full => (LEFT, Align::Left, left.max(right)),
             };
-            if widget.column == Column::Left {
+            // The map's legend goes beside what's above it, so the map itself doesn't count.
+            if widget.column == Column::Left && !matches!(widget.body, Body::Map(_)) {
                 reach = reach.max(LEFT + Self::extent(fonts, widget));
             }
             let bottom = if let Body::Map(map) = &widget.body {

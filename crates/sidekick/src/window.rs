@@ -586,7 +586,10 @@ impl Player {
                         layout.scale,
                         |p, f, s| sidekick_ui::pins(p, f, s),
                     )?;
-                    if let Some((texture, _, _)) = &out.pins {
+                    if let Some((texture, _, _)) = &mut out.pins {
+                        // Dimmed with the picture.
+                        let dim = if self.paused() { 140 } else { 255 };
+                        texture.set_color_mod(dim, dim, dim);
                         out.canvas
                             .copy(texture, None, frect(layout.picture))
                             .map_err(|e| e.to_string())?;

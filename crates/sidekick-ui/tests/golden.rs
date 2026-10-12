@@ -465,7 +465,27 @@ fn the_map() {
                     },
                 },
                 PanelWidget {
-                    column: PanelColumn::Full,
+                    column: PanelColumn::Right,
+                    title: Some("Teleports".to_owned()),
+                    body: PanelBody::Chips(
+                        [
+                            "LUMEN", "TOPAZ", "NIVEN", "ORBIT", "CIRRO", "VAPOR", "BRISK",
+                        ]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, w)| Chip {
+                            glyphs: stand_in_word(w),
+                            outline: match i {
+                                2 => Some(RouteColor::First.color()),
+                                5 => Some(RouteColor::Second.color()),
+                                _ => None,
+                            },
+                        })
+                        .collect(),
+                    ),
+                },
+                PanelWidget {
+                    column: PanelColumn::Left,
                     title: None,
                     body: PanelBody::Map(stand_in_map(seen)),
                 },
