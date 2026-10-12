@@ -7,6 +7,7 @@ use sidekick_def::{
 };
 use sidekick_ui::{Refusal, TapePrompt};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
@@ -224,7 +225,76 @@ impl Game {
         if let Some(script) = script(&self.package) {
             session.set_script(script);
         }
+        session.set_kept(self.kept());
         Ok(session)
+    }
+
+    /// The game's kept lists, as last saved: a file a list in its folder, an entry a line.
+    pub(crate) fn kept(&self) -> BTreeMap<String, Vec<String>> {
+        self.definition()
+            .persist
+            .iter()
+            .map(|(name, persist)| {
+                let entries = fs::read_to_string(self.folder.join(&persist.file))
+                    .map(|text| {
+                        text.lines()
+                            .map(str::trim)
+                            .filter(|l| !l.is_empty())
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                (name.clone(), entries)
+            })
+            .collect()
+    }
+}
+
+/// Writes the kept lists that changed to their files in a game's folder.
+///
+/// # Errors
+/// If the folder or a file can't be written.
+pub(crate) fn save_kept(
+    folder: &Path,
+    definition: &Definition,
+    kept: &BTreeMap<String, Vec<String>>,
+    changed: &BTreeSet<String>,
+) -> std::io::Result<()> {
+    fs::create_dir_all(folder)?;
+    for name in changed {
+        let (Some(persist), Some(entries)) = (definition.persist.get(name), kept.get(name)) else {
+            continue;
+        };
+        let mut text = entries.join("\n");
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        fs::write(folder.join(&persist.file), text)?;
+    }
+    Ok(())
+}
+
+/// A game ready to play: its session, title and pad mapping, and the folder its kept lists
+/// are saved in (none for a tape played plainly).
+pub(crate) struct Playing {
+    pub(crate) session: Session,
+    pub(crate) title: String,
+    pub(crate) mapping: Mapping,
+    pub(crate) folder: Option<PathBuf>,
+}
+
+impl Game {
+    /// The game played from a tape.
+    ///
+    /// # Errors
+    /// If the tape can't be played.
+    pub(crate) fn playing(&self, tape: &Tape) -> Result<Playing, String> {
+        Ok(Playing {
+            session: self.session(tape)?,
+            title: self.title(),
+            mapping: self.mapping(),
+            folder: Some(self.folder.clone()),
+        })
     }
 }
 
@@ -366,5 +436,41 @@ download_label = "Example Archive"
         fs::create_dir_all(data.path().join("quake")).unwrap();
         fs::write(data.path().join("quake/tape.tap"), b"changed").unwrap();
         assert!(game.kept_tape().is_none());
+    }
+
+    #[test]
+    fn kept_lists_are_saved_a_line_an_entry_and_read_back() {
+        let data = tempfile::TempDir::new().unwrap();
+        let mut game = game(data.path());
+        game.package.definition.persist.insert(
+            "codes".to_owned(),
+            sidekick_def::Persist {
+                label: "teleport codes".to_owned(),
+                file: "teleporter-codes.txt".to_owned(),
+                add: None,
+            },
+        );
+        assert_eq!(
+            game.kept()["codes"],
+            Vec::<String>::new(),
+            "nothing kept yet"
+        );
+        let kept = BTreeMap::from([(
+            "codes".to_owned(),
+            vec!["TOPAZ".to_owned(), "LUMEN".to_owned()],
+        )]);
+        let changed = BTreeSet::from(["codes".to_owned()]);
+        save_kept(&game.folder, game.definition(), &kept, &changed).unwrap();
+        assert_eq!(
+            fs::read_to_string(game.folder.join("teleporter-codes.txt")).unwrap(),
+            "TOPAZ\nLUMEN\n"
+        );
+        assert_eq!(game.kept()["codes"], ["TOPAZ", "LUMEN"]);
+        let none = BTreeMap::from([("codes".to_owned(), Vec::new())]);
+        save_kept(&game.folder, game.definition(), &none, &changed).unwrap();
+        assert!(
+            game.kept()["codes"].is_empty(),
+            "forgotten, and the file empty"
+        );
     }
 }

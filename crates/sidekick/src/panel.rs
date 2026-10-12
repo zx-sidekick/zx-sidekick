@@ -16,6 +16,7 @@ pub(crate) fn of(session: &Session, level: usize) -> Option<Panel> {
     let script = Script {
         results: session.script_results(),
         off: session.script_off(),
+        kept: session.kept(),
     };
     let graphics = |w: &Widget| Graphics {
         font: w.font.as_deref().and_then(|f| session.font(f)),
@@ -74,10 +75,11 @@ fn pixels(bitmap: &Bitmap) -> Pixels {
     }
 }
 
-/// What the script returned last, and why it stopped, if it did.
+/// What the script returned last, why it stopped, if it did, and the kept lists.
 pub(crate) struct Script<'a> {
     pub(crate) results: &'a BTreeMap<String, Fact>,
     pub(crate) off: Option<&'a str>,
+    pub(crate) kept: &'a BTreeMap<String, Vec<String>>,
 }
 
 /// What a widget's `source` names.
@@ -104,9 +106,14 @@ pub(crate) fn panel(
         .iter()
         .filter(|w| usize::try_from(w.from_level).is_ok_and(|from| from <= level) && level > 0)
         .filter_map(|w| {
+            let kept;
             let source = if let Some(name) = w.source.strip_prefix("value:") {
                 let max = definition.values.get(name).and_then(|v| v.max);
                 Source::Value(reading.get(name)?, max)
+            } else if let Some(name) = w.source.strip_prefix("persist:") {
+                let entries = script.kept.get(name).map(Vec::as_slice).unwrap_or_default();
+                kept = Fact::List(entries.iter().cloned().map(Fact::Text).collect());
+                Source::Script(&kept)
             } else {
                 let name = w.source.strip_prefix("script:")?;
                 match script.off {
@@ -473,6 +480,7 @@ len = 4
     }
 
     const NO_RESULTS: &BTreeMap<String, Fact> = &BTreeMap::new();
+    const NO_KEPT: &BTreeMap<String, Vec<String>> = &BTreeMap::new();
 
     fn no_graphics(_: &Widget) -> Graphics {
         Graphics::default()
@@ -482,6 +490,7 @@ len = 4
         Script {
             results: NO_RESULTS,
             off: None,
+            kept: NO_KEPT,
         }
     }
 
@@ -523,6 +532,7 @@ source = "script:route"
         let running = Script {
             results: &results,
             off: None,
+            kept: NO_KEPT,
         };
         let shown = panel(Some(&def), 1, &reading(), &running, &no_graphics).expect("a panel");
         let bodies: Vec<PanelBody> = shown.widgets.into_iter().map(|w| w.body).collect();
@@ -537,6 +547,7 @@ source = "script:route"
         let stopped = Script {
             results: &results,
             off: Some("on_frame: took too many steps"),
+            kept: NO_KEPT,
         };
         let shown = panel(Some(&def), 1, &reading(), &stopped, &no_graphics).expect("a panel");
         assert_eq!(
@@ -642,6 +653,7 @@ source = "script:doors"
         let running = Script {
             results: &results,
             off: None,
+            kept: NO_KEPT,
         };
         let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
         let px = |n| pixels(&dot(n));
@@ -671,6 +683,7 @@ source = "script:doors"
         let empty = Script {
             results: &nothing,
             off: None,
+            kept: NO_KEPT,
         };
         let shown = panel(Some(&def), 1, &reading(), &empty, &stand_ins).expect("a panel");
         assert_eq!(
@@ -686,6 +699,7 @@ source = "script:doors"
         let running = Script {
             results: &results,
             off: None,
+            kept: NO_KEPT,
         };
         let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
         let px = |n| pixels(&dot(n));
@@ -768,6 +782,7 @@ source = "script:map"
         let running = Script {
             results: &results,
             off: None,
+            kept: NO_KEPT,
         };
         let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
         let PanelBody::Map(grid) = &shown.widgets[0].body else {
@@ -801,6 +816,40 @@ source = "script:map"
                 color: RouteColor::Second,
                 label: "core".to_owned()
             }]
+        );
+    }
+
+    #[test]
+    fn a_kept_list_gives_a_chip_list_its_words() {
+        let def = definition(
+            r#"
+[[panel]]
+kind = "chip-list"
+title = "CODES"
+from_level = 1
+font = "font"
+source = "persist:codes"
+empty = "None yet"
+"#,
+        );
+        let kept = BTreeMap::from([("codes".to_owned(), vec!["AB".to_owned()])]);
+        let script = Script {
+            results: NO_RESULTS,
+            off: None,
+            kept: &kept,
+        };
+        let shown = panel(Some(&def), 1, &reading(), &script, &stand_ins).expect("a panel");
+        assert_eq!(
+            shown.widgets[0].body,
+            PanelBody::Chips(vec![Chip {
+                glyphs: vec![pixels(&dot(16)), pixels(&dot(17))],
+                outline: None
+            }])
+        );
+        let shown = panel(Some(&def), 1, &reading(), &none(), &stand_ins).expect("a panel");
+        assert_eq!(
+            shown.widgets[0].body,
+            PanelBody::Empty("None yet".to_owned())
         );
     }
 

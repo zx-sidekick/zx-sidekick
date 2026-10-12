@@ -2,7 +2,7 @@
 //! the largest whole scale, its sound, and the keyboard.
 
 use crate::{
-    games::Game,
+    games::{self, Game, Playing},
     keys::{spectrum_key, Spectrum},
     menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
@@ -98,8 +98,8 @@ const PROMPT: (u32, u32) = (TAPE_PROMPT_WIDTH, TAPE_PROMPT_HEIGHT);
 
 /// What the window opens on.
 pub(crate) enum Start {
-    /// A game to play, its title, and what a pad does in it.
-    Play(Box<Session>, String, Mapping),
+    /// A game to play.
+    Play(Box<Playing>),
     /// A game whose tape has to be located first.
     Prompt(Box<Game>),
     /// Several games, to choose one.
@@ -129,6 +129,8 @@ struct Player {
     session: Box<Session>,
     play: Play,
     title: String,
+    /// Where the game's kept lists are saved; none for a tape played plainly.
+    folder: Option<PathBuf>,
     /// The guidance level in use.
     level: usize,
     /// The guidance menu, while it's open, and where its card was last drawn: its top left
@@ -183,7 +185,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
     let sdl = sdl3::init().map_err(|e| e.to_string())?;
     let video = sdl.video().map_err(|e| e.to_string())?;
     let title = match &start {
-        Start::Play(_, title, _) => title.clone(),
+        Start::Play(playing) => playing.title.clone(),
         Start::Prompt(game) => game.title(),
         Start::Library(_) => "Choose a game".to_owned(),
     };
@@ -266,9 +268,8 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
             }
         }
         if let Screen::Prompt(prompt) = &mut screen {
-            if let Some((session, mapping)) = prompt.take_offer() {
-                let title = prompt.game.title();
-                screen = Screen::Play(Box::new(Player::new(session, mapping, title)));
+            if let Some(playing) = prompt.take_offer() {
+                screen = Screen::Play(Box::new(Player::new(playing)));
                 gamepads.pads.hold_back();
             }
         }
@@ -469,11 +470,12 @@ const fn maker(kind: GamepadType) -> Maker {
 }
 
 impl Player {
-    fn new(session: Box<Session>, mapping: Mapping, title: String) -> Self {
+    fn new(playing: Playing) -> Self {
         Self {
-            session,
-            play: Play::new(mapping),
-            title,
+            session: Box::new(playing.session),
+            play: Play::new(playing.mapping),
+            title: playing.title,
+            folder: playing.folder,
             level: 0,
             menu: None,
             menu_at: None,
@@ -530,6 +532,7 @@ impl Player {
             }
             ran.map_err(|e| e.to_string())?;
             self.play.frame_ran();
+            self.save_kept();
             self.frames_run += 1;
             if let Some(stream) = &out.sound {
                 self.samples.clear();
@@ -598,6 +601,22 @@ impl Player {
             }
         }
         Ok(())
+    }
+
+    /// Saves the kept lists that changed, at once, so nothing is lost if the program stops.
+    fn save_kept(&mut self) {
+        let changed = self.session.take_kept_changes();
+        let (Some(folder), Some(definition)) = (&self.folder, self.session.definition()) else {
+            return;
+        };
+        if !changed.is_empty() {
+            if let Err(e) = games::save_kept(folder, definition, self.session.kept(), &changed) {
+                eprintln!(
+                    "{}: the kept lists couldn't be saved: {e}",
+                    folder.display()
+                );
+            }
+        }
     }
 
     /// Where the picture and, when the game has guidance levels, the panel go.
@@ -923,11 +942,11 @@ impl Prompt {
 
     /// A file offered since the last pass, taken as the tape or refused on the page. A tape
     /// that's the game's but can't be played yet (a `.tzx`) is refused too, not fatal.
-    fn take_offer(&mut self) -> Option<(Box<Session>, Mapping)> {
+    fn take_offer(&mut self) -> Option<Playing> {
         let file = self.chosen.lock().ok().and_then(|mut c| c.take())?;
         let refusal = match self.game.offer(&file) {
-            Ok(tape) => match self.game.session(&tape) {
-                Ok(session) => return Some((Box::new(session), self.game.mapping())),
+            Ok(tape) => match self.game.playing(&tape) {
+                Ok(playing) => return Some(playing),
                 Err(e) => Refusal {
                     heading: "This tape can't be played yet".to_owned(),
                     detail: e,
@@ -1030,9 +1049,7 @@ impl Library {
 
 fn first_screen(start: Start) -> Screen {
     match start {
-        Start::Play(session, title, mapping) => {
-            Screen::Play(Box::new(Player::new(session, mapping, title)))
-        }
+        Start::Play(playing) => Screen::Play(Box::new(Player::new(*playing))),
         Start::Prompt(game) => prompt_screen(*game),
         Start::Library(games) => Screen::Library(Box::new(Library {
             page: LibraryPage {
@@ -1054,11 +1071,7 @@ fn open_game(game: Game, canvas: &mut WindowCanvas) -> Result<Screen, String> {
         .set_title(&format!("ZX Sidekick — {}", game.title()))
         .map_err(|e| e.to_string())?;
     match game.kept_tape() {
-        Some(tape) => Ok(Screen::Play(Box::new(Player::new(
-            Box::new(game.session(&tape)?),
-            game.mapping(),
-            game.title(),
-        )))),
+        Some(tape) => Ok(Screen::Play(Box::new(Player::new(game.playing(&tape)?)))),
         None => Ok(prompt_screen(game)),
     }
 }
