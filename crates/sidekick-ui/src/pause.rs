@@ -89,11 +89,12 @@ impl PauseNotice {
             Align::Left,
             &title,
         );
+        // A 15-pixel span on the mockup's 16-pixel line.
         let body = Style::new(15.0, BODY);
         c.text(
             fonts,
             &self.text,
-            (27.0, 60.0),
+            (27.0, 60.0 + Fonts::in_body_line(&body)),
             Fonts::normal_line_height(&body),
             Align::Left,
             &body,

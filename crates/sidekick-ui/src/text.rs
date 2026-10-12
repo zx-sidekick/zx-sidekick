@@ -144,6 +144,16 @@ impl Fonts {
         (line_height - content) / 2.0 + metrics.ascent
     }
 
+    /// How far below a 16-pixel line's top a smaller style's text sits when it shares that
+    /// line's baseline, as a `<span>` of it does in a `<div>` of the page's 16-pixel body
+    /// text: the mockups place most of their text that way. Nothing for 16 pixels or more.
+    #[must_use]
+    pub fn in_body_line(style: &Style) -> f32 {
+        let body = Style::new(16.0, style.color).weight(style.weight);
+        let ascent = |s: &Style| Self::baseline(s, Self::normal_line_height(s));
+        (ascent(&body) - ascent(style)).max(0.0)
+    }
+
     /// The height CSS gives a line of this style with `line-height: normal`.
     #[must_use]
     pub fn normal_line_height(style: &Style) -> f32 {
