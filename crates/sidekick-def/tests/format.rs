@@ -69,12 +69,10 @@ fn starquake_s_draft_parses_and_lists_what_is_left_to_find() {
         !problems.iter().any(|p| p.starts_with("media")),
         "the dump's SHA-1 is recorded"
     );
-    for expected in ["values.visited.addr: missing", "values.map.addr: missing"] {
-        assert!(
-            problems.iter().any(|p| p == expected),
-            "{expected} in {problems:#?}"
-        );
-    }
+    assert!(
+        problems.iter().any(|p| p == "values.visited.addr: missing"),
+        "{problems:#?}"
+    );
     assert!(
         !problems.iter().any(|p| p.contains("no value named")
             || p.contains("no state named")

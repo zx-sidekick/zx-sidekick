@@ -37,18 +37,22 @@ Each level adds to the ones below it (`[[guidance.levels]]`, with these names an
 | 0 | Off | Nothing: "No guidance. Press Esc or Select to choose a level." |
 | 1 | Codes and the core | **TELEPORTS:** the codes of the teleports entered, in the game's own letters. **DOORS:** each security door's three key code cards, drawn in the game's own graphics, each dim until something carried answers it. **CORE:** the core's nine slots in the game's own pictures; pieces delivered are bright, those missing are dim, and a piece being carried is outlined. |
 | 2 | The map you have walked | A map of the rooms visited: walls drawn along each edge without an opening, so an opening is a gap. Teleports are diamonds, BLOB's room is marked, and doors are numbered. |
-| 3 | What you have seen | The items lying in rooms walked through, in the game's own pictures, coloured by what they do (pad key, things to trade or packs, door cards), with the core pieces still needed marked. |
+| 3 | What you have seen | The items lying in rooms walked through, in the game's own pictures, coloured by what they do: the core pieces still needed in the first colour (pink), door cards cyan, the key to the locked doors yellow, anything else white. |
 | 4 | What you have not | The same for rooms not reached. |
 | 5 | Routes | The shortest route to the nearest missing piece, and to the core while a needed piece is carried, in two colours, teleports included. Arrows at the picture's edge show which way out of the room each route goes. Tab, or the north pad button, switches between the nearest pieces. The first door each route passes is outlined in the rail. |
 | 6 | Everything | Every teleport's code, every door's cards, and the whole planet. |
 
 Levels 0 to 3 show only what the player could have written down; 4 and up tell things they couldn't have known.
 
-**Widgets:** CORE is an `icon-grid` (3 columns); TELEPORTS a `chip-list` in the game's font, from `persist:teleport-codes` up to level 5 and from the script at level 6; DOORS a `card-set`; the map a `map-grid`. All of them take their data from `scripts/starquake.rhai`, except TELEPORTS below level 6. DOORS lists the doors met this game, numbered as met. A door's cards are worked out when BLOB meets it, from the game's seed and the room (`docs/re/starquake.md`). So the script notes each door, in the `door` state, in the kept list `doors-met` (`seed:room:cards`), where a game continued from a save finds it again. A card is answered when BLOB carries it.
+**Widgets:** CORE is an `icon-grid` (3 columns); TELEPORTS a `chip-list` in the game's font, from `persist:teleport-codes` up to level 5 and from the script at level 6; DOORS a `card-set`; the map a `map-grid`. All of them take their data from `scripts/starquake.rhai`, except TELEPORTS below level 6. DOORS lists the doors met this game, numbered as met; at level 6, every door on the planet, in room order. A door's cards are worked out when BLOB meets it, from the game's seed and the room (`docs/re/starquake.md`). So the script notes each door, in the `door` state, in the kept list `doors-met` (`seed:room:cards`), where a game continued from a save finds it again. A card is answered when BLOB carries it.
 
 **The map you have walked** (level 2) comes from the screen. The game decides what blocks BLOB by each cell's attribute, so while BLOB is in a room the script reads its four edges from the play area. An edge with two or more open cells in a row is an opening; the rest are walls. Each room walked is kept once a game in `rooms-walked` (`seed:room:walls`), the first time its walls read the same two frames running, so a continued game shows its map again; the list keeps the last 2,048 rooms, some games' worth. Doors met are marked on the map, numbered only in the DOORS rail, as the mockups have them.
 
-Screenshots of the program running the game: [level 1](../media/starquake-level1.png), [level 2](../media/starquake-level2.png). Rooms not reached (levels 4 and 6) need the room data decoded, which the items and everything (#101) bring.
+**Items** (levels 3 and 4) come from the item table: each item's room and picture, while it isn't picked up. Those kept in the core's own room are never placed, so they aren't shown. Level 3 marks those in rooms walked, level 4 all of them.
+
+**The whole planet** (level 6) is decoded from the room data in the script's `on_load`, the way the game draws a room: large tiles of medium tiles, each medium tile's picture saying which cells it draws, and each cell's attribute whether it blocks. Only the rooms' edges and doors are kept; the walls follow the same rule as the screen's, and the real-tape tests check that they agree. Every door is found from its tile type, and its cards worked out from the game's seed and the room, as the game does on meeting it.
+
+Screenshots of the program running the game: [level 1](../media/starquake-level1.png), [level 2](../media/starquake-level2.png), [level 3](../media/starquake-level3.png), [level 4](../media/starquake-level4.png), [level 6](../media/starquake-level6.png).
 
 **Routes** are a breadth-first search over a graph of places, not just rooms. A room can be divided by walls, so a place is the part of a room that can be walked between. Edges are the openings, the teleports (any seen code can be typed), and lifts. The script builds the graph in `on_load` and searches it in `on_frame`; `next-route` steps through the nearest pieces.
 
@@ -60,7 +64,7 @@ Each of these is a fact to find (below) and then a `[values]` entry:
 
 - the current room, and BLOB's position;
 - the set of rooms visited (the game keeps one for its first-visit bonus): a `bitset`;
-- the room map, and from it each room's four openings. Worked out once, in the script's `on_load`; they never change;
+- the room data (`rooms`, `large_tiles`, `tile_types`, `tile_pictures`), and from it each room's four openings and its doors. Worked out once, in the script's `on_load`; they never change;
 - the teleport table: each teleport's room and code;
 - each security door's room and the three cards it asks for;
 - the item table: each item's room, position, colour and graphic, and whether it's carried;
