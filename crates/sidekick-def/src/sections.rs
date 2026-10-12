@@ -709,6 +709,9 @@ pub struct Widget {
     /// The guidance level from which it shows.
     #[serde(default)]
     pub from_level: u32,
+    /// Where in the panel it goes.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub column: Column,
     /// For `icon-grid`: pictures a row.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub columns: Option<u32>,
@@ -723,6 +726,19 @@ pub struct Widget {
     /// What it says when there's nothing to show.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub empty: Option<String>,
+}
+
+/// Where a widget goes in the panel.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Column {
+    /// The panel's whole width, below everything in the columns above it.
+    #[default]
+    Full,
+    /// The left column.
+    Left,
+    /// The right column, right-aligned.
+    Right,
 }
 
 /// What a widget draws.
@@ -760,6 +776,11 @@ pub struct Situations {
 pub struct Script {
     /// Its file, within the definition's folder or zip.
     pub file: String,
+}
+
+/// Whether a value is its type's default, to leave it out when writing.
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }
 
 #[allow(

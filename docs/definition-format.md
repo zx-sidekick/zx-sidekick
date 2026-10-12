@@ -377,13 +377,14 @@ name = "Codes and the core"
 description = "The codes you've seen, and the core's pieces."
 ```
 
-Widgets, drawn in the panel in the order listed, each from its `from_level` up:
+Widgets, drawn in the panel in the order listed, each from its `from_level` up. `column` puts a widget in the `left` column or the `right` one (right-aligned), which stack down side by side, or across the panel's `full` width (the default), below everything in the columns above it:
 
 ```toml
 [[panel]]
 kind = "icon-grid"
 title = "CORE"
 from_level = 1
+column = "left"
 columns = 3
 pictures = "item_pictures"
 source = "script:core"
@@ -392,6 +393,7 @@ source = "script:core"
 kind = "chip-list"
 title = "TELEPORTS"
 from_level = 1
+column = "right"
 font = "font"
 source = "persist:teleport-codes"
 empty = "None yet"
