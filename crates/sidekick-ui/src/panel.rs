@@ -374,8 +374,12 @@ impl Panel {
         for chip in chips {
             let width = word_width(&chip.glyphs) + 16.0;
             let left = if align == Align::Right { x - width } else { x };
-            let line = chip.outlined.then(|| Line::solid(colors::ACCENT, 1.5));
-            c.rect((left, y, width, 22.0), 3.0, Some(TEAL_BG), line);
+            c.rect((left, y, width, 22.0), 3.0, Some(TEAL_BG), None);
+            if chip.outlined {
+                // Outside the chip, as CSS draws an outline.
+                let ring = (left - 1.5, y - 1.5, width + 3.0, 25.0);
+                c.rect(ring, 4.5, None, Some(Line::solid(colors::ACCENT, 1.5)));
+            }
             let height = chip.glyphs.first().map_or(8.0, |g| {
                 #[allow(clippy::cast_precision_loss, reason = "a glyph's few pixels")]
                 let h = g.height as f32;
