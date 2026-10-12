@@ -474,6 +474,9 @@ What a script can use:
 | `mem.table(name)` | A table, as a list of maps of its fields |
 | `mem.state` | The game's state's name |
 | `mem.write(name, v)` | Only for `writable` values, and only in action functions |
+| `grid(width, height, cells)` | A grid of cells, row by row, each blocking when true or non-zero. Done by the program, each call one operation: |
+| `g.parts(w, h)` | Where a body `w` x `h` cells fits, all its cells free, the places numbered by part: places side by side or one above the other are one part. `.at(x, y)` is the part of the place with its top-left cell there (`()` where it doesn't fit), `.count` how many parts, `.width` and `.height` the places across and down |
+| `g.seams(parts, sources)` | The blocking cells where parts meet, row by row, as flags: each part in `sources` grows out from the cells its places cover, a cell a step through every cell, all at once, and where two parts' growths touch, the blocking cells on either side are marked |
 | `prev` | What it returned last frame |
 | `kept` | The `[persist]` lists |
 | `level` | The guidance level |
