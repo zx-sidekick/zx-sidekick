@@ -16,6 +16,7 @@
 pub mod hints;
 mod library;
 mod menu;
+mod panel;
 mod pause;
 pub mod png;
 mod tape_prompt;
@@ -24,6 +25,10 @@ mod text;
 pub use hints::{Face, PadLabels};
 pub use library::{LibraryEntry, LibraryPage};
 pub use menu::{Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH};
+pub use panel::{
+    Body as PanelBody, Column as PanelColumn, Panel, Widget as PanelWidget, HEIGHT as PANEL_HEIGHT,
+    WIDTH as PANEL_WIDTH,
+};
 pub use pause::{
     NoticeHint, PadMark, PauseNotice, AT as PAUSE_NOTICE_AT, HEIGHT as PAUSE_NOTICE_HEIGHT,
     WIDTH as PAUSE_NOTICE_WIDTH,

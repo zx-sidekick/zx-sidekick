@@ -372,6 +372,26 @@
         "label"
       ]
     },
+    "Column": {
+      "description": "Where a widget goes in the panel.",
+      "oneOf": [
+        {
+          "description": "The panel's whole width, below everything in the columns above it.",
+          "type": "string",
+          "const": "full"
+        },
+        {
+          "description": "The left column.",
+          "type": "string",
+          "const": "left"
+        },
+        {
+          "description": "The right column, right-aligned.",
+          "type": "string",
+          "const": "right"
+        }
+      ]
+    },
     "Count": {
       "description": "How many: a number, or the value that holds it.",
       "anyOf": [
@@ -1671,6 +1691,10 @@
       "description": "`[[panel]]`: a widget in the panel.",
       "type": "object",
       "properties": {
+        "column": {
+          "description": "Where in the panel it goes.",
+          "$ref": "#/$defs/Column"
+        },
         "columns": {
           "description": "For `icon-grid`: pictures a row.",
           "type": [

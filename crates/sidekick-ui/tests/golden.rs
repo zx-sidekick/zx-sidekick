@@ -2,8 +2,9 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    Face, Fonts, Levels, LibraryEntry, LibraryPage, Menu, NoticeHint, PadLabels, PadMark,
-    PauseNotice, Question, Refusal, Row, SwitchRow, TapePrompt,
+    Face, Fonts, Levels, LibraryEntry, LibraryPage, Menu, NoticeHint, PadLabels, PadMark, Panel,
+    PanelBody, PanelColumn, PanelWidget, PauseNotice, Question, Refusal, Row, SwitchRow,
+    TapePrompt,
 };
 use std::path::PathBuf;
 
@@ -222,4 +223,62 @@ fn a_click_finds_the_menu_s_row() {
     assert_eq!(menu.row_at(100.0, 566.0), Some(Row::Action(2)));
     assert_eq!(menu.row_at(5.0, 478.0), None);
     assert_eq!(menu.row_at(100.0, 451.0), None, "the rule between");
+}
+
+#[test]
+fn the_panel() {
+    let mut fonts = Fonts::new();
+    let off = Panel {
+        level: 0,
+        name: "Off".to_owned(),
+        description: "No guidance. Press Esc or Select to choose a level.".to_owned(),
+        widgets: Vec::new(),
+    };
+    golden("panel-level0.png", &off.draw(&mut fonts, 1).png());
+
+    let widget = |column, title: &str, body| PanelWidget {
+        column,
+        title: Some(title.to_owned()),
+        body,
+    };
+    let plain = Panel {
+        level: 1,
+        name: "Codes and the core".to_owned(),
+        description: String::new(),
+        widgets: vec![
+            widget(PanelColumn::Left, "Lives", PanelBody::Counter(3)),
+            widget(
+                PanelColumn::Right,
+                "Teleports",
+                PanelBody::Empty("None yet".to_owned()),
+            ),
+            widget(
+                PanelColumn::Left,
+                "Energy",
+                PanelBody::Meter {
+                    value: 120,
+                    max: 200,
+                },
+            ),
+            widget(
+                PanelColumn::Right,
+                "Doors",
+                PanelBody::Empty("None yet".to_owned()),
+            ),
+            widget(
+                PanelColumn::Full,
+                "Room",
+                PanelBody::Text("The eastern caverns".to_owned()),
+            ),
+            widget(
+                PanelColumn::Full,
+                "Laser",
+                PanelBody::Meter {
+                    value: 50,
+                    max: 200,
+                },
+            ),
+        ],
+    };
+    golden("panel-plain.png", &plain.draw(&mut fonts, 1).png());
 }
