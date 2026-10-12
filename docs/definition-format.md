@@ -241,7 +241,7 @@ note = "Skips the call that takes energy when an enemy touches the player."
 
 ## `[pad]`: the controller
 
-Per state, what each part of a pad does. `[pad.default]` applies in every state; `[pad.<state>]` overrides it, entry by entry, while that state is the game's. Without a `[pad]`, the D-pad and stick drive the joystick, west fires, and the other buttons do nothing in the game; `[pad.default]` changes that entry by entry.
+Per state, what each part of a pad does. `[pad.default]` applies in every state; `[pad.<state>]` overrides it, entry by entry, while that state is the game's (as of the last frame's end). Without a `[pad]`, the D-pad and stick drive the joystick, west fires, and the other buttons do nothing in the game; `[pad.default]` changes that entry by entry.
 
 Parts go by position, whoever made the pad. The stick counts once it's past half its travel, and so do the triggers.
 
@@ -304,7 +304,9 @@ host_key = "Tab"
 | `keys`, `tap`, `frames`, `joystick` | What reaches the game, as in `[pad]`. |
 | `patch_for_frame` | Patches applied for the frames the action lasts, then undone; `expect` as in `[[cheats]]`. This is how a pad splits a direction's two meanings. |
 | `script` | A function of the script to call (see Scripts). |
-| `host_key` | A key the Spectrum doesn't have (`"Tab"`, `"F6"`…) that also does this. Esc, F5, F9 and F11 are the program's own. |
+| `host_key` | A key the Spectrum doesn't have that also does this, as a pad button would: `Tab`, `F1` to `F12`, `Insert`, `Delete`, `Home`, `End`, `PageUp` or `PageDown`. Esc, F5, F9 and F11 are the program's own. |
+
+An action lasts while its button (or key) is held, and at least `frames` frames from the press when it gives `frames`: its `keys` and `joystick` are held, and its `patch_for_frame` applied before each of those frames and undone after. A patch whose `expect` bytes aren't there that frame is skipped, so it never lands on code that isn't the game's; the rest of the action still happens. A `script` does nothing until scripts arrive.
 
 ## `[text_entry]`: typing a word with a pad
 

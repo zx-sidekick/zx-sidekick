@@ -3,7 +3,7 @@
 
 use crate::keys::key_named;
 use sidekick_core::{Kempston, Key};
-use sidekick_def::{Definition, DirectionKeys, Joystick, Pad, PadTarget};
+use sidekick_def::{Action, Definition, DirectionKeys, Joystick, Pad, PadTarget, Patch};
 use sidekick_ui::PadLabels;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -39,6 +39,9 @@ pub(crate) enum Part {
     R2,
     Start,
     Select,
+    /// A key the Spectrum doesn't have that does one of the game's actions, by its index in
+    /// the mapping's.
+    HostKey(u16),
 }
 
 /// The pad's axes that count as parts: the left stick and the triggers.
@@ -291,19 +294,31 @@ pub(crate) enum Input {
     Key(SpectrumKey),
 }
 
-/// What a part does in play: inputs held while it is, and inputs tapped for some frames when
-/// it's pressed.
+/// What a part does in play: inputs held and patches applied while it's held (and for at least
+/// `lasts` frames from the press), and inputs tapped for `frames` frames from the press.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Does {
     hold: Vec<Input>,
+    patches: Vec<Patch>,
+    lasts: u32,
     tap: Vec<Input>,
     frames: u32,
 }
 
-/// What each part of a pad does in play, from a game's `[run] joystick` and `[pad.default]`.
+/// Each part's `Does`.
+type Parts = BTreeMap<Part, Does>;
+
+/// What each part of a pad does in play, in each of the game's states, from its `[run]
+/// joystick`, `[pad]` and `[[actions]]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Mapping {
-    parts: BTreeMap<Part, Does>,
+    /// With no state, or one without its own `[pad]`.
+    default: Parts,
+    /// States with their own `[pad]`.
+    states: BTreeMap<String, Parts>,
+    /// The keys the Spectrum doesn't have that do an action, by SDL's name for them; each is
+    /// `Part::HostKey` of its index.
+    host_keys: Vec<String>,
 }
 
 impl Default for Mapping {
@@ -317,9 +332,10 @@ impl Mapping {
     /// The mapping a definition gives, or the plain one without a definition.
     pub(crate) fn new(def: Option<&Definition>) -> Self {
         let run = def.and_then(|d| d.run.as_ref());
-        let joystick = Joy {
+        let joy = Joy {
             kind: run.map(|r| r.joystick).unwrap_or_default(),
             keys: run.and_then(|r| r.keys.clone()),
+            actions: def.map(|d| d.actions.as_slice()).unwrap_or_default(),
         };
         let mut targets: BTreeMap<&str, PadTarget> = [
             ("dpad", "joystick"),
@@ -329,21 +345,67 @@ impl Mapping {
         .into_iter()
         .map(|(part, target)| (part, PadTarget::Named(target.to_owned())))
         .collect();
-        if let Some(pad) = def.and_then(|d| d.pad.get("default")) {
+        let pads = def.map(|d| &d.pad);
+        let over = |targets: &mut BTreeMap<&'static str, PadTarget>, pad: &Pad| {
             for (part, target) in Pad::parts(pad) {
                 targets.insert(part, target.clone());
             }
+        };
+        if let Some(pad) = pads.and_then(|p| p.get("default")) {
+            over(&mut targets, pad);
         }
-        let mut parts = BTreeMap::new();
-        for (name, target) in &targets {
-            for (part, way) in parts_named(name) {
-                let does = joystick.does(target, way);
-                if does != Does::default() {
-                    parts.insert(part, does);
+        let mut host_keys = Vec::new();
+        let mut parts = |targets: &BTreeMap<&str, PadTarget>| -> Parts {
+            let mut parts = Parts::new();
+            for (name, target) in targets {
+                for (part, way) in parts_named(name) {
+                    let does = joy.does(target, way);
+                    if does != Does::default() {
+                        parts.insert(part, does);
+                    }
                 }
             }
+            for action in joy.actions {
+                if let Some(key) = &action.host_key {
+                    let index = host_keys.iter().position(|k| k == key).unwrap_or_else(|| {
+                        host_keys.push(key.clone());
+                        host_keys.len() - 1
+                    });
+                    let index = u16::try_from(index).unwrap_or(u16::MAX);
+                    parts.insert(Part::HostKey(index), joy.action(action));
+                }
+            }
+            parts
+        };
+        let default = parts(&targets);
+        let states = pads
+            .into_iter()
+            .flatten()
+            .filter(|(state, _)| *state != "default")
+            .map(|(state, pad)| {
+                let mut targets = targets.clone();
+                over(&mut targets, pad);
+                (state.clone(), parts(&targets))
+            })
+            .collect();
+        Self {
+            default,
+            states,
+            host_keys,
         }
-        Self { parts }
+    }
+
+    fn parts(&self, state: Option<&str>) -> &Parts {
+        state
+            .and_then(|s| self.states.get(s))
+            .unwrap_or(&self.default)
+    }
+
+    /// The part a key the Spectrum doesn't have is, when it does an action. `name` is SDL's
+    /// name for the key.
+    pub(crate) fn host_key(&self, name: &str) -> Option<Part> {
+        let index = self.host_keys.iter().position(|k| k == name)?;
+        Some(Part::HostKey(u16::try_from(index).ok()?))
     }
 }
 
@@ -367,13 +429,14 @@ fn parts_named(name: &str) -> Vec<(Part, Option<Way>)> {
     }
 }
 
-/// The joystick a game reads.
-struct Joy {
+/// The joystick a game reads, and its actions.
+struct Joy<'a> {
     kind: Joystick,
     keys: Option<DirectionKeys>,
+    actions: &'a [Action],
 }
 
-impl Joy {
+impl Joy<'_> {
     /// What one of the joystick's directions, or fire, presses.
     fn input(&self, direction: Direction) -> Option<Input> {
         let key = match &self.kind {
@@ -391,48 +454,105 @@ impl Joy {
 
     /// What a part does for a `[pad]` target; `way` is the part's, for `"joystick"`.
     fn does(&self, target: &PadTarget, way: Option<Way>) -> Does {
-        let keys = |names: &[String]| -> Vec<Input> {
-            names
-                .iter()
-                .filter_map(|n| key_named(n))
-                .map(|k| Input::Key(SpectrumKey(k)))
-                .collect()
-        };
         match target {
             PadTarget::Named(name) => {
                 let direction = match (name.as_str(), way) {
                     ("joystick", Some(way)) => Some(Direction::of(way)),
                     (name, _) => Direction::named(name),
                 };
-                // `menu` comes with the guidance menu, actions with per-state mappings.
-                Does {
-                    hold: direction.and_then(|d| self.input(d)).into_iter().collect(),
-                    ..Does::default()
+                if let Some(direction) = direction {
+                    return Does {
+                        hold: self.input(direction).into_iter().collect(),
+                        ..Does::default()
+                    };
                 }
+                // `menu` comes with the guidance menu (#14).
+                self.named_action(name)
             }
-            PadTarget::Table(table) => Does {
-                hold: keys(&table.keys),
-                tap: keys(&table.tap),
-                frames: table.frames.unwrap_or(TAP_FRAMES),
-            },
+            PadTarget::Table(table) => {
+                let mut does = Does {
+                    hold: keys(&table.keys),
+                    tap: keys(&table.tap),
+                    frames: table.frames.unwrap_or(TAP_FRAMES),
+                    ..Does::default()
+                };
+                if let Some(action) = &table.action {
+                    let action = self.named_action(action);
+                    does.hold.extend(action.hold);
+                    does.tap.extend(action.tap);
+                    does.patches = action.patches;
+                    does.lasts = action.lasts;
+                    if table.frames.is_none() {
+                        does.frames = action.frames;
+                    }
+                }
+                does
+            }
+        }
+    }
+
+    fn named_action(&self, id: &str) -> Does {
+        self.actions
+            .iter()
+            .find(|a| a.id == id)
+            .map(|a| self.action(a))
+            .unwrap_or_default()
+    }
+
+    /// What an action does. A `script` does nothing until scripts come (#15).
+    fn action(&self, action: &Action) -> Does {
+        let mut hold = keys(&action.keys);
+        hold.extend(
+            action
+                .joystick
+                .iter()
+                .filter_map(|d| Direction::named(d))
+                .filter_map(|d| self.input(d)),
+        );
+        Does {
+            hold,
+            patches: action.patch_for_frame.clone(),
+            lasts: action.frames.unwrap_or(0),
+            tap: keys(&action.tap),
+            frames: action.frames.unwrap_or(TAP_FRAMES),
         }
     }
 }
 
-/// A game being played by pad: its mapping, the taps running, and what's held on the Spectrum.
+/// Spectrum keys by name; a name that isn't one is left out (`sidekick check` reports it).
+fn keys(names: &[String]) -> Vec<Input> {
+    names
+        .iter()
+        .filter_map(|n| key_named(n))
+        .map(|k| Input::Key(SpectrumKey(k)))
+        .collect()
+}
+
+/// Something going on for a number of frames from a press, however long it's held.
+#[derive(Debug)]
+struct Lasting {
+    inputs: Vec<Input>,
+    patches: Vec<Patch>,
+    left: u32,
+}
+
+/// A game being played by pad: its mapping, the game's state, what's going on for a number of
+/// frames, and what's held on the Spectrum.
 #[derive(Debug, Default)]
 pub(crate) struct Play {
     mapping: Mapping,
-    /// Inputs tapped, and the frames each has left.
-    taps: Vec<(Input, u32)>,
+    state: Option<String>,
+    lasting: Vec<Lasting>,
     sent: BTreeSet<Input>,
 }
 
-/// What to press, again or anew, and what to let go on the Spectrum.
+/// What to press, again or anew, and what to let go on the Spectrum, and the patches to apply
+/// for the next frame.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Changes {
     pub(crate) press: Vec<Input>,
     pub(crate) release: Vec<Input>,
+    pub(crate) patches: Vec<Patch>,
 }
 
 impl Play {
@@ -443,40 +563,81 @@ impl Play {
         }
     }
 
-    /// A part was pressed: starts its tap, if it has one.
+    pub(crate) const fn mapping(&self) -> &Mapping {
+        &self.mapping
+    }
+
+    /// The game's state for the frames to come. Returns true when it changed, for what's held
+    /// to be held back.
+    pub(crate) fn enter(&mut self, state: Option<&str>) -> bool {
+        if self.state.as_deref() == state {
+            return false;
+        }
+        self.state = state.map(str::to_owned);
+        true
+    }
+
+    /// A part was pressed: starts its tap, and keeps what it holds going for the frames it
+    /// lasts at least.
     pub(crate) fn pressed(&mut self, part: Part) {
-        if let Some(does) = self.mapping.parts.get(&part) {
-            for &input in &does.tap {
-                self.taps.retain(|&(i, _)| i != input);
-                self.taps.push((input, does.frames));
-            }
+        let Some(does) = self.mapping.parts(self.state.as_deref()).get(&part) else {
+            return;
+        };
+        if !does.tap.is_empty() {
+            self.lasting.push(Lasting {
+                inputs: does.tap.clone(),
+                patches: Vec::new(),
+                left: does.frames,
+            });
+        }
+        if does.lasts > 0 {
+            self.lasting.push(Lasting {
+                inputs: does.hold.clone(),
+                patches: does.patches.clone(),
+                left: does.lasts,
+            });
         }
     }
 
-    /// What to press and let go on the Spectrum before the next frame, for the parts `held`.
-    /// Everything held is pressed again each frame, so the keyboard letting go of a key a pad
-    /// holds too (0 on a Sinclair joystick) doesn't let it go for the pad.
+    /// What to press and let go on the Spectrum before the next frame, and the patches to
+    /// apply for it, for the parts `held`. Everything held is pressed again each frame, so the
+    /// keyboard letting go of a key a pad holds too (0 on a Sinclair joystick) doesn't let it
+    /// go for the pad.
     pub(crate) fn update(&mut self, held: impl Iterator<Item = Part>) -> Changes {
-        let mut wanted: BTreeSet<Input> = self.taps.iter().map(|&(input, _)| input).collect();
+        let mut wanted: BTreeSet<Input> = BTreeSet::new();
+        let mut patches: Vec<Patch> = Vec::new();
+        let mut add = |inputs: &[Input], more: &[Patch]| {
+            wanted.extend(inputs.iter().copied());
+            for patch in more {
+                if !patches.contains(patch) {
+                    patches.push(patch.clone());
+                }
+            }
+        };
+        for lasting in &self.lasting {
+            add(&lasting.inputs, &lasting.patches);
+        }
+        let parts = self.mapping.parts(self.state.as_deref());
         for part in held {
-            if let Some(does) = self.mapping.parts.get(&part) {
-                wanted.extend(does.hold.iter().copied());
+            if let Some(does) = parts.get(&part) {
+                add(&does.hold, &does.patches);
             }
         }
         let changes = Changes {
             press: wanted.iter().copied().collect(),
             release: self.sent.difference(&wanted).copied().collect(),
+            patches,
         };
         self.sent = wanted;
         changes
     }
 
-    /// A frame ran: each tap has one frame fewer left.
+    /// A frame ran: what's lasting has one frame fewer left.
     pub(crate) fn frame_ran(&mut self) {
-        for (_, left) in &mut self.taps {
-            *left = left.saturating_sub(1);
+        for lasting in &mut self.lasting {
+            lasting.left = lasting.left.saturating_sub(1);
         }
-        self.taps.retain(|&(_, left)| left > 0);
+        self.lasting.retain(|l| l.left > 0);
     }
 }
 
@@ -608,14 +769,16 @@ mod tests {
             play.update(std::iter::once(Part::West)),
             Changes {
                 press: vec![fire],
-                release: vec![]
+                release: vec![],
+                ..Changes::default()
             }
         );
         assert_eq!(
             play.update(std::iter::once(Part::West)),
             Changes {
                 press: vec![fire],
-                release: vec![]
+                release: vec![],
+                ..Changes::default()
             },
             "again, in case the keyboard let it go"
         );
@@ -623,7 +786,8 @@ mod tests {
             play.update(std::iter::once(Part::DPad(Way::Left))),
             Changes {
                 press: vec![left],
-                release: vec![fire]
+                release: vec![fire],
+                ..Changes::default()
             }
         );
     }
@@ -728,5 +892,144 @@ mod tests {
         assert_eq!(nav(Part::West, Maker::Other), None);
         assert_eq!(Maker::PlayStation.labels(), PadLabels::Shapes);
         assert_eq!(Maker::Nintendo.labels(), PadLabels::Letters);
+    }
+
+    /// What `play` holds and patches after one update with `held`.
+    fn holds_and_patches(play: &mut Play, held: &[Part]) -> (Vec<Input>, usize) {
+        let changes = play.update(held.iter().copied());
+        (play.sent.iter().copied().collect(), changes.patches.len())
+    }
+
+    #[test]
+    fn a_state_s_pad_changes_the_default_s_parts_one_by_one_while_it_lasts() {
+        let mapping = Mapping::new(Some(&def(r#"
+            [[states]]
+            name = "title"
+            pc = 0x8000
+            [[states]]
+            name = "play"
+            pc = 0x9000
+
+            [pad.default]
+            south = { keys = ["H"] }
+
+            [pad.title]
+            south = { keys = ["1"] }
+            start = { keys = ["2"] }
+            "#)));
+        let mut play = Play::new(mapping);
+        assert!(!play.enter(None), "no state to begin with");
+        assert_eq!(holds(&mut play, &[Part::South]), [key(Key::H)]);
+        assert!(play.enter(Some("title")));
+        assert_eq!(holds(&mut play, &[Part::South]), [key(Key::N1)]);
+        assert_eq!(holds(&mut play, &[Part::Start]), [key(Key::N2)]);
+        assert_eq!(
+            holds(&mut play, &[Part::West]),
+            [Input::Kempston(Direction::Fire)],
+            "the default's west"
+        );
+        assert!(!play.enter(Some("title")), "the same state");
+        assert!(play.enter(Some("play")));
+        assert_eq!(
+            holds(&mut play, &[Part::South]),
+            [key(Key::H)],
+            "no [pad.play]"
+        );
+        assert!(holds(&mut play, &[Part::Start]).is_empty());
+    }
+
+    const ACTIONS: &str = r#"
+        [[actions]]
+        id = "pick-up"
+        joystick = ["up"]
+        patch_for_frame = [{ addr = 0x6C10, bytes = "18", expect = "20" }]
+
+        [[actions]]
+        id = "end-game"
+        tap = ["A", "S"]
+        frames = 3
+
+        [[actions]]
+        id = "jump"
+        keys = ["SPACE"]
+        frames = 2
+        host_key = "Tab"
+
+        [[actions]]
+        id = "next-route"
+        script = "next_route"
+        host_key = "F6"
+
+        [pad.default]
+        north = "pick-up"
+        east = { action = "end-game" }
+        south = "jump"
+        r1 = "next-route"
+    "#;
+
+    #[test]
+    fn an_action_holds_and_patches_while_its_button_is_held() {
+        let mut play = Play::new(Mapping::new(Some(&def(ACTIONS))));
+        play.pressed(Part::North);
+        assert_eq!(
+            holds_and_patches(&mut play, &[Part::North]),
+            (vec![Input::Kempston(Direction::Up)], 1)
+        );
+        play.frame_ran();
+        assert_eq!(
+            holds_and_patches(&mut play, &[Part::North, Part::DPad(Way::Up)]),
+            (vec![Input::Kempston(Direction::Up)], 1),
+            "one patch, however many parts ask for it"
+        );
+        play.frame_ran();
+        assert_eq!(holds_and_patches(&mut play, &[]), (vec![], 0), "let go");
+    }
+
+    #[test]
+    fn an_action_lasts_its_frames_however_briefly_its_button_is_pressed() {
+        let mut play = Play::new(Mapping::new(Some(&def(ACTIONS))));
+        play.pressed(Part::East);
+        for frame in 0..3 {
+            assert_eq!(holds(&mut play, &[]), [key(Key::A), key(Key::S)], "{frame}");
+            play.frame_ran();
+        }
+        assert!(holds(&mut play, &[]).is_empty());
+
+        play.pressed(Part::South);
+        for _ in 0..2 {
+            assert_eq!(
+                holds(&mut play, &[]),
+                [key(Key::Space)],
+                "at least its frames"
+            );
+            play.frame_ran();
+        }
+        assert!(holds(&mut play, &[]).is_empty());
+        assert_eq!(
+            holds(&mut play, &[Part::South]),
+            [key(Key::Space)],
+            "and as long as it's held"
+        );
+    }
+
+    #[test]
+    fn a_key_the_spectrum_lacks_does_its_action() {
+        let mapping = Mapping::new(Some(&def(ACTIONS)));
+        let tab = mapping.host_key("Tab").expect("Tab does an action");
+        assert!(mapping.host_key("F7").is_none());
+        let mut play = Play::new(mapping);
+        assert!(
+            holds(&mut play, &[Part::R1]).is_empty(),
+            "a script does nothing yet"
+        );
+        play.pressed(tab);
+        assert_eq!(holds(&mut play, &[tab]), [key(Key::Space)]);
+        let f6 = play.mapping().host_key("F6").expect("F6 does an action");
+        play.pressed(f6);
+        assert_eq!(
+            holds(&mut play, &[f6]),
+            [key(Key::Space)],
+            "only Tab's jump"
+        );
     }
 }

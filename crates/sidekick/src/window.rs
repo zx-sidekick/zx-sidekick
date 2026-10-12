@@ -42,6 +42,9 @@ const QUEUED_FRAMES: usize = 3;
 /// The most frames run between two presented pictures, so a stall can't snowball.
 const MOST_FRAMES_A_PASS: usize = 5;
 
+/// The keyboard, as a pad, for the keys that do a game's actions: an id no pad SDL opens has.
+const KEYBOARD: u32 = u32::MAX;
+
 /// The picture's size: the screen with 32 pixels of border all round.
 const PICTURE: (u32, u32) = (320, 256);
 
@@ -89,7 +92,7 @@ struct Player {
 enum Screen {
     Library(Box<Library>),
     Prompt(Box<Prompt>),
-    Play(Player),
+    Play(Box<Player>),
 }
 
 /// The pads plugged in, what each holds, and the maker of the one used last.
@@ -171,7 +174,10 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
                     }
                 }
                 event => {
-                    let presses = gamepads.event(&event);
+                    let mut presses = gamepads.event(&event);
+                    if let Screen::Play(player) = &screen {
+                        presses.extend(gamepads.host_key(&event, player.play.mapping()));
+                    }
                     match screen.event(&event, &presses, &out.canvas) {
                         Choice::Stay => {}
                         Choice::Quit => break 'run,
@@ -188,7 +194,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         }
         if let Screen::Prompt(prompt) = &mut screen {
             if let Some((session, mapping)) = prompt.take_offer() {
-                screen = Screen::Play(Player::new(session, mapping));
+                screen = Screen::Play(Box::new(Player::new(session, mapping)));
                 gamepads.pads.hold_back();
             }
         }
@@ -196,7 +202,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         out.canvas.set_draw_color(Color::RGB(0, 0, 0));
         out.canvas.clear();
         match &mut screen {
-            Screen::Play(player) => player.frame(&mut out, &gamepads.pads)?,
+            Screen::Play(player) => player.frame(&mut out, &mut gamepads.pads)?,
             Screen::Prompt(prompt) => {
                 let page = &prompt.page;
                 show(&mut out, &mut prompt.drawn, |fonts, scale| {
@@ -288,6 +294,29 @@ impl Gamepads {
         parts.into_iter().map(|p| (p, maker)).collect()
     }
 
+    /// A key the Spectrum doesn't have that does one of the game's actions, pressed or let go
+    /// like a pad's button. Returns its part when pressed.
+    fn host_key(&mut self, event: &Event, mapping: &Mapping) -> Vec<(Part, Maker)> {
+        let (scancode, down) = match *event {
+            Event::KeyDown {
+                scancode: Some(scancode),
+                repeat: false,
+                ..
+            } => (scancode, true),
+            Event::KeyUp {
+                scancode: Some(scancode),
+                ..
+            } => (scancode, false),
+            _ => return Vec::new(),
+        };
+        mapping
+            .host_key(scancode.name())
+            .and_then(|part| self.pads.button(KEYBOARD, part, down))
+            .map(|part| (part, self.last))
+            .into_iter()
+            .collect()
+    }
+
     /// Shows the last pad's buttons on the pages: always on the library, on the tape prompt
     /// once a pad is plugged in.
     fn label(&self, screen: &mut Screen) {
@@ -362,7 +391,7 @@ impl Player {
     }
 
     /// Runs the frames that are due, queues their sound, and draws the latest picture.
-    fn frame(&mut self, out: &mut Output, pads: &Pads) -> Result<(), String> {
+    fn frame(&mut self, out: &mut Output, pads: &mut Pads) -> Result<(), String> {
         let due = out.sound.as_ref().map_or_else(
             || frames_due(self.started.elapsed(), self.frames_run),
             |stream| {
@@ -375,8 +404,21 @@ impl Player {
             std::thread::sleep(Duration::from_millis(1));
         }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
-            send(self.session.machine_mut(), self.play.update(pads.held()));
-            self.session.run_frame().map_err(|e| e.to_string())?;
+            if self.play.enter(self.session.state()) {
+                pads.hold_back();
+            }
+            let mut changes = self.play.update(pads.held());
+            let patches = std::mem::take(&mut changes.patches);
+            send(self.session.machine_mut(), changes);
+            let applied: Vec<_> = patches
+                .into_iter()
+                .filter(|p| self.session.patch(p))
+                .collect();
+            let ran = self.session.run_frame();
+            for patch in &applied {
+                self.session.unpatch(patch);
+            }
+            ran.map_err(|e| e.to_string())?;
             self.play.frame_ran();
             self.frames_run += 1;
             if let Some(stream) = &out.sound {
@@ -567,7 +609,7 @@ impl Library {
 
 fn first_screen(start: Start) -> Screen {
     match start {
-        Start::Play(session, _, mapping) => Screen::Play(Player::new(session, mapping)),
+        Start::Play(session, _, mapping) => Screen::Play(Box::new(Player::new(session, mapping))),
         Start::Prompt(game) => prompt_screen(*game),
         Start::Library(games) => Screen::Library(Box::new(Library {
             page: LibraryPage {
@@ -589,10 +631,10 @@ fn open_game(game: Game, canvas: &mut WindowCanvas) -> Result<Screen, String> {
         .set_title(&format!("ZX Sidekick — {}", game.title()))
         .map_err(|e| e.to_string())?;
     match game.kept_tape() {
-        Some(tape) => Ok(Screen::Play(Player::new(
+        Some(tape) => Ok(Screen::Play(Box::new(Player::new(
             Box::new(game.session(&tape)?),
             game.mapping(),
-        ))),
+        )))),
         None => Ok(prompt_screen(game)),
     }
 }
