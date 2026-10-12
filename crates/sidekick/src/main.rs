@@ -261,6 +261,19 @@ fn check(path: &Path, tape: Option<&Path>) -> ExitCode {
         .iter()
         .map(ToString::to_string)
         .collect();
+    match games::script(&package) {
+        Some(Err(why)) => problems.push(format!("script: {why}")),
+        Some(Ok(script)) => {
+            for (i, action) in package.definition.actions.iter().enumerate() {
+                if let Some(function) = action.script.as_ref().filter(|f| !script.has(f)) {
+                    problems.push(format!(
+                        "actions[{i}].script: the script has no function {function}"
+                    ));
+                }
+            }
+        }
+        None => {}
+    }
     if let Some(tape) = tape {
         let mut library = Library::default();
         library.insert(package);

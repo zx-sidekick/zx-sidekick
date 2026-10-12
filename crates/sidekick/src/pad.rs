@@ -310,6 +310,8 @@ pub(crate) enum Input {
 /// `lasts` frames from the press), and inputs tapped for `frames` frames from the press.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Does {
+    /// A function of the definition's script to call on the press.
+    script: Option<String>,
     hold: Vec<Input>,
     patches: Vec<Patch>,
     lasts: u32,
@@ -502,6 +504,7 @@ impl Joy<'_> {
                     does.tap.extend(action.tap);
                     does.patches = action.patches;
                     does.lasts = action.lasts;
+                    does.script = action.script;
                     if table.frames.is_none() {
                         does.frames = action.frames;
                     }
@@ -530,6 +533,7 @@ impl Joy<'_> {
                 .filter_map(|d| self.input(d)),
         );
         Does {
+            script: action.script.clone(),
             hold,
             patches: action.patch_for_frame.clone(),
             lasts: action.frames.unwrap_or(0),
@@ -609,19 +613,19 @@ impl Play {
     }
 
     /// A part was pressed: starts its tap, and keeps what it holds going for the frames it
-    /// lasts at least.
-    pub(crate) fn pressed(&mut self, part: Part) {
-        if let Some(does) = self.mapping.parts(self.state.as_deref()).get(&part) {
-            Self::start(&mut self.lasting, does);
-        }
+    /// lasts at least. Returns the script function it calls, if it calls one.
+    pub(crate) fn pressed(&mut self, part: Part) -> Option<String> {
+        let does = self.mapping.parts(self.state.as_deref()).get(&part)?;
+        Self::start(&mut self.lasting, does);
+        does.script.clone()
     }
 
     /// Does one of the game's actions, by id, as a press that's let go at once: its taps, and
-    /// what it holds for the frames it lasts.
-    pub(crate) fn act(&mut self, id: &str) {
-        if let Some(does) = self.mapping.actions.get(id) {
-            Self::start(&mut self.lasting, does);
-        }
+    /// what it holds for the frames it lasts. Returns the script function it calls, if any.
+    pub(crate) fn act(&mut self, id: &str) -> Option<String> {
+        let does = self.mapping.actions.get(id)?;
+        Self::start(&mut self.lasting, does);
+        does.script.clone()
     }
 
     fn start(lasting: &mut Vec<Lasting>, does: &Does) {
@@ -1093,10 +1097,12 @@ mod tests {
         let tab = mapping.host_key("Tab").expect("Tab does an action");
         assert!(mapping.host_key("F7").is_none());
         let mut play = Play::new(mapping);
-        assert!(
-            holds(&mut play, &[Part::R1]).is_empty(),
-            "a script does nothing yet"
+        assert_eq!(
+            play.pressed(Part::R1),
+            Some("next_route".to_owned()),
+            "its script"
         );
+        assert!(holds(&mut play, &[Part::R1]).is_empty(), "and nothing else");
         play.pressed(tab);
         assert_eq!(holds(&mut play, &[tab]), [key(Key::Space)]);
         let f6 = play.mapping().host_key("F6").expect("F6 does an action");

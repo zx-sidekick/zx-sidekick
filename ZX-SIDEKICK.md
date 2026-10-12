@@ -128,8 +128,8 @@ Everything but `[game]` and `[[media]]` is optional. A definition with only thos
 
 Most of what a definition says is plain data. A few things are computations no data format can describe well: Starquake's map, worked out from its room data, or the shortest route to the nearest missing piece. For those, a definition can include a [Rhai](https://rhai.rs) script.
 
-- `on_load(mem)` runs once, after the tape has loaded: for work done once, such as each room's openings.
-- `on_frame(mem, prev, kept)` runs at each sync point and returns facts the panel shows (`routes`, `map`…).
+- `on_load` runs once, after the tape has loaded: for work done once, such as each room's openings.
+- `on_frame` runs each frame, after the values are read, and returns facts the panel shows (`routes`, `map`…). Each function is given as many of `mem`, `loaded`, `prev`, `kept` and `level` as it takes.
 - A script reads memory (`peek`, `peek16`, `value(name)`, `table(name)`), the facts it returned last frame, and the kept lists. It can't write memory, except through values the definition marks `writable`, so every write is still named in one place.
 - It has no file, network or clock access, and an operation limit per call; going over the limit turns the script's widgets off for that game with a notice, rather than stalling the frame.
 
