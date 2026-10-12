@@ -328,6 +328,7 @@ empty = "None yet"
 [[panel]]
 kind = "map-grid"
 from_level = 2
+column = "left"
 pictures = "item_pictures"
 source = "script:map"
 

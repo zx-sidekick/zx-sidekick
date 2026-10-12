@@ -5,7 +5,8 @@ use crate::picture::color;
 use sidekick_core::{Bitmap, Fact, Font, Read, Reading, Session};
 use sidekick_def::{Column, Definition, Widget, WidgetKind};
 use sidekick_ui::{
-    CardRow, Chip, Color, Icon, Look, Panel, PanelBody, PanelColumn, PanelWidget, Pixels,
+    CardRow, Cell, Chip, Color, Edge, Icon, Look, MapGrid, Marker, MarkerKind, Panel, PanelBody,
+    PanelColumn, PanelWidget, Pin, Pixels, Route, RouteColor,
 };
 use std::collections::BTreeMap;
 
@@ -102,8 +103,6 @@ pub(crate) fn panel(
         .panel
         .iter()
         .filter(|w| usize::try_from(w.from_level).is_ok_and(|from| from <= level) && level > 0)
-        // The map (#72) comes later.
-        .filter(|w| w.kind != WidgetKind::MapGrid)
         .filter_map(|w| {
             let source = if let Some(name) = w.source.strip_prefix("value:") {
                 let max = definition.values.get(name).and_then(|v| v.max);
@@ -121,6 +120,9 @@ pub(crate) fn panel(
                     WidgetKind::ChipList | WidgetKind::IconGrid | WidgetKind::CardSet,
                     Source::Script(fact),
                 ) => pictured(w, fact, &graphics(w))?,
+                (WidgetKind::MapGrid, Source::Script(fact)) => {
+                    PanelBody::Map(map(fact, &graphics(w))?)
+                }
                 (WidgetKind::Text, Source::Value(read, _)) => PanelBody::Text(read.as_text()),
                 (WidgetKind::Counter, Source::Value(read, _)) => PanelBody::Counter(read.number()?),
                 (WidgetKind::Meter, Source::Value(read, max)) => PanelBody::Meter {
@@ -160,6 +162,159 @@ pub(crate) fn panel(
     })
 }
 
+/// A chip's outline: the accent for `true`, a route's colour for `"first"` or `"second"`.
+fn outline(fact: Option<&Fact>) -> Option<Color> {
+    match fact? {
+        Fact::Flag(true) => Some(sidekick_ui::colors::ACCENT),
+        Fact::Text(t) => route_color(t).map(RouteColor::color),
+        _ => None,
+    }
+}
+
+fn route_color(name: &str) -> Option<RouteColor> {
+    match name {
+        "first" => Some(RouteColor::First),
+        "second" => Some(RouteColor::Second),
+        _ => None,
+    }
+}
+
+fn edge(name: &str) -> Option<Edge> {
+    match name {
+        "N" => Some(Edge::North),
+        "E" => Some(Edge::East),
+        "S" => Some(Edge::South),
+        "W" => Some(Edge::West),
+        _ => None,
+    }
+}
+
+/// A field of a map fact.
+fn get<'a>(fact: &'a Fact, key: &str) -> Option<&'a Fact> {
+    match fact {
+        Fact::Map(map) => map.get(key),
+        _ => None,
+    }
+}
+
+fn number(fact: Option<&Fact>) -> Option<usize> {
+    match fact? {
+        Fact::Number(n) => usize::try_from(*n).ok(),
+        _ => None,
+    }
+}
+
+fn words(fact: Option<&Fact>) -> Option<&str> {
+    match fact? {
+        Fact::Text(t) => Some(t),
+        _ => None,
+    }
+}
+
+/// The script's map: `{ width, height, cells, markers, routes }`.
+fn map(fact: &Fact, graphics: &Graphics) -> Option<MapGrid> {
+    let list = |key: &str| match get(fact, key) {
+        Some(Fact::List(items)) => items.as_slice(),
+        _ => &[],
+    };
+    let cells = list("cells")
+        .iter()
+        .filter_map(|cell| {
+            Some(Cell {
+                x: number(get(cell, "x"))?,
+                y: number(get(cell, "y"))?,
+                walls: words(get(cell, "walls"))
+                    .unwrap_or_default()
+                    .chars()
+                    .filter_map(|c| edge(&c.to_string()))
+                    .collect(),
+                seen: matches!(get(cell, "seen"), Some(Fact::Flag(true))),
+            })
+        })
+        .collect();
+    let markers = list("markers")
+        .iter()
+        .filter_map(|marker| {
+            let kind = match words(get(marker, "kind"))? {
+                "player" => MarkerKind::Player,
+                "teleport" => MarkerKind::Teleport,
+                "door" => MarkerKind::Door,
+                "target" => MarkerKind::Target,
+                "item" => MarkerKind::Item(graphics.picture(get(marker, "picture"))),
+                _ => return None,
+            };
+            let color = match get(marker, "color") {
+                Some(Fact::Text(t)) => route_color(t).map(RouteColor::color),
+                Some(Fact::Number(n)) => u8::try_from(*n).ok().map(|c| {
+                    let [r, g, b, _] = color(c);
+                    Color::rgb(r, g, b)
+                }),
+                _ => None,
+            };
+            Some(Marker {
+                x: number(get(marker, "x"))?,
+                y: number(get(marker, "y"))?,
+                kind,
+                color,
+            })
+        })
+        .collect();
+    let routes = list("routes")
+        .iter()
+        .filter_map(|route| {
+            let steps = match get(route, "steps")? {
+                Fact::List(steps) => steps
+                    .iter()
+                    .filter_map(|step| match step {
+                        Fact::List(xy) if xy.len() == 2 => {
+                            Some((number(xy.first())?, number(xy.get(1))?))
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+                _ => return None,
+            };
+            Some(Route {
+                color: words(get(route, "color"))
+                    .and_then(route_color)
+                    .unwrap_or_default(),
+                steps,
+                label: words(get(route, "label")).map(str::to_owned),
+                exit: words(get(route, "exit")).and_then(edge),
+            })
+        })
+        .collect();
+    Some(MapGrid {
+        width: number(get(fact, "width"))?,
+        height: number(get(fact, "height"))?,
+        cells,
+        markers,
+        routes,
+    })
+}
+
+/// The pins at the picture's edge for the panel's routes that leave the room: each says the
+/// first word of its route's label.
+pub(crate) fn pins(panel: &Panel) -> Vec<Pin> {
+    panel
+        .widgets
+        .iter()
+        .filter_map(|w| match &w.body {
+            PanelBody::Map(map) => Some(&map.routes),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|route| {
+            let label = route.label.as_deref()?.split_whitespace().next()?;
+            Some(Pin {
+                edge: route.exit?,
+                color: route.color,
+                label: label.to_lowercase(),
+            })
+        })
+        .collect()
+}
+
 /// A widget drawn in the game's font or pictures, from what the script returned: its
 /// `empty` words when there's nothing to show.
 fn pictured(widget: &Widget, fact: &Fact, graphics: &Graphics) -> Option<PanelBody> {
@@ -188,7 +343,7 @@ fn pictured(widget: &Widget, fact: &Fact, graphics: &Graphics) -> Option<PanelBo
                     };
                     Some(Chip {
                         glyphs: graphics.word(&text)?,
-                        outlined: flag(item, "outlined"),
+                        outline: outline(field(item, "outlined").as_ref()),
                     })
                 })
                 .collect(),
@@ -495,11 +650,11 @@ source = "script:doors"
             PanelBody::Chips(vec![
                 Chip {
                     glyphs: vec![px(16), px(17)],
-                    outlined: false
+                    outline: None
                 },
                 Chip {
                     glyphs: vec![px(17)],
-                    outlined: true
+                    outline: Some(sidekick_ui::colors::ACCENT)
                 },
             ]),
             "A and B are the font's 17th and 18th, from 1"
@@ -549,6 +704,103 @@ source = "script:doors"
             px(2).color,
             Some(Color::rgb(0xFF, 0, 0)),
             "its own ink: bright red"
+        );
+    }
+
+    #[test]
+    fn the_script_s_map_becomes_the_map_and_its_pins() {
+        let def = definition(
+            r#"
+[[panel]]
+kind = "map-grid"
+from_level = 1
+pictures = "pictures"
+source = "script:map"
+"#,
+        );
+        let xy = |x, y| Fact::List(vec![Fact::Number(x), Fact::Number(y)]);
+        let text = |t: &str| Fact::Text(t.to_owned());
+        let the_map = map(vec![
+            ("width", Fact::Number(2)),
+            ("height", Fact::Number(2)),
+            (
+                "cells",
+                Fact::List(vec![map(vec![
+                    ("x", Fact::Number(1)),
+                    ("y", Fact::Number(0)),
+                    ("walls", text("NE")),
+                    ("seen", Fact::Flag(true)),
+                ])]),
+            ),
+            (
+                "markers",
+                Fact::List(vec![
+                    map(vec![
+                        ("x", Fact::Number(0)),
+                        ("y", Fact::Number(1)),
+                        ("kind", text("player")),
+                    ]),
+                    map(vec![
+                        ("x", Fact::Number(1)),
+                        ("y", Fact::Number(1)),
+                        ("kind", text("item")),
+                        ("picture", Fact::Number(2)),
+                        ("color", text("second")),
+                    ]),
+                    map(vec![
+                        ("x", Fact::Number(0)),
+                        ("y", Fact::Number(0)),
+                        ("kind", text("ghost")),
+                    ]),
+                ]),
+            ),
+            (
+                "routes",
+                Fact::List(vec![map(vec![
+                    ("color", text("second")),
+                    ("steps", Fact::List(vec![xy(0, 1), xy(1, 1)])),
+                    ("label", text("Core 2/9")),
+                    ("exit", text("E")),
+                ])]),
+            ),
+        ]);
+        let results = BTreeMap::from([("map".to_owned(), the_map)]);
+        let running = Script {
+            results: &results,
+            off: None,
+        };
+        let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
+        let PanelBody::Map(grid) = &shown.widgets[0].body else {
+            panic!("a map: {:?}", shown.widgets[0].body);
+        };
+        assert_eq!((grid.width, grid.height), (2, 2));
+        assert_eq!(
+            grid.cells,
+            [Cell {
+                x: 1,
+                y: 0,
+                walls: vec![Edge::North, Edge::East],
+                seen: true
+            }]
+        );
+        assert_eq!(grid.markers.len(), 2, "a kind it doesn't know is left out");
+        assert_eq!(
+            grid.markers[1],
+            Marker {
+                x: 1,
+                y: 1,
+                kind: MarkerKind::Item(Some(pixels(&dot(2)))),
+                color: Some(RouteColor::Second.color()),
+            }
+        );
+        assert_eq!(grid.routes[0].steps, [(0, 1), (1, 1)]);
+        assert_eq!(
+            pins(&shown),
+            [Pin {
+                edge: Edge::East,
+                color: RouteColor::Second,
+                label: "core".to_owned()
+            }]
         );
     }
 

@@ -2,9 +2,10 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    CardRow, Chip, Face, Fonts, Icon, Levels, LibraryEntry, LibraryPage, Look, Menu, NoticeHint,
-    PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pixels, Question,
-    Refusal, Row, SwitchRow, TapePrompt,
+    pins, CardRow, Cell, Chip, Edge, Face, Fonts, Icon, Levels, LibraryEntry, LibraryPage, Look,
+    MapGrid, Marker, MarkerKind, Menu, NoticeHint, PadLabels, PadMark, Panel, PanelBody,
+    PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question, Refusal, Route, RouteColor, Row,
+    SwitchRow, TapePrompt,
 };
 use std::path::PathBuf;
 
@@ -327,7 +328,7 @@ fn the_panel_in_the_game_s_own_font_and_pictures() {
         .enumerate()
         .map(|(i, w)| Chip {
             glyphs: stand_in_word(w),
-            outlined: i == 1,
+            outline: (i == 1).then_some(sidekick_ui::colors::ACCENT),
         })
         .collect();
     let cards = (1..=3)
@@ -361,4 +362,154 @@ fn the_panel_in_the_game_s_own_font_and_pictures() {
         ],
     };
     golden("panel-game-pictures.png", &panel.draw(&mut fonts, 1).png());
+}
+
+/// A stand-in map, 16 × 32 as the mockups' is: walls from a seeded coin where `seen`.
+fn stand_in_map(seen: bool) -> MapGrid {
+    let mut state = 7u32;
+    let mut coin = || {
+        state = state.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+        (state >> 16) % 100 < 45
+    };
+    let cells = (0..32)
+        .flat_map(|y| (0..16).map(move |x| (x, y)))
+        .map(|(x, y)| {
+            let mut walls = Vec::new();
+            if coin() {
+                walls.push(Edge::East);
+            }
+            if coin() {
+                walls.push(Edge::South);
+            }
+            Cell { x, y, walls, seen }
+        })
+        .collect();
+    let item = |x, y, seed| Marker {
+        x,
+        y,
+        kind: MarkerKind::Item(Some(stand_in(seed))),
+        color: None,
+    };
+    let mut markers = vec![
+        Marker {
+            x: 8,
+            y: 1,
+            kind: MarkerKind::Player,
+            color: None,
+        },
+        item(0, 1, 11),
+        item(2, 5, 14),
+        item(6, 7, 12),
+        item(12, 14, 15),
+    ];
+    if seen {
+        markers.push(Marker {
+            x: 1,
+            y: 20,
+            kind: MarkerKind::Teleport,
+            color: None,
+        });
+    }
+    MapGrid {
+        width: 16,
+        height: 32,
+        cells,
+        markers,
+        routes: vec![
+            Route {
+                color: RouteColor::First,
+                steps: vec![(8, 1), (8, 0), (10, 0), (10, 2), (8, 2), (8, 3)],
+                label: Some("Item 1/3".to_owned()),
+                exit: Some(Edge::North),
+            },
+            Route {
+                color: RouteColor::Second,
+                steps: vec![
+                    (8, 1),
+                    (7, 1),
+                    (7, 6),
+                    (6, 6),
+                    (6, 7),
+                    (8, 7),
+                    (8, 13),
+                    (6, 13),
+                ],
+                label: Some("Core".to_owned()),
+                exit: Some(Edge::South),
+            },
+        ],
+    }
+}
+
+#[test]
+fn the_map() {
+    let mut fonts = Fonts::new();
+    let icons: Vec<Icon> = (1..=9)
+        .map(|i| Icon {
+            picture: stand_in(i),
+            look: Look::Bright,
+        })
+        .collect();
+    for (name, seen) in [("panel-map-dots.png", false), ("panel-map-walls.png", true)] {
+        let panel = Panel {
+            level: 5,
+            name: "Routes".to_owned(),
+            description: String::new(),
+            widgets: vec![
+                PanelWidget {
+                    column: PanelColumn::Left,
+                    title: Some("Core".to_owned()),
+                    body: PanelBody::Icons {
+                        columns: 3,
+                        icons: icons.clone(),
+                    },
+                },
+                PanelWidget {
+                    column: PanelColumn::Right,
+                    title: Some("Teleports".to_owned()),
+                    body: PanelBody::Chips(
+                        [
+                            "LUMEN", "TOPAZ", "NIVEN", "ORBIT", "CIRRO", "VAPOR", "BRISK",
+                        ]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, w)| Chip {
+                            glyphs: stand_in_word(w),
+                            outline: match i {
+                                2 => Some(RouteColor::First.color()),
+                                5 => Some(RouteColor::Second.color()),
+                                _ => None,
+                            },
+                        })
+                        .collect(),
+                    ),
+                },
+                PanelWidget {
+                    column: PanelColumn::Left,
+                    title: None,
+                    body: PanelBody::Map(stand_in_map(seen)),
+                },
+            ],
+        };
+        golden(name, &panel.draw(&mut fonts, 1).png());
+    }
+    let pin = |edge, color, label: &str| Pin {
+        edge,
+        color,
+        label: label.to_owned(),
+    };
+    golden(
+        "pins.png",
+        &pins(
+            &[
+                pin(Edge::South, RouteColor::First, "item"),
+                pin(Edge::South, RouteColor::Second, "core"),
+                pin(Edge::North, RouteColor::First, "item"),
+                pin(Edge::East, RouteColor::Second, "core"),
+            ],
+            &mut fonts,
+            1,
+        )
+        .png(),
+    );
 }
