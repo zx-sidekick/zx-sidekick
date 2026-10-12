@@ -24,7 +24,8 @@ download_label = "World of Spectrum"
 
 [run]
 # sync = TODO: the top of the main loop
-hold_loading_screen = true
+# Its own loader already waits for a key on the loading screen (docs/re/starquake.md).
+hold_loading_screen = false
 joystick = "kempston"
 
 # States, checked in this order; the first that matches is the game's state.
