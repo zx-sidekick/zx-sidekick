@@ -25,6 +25,24 @@ pub struct Record {
     pub switches: BTreeSet<String>,
 }
 
+/// A moment in a session the program acts on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Milestone {
+    /// The game reached its title for the first time: time to put its kept high scores in.
+    FirstTitle,
+    /// The title came round after a game: time to read the high scores back.
+    GameEnded,
+}
+
+/// An entry of a high-score table: its name and its score, as text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScoreEntry {
+    /// The name, without trailing spaces.
+    pub name: String,
+    /// The score.
+    pub score: String,
+}
+
 /// Why a switch didn't go on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SwitchError {
@@ -79,6 +97,17 @@ pub struct Session {
     /// The kept lists, by name, and those changed since the program last saved them.
     kept: BTreeMap<String, Vec<String>>,
     kept_changed: BTreeSet<String>,
+    /// How far the session's got, and the milestones not yet taken.
+    progress: Progress,
+    milestones: Vec<Milestone>,
+}
+
+/// How far a session's got: whether the title has been seen, and whether a game has been
+/// played since it was last.
+#[derive(Clone, Copy, Debug, Default)]
+struct Progress {
+    seen_title: bool,
+    in_game: bool,
 }
 
 impl Session {
@@ -121,6 +150,8 @@ impl Session {
             script_off: None,
             kept: BTreeMap::new(),
             kept_changed: BTreeSet::new(),
+            progress: Progress::default(),
+            milestones: Vec::new(),
         }
     }
 
@@ -308,6 +339,75 @@ impl Session {
         Ok(())
     }
 
+    /// The milestones passed since this was last asked, in order.
+    pub fn take_milestones(&mut self) -> Vec<Milestone> {
+        std::mem::take(&mut self.milestones)
+    }
+
+    /// The high-score table as it is in memory now, when the definition describes one.
+    #[must_use]
+    pub fn scores(&self) -> Option<Vec<ScoreEntry>> {
+        let table = self.definition.as_ref()?.high_scores.as_ref()?;
+        let (name, score) = (table.name.as_ref()?, table.score.as_ref()?);
+        let addr = u32::from(table.addr?.0);
+        let memory = value::Memory {
+            machine: &self.machine,
+            bank: None,
+        };
+        let text = |read: Read| match read {
+            Read::Text(t) => t.trim_end().to_owned(),
+            Read::Number(n) => n.to_string(),
+            other => other.to_string(),
+        };
+        let rows = (0..table.count?)
+            .map(|i| {
+                let at = addr + i * table.stride?;
+                Some(ScoreEntry {
+                    name: text(value::read_field(&memory, name, at)),
+                    score: text(value::read_field(&memory, score, at)),
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(rows)
+    }
+
+    /// Writes entries into the high-score table, in order: the game then shows them. An entry
+    /// that can't be written in the table's fields is left as the game has it.
+    pub fn set_scores(&mut self, entries: &[ScoreEntry]) {
+        let Some(table) = self.definition.as_ref().and_then(|d| d.high_scores.clone()) else {
+            return;
+        };
+        let (Some(name), Some(score), Some(addr), Some(stride), Some(count)) = (
+            table.name,
+            table.score,
+            table.addr,
+            table.stride,
+            table.count,
+        ) else {
+            return;
+        };
+        for (i, entry) in (0..count).zip(entries) {
+            let at = u32::from(addr.0) + i * stride;
+            let (Some(name_bytes), Some(score_bytes)) = (
+                value::encode_field(&name, &entry.name),
+                value::encode_field(&score, &entry.score),
+            ) else {
+                continue;
+            };
+            for (field, bytes) in [(&name, name_bytes), (&score, score_bytes)] {
+                let start = at + field.offset;
+                if start < 0x4000 {
+                    continue;
+                }
+                for (a, byte) in (start..).zip(bytes) {
+                    if let Ok(a) = u16::try_from(a) {
+                        self.machine.write(a, byte);
+                    }
+                }
+            }
+        }
+    }
+
     /// What a script sees now.
     fn view(&self) -> View {
         View {
@@ -418,10 +518,21 @@ impl Session {
         let Some(state) = self.state.clone() else {
             return;
         };
-        let after = self.last_known.as_deref();
+        let after = self.last_known.clone();
+        let after = after.as_deref();
         if state == "play" && matches!(after, None | Some("title" | "game_over")) {
             self.record = Record::default();
             self.note_use();
+            self.progress.in_game = true;
+        }
+        if state == "title" && after != Some("title") {
+            if !self.progress.seen_title {
+                self.progress.seen_title = true;
+                self.milestones.push(Milestone::FirstTitle);
+            }
+            if std::mem::take(&mut self.progress.in_game) {
+                self.milestones.push(Milestone::GameEnded);
+            }
         }
         self.last_known = Some(state);
     }

@@ -213,7 +213,7 @@ pub(crate) fn read(
     }
 }
 
-fn read_field(memory: &Memory, field: &Field, record: u32) -> Read {
+pub(crate) fn read_field(memory: &Memory, field: &Field, record: u32) -> Read {
     let at = record + field.offset;
     if let Some(bits) = field.bits {
         return Read::Flag(memory.byte(at) & bits == bits);
@@ -325,4 +325,54 @@ pub(crate) fn encode(value: &Value, number: i64) -> Result<(u16, Vec<u8>), Write
 )]
 const fn byte(n: i64) -> u8 {
     n as u8
+}
+
+/// The bytes a table field holds for `text`: a name in its charset, padded with spaces, or a
+/// score's number. `None` when it can't be written so (a letter outside the charset, a
+/// number too large, a type that isn't a name's or a score's).
+pub(crate) fn encode_field(field: &Field, text: &str) -> Option<Vec<u8>> {
+    let len = usize::try_from(field.len.unwrap_or(1)).ok()?;
+    match field.kind {
+        ValueType::Text => {
+            let code = |c: char| match &field.charset {
+                Some(Charset::Table { first, chars }) => {
+                    let at = chars.chars().position(|x| x == c)?;
+                    first.checked_add(u8::try_from(at).ok()?)
+                }
+                Some(Charset::Named(_)) | None => u8::try_from(u32::from(c))
+                    .ok()
+                    .filter(|b| (0x20..0x7F).contains(b)),
+            };
+            let mut bytes: Vec<u8> = text.chars().take(len).map(code).collect::<Option<_>>()?;
+            let space = code(' ')?;
+            bytes.resize(len, space);
+            Some(bytes)
+        }
+        kind => {
+            let number: u64 = text.trim().parse().ok()?;
+            let digits = |base: u64| -> Option<Vec<u64>> {
+                let most = base.checked_pow(u32::try_from(len).ok()?)?;
+                (number < most).then(|| {
+                    (0..len)
+                        .rev()
+                        .map(|i| number / base.pow(u32::try_from(i).unwrap_or(0)) % base)
+                        .collect()
+                })
+            };
+            let byte = |n: u64| u8::try_from(n).ok();
+            match kind {
+                ValueType::Digits => digits(10)?.into_iter().map(|d| byte(d + 0x30)).collect(),
+                ValueType::Bcd => digits(100)?
+                    .into_iter()
+                    .map(|p| byte(p / 10 * 16 + p % 10))
+                    .collect(),
+                ValueType::U8 => Some(vec![byte(number)?]),
+                ValueType::U16 => {
+                    let word = u16::try_from(number).ok()?;
+                    Some(word.to_le_bytes().to_vec())
+                }
+                _ => None,
+            }
+        }
+    }
 }

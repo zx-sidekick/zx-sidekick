@@ -21,7 +21,7 @@ pub use rustzx_core::zx::joy::kempston::KempstonKey as Kempston;
 pub use rustzx_core::zx::keys::{CompoundKey, ZXKey as Key};
 pub use rustzx_core::zx::machine::ZXMachine as Model;
 pub use rustzx_z80::Regs;
-pub use session::{Reading, Record, Session, SwitchError};
+pub use session::{Milestone, Reading, Record, ScoreEntry, Session, SwitchError};
 pub use sidekick_script::{Fact, Script};
 pub use value::{Read, WriteError};
 
