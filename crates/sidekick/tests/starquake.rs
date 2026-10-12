@@ -322,7 +322,8 @@ fn starquake_s_rooms_decoded_from_its_data_have_the_walls_the_screen_shows() {
         return;
     };
     s.set_level(6);
-    for room in [8, 9, 24, 176, 300, 511] {
+    // Room 20 has two-cell gaps on its bottom and left edges with rock behind them: shut.
+    for room in [8, 9, 20, 24, 176, 300, 511] {
         enter_room(&mut s, &[("room", room)]);
         // Entering plays a transition; the room is drawn once play comes back.
         assert!(until(&mut s, 50, |s| s.state() != Some("play")));

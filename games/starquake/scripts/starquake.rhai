@@ -18,15 +18,17 @@ fn cover(edge, drawn, blocks) {
     (edge & (-1 ^ drawn)) | blocks
 }
 
-// Whether an edge of `width` cells has two open cells side by side: a way out for BLOB.
+// Whether an edge has a way out for BLOB, who is two cells by two: two cells side by side, open
+// in both the edge's own row (or column) and the one next to it. `blocks` holds the cells that
+// block in either, one bit a cell, `width` of them.
 fn opening(blocks, width) {
     let all = (1 << width) - 1;
     let open = all ^ (blocks & all);
     (open & (open >> 1)) != 0
 }
 
-// A medium tile's picture, as far as a room's edges need it: along its rows 0, 2 and 5 and
-// down its columns 0, 3 and 7, the cells it draws (`d`) and those that block (`b`, an attribute
+// A medium tile's picture, as far as a room's edges need it: along each of its rows and down
+// its columns 0 to 3, 6 and 7, the cells it draws (`d`) and those that block (`b`, an attribute
 // without BRIGHT). Along a row, column c is bit 7 - c; down a column, row r is bit r. The
 // picture's first six bytes say which of its 8 x 6 cells it draws, row by row, the leftmost
 // highest; their attributes are stored before it, the first drawn cell's last.
@@ -34,12 +36,8 @@ fn medium(mem, at) {
     let attr = at - 1;
     let rd = [];
     let rb = [];
-    let cd0 = 0;
-    let cb0 = 0;
-    let cd3 = 0;
-    let cb3 = 0;
-    let cd7 = 0;
-    let cb7 = 0;
+    let cd = [0, 0, 0, 0, 0, 0, 0, 0];
+    let cb = [0, 0, 0, 0, 0, 0, 0, 0];
     for row in 0..6 {
         let drawn = mem.peek(at + row);
         let blocks = 0;
@@ -53,41 +51,101 @@ fn medium(mem, at) {
                     attr -= 1;
                 }
             }
-            cd0 = cd0 | (((drawn >> 7) & 1) << row);
-            cb0 = cb0 | (((blocks >> 7) & 1) << row);
-            cd3 = cd3 | (((drawn >> 4) & 1) << row);
-            cb3 = cb3 | (((blocks >> 4) & 1) << row);
-            cd7 = cd7 | ((drawn & 1) << row);
-            cb7 = cb7 | ((blocks & 1) << row);
+            for col in [0, 1, 2, 3, 6, 7] {
+                cd[col] = cd[col] | (((drawn >> (7 - col)) & 1) << row);
+                cb[col] = cb[col] | (((blocks >> (7 - col)) & 1) << row);
+            }
         }
         rd.push(drawn);
         rb.push(blocks);
     }
-    #{
-        rd0: rd[0], rb0: rb[0], rd2: rd[2], rb2: rb[2], rd5: rd[5], rb5: rb[5],
-        cd0: cd0, cb0: cb0, cd3: cd3, cb3: cb3, cd7: cd7, cb7: cb7,
-    }
+    #{ rd: rd, rb: rb, cd: cd, cb: cb }
 }
 
-// A large tile's say on a room's edges, were it on them: along its top row and its bottom one
-// (twelve columns, its own eight and four beyond, column c at bit 15 - c), down its left column
-// and its right one (nine rows, its own six and three below, row r at bit r); and the places
-// of its doors. Its four medium tiles `m`, of types `kinds`, are drawn at (4, 3), (0, 3), (4, 0)
-// and (0, 0) in turn.
+// One row of a large tile, twelve columns (its own eight and four beyond, column c at bit
+// 15 - c), as its medium tiles `m` draw it: those three rows down at their row `low` (-1: they
+// don't reach it), then those at the top at their row `high`. As `[drawn, blocks]`.
+fn row_of(m, low, high) {
+    let d = 0;
+    let b = 0;
+    if low >= 0 {
+        d = (m[0].rd[low] << 4) | (m[1].rd[low] << 8);
+        b = cover(m[0].rb[low] << 4, m[1].rd[low] << 8, m[1].rb[low] << 8);
+    }
+    d = d | (m[2].rd[high] << 4) | (m[3].rd[high] << 8);
+    b = cover(b, m[2].rd[high] << 4, m[2].rb[high] << 4);
+    b = cover(b, m[3].rd[high] << 8, m[3].rb[high] << 8);
+    [d, b]
+}
+
+// One column of a large tile, nine rows (its own six and three below, row r at bit r): the
+// medium tiles four across at their column `right` (-1: they don't reach it), those at the left
+// at their column `left`, drawn in turn. As `[drawn, blocks]`.
+fn col_of(m, right, left) {
+    let d = 0;
+    let b = 0;
+    if right >= 0 {
+        d = m[0].cd[right] << 3;
+        b = m[0].cb[right] << 3;
+    }
+    d = d | (m[1].cd[left] << 3);
+    b = cover(b, m[1].cd[left] << 3, m[1].cb[left] << 3);
+    if right >= 0 {
+        d = d | m[2].cd[right];
+        b = cover(b, m[2].cd[right], m[2].cb[right]);
+    }
+    d = d | m[3].cd[left];
+    b = cover(b, m[3].cd[left], m[3].cb[left]);
+    [d, b]
+}
+
+// An edge's two rows across the room, the edge's own in the top 32 bits, the next in the low:
+// a large tile's twelve columns from `row_of`, placed at large tile column `i`, column c of the
+// room at bit 31 - c of its half; what falls past the room is dropped.
+fn across(pair, i) {
+    let shift = 16 - 8 * i;
+    let halves = [0, 0];
+    for k in 0..2 {
+        let bits = if shift >= 0 { pair[k] << shift } else { pair[k] >> -shift };
+        halves[k] = bits & 0xFFFFFFFF;
+    }
+    (halves[0] << 32) | halves[1]
+}
+
+// An edge's two columns down the room, likewise: a large tile's nine rows from `col_of`, placed
+// at large tile row `i`, row r of the room at bit r of its half.
+fn down(pair, i) {
+    ((pair[0] << (6 * i)) & 0x3FFFF) << 32 | ((pair[1] << (6 * i)) & 0x3FFFF)
+}
+
+// Two rows or columns, each `[drawn, blocks]`, as `[drawn pairs, blocks pairs]`.
+fn pairs(first, second) {
+    [[first[0], second[0]], [first[1], second[1]]]
+}
+
+// A large tile's say on a room's edges, at each place it could take on them: its top two rows,
+// its bottom two, its left two columns and its right two, the edge's own first, packed by
+// `across` and `down` (`nd` and `nb`: north, drawn and blocking, by column; and so on); and the
+// places of its doors. Its four medium tiles `m`, of types `kinds`, are drawn at (4, 3), (0, 3),
+// (4, 0) and (0, 0) in turn.
 fn large(m, kinds) {
-    let tile = #{ doors: [] };
-    tile.nd = (m[2].rd0 << 4) | (m[3].rd0 << 8);
-    tile.nb = cover(m[2].rb0 << 4, m[3].rd0 << 8, m[3].rb0 << 8);
-    tile.sd = (m[0].rd2 << 4) | (m[1].rd2 << 8) | (m[2].rd5 << 4) | (m[3].rd5 << 8);
-    let sb = cover(m[0].rb2 << 4, m[1].rd2 << 8, m[1].rb2 << 8);
-    sb = cover(sb, m[2].rd5 << 4, m[2].rb5 << 4);
-    tile.sb = cover(sb, m[3].rd5 << 8, m[3].rb5 << 8);
-    tile.wd = (m[1].cd0 << 3) | m[3].cd0;
-    tile.wb = cover(m[1].cb0 << 3, m[3].cd0, m[3].cb0);
-    tile.ed = (m[0].cd3 << 3) | (m[1].cd7 << 3) | m[2].cd3 | m[3].cd7;
-    let eb = cover(m[0].cb3 << 3, m[1].cd7 << 3, m[1].cb7 << 3);
-    eb = cover(eb, m[2].cd3, m[2].cb3);
-    tile.eb = cover(eb, m[3].cd7, m[3].cb7);
+    let n = pairs(row_of(m, -1, 0), row_of(m, -1, 1));
+    let s = pairs(row_of(m, 2, 5), row_of(m, 1, 4));
+    let w = pairs(col_of(m, -1, 0), col_of(m, -1, 1));
+    let e = pairs(col_of(m, 3, 7), col_of(m, 2, 6));
+    let tile = #{ nd: [], nb: [], sd: [], sb: [], wd: [], wb: [], ed: [], eb: [], doors: [] };
+    for i in 0..4 {
+        tile.nd.push(across(n[0], i));
+        tile.nb.push(across(n[1], i));
+        tile.sd.push(across(s[0], i));
+        tile.sb.push(across(s[1], i));
+    }
+    for i in 0..3 {
+        tile.wd.push(down(w[0], i));
+        tile.wb.push(down(w[1], i));
+        tile.ed.push(down(e[0], i));
+        tile.eb.push(down(e[1], i));
+    }
     // A security door: a medium tile whose type has its top four bits clear, the rest its place.
     let offsets = [[4, 3], [0, 3], [4, 0], [0, 0]];
     for k in 0..4 {
@@ -97,6 +155,11 @@ fn large(m, kinds) {
         }
     }
     tile
+}
+
+// The cells of an edge's two rows or columns that block in either, from a packed pair.
+fn either(packed) {
+    ((packed >> 32) & 0xFFFFFFFF) | (packed & 0xFFFFFFFF)
 }
 
 // Once, after loading: each room's walls and security doors, decoded from the room data the way
@@ -139,36 +202,34 @@ fn on_load(mem) {
     let doors = [];
     for room in 0..512 {
         let at = room * 12;
-        // Along the top and bottom, column c at bit 39 - c; down the sides, row r at bit r.
+        // Each edge's two rows or columns, packed as `across` and `down` place them.
         let north = 0;
         let south = 0;
         let west = 0;
         let east = 0;
         for i in 0..4 {
-            let shift = 24 - i * 8;
             let top = larges[rooms[at + i]];
-            north = (north & (-1 ^ (top.nd << shift))) | (top.nb << shift);
+            north = (north & (-1 ^ top.nd[i])) | top.nb[i];
             let bottom = larges[rooms[at + 8 + i]];
-            south = (south & (-1 ^ (bottom.sd << shift))) | (bottom.sb << shift);
+            south = (south & (-1 ^ bottom.sd[i])) | bottom.sb[i];
         }
         for i in 0..3 {
-            let shift = i * 6;
             let left = larges[rooms[at + i * 4]];
-            west = (west & (-1 ^ (left.wd << shift))) | (left.wb << shift);
+            west = (west & (-1 ^ left.wd[i])) | left.wb[i];
             let right = larges[rooms[at + i * 4 + 3]];
-            east = (east & (-1 ^ (right.ed << shift))) | (right.eb << shift);
+            east = (east & (-1 ^ right.ed[i])) | right.eb[i];
         }
         let shut = "";
-        if !opening(north >> 8, 32) {
+        if !opening(either(north), 32) {
             shut += "N";
         }
-        if !opening(east, 18) {
+        if !opening(either(east), 18) {
             shut += "E";
         }
-        if !opening(south >> 8, 32) {
+        if !opening(either(south), 32) {
             shut += "S";
         }
-        if !opening(west, 18) {
+        if !opening(either(west), 18) {
             shut += "W";
         }
         walls.push(shut);
@@ -317,42 +378,39 @@ fn doors(met, carrying) {
     rows
 }
 
-// Whether two or more cells in a row let BLOB through: cells with BRIGHT in their attribute.
-fn open(cells) {
-    let run = 0;
-    for attr in cells {
-        if (attr & 0x40) != 0 {
-            run += 1;
-            if run >= 2 {
-                return true;
-            }
-        } else {
-            run = 0;
-        }
-    }
-    false
-}
-
-// The edges of the room on screen without an opening: some of N, E, S and W.
+// The edges of the room on screen without a way out for BLOB, by the same rule as the decoded
+// rooms': some of N, E, S and W. A cell blocks when its attribute lacks BRIGHT.
 fn walls(mem) {
     let area = mem.value("play_area");
-    let west = [];
-    let east = [];
-    for row in 0..18 {
-        west.push(area[row * 32]);
-        east.push(area[row * 32 + 31]);
+    let across = [0, 0, 0, 0];
+    let rows = [0, 1, 17, 16];
+    for k in 0..4 {
+        for col in 0..32 {
+            if (area[rows[k] * 32 + col] & 0x40) == 0 {
+                across[k] = across[k] | (1 << (31 - col));
+            }
+        }
+    }
+    let down = [0, 0, 0, 0];
+    let cols = [0, 1, 31, 30];
+    for k in 0..4 {
+        for row in 0..18 {
+            if (area[row * 32 + cols[k]] & 0x40) == 0 {
+                down[k] = down[k] | (1 << row);
+            }
+        }
     }
     let shut = "";
-    if !open(area.extract(0, 32)) {
+    if !opening(across[0] | across[1], 32) {
         shut += "N";
     }
-    if !open(east) {
+    if !opening(down[2] | down[3], 18) {
         shut += "E";
     }
-    if !open(area.extract(17 * 32, 32)) {
+    if !opening(across[2] | across[3], 32) {
         shut += "S";
     }
-    if !open(west) {
+    if !opening(down[0] | down[1], 18) {
         shut += "W";
     }
     shut
