@@ -196,3 +196,29 @@ fn a_warning_is_said_but_doesn_t_fail_the_check() {
         run.stdout
     );
 }
+
+#[test]
+fn import_pok_writes_switches_a_definition_takes() {
+    let dir = TempDir::new().unwrap();
+    let pok = dir.path().join("game.pok");
+    fs::write(&pok, "NInfinite lives\nZ 8 36643 0 53\nY\n").unwrap();
+    let run = sidekick(&["import-pok", path(&pok)]);
+    assert_eq!(run.status, 0, "{}", run.stderr);
+    assert!(
+        run.stdout.contains("id = \"infinite-lives\""),
+        "{}",
+        run.stdout
+    );
+
+    // The definition with them, less its own switch, checks clean.
+    let without = COMPLETE[..COMPLETE.find("[[cheats]]").unwrap()].to_owned();
+    let def = dir.path().join("game.toml");
+    fs::write(&def, format!("{without}\n{}", run.stdout)).unwrap();
+    let check = sidekick(&["check", path(&def)]);
+    assert_eq!((check.status, check.stdout.as_str()), (0, ""));
+
+    fs::write(&pok, "Z 8 1 2 3\n").unwrap();
+    let broken = sidekick(&["import-pok", path(&pok)]);
+    assert_eq!(broken.status, 2);
+    assert!(broken.stderr.contains("line 1"), "{}", broken.stderr);
+}

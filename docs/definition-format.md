@@ -257,7 +257,7 @@ note = "Skips the call that takes energy when an enemy touches the player."
 
 A game remembers the highest guidance level it was played at and every switch with `marks_score` that was on. A game starts when the state becomes the one with role `play` after the ones with `title` or `game_over`, or none; without those roles, everything from loading is one game. `sidekick run TAPE --switch ID@FRAME --values` turns a switch on at a frame and prints the record.
 
-`sidekick import-pok FILE.pok` writes `[[cheats]]` entries from a `.pok` file, each as a `patch` or a `set`.
+`sidekick import-pok FILE.pok` writes `[[cheats]]` entries from a `.pok` file, the POKE format Fuse and ZXDB use, to paste into a definition (`-o FILE` writes them to a file). Each trainer becomes a switch with a `patch` for each of its pokes, the byte that was there as its `expect`, and the bank on a 128K. A trainer that asks the player for a value is left out, with a comment saying so.
 
 ## `[pad]`: the controller
 
