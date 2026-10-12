@@ -512,9 +512,9 @@ impl Session {
     }
 
     /// Reads the values for this frame, and lets the switches that are on act on them: only in
-    /// play when the definition names a `play` state (the last state known, so a frame that
-    /// matches none doesn't skip), since outside it a game may use the same memory for other
-    /// things.
+    /// the state with role `play`, when the definition has one (the last state known, so a
+    /// frame that matches none doesn't skip), since outside it a game may use the same memory
+    /// for other things.
     fn take_reading(&mut self) {
         let now = self.read();
         let previous = std::mem::replace(&mut self.reading, now);

@@ -746,6 +746,15 @@ source = "script:doors"
         );
     }
 
+    /// A map marker as a script returns it.
+    fn at(x: i64, y: i64, kind: &str) -> Fact {
+        map(vec![
+            ("x", Fact::Number(x)),
+            ("y", Fact::Number(y)),
+            ("kind", Fact::Text(kind.to_owned())),
+        ])
+    }
+
     #[test]
     fn the_script_s_map_becomes_the_map_and_its_pins() {
         let def = definition(
@@ -775,11 +784,7 @@ markers = { player = "player", item = "picture", door = "square" }
             (
                 "markers",
                 Fact::List(vec![
-                    map(vec![
-                        ("x", Fact::Number(0)),
-                        ("y", Fact::Number(1)),
-                        ("kind", text("player")),
-                    ]),
+                    at(0, 1, "player"),
                     map(vec![
                         ("x", Fact::Number(1)),
                         ("y", Fact::Number(1)),
@@ -787,11 +792,8 @@ markers = { player = "player", item = "picture", door = "square" }
                         ("picture", Fact::Number(2)),
                         ("color", text("second")),
                     ]),
-                    map(vec![
-                        ("x", Fact::Number(0)),
-                        ("y", Fact::Number(0)),
-                        ("kind", text("ghost")),
-                    ]),
+                    at(0, 0, "ghost"),
+                    at(1, 0, "door"),
                 ]),
             ),
             (
@@ -825,7 +827,12 @@ markers = { player = "player", item = "picture", door = "square" }
                 seen: true
             }]
         );
-        assert_eq!(grid.markers.len(), 2, "a kind it doesn't know is left out");
+        assert_eq!(grid.markers.len(), 3, "a kind it doesn't know is left out");
+        assert_eq!(
+            grid.markers[2].kind,
+            MarkerKind::Square,
+            "a kind drawn as the shape the widget gives it"
+        );
         assert_eq!(
             grid.markers[1],
             Marker {

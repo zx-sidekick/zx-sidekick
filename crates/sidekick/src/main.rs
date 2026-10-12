@@ -55,8 +55,9 @@ struct Cli {
 enum Command {
     /// Checks a definition, and optionally that a tape is one of its dumps.
     ///
-    /// Prints each problem as `path: message`. Exits 0 with none, 1 with problems, 2 when
-    /// something couldn't be read.
+    /// Prints each problem as `path: message`, and each warning as `path: warning: message`.
+    /// Exits 0 with no problems (warnings or not), 1 with problems, 2 when something couldn't
+    /// be read.
     Check {
         /// The definition: a .toml or .json file, a .zip, or a folder.
         definition: PathBuf,
@@ -304,12 +305,12 @@ fn check(path: &Path, tape: Option<&Path>) -> ExitCode {
             return ExitCode::from(UNREADABLE);
         }
     };
-    let mut problems: Vec<String> = package
+    let (warnings, errors): (Vec<_>, Vec<_>) = package
         .definition
         .check()
-        .iter()
-        .map(ToString::to_string)
-        .collect();
+        .into_iter()
+        .partition(|p| p.warning);
+    let mut problems: Vec<String> = errors.iter().map(ToString::to_string).collect();
     match games::script(&package) {
         Some(Err(why)) => problems.push(format!("script: {why}")),
         Some(Ok(script)) => {
@@ -346,7 +347,12 @@ fn check(path: &Path, tape: Option<&Path>) -> ExitCode {
             }
         }
     }
-    for problem in &problems {
+    // Warnings are said, but don't fail the check.
+    for problem in warnings
+        .iter()
+        .map(ToString::to_string)
+        .chain(problems.iter().cloned())
+    {
         println!("{problem}");
     }
     if problems.is_empty() {

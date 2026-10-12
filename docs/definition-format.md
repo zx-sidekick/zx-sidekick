@@ -248,7 +248,7 @@ note = "Skips the call that takes energy when an enemy touches the player."
 | Key | Meaning |
 |---|---|
 | `id`, `label` | Its name, and its text in the menu. |
-| `set` | One or a list of `{ value, to }`: `to` is a number or `"max"`. Written each frame while the switch is on, right after the values are read (at the sync point, or the frame's end without one), so the game sees it at the start of its next frame. When the definition names a `play` state, only in play: elsewhere a game may use the same memory for other things. |
+| `set` | One or a list of `{ value, to }`: `to` is a number or `"max"`. Written each frame while the switch is on, right after the values are read (at the sync point, or the frame's end without one), so the game sees it at the start of its next frame. When a state has role `play`, only in that state: elsewhere a game may use the same memory for other things. |
 | `hold` | One or a list of value names that may not go down while the switch is on: one that went down since the last frame is put back, at the same moment as `set`. |
 | `patch` | A list of `{ addr, bytes, expect }`. Applied when the switch goes on, and the original bytes put back when it goes off. If memory doesn't hold every patch's `expect` when the switch goes on, it stays off and none of them is applied, with a notice: the dump or the moment is not what the definition expects. |
 | `marks_score` | `true` (the default): a game played with this switch on is a training game (`ZX-SIDEKICK.md` §13). |
@@ -446,7 +446,7 @@ lives = 9
 cheats = ["no-harm"]
 ```
 
-The program starts a new game by tapping the `start` keys in turn. Each is tapped a second after the state last changed, and again every forty seconds while it stays the same. Once the game is in `play`, at the sync address, the program writes the values, turns the switches on and adds the kept entries. Then it calls `enter`, with the sync address as its return, so the main loop carries on after it. The game is marked loaded. `sidekick TAPE --load FILE.toml`, or `sidekick run TAPE --load FILE.toml`, starts from one.
+The program starts a new game by tapping the `start` keys in turn. Each is tapped a second after the state last changed, and again every forty seconds while it stays the same. Once the game is in the state with role `play` (which a situation needs), at the sync address, the program writes the values, turns the switches on and adds the kept entries. Then it calls `enter`, with the sync address as its return, so the main loop carries on after it. The game is marked loaded. `sidekick TAPE --load FILE.toml`, or `sidekick run TAPE --load FILE.toml`, starts from one.
 
 ## Scripts
 
@@ -490,7 +490,9 @@ A script can't touch files, the network or the clock, and can't `eval`. Each cal
 - what's still missing (an address not found yet), names used but not defined, and values used in ways their type doesn't allow;
 - given a tape, or a zip of tapes: whether it's one of `[[media]]`'s dumps, by SHA-1.
 
-It exits 0 with no problems, 1 with problems, and 2 when something couldn't be read. Checking each patch's `expect` bytes in the loaded game comes with `sidekick author`.
+It also says what works but may not be what was meant, as `path: warning: message`: a state named `play`, `title`, `paused` or `game_over` without that `role`, an action named `end-game` without a `menu` row, and a `map-grid` without `markers`. Those names meant something to the program once; now only `role`, `menu` and `markers` do.
+
+It exits 0 with no problems (warnings or not), 1 with problems, and 2 when something couldn't be read. Checking each patch's `expect` bytes in the loaded game comes with `sidekick author`.
 
 `sidekick convert FILE [-o OUT]` turns a TOML definition into JSON, or a JSON one into TOML.
 

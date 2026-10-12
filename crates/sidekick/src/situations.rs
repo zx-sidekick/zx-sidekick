@@ -82,6 +82,11 @@ pub(crate) fn start(session: &mut Session, situation: &Situation) -> Result<(), 
 /// Taps each start key in turn, a second after the last state change, and again every forty
 /// seconds while the state stays; then waits for play.
 fn reach_play(session: &mut Session, keys: &[String]) -> Result<(), String> {
+    let play = session
+        .definition()
+        .and_then(|d| d.state_for(Role::Play))
+        .map(str::to_owned)
+        .ok_or("a crafted situation needs a state with role = \"play\"")?;
     let mut frames = 0;
     let mut frame = |session: &mut Session| -> Result<(), String> {
         frames += 1;
@@ -114,11 +119,6 @@ fn reach_play(session: &mut Session, keys: &[String]) -> Result<(), String> {
             since += 1;
         }
     }
-    let play = session
-        .definition()
-        .and_then(|d| d.state_for(Role::Play))
-        .map(str::to_owned)
-        .ok_or("a crafted situation needs a state with role = \"play\"")?;
     while session.progress().last_known.as_deref() != Some(play.as_str()) {
         frame(session)?;
     }

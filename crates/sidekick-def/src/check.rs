@@ -13,11 +13,14 @@ pub struct Problem {
     pub path: String,
     /// What's wrong.
     pub message: String,
+    /// Only worth saying: the definition works, but maybe not as its author meant.
+    pub warning: bool,
 }
 
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.path, self.message)
+        let kind = if self.warning { "warning: " } else { "" };
+        write!(f, "{}: {kind}{}", self.path, self.message)
     }
 }
 
@@ -103,6 +106,16 @@ impl Checker<'_> {
         self.problems.push(Problem {
             path: path.into(),
             message: message.into(),
+            warning: false,
+        });
+    }
+
+    /// Says something that works but may not be what was meant.
+    fn warn(&mut self, path: impl Into<String>, message: impl Into<String>) {
+        self.problems.push(Problem {
+            path: path.into(),
+            message: message.into(),
+            warning: true,
         });
     }
 
@@ -325,7 +338,7 @@ impl Checker<'_> {
             // A name the program once gave a meaning: say the meaning is a role now.
             let named_as_role = ROLES.iter().find(|r| r.name() == state.name);
             if let (Some(role), None) = (named_as_role, state.role) {
-                self.report(
+                self.warn(
                     format!("{path}.role"),
                     format!(
                         "a state named {:?} means nothing by its name: add role = {:?} for that",
@@ -518,11 +531,22 @@ impl Checker<'_> {
             for state in &action.menu_in {
                 self.need_state(&format!("{path}.menu_in"), state);
             }
+            // A row whose action lasts no frame and calls nothing would do nothing.
+            if action.menu.is_some()
+                && action.tap.is_empty()
+                && action.frames.is_none()
+                && action.script.is_none()
+            {
+                self.report(
+                    format!("{path}.menu"),
+                    "a menu row's action needs tap, frames or script, or it does nothing",
+                );
+            }
             if !action.menu_in.is_empty() && action.menu.is_none() {
                 self.report(format!("{path}.menu_in"), "only with menu");
             }
             if action.id == "end-game" && action.menu.is_none() {
-                self.report(
+                self.warn(
                     format!("{path}.menu"),
                     "an action named \"end-game\" means nothing by its name: add menu = \"End this game\" for its row",
                 );
@@ -682,7 +706,7 @@ impl Checker<'_> {
                 widget.kind == WidgetKind::MapGrid,
                 widget.markers.is_empty(),
             ) {
-                (true, true) => self.report(
+                (true, true) => self.warn(
                     format!("{path}.markers"),
                     "a map-grid's markers aren't drawn until it says each kind's shape",
                 ),
@@ -705,6 +729,12 @@ impl Checker<'_> {
                 self.report("situations.enter", "missing");
             }
             self.keys("situations.start", &situations.start);
+            if self.def.state_for(Role::Play).is_none() {
+                self.report(
+                    "situations",
+                    "a situation enters play: it needs a state with role = \"play\"",
+                );
+            }
         }
     }
 }

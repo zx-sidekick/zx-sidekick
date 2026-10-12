@@ -180,3 +180,21 @@ fn check_compiles_the_script_and_finds_its_action_functions() {
         gone.stdout
     );
 }
+
+#[test]
+fn a_warning_is_said_but_doesn_t_fail_the_check() {
+    let dir = TempDir::new().unwrap();
+    let def = dir.path().join("example.toml");
+    fs::write(
+        &def,
+        format!("{COMPLETE}\n[[states]]\nname = \"play\"\npc = 0x6000\n"),
+    )
+    .unwrap();
+    let run = sidekick(&["check", path(&def)]);
+    assert_eq!(run.status, 0, "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stdout.starts_with("states[0].role: warning: "),
+        "{}",
+        run.stdout
+    );
+}

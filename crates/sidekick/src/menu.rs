@@ -448,6 +448,10 @@ type = "u8"
 writable = true
 
 [[actions]]
+id = "jump"
+tap = ["Q"]
+
+[[actions]]
 id = "abandon"
 tap = ["A", "S", "D", "F", "G"]
 frames = 5
@@ -613,7 +617,11 @@ menu = "End this game"
         assert_eq!(menu.input(Input::Up, &mut s), Outcome::Stay, "moving away");
         assert_eq!(menu.card(PadLabels::Letters).armed, None);
         assert_eq!(menu.input(Input::Click(end), &mut s), Outcome::Stay);
-        assert_eq!(menu.input(Input::Confirm, &mut s), Outcome::Act(0));
+        assert_eq!(
+            menu.input(Input::Confirm, &mut s),
+            Outcome::Act(1),
+            "the definition's action, past one with no row"
+        );
         let exit = Row::Action(2);
         menu.input(Input::Click(exit), &mut s);
         assert_eq!(menu.input(Input::Click(exit), &mut s), Outcome::Exit);

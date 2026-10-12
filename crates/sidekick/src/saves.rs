@@ -540,6 +540,32 @@ patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }]
     }
 
     #[test]
+    fn game_over_is_the_state_with_its_role_whatever_its_name() {
+        let text = DEFINITION.replace(
+            "[[cheats]]",
+            "[[states]]\nname = \"wrecked\"\nrole = \"game_over\"\nwhen = { value = \"mode\", equals = 4 }\n\n[[cheats]]",
+        );
+        let definition = Definition::from_toml(&text).expect("the test definition parses");
+        let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+        for _ in 0..BOOT_FRAMES {
+            machine.run_frame().expect("a frame");
+        }
+        let mut s = Session::new(machine, Some(definition));
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = saves(folder.path());
+        mode(&mut s, 1);
+        mode(&mut s, 2);
+        keep_on_quit(&mut s, &saves).unwrap();
+        assert!(saves.quit().exists(), "kept in play");
+        mode(&mut s, 4);
+        keep_on_quit(&mut s, &saves).unwrap();
+        assert!(
+            !saves.quit().exists(),
+            "the state with role game_over: nothing kept"
+        );
+    }
+
+    #[test]
     fn a_plain_tape_s_quick_slot_is_under_its_name_and_dump() {
         let data = Path::new("data");
         assert_eq!(

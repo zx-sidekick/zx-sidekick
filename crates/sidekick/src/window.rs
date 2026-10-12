@@ -1830,6 +1830,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_pause_notice_is_the_paused_role_s_whatever_its_name() {
+        let text = r#"
+schema = 1
+[game]
+id = "test"
+title = "Test"
+machine = "48k"
+[[media]]
+name = "the tape"
+[[states]]
+name = "paused"
+pc = 0x6000
+notice = { text = "A state merely named paused." }
+[[states]]
+name = "frozen"
+role = "paused"
+pc = 0x6001
+notice = { text = "Press fire." }
+"#;
+        let definition = Definition::from_toml(text).expect("the test definition parses");
+        let notice = pause_notice(Some(&definition), PadLabels::Letters);
+        assert_eq!(notice.text, "Press fire.");
+    }
+
+    #[test]
     fn the_offer_goes_on_with_enter_and_ignores_modifiers() {
         assert_eq!(key_answers_offer(Scancode::Return), Some(true));
         assert_eq!(key_answers_offer(Scancode::KpEnter), Some(true));
