@@ -251,6 +251,38 @@ fn an_action_s_host_key_is_one_the_spectrum_lacks() {
 }
 
 #[test]
+fn a_notice_is_the_paused_state_s_and_shows_parts_a_pad_has() {
+    let text = format!(
+        r#"{HEADER}
+[[states]]
+name = "paused"
+pc = 0x8000
+notice = {{ text = "Fire to go on.", hints = [{{ pad = "start", does = "go on" }}, {{ does = "wait" }}] }}
+
+[[states]]
+name = "play"
+pc = 0x8001
+notice = {{ text = "Playing." }}
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def
+        .check()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|p| p.starts_with("states"))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            "states[0].notice.hints[0].pad: \"start\" isn't a part a notice shows: one of dpad, stick, west, south, east, north",
+            "states[0].notice.hints[1]: needs keys, pad or both",
+            "states[1].notice: only the paused state has a notice",
+        ]
+    );
+}
+
+#[test]
 fn the_committed_schema_is_the_generated_one() {
     assert!(
         repo("schema/definition.schema.json") == schema(),
