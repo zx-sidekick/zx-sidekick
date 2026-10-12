@@ -8,7 +8,7 @@ fn core_room() {
     199
 }
 
-// The pictures there are: an item with another number is an empty record.
+// How many item pictures there are: an item whose picture is past them is an empty record.
 fn picture_count() {
     35
 }

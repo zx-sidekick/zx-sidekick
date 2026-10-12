@@ -369,7 +369,7 @@ description = "A map of the rooms you've visited."
 
 [[guidance.levels]]
 name = "What you have seen"
-description = "Core pieces still needed, in the rooms you have walked through."
+description = "The items in the rooms you have walked through, core pieces still needed in pink."
 
 [[guidance.levels]]
 name = "What you have not"
