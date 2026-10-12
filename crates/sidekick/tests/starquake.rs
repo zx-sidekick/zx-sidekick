@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 #[test]
+#[allow(clippy::print_stderr, reason = "a skipped test says why")]
 fn starquake_loads_and_its_game_runs() {
     let zip = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/Starquake.tap.zip");
     if !zip.exists() {

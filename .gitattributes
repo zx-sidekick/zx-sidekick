@@ -1,0 +1,4 @@
+# Text files keep LF line endings on every platform, so generated files (the schema) compare
+# byte for byte, and a checkout on Windows matches one anywhere else.
+* text=auto eol=lf
+*.png binary
