@@ -163,9 +163,21 @@ fn starquake_s_training_switches_work_on_the_game() {
         "a platform built, still full"
     );
 
+    // The switch's patch, as the definition gives it: where, what it writes, what it expects.
+    let patch = s
+        .definition()
+        .and_then(|d| d.cheats.iter().find(|c| c.id == "no-harm"))
+        .and_then(|c| c.patch.first())
+        .cloned()
+        .expect("no harm patches the game");
+    let at = patch.addr.expect("an address").0;
     s.switch("no-harm", true)
         .expect("its patch finds the game's bytes in play");
-    assert_eq!(s.machine().peek(0xA56A), 0x00);
+    assert_eq!(s.machine().peek(at), patch.bytes.0[0]);
     s.switch("no-harm", false).expect("and comes off");
-    assert_eq!(s.machine().peek(0xA56A), 0xC4, "the game's own bytes back");
+    assert_eq!(
+        s.machine().peek(at),
+        patch.expect.0[0],
+        "the game's own bytes back"
+    );
 }
