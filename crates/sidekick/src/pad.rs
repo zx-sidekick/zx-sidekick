@@ -428,7 +428,7 @@ pub(crate) struct Play {
     sent: BTreeSet<Input>,
 }
 
-/// What to press and let go on the Spectrum.
+/// What to press, again or anew, and what to let go on the Spectrum.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Changes {
     pub(crate) press: Vec<Input>,
@@ -453,7 +453,9 @@ impl Play {
         }
     }
 
-    /// What has to change on the Spectrum before the next frame, for the parts `held`.
+    /// What to press and let go on the Spectrum before the next frame, for the parts `held`.
+    /// Everything held is pressed again each frame, so the keyboard letting go of a key a pad
+    /// holds too (0 on a Sinclair joystick) doesn't let it go for the pad.
     pub(crate) fn update(&mut self, held: impl Iterator<Item = Part>) -> Changes {
         let mut wanted: BTreeSet<Input> = self.taps.iter().map(|&(input, _)| input).collect();
         for part in held {
@@ -462,7 +464,7 @@ impl Play {
             }
         }
         let changes = Changes {
-            press: wanted.difference(&self.sent).copied().collect(),
+            press: wanted.iter().copied().collect(),
             release: self.sent.difference(&wanted).copied().collect(),
         };
         self.sent = wanted;
@@ -598,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn only_what_changed_is_pressed_or_let_go() {
+    fn what_s_held_is_pressed_each_frame_and_let_go_once() {
         let mut play = Play::new(Mapping::default());
         let fire = Input::Kempston(Direction::Fire);
         let left = Input::Kempston(Direction::Left);
@@ -609,7 +611,14 @@ mod tests {
                 release: vec![]
             }
         );
-        assert_eq!(play.update(std::iter::once(Part::West)), Changes::default());
+        assert_eq!(
+            play.update(std::iter::once(Part::West)),
+            Changes {
+                press: vec![fire],
+                release: vec![]
+            },
+            "again, in case the keyboard let it go"
+        );
         assert_eq!(
             play.update(std::iter::once(Part::DPad(Way::Left))),
             Changes {
