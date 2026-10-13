@@ -100,6 +100,30 @@ pub struct Run {
     /// With `joystick = "keys"`: the game's own keys for each direction and fire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keys: Option<DirectionKeys>,
+    /// How much of the border is shown once the tape has loaded.
+    #[serde(default, skip_serializing_if = "Border::is_full")]
+    pub border: Border,
+}
+
+/// How much of the border round the screen is shown.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Border {
+    /// All of it.
+    #[default]
+    Full,
+    /// None: the game draws nothing there, so the screen alone is shown, larger.
+    None,
+}
+
+impl Border {
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde's skip_serializing_if passes a reference"
+    )]
+    const fn is_full(&self) -> bool {
+        matches!(self, Self::Full)
+    }
 }
 
 /// A game's own keys for the joystick's directions and fire.

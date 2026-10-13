@@ -1,6 +1,6 @@
 //! Format 1, as `docs/definition-format.md` and the committed definitions write it.
 
-use sidekick_def::{schema, Definition};
+use sidekick_def::{schema, Border, Definition};
 use std::path::Path;
 
 fn repo(path: &str) -> String {
@@ -188,6 +188,20 @@ keys = { up = "Q", down = "A", left = "O", right = "P", fire = "FIRE" }"#
         problems(r#"keys = { up = "Q", down = "A", left = "O", right = "P", fire = "M" }"#),
         ["run.keys: only with joystick = \"keys\""]
     );
+}
+
+#[test]
+fn the_border_is_shown_unless_a_definition_leaves_it_out() {
+    let border = |run: &str| {
+        Definition::from_toml(&format!("{HEADER}\n[run]\n{run}\n"))
+            .map(|d| d.run.unwrap_or_default().border)
+    };
+    assert_eq!(border("").expect("it parses"), Border::Full);
+    assert_eq!(
+        border(r#"border = "none""#).expect("it parses"),
+        Border::None
+    );
+    assert!(border(r#"border = "some""#).is_err());
 }
 
 #[test]
