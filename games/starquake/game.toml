@@ -71,8 +71,23 @@ name = "title"
 role = "title"
 # The menu's loop, passed every few frames once its tune has played.
 pc = 0x5FF4
+# The Kempston joystick chosen for the player whatever the menu's list shows, so the arrows and
+# a pad drive BLOB: the game reads the choice when a game starts (docs/re/starquake.md). The
+# notice says so over the title's foot, in words that don't need the emulated joystick explained.
+set = { value = "controls", to = 1 }
+notice = { heading = "Ignore the list", text = "Play with the arrow keys or a gamepad.", hints = [
+  { keys = "← ↑ → ↓", pad = "dpad", does = "move" },
+  { keys = "Right Ctrl", pad = "west", does = "fire" },
+  { keys = "0", does = "start" },
+] }
 
 # Values. Each needs its address and type confirmed.
+
+[values.controls]
+type = "u8"
+writable = true
+addr = 0x5E58
+description = "The title's control choice, 1 to 5 as the keys that pick it: 1 the Kempston joystick. Read when a game starts"
 
 [values.room]
 type = "u16"

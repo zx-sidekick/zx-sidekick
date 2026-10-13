@@ -5,7 +5,7 @@ use crate::{
     value::{self, Read, WriteError},
     Error, Machine, Stop,
 };
-use sidekick_def::{Amount, Cheat, Definition, Patch, Role, State, Test};
+use sidekick_def::{Amount, Cheat, Definition, Patch, Role, Set, State, Test};
 use sidekick_script::{Fact, Script, View};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -558,6 +558,7 @@ impl Session {
     fn take_reading(&mut self) {
         let now = self.read();
         let previous = std::mem::replace(&mut self.reading, now);
+        self.state_writes();
         if !self.in_play() {
             return;
         }
@@ -587,6 +588,32 @@ impl Session {
                         self.write_now(&definition, name, before);
                     }
                 }
+            }
+        }
+        self.definition = Some(definition);
+    }
+
+    /// Writes what the state the game was last known in sets (`[[states]] set`): a choice the
+    /// program makes for the player while the game is there.
+    fn state_writes(&mut self) {
+        let Some(definition) = self.definition.take() else {
+            return;
+        };
+        let state = self.progress.last_known.as_deref();
+        let sets: Vec<Set> = definition
+            .states
+            .iter()
+            .filter(|s| Some(s.name.as_str()) == state)
+            .flat_map(|s| s.set.iter().flatten())
+            .cloned()
+            .collect();
+        for set in sets {
+            let to = match &set.to {
+                Amount::Number(n) => Some(*n),
+                Amount::Max(_) => definition.values.get(&set.value).and_then(|v| v.max),
+            };
+            if let Some(to) = to {
+                self.write_now(&definition, &set.value, to);
             }
         }
         self.definition = Some(definition);

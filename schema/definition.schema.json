@@ -926,6 +926,13 @@
       "description": "What a card over the picture says: a line, and hints along its bottom.",
       "type": "object",
       "properties": {
+        "heading": {
+          "description": "Its heading, when not the program's own (\"Paused\" for the pause, \"How it plays\" for\nthe title).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "hints": {
           "description": "What to press, along the bottom.",
           "type": "array",
@@ -1410,7 +1417,7 @@
           "type": "string"
         },
         "notice": {
-          "description": "For the `paused` role: what the pause notice says.",
+          "description": "For the `paused` and `title` roles: what the notice over the picture says.",
           "anyOf": [
             {
               "$ref": "#/$defs/Notice"
@@ -1436,6 +1443,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/Role"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "set": {
+          "description": "Values written at each sync point while the game is in this state: a choice the\nprogram makes for the player, such as the joystick on a title.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany2"
             },
             {
               "type": "null"

@@ -174,9 +174,13 @@ pub struct State {
     /// Matches if this test of a value holds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub when: Option<Test>,
-    /// For the `paused` role: what the pause notice says.
+    /// For the `paused` and `title` roles: what the notice over the picture says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notice: Option<Notice>,
+    /// Values written at each sync point while the game is in this state: a choice the
+    /// program makes for the player, such as the joystick on a title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set: Option<OneOrMany<Set>>,
 }
 
 /// What a state means to the program. At most one state has each.
@@ -213,6 +217,10 @@ impl Role {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Notice {
+    /// Its heading, when not the program's own ("Paused" for the pause, "How it plays" for
+    /// the title).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading: Option<String>,
     /// The line: "Move or fire to go on."
     pub text: String,
     /// What to press, along the bottom.

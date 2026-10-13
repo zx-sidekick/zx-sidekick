@@ -174,6 +174,8 @@ When a definition names its game's paused state, the picture dims there and a ca
 
 ![Paused](docs/mockups/starquake/paused.png)
 
+The title's state may carry a notice too: a card over the foot of the title, which isn't dimmed, saying how the game plays here where its own screen says otherwise. Starquake's title lists its control options, but the program chooses the joystick for the player there (`[[states]] set`), so its card says to ignore the list and play with the arrow keys or a gamepad.
+
 ## 11. Guidance and training
 
 ### 11.1 The panel

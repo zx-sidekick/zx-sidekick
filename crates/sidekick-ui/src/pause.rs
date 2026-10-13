@@ -41,6 +41,8 @@ pub struct NoticeHint {
 /// The pause notice.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PauseNotice {
+    /// Its heading: "Paused".
+    pub heading: String,
     /// Its line.
     pub text: String,
     /// What to press.
@@ -53,6 +55,7 @@ impl Default for PauseNotice {
     /// The notice for a game whose definition doesn't word its own.
     fn default() -> Self {
         Self {
+            heading: "Paused".to_owned(),
             text: "Press a key or a button to go on.".to_owned(),
             hints: Vec::new(),
             pad: PadLabels::default(),
@@ -83,7 +86,7 @@ impl PauseNotice {
         let title = Style::new(24.0, colors::TEXT).weight(Weight::Bold);
         c.text(
             fonts,
-            "Paused",
+            &self.heading,
             (27.0, 22.0),
             Fonts::normal_line_height(&title),
             Align::Left,

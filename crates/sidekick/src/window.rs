@@ -1723,18 +1723,26 @@ impl Player {
     /// layout's scale (the notice is laid out on the picture at three logical pixels to the
     /// Spectrum's one), smaller where the window is too small for it.
     fn notice(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
-        if !self.paused() {
-            return Ok(());
-        }
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let (at, scale) = compose::card_over(
-            layout.picture,
-            output,
-            layout,
-            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
-        );
-        let notice = compose::pause_notice(self.session.definition(), labels);
+        let size = (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT);
+        let (notice, (at, scale)) = if self.paused() {
+            (
+                compose::pause_notice(self.session.definition(), labels),
+                compose::card_over(layout.picture, output, layout, size),
+            )
+        } else if let Some(notice) = compose::last_in_role(&self.session, Role::Title)
+            .then(|| compose::title_notice(self.session.definition(), labels))
+            .flatten()
+        {
+            // How the game plays here, at the foot of the title, the title not dimmed.
+            (
+                notice,
+                compose::card_at_foot(layout.picture, output, layout, size),
+            )
+        } else {
+            return Ok(());
+        };
         cached(
             out.creator,
             &mut out.notice,

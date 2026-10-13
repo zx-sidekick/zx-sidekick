@@ -311,6 +311,21 @@ name = "play"
 role = "play"
 pc = 0x8001
 notice = {{ text = "Playing." }}
+
+[[states]]
+name = "title"
+role = "title"
+pc = 0x8002
+notice = {{ heading = "Ignore the list", text = "Play with the arrow keys." }}
+set = [{{ value = "controls", to = 1 }}, {{ value = "shown", to = 2 }}]
+
+[values.controls]
+addr = 0x9000
+type = "u8"
+writable = true
+[values.shown]
+addr = 0x9001
+type = "u8"
 "#
     );
     let def = Definition::from_toml(&text).expect("it parses");
@@ -325,7 +340,8 @@ notice = {{ text = "Playing." }}
         [
             "states[0].notice.hints[0].pad: \"start\" isn't a part a notice shows: one of dpad, stick, west, south, east, north",
             "states[0].notice.hints[1]: needs keys, pad or both",
-            "states[1].notice: only the state with role = \"paused\" has a notice",
+            "states[1].notice: only the states with role = \"paused\" or \"title\" have a notice",
+            "states[2].set: \"shown\" isn't writable",
         ]
     );
 }

@@ -123,20 +123,64 @@ pub(crate) fn in_role(session: &Session, role: Role) -> bool {
         .is_some_and(|d| d.is(session.state(), role))
 }
 
+/// Where a card `logical` pixels large goes at the foot of `on`, and its scale: as
+/// [`card_over`], but resting a margin above the bottom of `on`, so the middle stays clear.
+pub(crate) fn card_at_foot(
+    on: (u32, u32, u32, u32),
+    output: (u32, u32),
+    layout: Layout,
+    logical: (u32, u32),
+) -> ((u32, u32, u32, u32), f32) {
+    let ((x, _, w, h), scale) = card_over(on, output, layout, logical);
+    let foot = (on.1 + on.3).saturating_sub(h + device(MARGIN, scale));
+    (within((x, foot, w, h), output, scale), scale)
+}
+
+/// Whether the state the game was last known in has `role`: steady through frames that match
+/// no state, as a title passed only every few frames does.
+pub(crate) fn last_in_role(session: &Session, role: Role) -> bool {
+    session
+        .definition()
+        .is_some_and(|d| d.is(session.progress().last_known.as_deref(), role))
+}
+
 /// The pause notice a definition words, for a pad marked as `labels` says.
 pub(crate) fn pause_notice(definition: Option<&Definition>, labels: PadLabels) -> PauseNotice {
+    notice_of(definition, Role::Paused, labels).unwrap_or_else(|| PauseNotice {
+        pad: labels,
+        ..PauseNotice::default()
+    })
+}
+
+/// The title's notice, when the definition words one: how the game plays here.
+pub(crate) fn title_notice(
+    definition: Option<&Definition>,
+    labels: PadLabels,
+) -> Option<PauseNotice> {
+    notice_of(definition, Role::Title, labels)
+}
+
+/// The notice of the state with `role`, as the definition words it.
+fn notice_of(
+    definition: Option<&Definition>,
+    role: Role,
+    labels: PadLabels,
+) -> Option<PauseNotice> {
     let notice = definition
         .into_iter()
         .flat_map(|d| &d.states)
-        .find(|s| s.role == Some(Role::Paused))
-        .and_then(|s| s.notice.as_ref());
-    let Some(notice) = notice else {
-        return PauseNotice {
-            pad: labels,
-            ..PauseNotice::default()
-        };
-    };
-    PauseNotice {
+        .find(|s| s.role == Some(role))
+        .and_then(|s| s.notice.as_ref())?;
+    let heading = notice.heading.clone().unwrap_or_else(|| {
+        if role == Role::Title {
+            "How it plays"
+        } else {
+            "Paused"
+        }
+        .to_owned()
+    });
+    Some(PauseNotice {
+        heading,
         text: notice.text.clone(),
         hints: notice
             .hints
@@ -155,7 +199,7 @@ pub(crate) fn pause_notice(definition: Option<&Definition>, labels: PadLabels) -
             })
             .collect(),
         pad: labels,
-    }
+    })
 }
 
 /// The window, `size` device pixels large, as the player sees a game at guidance `level` with
@@ -193,6 +237,17 @@ pub(crate) fn window(
         );
         let notice = pause_notice(session.definition(), labels).draw(fonts, scale);
         out.canvas(&notice, at, 255);
+    } else if let Some(notice) = last_in_role(session, Role::Title)
+        .then(|| title_notice(session.definition(), labels))
+        .flatten()
+    {
+        let (at, scale) = card_at_foot(
+            layout.picture,
+            size,
+            layout,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
+        out.canvas(&notice.draw(fonts, scale), at, 255);
     }
     out.rgba
 }
@@ -274,6 +329,21 @@ fn mul(value: u8, by: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_title_s_notice_rests_at_the_picture_s_foot() {
+        let layout = layout((1920, 1080), (256, 192), true);
+        let picture = layout.picture;
+        let ((x, y, w, h), _) = card_at_foot(
+            picture,
+            (1920, 1080),
+            layout,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
+        assert!(y + h < picture.1 + picture.3, "inside the picture's foot");
+        assert!(y > picture.1 + picture.3 / 2, "in its lower half");
+        assert_eq!(x + w / 2, picture.0 + picture.2 / 2, "centred across it");
+    }
+
     use super::*;
     use sidekick_core::{Machine, Model};
     use sidekick_ui::MENU_WIDTH;
