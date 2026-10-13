@@ -321,7 +321,9 @@ fn no_harm_keeps_lives_and_energy_in(name: &str) {
     };
     let situation = situation(name);
     assert!(situation.cheats.iter().any(|id| id == "no-harm"));
-    let frames = 1500;
+    // Long enough for the creature to reach BLOB whatever the game's seed, which the title's
+    // timing decides.
+    let frames = 3000;
 
     let mut without = base.clone();
     enter_situation(&mut without, &situation);
