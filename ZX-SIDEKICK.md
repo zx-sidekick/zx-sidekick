@@ -98,7 +98,7 @@ The full reference is [`docs/definition-format.md`](docs/definition-format.md). 
 ### 6.1 Its form
 
 - **One file**, `<game-id>.toml` or `<game-id>.json`: enough for a game that needs no script, icons or crafted situations.
-- **A zip**, `<game-id>.zip`, holding `game.toml` or `game.json` at its top, with `scripts/`, `situations/`, `icons/` (the author's own art) and an optional `README.md`. In the repository the same layout is kept as a folder, `games/<game-id>/`, and zipped for releases.
+- **A zip**, `<game-id>.zip`, holding `game.toml` or `game.json` at its top, with `scripts/`, `icons/` (the author's own art), `tests/` (crafted situations, the author's tests) and an optional `README.md`. In the repository the same layout is kept as a folder, `games/<game-id>/`, and zipped for releases, without `tests/`: players get only what the program uses for them.
 - TOML and JSON describe exactly the same thing. TOML is easier to write by hand: it allows comments, and hex addresses like `0x5E3A`. JSON suits tools; the committed JSON Schema lets editors check either.
 - `schema = 1` at the top, so the format can change without breaking old definitions.
 
@@ -253,7 +253,7 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 - **Wherever the game is** (paused, typing a code, the menu open), a snapshot can be taken. Take it at the sync point wherever possible, so loading resumes cleanly; otherwise at the end of a frame.
 - **A loaded game is marked** beside its score.
 
-**Crafted situations, for testing:** a short TOML file of `name = value` lines naming only what differs from a new game, using the definition's `[values]` names: the room, the player's position, lives, energy, items carried, codes seen, training switches. The program starts a new game, writes those into memory, then enters play through the routine the definition names (`[situations] enter`). Crafted files hold nothing of the original's, so they can be committed, in the definition's `situations/`. `sidekick TAPE --load FILE` starts from a save or a crafted file, in a window or headless.
+**Crafted situations, for testing:** a short TOML file of `name = value` lines naming only what differs from a new game, using the definition's `[values]` names: the room, the player's position, lives, energy, items carried, codes seen, training switches. The program starts a new game, writes those into memory, then enters play through the routine the definition names (`[situations] enter`). Crafted files hold nothing of the original's, so they can be committed, in the definition's `tests/`, which the zip players get leaves out. `sidekick TAPE --load FILE` starts from a save or a crafted file, in a window or headless.
 
 ## 14. What the player sees for a game without a definition
 
@@ -326,7 +326,7 @@ Each step ends green, committed, and on a reviewed pull request.
 12. **Saves:** quick slot, Open, saved on quitting, the offer, the loaded mark, crafted situations and `--load`.
 13. **Split pad meanings**, if they hold up.
 14. **The 128K and the AY** in definitions, and a second, simpler reference definition.
-15. **Releases:** archives for each platform, with the player's guide, the authors' guide, `THIRD-PARTY.md` and the font's licence.
+15. **Releases:** archives for each platform, with the player's guide, the authors' guide, `THIRD-PARTY.md` and the font's licence; each definition zipped without its `tests/`.
 
 ## Mockups
 

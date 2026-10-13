@@ -313,7 +313,7 @@ impl Game {
 }
 
 /// When a definition's files last changed: the file itself, or the newest file in its folder
-/// and the folders in that (its scripts, its situations); `None` when that can't be read.
+/// and the folders in that (its scripts, its tests); `None` when that can't be read.
 pub(crate) fn changed(path: &Path) -> Option<SystemTime> {
     let meta = fs::metadata(path).ok()?;
     if !meta.is_dir() {

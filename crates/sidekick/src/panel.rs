@@ -1161,7 +1161,7 @@ mod real_tape {
             .playing(&tapes[0])
             .expect("the tape plays");
         let s = &mut playing.session;
-        let file = repo.join("games/starquake/situations/stocked-up.toml");
+        let file = repo.join("games/starquake/tests/stocked-up.toml");
         situations::load(s, &playing.saves, &file).expect("a new game");
         s.set_level(level);
         for _ in 0..10 {

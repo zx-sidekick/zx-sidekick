@@ -64,7 +64,7 @@ Inside a zip or folder:
 ```
 game.toml            or game.json
 scripts/*.rhai       the script, if any (see Scripts)
-situations/*.toml    crafted situations, for testing
+tests/*.toml         crafted situations, the author's tests: left out of the zip players get
 icons/*.png          your own icons, never the game's graphics
 README.md            optional: credits, sources, notes for players
 ```
@@ -445,7 +445,7 @@ enter = 0x6400          # the routine that starts play in the current room
 start = ["SPACE", "0"]  # the keys from the loaded tape to play
 ```
 
-A crafted situation is a TOML file in `situations/`, of `name = value` lines naming only what differs from a new game: `[values]` names (which must be `writable`), `cheats = [..]`, `kept.<list> = [..]`, and `level = N`, the guidance level to play at (one of `[guidance]`'s levels; without it, the level is left as it is).
+A crafted situation is a TOML file in `tests/`, of `name = value` lines naming only what differs from a new game: `[values]` names (which must be `writable`), `cheats = [..]`, `kept.<list> = [..]`, and `level = N`, the guidance level to play at (one of `[guidance]`'s levels; without it, the level is left as it is).
 
 ```
 lives = 9

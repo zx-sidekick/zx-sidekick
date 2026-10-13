@@ -439,7 +439,7 @@ fn a_security_door_s_cards_are_the_ones_the_script_works_out() {
         return;
     };
     with_script(&mut s, 6);
-    let text = std::fs::read_to_string(repo().join("games/starquake/situations/door.toml"))
+    let text = std::fs::read_to_string(repo().join("games/starquake/tests/door.toml"))
         .expect("the door situation");
     let situation = Situation::from_toml(&text).expect("it parses");
     let values: Vec<(&str, i64)> = situation
