@@ -75,7 +75,7 @@ const DIRECTIONS: &[&str] = &["up", "down", "left", "right", "fire"];
 const ROLES: [Role; 4] = [Role::Title, Role::Play, Role::Paused, Role::GameOver];
 
 /// The pad's parts a notice's hint can show: the face buttons and the directions.
-const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north"];
+const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north", "start"];
 
 /// The program's own keys, which an action can't take.
 const PROGRAM_KEYS: &[&str] = &["Esc", "F5", "F9", "F11"];

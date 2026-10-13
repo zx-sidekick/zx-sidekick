@@ -289,13 +289,18 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         Start::Prompt(game) => game.title(),
         Start::Library(_) => "Choose a game".to_owned(),
     };
-    let window = video
+    let mut window = video
         .window(&format!("ZX Sidekick — {title}"), 1368, 768)
         .high_pixel_density()
         .resizable()
         .fullscreen()
         .build()
         .map_err(|e| e.to_string())?;
+    // The keyboard is the game's while the window has focus: keys the system would take for its
+    // own shortcuts (Cmd, Alt+Tab) reach the window instead, where the system lets them.
+    if !window.set_keyboard_grab(true) {
+        eprintln!("The keyboard couldn't be grabbed: {}", sdl3::get_error());
+    }
     let canvas = window.into_canvas();
     // The textures live as long as the window, which lives as long as the program.
     let creator = Box::leak(Box::new(canvas.texture_creator()));

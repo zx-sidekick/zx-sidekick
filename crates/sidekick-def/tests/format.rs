@@ -304,7 +304,7 @@ fn a_notice_is_the_paused_state_s_and_shows_parts_a_pad_has() {
 name = "paused"
 role = "paused"
 pc = 0x8000
-notice = {{ text = "Fire to go on.", hints = [{{ pad = "start", does = "go on" }}, {{ does = "wait" }}] }}
+notice = {{ text = "Fire to go on.", hints = [{{ pad = "select", does = "go on" }}, {{ does = "wait" }}] }}
 
 [[states]]
 name = "play"
@@ -338,7 +338,7 @@ type = "u8"
     assert_eq!(
         problems,
         [
-            "states[0].notice.hints[0].pad: \"start\" isn't a part a notice shows: one of dpad, stick, west, south, east, north",
+            "states[0].notice.hints[0].pad: \"select\" isn't a part a notice shows: one of dpad, stick, west, south, east, north, start",
             "states[0].notice.hints[1]: needs keys, pad or both",
             "states[1].notice: only the states with role = \"paused\" or \"title\" have a notice",
             "states[2].set: \"shown\" isn't writable",

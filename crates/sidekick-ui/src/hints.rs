@@ -12,6 +12,8 @@ pub enum Press<'a> {
     Pad(&'a str),
     /// Arrows, bare: `↑↓`, `←→`.
     Arrows(&'a str),
+    /// A pad's middle button, in a pill, round at both ends: `Start`, `Options`, `+`.
+    Pill(&'a str),
     /// A PlayStation pad's × button, in a round badge.
     Cross,
     /// A PlayStation pad's ○ button, in a round badge.
@@ -66,6 +68,16 @@ impl PadLabels {
         }
     }
 
+    /// The Start button, as it's marked.
+    #[must_use]
+    pub const fn start(self) -> Press<'static> {
+        match self {
+            Self::Letters => Press::Pill("Start"),
+            Self::Nintendo => Press::Pill("+"),
+            Self::Shapes => Press::Pill("Options"),
+        }
+    }
+
     /// A face button, as it's marked.
     #[must_use]
     pub const fn face(self, face: Face) -> Press<'static> {
@@ -106,6 +118,8 @@ fn width(fonts: &mut Fonts, press: Press) -> f32 {
         Press::Key(k) => fonts.measure(k, &KEY) + 12.0,
         Press::Pad(_) | Press::Cross | Press::Circle | Press::Square | Press::Triangle => PAD_SIZE,
         Press::Arrows(a) => fonts.measure(a, &WHAT),
+        // As round as a pad button at its ends, and at least as wide.
+        Press::Pill(p) => (fonts.measure(p, &PAD) + 14.0).max(PAD_SIZE),
     }
 }
 
@@ -166,6 +180,16 @@ pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &
                 }
                 Press::Arrows(a) => {
                     c.text(fonts, a, (x, y + 1.0), 18.0, Align::Left, &WHAT);
+                }
+                Press::Pill(p) => {
+                    let top = y + 10.0 - PAD_SIZE / 2.0;
+                    c.rect(
+                        (x, top, w, PAD_SIZE),
+                        PAD_SIZE / 2.0,
+                        None,
+                        Some(Line::solid(colors::KEY_EDGE, 1.0)),
+                    );
+                    c.text(fonts, p, (x + w / 2.0, y + 1.0), 18.0, Align::Center, &PAD);
                 }
                 Press::Cross | Press::Circle | Press::Square | Press::Triangle => {
                     let (cx, cy) = (x + PAD_SIZE / 2.0, y + 10.0);

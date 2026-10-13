@@ -160,6 +160,17 @@ pub(crate) fn title_notice(
     notice_of(definition, Role::Title, labels)
 }
 
+/// A notice's keys as this computer names them: a Mac has no right Control (a laptop's
+/// keyboard ends in Option), so the right Ctrl that fires is named as the right Option, which
+/// fires too.
+fn host_keys(keys: &str, mac: bool) -> String {
+    if mac {
+        keys.replace("Right Ctrl", "Right Option")
+    } else {
+        keys.to_owned()
+    }
+}
+
 /// The notice of the state with `role`, as the definition words it.
 fn notice_of(
     definition: Option<&Definition>,
@@ -186,13 +197,17 @@ fn notice_of(
             .hints
             .iter()
             .map(|hint| NoticeHint {
-                keys: hint.keys.clone(),
+                keys: hint
+                    .keys
+                    .as_deref()
+                    .map(|keys| host_keys(keys, cfg!(target_os = "macos"))),
                 pad: hint.pad.as_deref().and_then(|part| match part {
                     "west" => Some(PadMark::Face(Face::West)),
                     "south" => Some(PadMark::Face(Face::South)),
                     "east" => Some(PadMark::Face(Face::East)),
                     "north" => Some(PadMark::Face(Face::North)),
                     "dpad" | "stick" => Some(PadMark::Directions),
+                    "start" => Some(PadMark::Start),
                     _ => None,
                 }),
                 does: hint.does.clone(),
@@ -329,6 +344,13 @@ fn mul(value: u8, by: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_mac_names_the_right_ctrl_as_the_right_option() {
+        assert_eq!(host_keys("Right Ctrl", true), "Right Option");
+        assert_eq!(host_keys("Right Ctrl", false), "Right Ctrl");
+        assert_eq!(host_keys("0", true), "0");
+    }
+
     #[test]
     fn the_title_s_notice_rests_at_the_picture_s_foot() {
         let layout = layout((1920, 1080), (256, 192), true);

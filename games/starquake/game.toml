@@ -78,7 +78,7 @@ set = { value = "controls", to = 1 }
 notice = { heading = "Ignore the list", text = "Play with the arrow keys or a gamepad.", hints = [
   { keys = "← ↑ → ↓", pad = "dpad", does = "move" },
   { keys = "Right Ctrl", pad = "west", does = "fire" },
-  { keys = "0", does = "start" },
+  { keys = "0", pad = "start", does = "start" },
 ] }
 
 # Values. Each needs its address and type confirmed.

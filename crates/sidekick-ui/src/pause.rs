@@ -25,6 +25,8 @@ pub enum PadMark {
     Face(Face),
     /// The D-pad or the stick, as arrows.
     Directions,
+    /// The Start button, as the pad's maker marks it.
+    Start,
 }
 
 /// One thing to press, and what it does.
@@ -120,6 +122,7 @@ impl PauseNotice {
                     // Arrows on the keyboard stand for the D-pad too.
                     PadMark::Directions if keys.is_some() => None,
                     PadMark::Directions => Some(Press::Arrows("← ↑ → ↓")),
+                    PadMark::Start => Some(self.pad.start()),
                 });
                 keys.into_iter().chain(pad).collect()
             })
