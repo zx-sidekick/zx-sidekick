@@ -174,7 +174,7 @@ mod tests {
         let package = Package::load(&repo().join("games/starquake")).expect("its definition");
         let data = tempfile::TempDir::new().unwrap();
         let game = Game::new(package, data.path());
-        let folder = repo().join("games/starquake/situations");
+        let folder = repo().join("games/starquake/tests");
         let mut files: Vec<PathBuf> = fs::read_dir(&folder)
             .expect("its situations")
             .map(|e| e.expect("an entry").path())
