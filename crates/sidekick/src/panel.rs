@@ -181,6 +181,27 @@ fn outline(fact: Option<&Fact>) -> Option<Color> {
     }
 }
 
+/// A marker's colour: a route's (`"first"`, `"second"`), a Spectrum colour 0 to 15, or
+/// `"#RRGGBB"`.
+fn marker_color(fact: Option<&Fact>) -> Option<Color> {
+    match fact? {
+        Fact::Text(t) => route_color(t)
+            .map(RouteColor::color)
+            .or_else(|| hex_color(t)),
+        Fact::Number(n) => u8::try_from(*n).ok().filter(|&c| c < 16).map(|c| {
+            let [r, g, b, _] = color(c);
+            Color::rgb(r, g, b)
+        }),
+        _ => None,
+    }
+}
+
+fn hex_color(text: &str) -> Option<Color> {
+    let digits = text.strip_prefix('#').filter(|d| d.len() == 6)?;
+    let [_, r, g, b] = u32::from_str_radix(digits, 16).ok()?.to_be_bytes();
+    Some(Color::rgb(r, g, b))
+}
+
 fn route_color(name: &str) -> Option<RouteColor> {
     match name {
         "first" => Some(RouteColor::First),
@@ -260,19 +281,11 @@ fn map(
                     MarkerKind::Picture(graphics.picture(get(marker, "picture")))
                 }
             };
-            let color = match get(marker, "color") {
-                Some(Fact::Text(t)) => route_color(t).map(RouteColor::color),
-                Some(Fact::Number(n)) => u8::try_from(*n).ok().map(|c| {
-                    let [r, g, b, _] = color(c);
-                    Color::rgb(r, g, b)
-                }),
-                _ => None,
-            };
             Some(Marker {
                 x: number(get(marker, "x"))?,
                 y: number(get(marker, "y"))?,
                 kind,
-                color,
+                color: marker_color(get(marker, "color")),
             })
         })
         .collect();
@@ -452,6 +465,22 @@ impl AsText for Read {
 mod tests {
     use super::*;
     use sidekick_core::Reading;
+
+    #[test]
+    fn a_marker_s_color_is_a_route_s_a_spectrum_one_or_any() {
+        let text = |t: &str| marker_color(Some(&Fact::Text(t.to_owned())));
+        assert_eq!(text("first"), Some(RouteColor::First.color()));
+        assert_eq!(text("#C8A2E8"), Some(Color::rgb(0xC8, 0xA2, 0xE8)));
+        assert_eq!(text("#C8A2E"), None, "six digits");
+        assert_eq!(text("C8A2E8"), None, "after a #");
+        assert_eq!(text("#C8A2EG"), None, "hex");
+        let [r, g, b, _] = color(13);
+        assert_eq!(
+            marker_color(Some(&Fact::Number(13))),
+            Some(Color::rgb(r, g, b))
+        );
+        assert_eq!(marker_color(Some(&Fact::Number(16))), None, "0 to 15");
+    }
 
     fn definition(panel: &str) -> Definition {
         Definition::from_toml(&format!(
