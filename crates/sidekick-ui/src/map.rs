@@ -345,7 +345,7 @@ impl Plan<'_> {
         }
     }
 
-    /// A route, through its cells' middles: each step's line as its line says, and where
+    /// A route, through its cells' middles: each step drawn as its `line` says, and where
     /// routes share a step, side by side and thinner. `r` is its place among the map's routes.
     fn route(&self, c: &mut Canvas, r: usize, route: &Route) {
         // A run of steps drawn alike, as one line, so its dashes go on round corners.
