@@ -5,7 +5,7 @@ use crate::{
     compose,
     entry::{self, Entry, Stroke, Typing},
     games::{self, Game, Playing},
-    keys::{spectrum_key, Spectrum},
+    keys::{self, spectrum_key, Spectrum},
     menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
@@ -674,8 +674,9 @@ impl Gamepads {
         parts.into_iter().map(|p| (p, maker)).collect()
     }
 
-    /// A key the Spectrum doesn't have that does one of the game's actions, pressed or let go
-    /// like a pad's button. Returns its part when pressed.
+    /// A key the Spectrum doesn't have, pressed or let go like a pad's button: one the
+    /// definition binds to an action, else an arrow (the D-pad) or the right Control or Alt
+    /// (fire). Returns its part when pressed.
     fn host_key(&mut self, event: &Event, mapping: &Mapping) -> Vec<(Part, Maker)> {
         let (scancode, down) = match *event {
             Event::KeyDown {
@@ -691,6 +692,7 @@ impl Gamepads {
         };
         mapping
             .host_key(scancode.name())
+            .or_else(|| keys::pad_part(scancode))
             .and_then(|part| self.pads.button(KEYBOARD, part, down))
             .map(|part| (part, self.last))
             .into_iter()
