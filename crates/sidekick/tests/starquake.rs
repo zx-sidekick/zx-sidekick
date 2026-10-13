@@ -1163,14 +1163,16 @@ fn a_carried_15_answers_every_card_at_a_security_door() {
         .iter()
         .map(|(name, &number)| (name.as_str(), number))
         .collect();
-    // Walks left into the door carrying `picture`, and returns where BLOB is once it's done.
+    // Walks left into the door carrying `picture` (nothing for 0), and returns where BLOB is
+    // once it's done.
     let through = |picture: u8| {
         let mut s = base.clone();
         s.switch("no-harm", true).expect("it goes on");
         enter_room(&mut s, &values);
         let carried = addr(&s, "carried");
         s.machine_mut().write(carried, picture);
-        s.machine_mut().write(carried + 1, 3);
+        s.machine_mut()
+            .write(carried + 1, if picture == 0 { 0 } else { 3 });
         s.machine_mut().kempston(Kempston::Left, true);
         assert!(until(&mut s, 200, |s| s.state() == Some("door")));
         s.machine_mut().kempston(Kempston::Left, false);

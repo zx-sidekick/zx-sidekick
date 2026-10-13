@@ -65,8 +65,9 @@ pc = 0x654B
 
 [[states]]
 name = "door"
-# The card routine's loop, reached once a door's cards are worked out; the main loop waits
-# meanwhile, so the values are read at the frame's end, cards and all (docs/re/starquake.md).
+# The card routine's loop, at a security door or a pyramid, reached once its cards are worked
+# out; the main loop waits meanwhile, so the values are read at the frame's end, cards and all
+# (docs/re/starquake.md).
 pc = 0xD64E
 
 [[states]]
