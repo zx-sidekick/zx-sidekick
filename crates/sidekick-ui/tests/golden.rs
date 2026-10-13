@@ -10,6 +10,12 @@ use sidekick_ui::{
 };
 use std::path::PathBuf;
 
+/// The panel's size in device pixels at scale 1, and at 2.
+const PANEL_AT_1: (u32, u32) = (408, 768);
+const PANEL_AT_2: (u32, u32) = (816, 1536);
+/// The panel's size beside the picture in a 1920 × 1080 window: the window's height.
+const PANEL_AT_1080: (u32, u32) = (574, 1080);
+
 fn golden(name: &str, png: &[u8]) {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/golden")
@@ -44,7 +50,7 @@ fn starquake() -> TapePrompt {
 #[test]
 fn the_tape_prompt() {
     let mut fonts = Fonts::new();
-    let canvas = starquake().draw(&mut fonts, 1);
+    let canvas = starquake().draw(&mut fonts, 1.0);
     assert_eq!(canvas.size(), (960, 768));
     golden("tape-prompt.png", &canvas.png());
 }
@@ -61,7 +67,7 @@ fn the_tape_prompt_refusing_a_different_dump() {
     };
     golden(
         "tape-prompt-wrong-dump.png",
-        &prompt.draw(&mut fonts, 1).png(),
+        &prompt.draw(&mut fonts, 1.0).png(),
     );
 }
 
@@ -72,7 +78,7 @@ fn the_tape_prompt_with_a_pad_plugged_in() {
         pad: Some(PadLabels::Letters),
         ..starquake()
     };
-    golden("tape-prompt-pad.png", &prompt.draw(&mut fonts, 1).png());
+    golden("tape-prompt-pad.png", &prompt.draw(&mut fonts, 1.0).png());
 }
 
 #[test]
@@ -84,7 +90,7 @@ fn the_tape_prompt_s_buttons_pressed() {
     };
     golden(
         "tape-prompt-locate-pressed.png",
-        &locate.draw(&mut fonts, 1).png(),
+        &locate.draw(&mut fonts, 1.0).png(),
     );
     let download = TapePrompt {
         pressed: Some(PromptButton::Download),
@@ -92,14 +98,14 @@ fn the_tape_prompt_s_buttons_pressed() {
     };
     golden(
         "tape-prompt-download-pressed.png",
-        &download.draw(&mut fonts, 1).png(),
+        &download.draw(&mut fonts, 1.0).png(),
     );
 }
 
 #[test]
 fn at_scale_2_every_logical_pixel_is_four() {
     let mut fonts = Fonts::new();
-    let canvas = starquake().draw(&mut fonts, 2);
+    let canvas = starquake().draw(&mut fonts, 2.0);
     assert_eq!(canvas.size(), (1920, 1536));
 }
 
@@ -121,20 +127,20 @@ fn the_library() {
         pressed: None,
         pad: PadLabels::Letters,
     };
-    golden("library.png", &page.draw(&mut fonts, 1).png());
+    golden("library.png", &page.draw(&mut fonts, 1.0).png());
     let pressed = LibraryPage {
         chosen: 1,
         pressed: Some(1),
         ..page.clone()
     };
-    golden("library-pressed.png", &pressed.draw(&mut fonts, 1).png());
+    golden("library-pressed.png", &pressed.draw(&mut fonts, 1.0).png());
     let playstation = LibraryPage {
         pad: PadLabels::Shapes,
         ..page
     };
     golden(
         "library-playstation.png",
-        &playstation.draw(&mut fonts, 1).png(),
+        &playstation.draw(&mut fonts, 1.0).png(),
     );
 }
 
@@ -160,16 +166,16 @@ fn paused(pad: PadLabels) -> PauseNotice {
 #[test]
 fn the_pause_notice() {
     let mut fonts = Fonts::new();
-    let card = paused(PadLabels::Letters).draw(&mut fonts, 1);
+    let card = paused(PadLabels::Letters).draw(&mut fonts, 1.0);
     assert_eq!(card.size(), (438, 158));
     golden("paused.png", &card.png());
     golden(
         "paused-playstation.png",
-        &paused(PadLabels::Shapes).draw(&mut fonts, 1).png(),
+        &paused(PadLabels::Shapes).draw(&mut fonts, 1.0).png(),
     );
     golden(
         "paused-unworded.png",
-        &PauseNotice::default().draw(&mut fonts, 1).png(),
+        &PauseNotice::default().draw(&mut fonts, 1.0).png(),
     );
 }
 
@@ -221,7 +227,7 @@ fn starquake_menu() -> Menu {
 fn the_guidance_menu() {
     let mut fonts = Fonts::new();
     let menu = starquake_menu();
-    golden("menu.png", &menu.draw(&mut fonts, 1).png());
+    golden("menu.png", &menu.draw(&mut fonts, 1.0).png());
 
     let mut refused = starquake_menu();
     refused.switches[0].on = true;
@@ -232,7 +238,7 @@ fn the_guidance_menu() {
     refused.switches[4].refusal =
         Some("Not this tape's code here: the switch can't go on.".to_owned());
     refused.chosen = Row::Switch(4);
-    golden("menu-refused.png", &refused.draw(&mut fonts, 1).png());
+    golden("menu-refused.png", &refused.draw(&mut fonts, 1.0).png());
 
     let armed = Menu {
         levels: None,
@@ -242,7 +248,7 @@ fn the_guidance_menu() {
         pad: PadLabels::Shapes,
         ..starquake_menu()
     };
-    golden("menu-plain-armed.png", &armed.draw(&mut fonts, 1).png());
+    golden("menu-plain-armed.png", &armed.draw(&mut fonts, 1.0).png());
 
     // As the mockup has it (`docs/mockups/2026-10-13-pressed-button.png`).
     let save = Menu {
@@ -250,7 +256,7 @@ fn the_guidance_menu() {
         pressed: Some(Row::Save(0)),
         ..starquake_menu()
     };
-    golden("menu-save-pressed.png", &save.draw(&mut fonts, 1).png());
+    golden("menu-save-pressed.png", &save.draw(&mut fonts, 1.0).png());
     let back = Menu {
         levels: None,
         switches: Vec::new(),
@@ -258,13 +264,13 @@ fn the_guidance_menu() {
         pressed: Some(Row::Action(0)),
         ..starquake_menu()
     };
-    golden("menu-row-pressed.png", &back.draw(&mut fonts, 1).png());
+    golden("menu-row-pressed.png", &back.draw(&mut fonts, 1.0).png());
 
     let question = Question {
         items: vec!["Guidance level 4".to_owned(), "Full energy".to_owned()],
         pad: PadLabels::Letters,
     };
-    golden("question.png", &question.draw(&mut fonts, 1).png());
+    golden("question.png", &question.draw(&mut fonts, 1.0).png());
 }
 
 #[test]
@@ -290,7 +296,7 @@ fn the_panel() {
         description: "No guidance. Press Esc or Select to choose a level.".to_owned(),
         widgets: Vec::new(),
     };
-    golden("panel-level0.png", &off.draw(&mut fonts, 1).png());
+    golden("panel-level0.png", &off.draw(&mut fonts, PANEL_AT_1).png());
 
     let widget = |column, title: &str, body| PanelWidget {
         column,
@@ -336,7 +342,7 @@ fn the_panel() {
             ),
         ],
     };
-    golden("panel-plain.png", &plain.draw(&mut fonts, 1).png());
+    golden("panel-plain.png", &plain.draw(&mut fonts, PANEL_AT_1).png());
 }
 
 /// A stand-in picture: an 8 × 8 pattern, mirrored left to right, from a seed. Plainly not any
@@ -416,7 +422,15 @@ fn the_panel_in_the_game_s_own_font_and_pictures() {
             },
         ],
     };
-    golden("panel-game-pictures.png", &panel.draw(&mut fonts, 1).png());
+    golden(
+        "panel-game-pictures.png",
+        &panel.draw(&mut fonts, PANEL_AT_1).png(),
+    );
+    // Beside a 1920 × 1080 window's picture: a scale between whole ones, the game's pictures
+    // and letters at whole device pixels.
+    let wide = panel.draw(&mut fonts, PANEL_AT_1080);
+    assert_eq!(wide.size(), PANEL_AT_1080);
+    golden("panel-game-pictures-1080.png", &wide.png());
 }
 
 /// A stand-in map, 16 × 32 as the mockups' is: walls from a seeded coin where `seen`.
@@ -545,7 +559,7 @@ fn the_map() {
                 },
             ],
         };
-        golden(name, &panel.draw(&mut fonts, 1).png());
+        golden(name, &panel.draw(&mut fonts, PANEL_AT_1).png());
     }
     let pin = |edge, color, label: &str| Pin {
         edge,
@@ -562,10 +576,23 @@ fn the_map() {
                 pin(Edge::East, RouteColor::Second, "core"),
             ],
             &mut fonts,
-            1,
+            1.0,
+            (960, 768),
         )
         .png(),
     );
+    // Over the screen alone (no border), at five device pixels to a Spectrum one.
+    let screen = pins(
+        &[
+            pin(Edge::West, RouteColor::First, "item"),
+            pin(Edge::South, RouteColor::Second, "core"),
+        ],
+        &mut fonts,
+        5.0 / 3.0,
+        (768, 576),
+    );
+    assert_eq!(screen.size(), (1280, 960));
+    golden("pins-screen.png", &screen.png());
 }
 
 #[test]
@@ -580,13 +607,13 @@ fn the_text_entry_card() {
         can_choose: true,
         pad: PadLabels::Letters,
     };
-    golden("entry-choose.png", &choosing.draw(&mut fonts, 1).png());
+    golden("entry-choose.png", &choosing.draw(&mut fonts, 1.0).png());
     let spelling = EntryCard {
         letters: word("TOMAZ"),
         mode: EntryMode::Spelling { slot: 2 },
         ..choosing.clone()
     };
-    golden("entry-spell.png", &spelling.draw(&mut fonts, 1).png());
+    golden("entry-spell.png", &spelling.draw(&mut fonts, 1.0).png());
     let blank = EntryCard {
         letters: vec![Some('T'), None, None, None, None],
         mode: EntryMode::Spelling { slot: 1 },
@@ -594,7 +621,7 @@ fn the_text_entry_card() {
         pad: PadLabels::Shapes,
         ..choosing
     };
-    golden("entry-spell-blank.png", &blank.draw(&mut fonts, 1).png());
+    golden("entry-spell-blank.png", &blank.draw(&mut fonts, 1.0).png());
 }
 
 #[test]
@@ -620,7 +647,10 @@ fn the_panel_after_a_game() {
             row("HAL", "from the tape", false),
         ],
     };
-    golden("panel-this-game.png", &page.draw(&mut fonts, 1).png());
+    golden(
+        "panel-this-game.png",
+        &page.draw(&mut fonts, PANEL_AT_1).png(),
+    );
 }
 
 #[test]
@@ -632,7 +662,7 @@ fn the_notice() {
     assert_eq!(note.width(&mut fonts), 128, "the mockup's pill");
     assert_eq!(note.height(&mut fonts), 35);
     assert_eq!(note.seconds(), 2);
-    golden("note.png", &note.draw(&mut fonts, 1).png());
+    golden("note.png", &note.draw(&mut fonts, 1.0).png());
 }
 
 #[test]
@@ -647,7 +677,7 @@ fn a_long_notice_wraps_and_shows_longer() {
     );
     assert!(note.height(&mut fonts) > 35, "more than a line");
     assert!(note.seconds() > 2 && note.seconds() <= 10);
-    golden("note-long.png", &note.draw(&mut fonts, 1).png());
+    golden("note-long.png", &note.draw(&mut fonts, 1.0).png());
 }
 
 #[test]
@@ -657,7 +687,7 @@ fn the_offer_to_continue() {
         title: "Starquake".to_owned(),
         pad: PadLabels::Letters,
     };
-    golden("offer.png", &offer.draw(&mut fonts, 1).png());
+    golden("offer.png", &offer.draw(&mut fonts, 1.0).png());
 }
 
 #[test]
@@ -699,7 +729,10 @@ fn a_map_of_some_rooms_walked_has_no_frame() {
             body: PanelBody::Map(map),
         }],
     };
-    golden("panel-map-walked.png", &panel.draw(&mut fonts, 1).png());
+    golden(
+        "panel-map-walked.png",
+        &panel.draw(&mut fonts, PANEL_AT_1).png(),
+    );
 }
 
 #[test]
@@ -787,8 +820,14 @@ fn the_map_shows_what_is_inside_each_room() {
             body: PanelBody::Map(map),
         }],
     };
-    golden("panel-map-inside.png", &panel.draw(&mut fonts, 1).png());
-    golden("panel-map-inside-2x.png", &panel.draw(&mut fonts, 2).png());
+    golden(
+        "panel-map-inside.png",
+        &panel.draw(&mut fonts, PANEL_AT_1).png(),
+    );
+    golden(
+        "panel-map-inside-2x.png",
+        &panel.draw(&mut fonts, PANEL_AT_2).png(),
+    );
 }
 
 #[test]
@@ -835,6 +874,12 @@ fn every_marker_in_a_room_shows() {
             body: PanelBody::Map(map),
         }],
     };
-    golden("panel-map-markers.png", &panel.draw(&mut fonts, 1).png());
-    golden("panel-map-markers-2x.png", &panel.draw(&mut fonts, 2).png());
+    golden(
+        "panel-map-markers.png",
+        &panel.draw(&mut fonts, PANEL_AT_1).png(),
+    );
+    golden(
+        "panel-map-markers-2x.png",
+        &panel.draw(&mut fonts, PANEL_AT_2).png(),
+    );
 }

@@ -14,26 +14,50 @@ fn block(flag: u8, data: &[u8]) -> Vec<u8> {
     out
 }
 
-/// `10 PAUSE 0: BORDER 2`, auto-running: waits for a key, then turns the border red. A
-/// program of our own, with the numbers' hidden five-byte forms.
-fn wait_then_red() -> Vec<u8> {
-    let small = |n: u8| [0x0E, 0x00, 0x00, n, 0x00, 0x00];
-    let mut line = vec![0xF2, b'0']; // PAUSE 0
-    line.extend_from_slice(&small(0));
-    line.extend_from_slice(&[b':', 0xE7, b'2']); // : BORDER 2
-    line.extend_from_slice(&small(2));
+/// A number as BASIC keeps it after its digits: hidden, in five bytes.
+const fn small(n: u8) -> [u8; 6] {
+    [0x0E, 0x00, 0x00, n, 0x00, 0x00]
+}
+
+/// A program of one line, `line` (its tokens, without the line's end), auto-running from it,
+/// as a header block and a data block.
+fn program(name: &[u8; 10], line: &[u8]) -> Vec<u8> {
+    let mut line = line.to_vec();
     line.push(0x0D);
     let mut program = vec![0x00, 0x0A];
     program.extend_from_slice(&u16::try_from(line.len()).expect("short").to_le_bytes());
     program.extend_from_slice(&line);
     let len = u16::try_from(program.len()).expect("short").to_le_bytes();
     let mut header = vec![0x00];
-    header.extend_from_slice(b"wait      ");
+    header.extend_from_slice(name);
     header.extend_from_slice(&len);
     header.extend_from_slice(&10u16.to_le_bytes());
     header.extend_from_slice(&len);
     let mut tap = block(0x00, &header);
     tap.extend(block(0xFF, &program));
+    tap
+}
+
+/// `10 PAUSE 0: BORDER 2`, auto-running: waits for a key, then turns the border red. A
+/// program of our own, with the numbers' hidden five-byte forms.
+fn wait_then_red() -> Vec<u8> {
+    let mut line = vec![0xF2, b'0']; // PAUSE 0
+    line.extend_from_slice(&small(0));
+    line.extend_from_slice(&[b':', 0xE7, b'2']); // : BORDER 2
+    line.extend_from_slice(&small(2));
+    program(b"wait      ", &line)
+}
+
+/// `10 PAUSE 0: LOAD ""`, then a second program, `10 BORDER 2`: a tape whose loading waits
+/// for a key halfway, as a loading screen does.
+fn wait_then_load() -> Vec<u8> {
+    let mut first = vec![0xF2, b'0']; // PAUSE 0
+    first.extend_from_slice(&small(0));
+    first.extend_from_slice(&[b':', 0xEF, b'"', b'"']); // : LOAD ""
+    let mut second = vec![0xE7, b'2']; // BORDER 2
+    second.extend_from_slice(&small(2));
+    let mut tap = program(b"wait      ", &first);
+    tap.extend(program(b"red       ", &second));
     tap
 }
 
@@ -114,6 +138,63 @@ fn a_key_reaches_the_program() {
     let (width, height, corner) = read_png(&shot);
     assert_eq!((width, height), (320, 256));
     assert_eq!(corner, [215, 0, 0], "a red border: the key got through");
+}
+
+#[test]
+fn a_game_without_its_border_is_written_without_it_once_its_tape_has_loaded() {
+    let dir = TempDir::new().unwrap();
+    let tape = dir.path().join("wait.tap");
+    fs::write(&tape, wait_then_load()).unwrap();
+    let definition = dir.path().join("wait.toml");
+    fs::write(
+        &definition,
+        r#"
+schema = 1
+[game]
+id = "wait"
+title = "Wait"
+machine = "48k"
+[[media]]
+name = "our own test program"
+[run]
+border = "none"
+"#,
+    )
+    .unwrap();
+    let shot = dir.path().join("shot.png");
+    let run = |frames: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_sidekick"))
+            .env("ZX_SIDEKICK_DATA", dir.path())
+            .args([
+                "run",
+                tape.to_str().unwrap(),
+                "--definition",
+                definition.to_str().unwrap(),
+                "--frames",
+                frames,
+                // Not SPACE: held into the LOAD, it would break it.
+                "--key",
+                "A@200",
+                "--screenshot",
+                shot.to_str().unwrap(),
+                "--scale",
+                "2",
+            ])
+            .output()
+            .expect("sidekick runs");
+        assert!(output.status.success(), "{output:?}");
+        read_png(&shot)
+    };
+    let (width, height, corner) = run("150");
+    assert_eq!(
+        (width, height),
+        (640, 512),
+        "waiting for a key halfway through the tape: the border shows"
+    );
+    assert_eq!(corner, [215, 215, 215], "the white border");
+    let (width, height, corner) = run("300");
+    assert_eq!((width, height), (512, 384), "loaded: the screen alone");
+    assert_eq!(corner, [215, 215, 215], "the screen's white paper");
 }
 
 #[test]

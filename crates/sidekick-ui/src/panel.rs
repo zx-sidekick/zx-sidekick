@@ -145,20 +145,49 @@ fn fit(picture: &Pixels, room: f32) -> f32 {
     (room / side).floor().max(1.0)
 }
 
-/// Draws a picture's ink, each game pixel `size` logical pixels square, from (`x`, `y`).
+/// Draws a picture's ink, each game pixel `size` logical pixels square, from (`x`, `y`): at the
+/// nearest whole number of device pixels a game pixel, so every pixel is the same size, with
+/// its middle where it would be.
 pub(crate) fn draw_pixels(
     c: &mut Canvas,
     picture: &Pixels,
-    (x, y): (f32, f32),
+    at: (f32, f32),
     size: f32,
     color: Color,
 ) {
+    let (left, top, step) = snap(c, at, (picture.width, picture.height), size);
+    ink(c, picture, (left, top), step, color);
+}
+
+/// Where pixel art `width` × `height` game pixels large goes, each `size` logical pixels square
+/// with its top left at (`x`, `y`): its top left in device pixels and the device pixels a game
+/// pixel, the nearest whole number (at least one), its middle kept where it was.
+#[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
+fn snap(
+    c: &Canvas,
+    (x, y): (f32, f32),
+    (width, height): (usize, usize),
+    size: f32,
+) -> (f32, f32, f32) {
+    let s = c.scale();
+    let step = (size * s).round().max(1.0);
+    let (w, h) = (width as f32, height as f32);
+    (
+        ((x + w * size / 2.0) * s - w * step / 2.0).round(),
+        ((y + h * size / 2.0) * s - h * step / 2.0).round(),
+        step,
+    )
+}
+
+/// Draws a picture's ink from (`left`, `top`) in device pixels, `step` device pixels a game
+/// pixel.
+fn ink(c: &mut Canvas, picture: &Pixels, (left, top): (f32, f32), step: f32, color: Color) {
     for py in 0..picture.height {
         for px in 0..picture.width {
             if picture.at(px, py) {
                 #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
-                let at = (x + px as f32 * size, y + py as f32 * size);
-                c.rect((at.0, at.1, size, size), 0.0, Some(color), None);
+                let at = (left + px as f32 * step, top + py as f32 * step);
+                c.device_rect((at.0, at.1, step, step), color);
             }
         }
     }
@@ -176,13 +205,16 @@ fn word_width(glyphs: &[Pixels]) -> f32 {
     width * FONT_PIXEL
 }
 
-/// Draws a word in the game's font from (`x`, `y`).
-fn word(c: &mut Canvas, glyphs: &[Pixels], (x, y): (f32, f32), color: Color) {
-    let mut left = x;
+/// Draws a word in the game's font from (`x`, `y`), its letters at the same whole device
+/// pixels.
+fn word(c: &mut Canvas, glyphs: &[Pixels], at: (f32, f32), color: Color) {
+    let width = glyphs.iter().map(|g| g.width).sum();
+    let height = glyphs.iter().map(|g| g.height).max().unwrap_or(0);
+    let (mut left, top, step) = snap(c, at, (width, height), FONT_PIXEL);
     for glyph in glyphs {
-        draw_pixels(c, glyph, (left, y), FONT_PIXEL, color);
+        ink(c, glyph, (left, top), step, color);
         #[allow(clippy::cast_precision_loss, reason = "a glyph's few pixels")]
-        let advance = glyph.width as f32 * FONT_PIXEL;
+        let advance = glyph.width as f32 * step;
         left += advance;
     }
 }
@@ -211,6 +243,25 @@ pub struct Panel {
     pub widgets: Vec<Widget>,
 }
 
+/// The panel's background and its left edge, filling `size` device pixels, `WIDTH` logical
+/// pixels across.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "screen sizes are far below f32's limit"
+)]
+fn backdrop(size: (u32, u32)) -> Canvas {
+    let scale = size.0 as f32 / WIDTH as f32;
+    let mut c = Canvas::with_size(size, scale);
+    c.fill(colors::PANEL);
+    c.rect(
+        (0.0, 0.0, 1.0, size.1 as f32 / scale),
+        0.0,
+        Some(EDGE),
+        None,
+    );
+    c
+}
+
 /// A label's style: small capitals.
 const fn label(color: Color) -> Style {
     Style::new(11.0, color)
@@ -237,13 +288,11 @@ fn line(
 }
 
 impl Panel {
-    /// Draws the panel at `scale` device pixels to a logical one.
+    /// Draws the panel to fill `size` device pixels: its design's width across, at whatever
+    /// scale that is, and its design's height down, or more on a taller window.
     #[must_use]
-    pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
-        let mut c = Canvas::new(WIDTH, HEIGHT, scale);
-        c.fill(colors::PANEL);
-        #[allow(clippy::cast_precision_loss, reason = "the panel's height")]
-        c.rect((0.0, 0.0, 1.0, HEIGHT as f32), 0.0, Some(EDGE), None);
+    pub fn draw(&self, fonts: &mut Fonts, size: (u32, u32)) -> Canvas {
+        let mut c = backdrop(size);
         line(
             &mut c,
             fonts,
@@ -580,13 +629,10 @@ fn span(c: &mut Canvas, fonts: &mut Fonts, words: &str, (x, y): (f32, f32), styl
 }
 
 impl ThisGame {
-    /// Draws the page at `scale` device pixels to a logical one.
+    /// Draws the page to fill `size` device pixels, as the panel is ([`Panel::draw`]).
     #[must_use]
-    pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
-        let mut c = Canvas::new(WIDTH, HEIGHT, scale);
-        c.fill(colors::PANEL);
-        #[allow(clippy::cast_precision_loss, reason = "the panel's height")]
-        c.rect((0.0, 0.0, 1.0, HEIGHT as f32), 0.0, Some(EDGE), None);
+    pub fn draw(&self, fonts: &mut Fonts, size: (u32, u32)) -> Canvas {
+        let mut c = backdrop(size);
         line(
             &mut c,
             fonts,
@@ -666,6 +712,39 @@ mod tests {
             ink: vec![false; side * side],
             color: None,
         }
+    }
+
+    #[test]
+    fn between_whole_scales_a_picture_s_pixels_are_whole_and_even() {
+        // Every other pixel ink, two logical pixels each, at 1.4 device pixels a logical one:
+        // three device pixels each, not 2.8 blurred over the edges.
+        let stripes = Pixels {
+            width: 8,
+            height: 1,
+            ink: (0..8).map(|x| x % 2 == 0).collect(),
+            color: None,
+        };
+        let mut c = Canvas::with_size((40, 10), 1.4);
+        draw_pixels(&mut c, &stripes, (3.3, 1.0), 2.0, colors::TEXT);
+        // Its top at (1 + 1) × 1.4 less half its three device pixels: row 1.
+        let row: Vec<u8> = c
+            .rgba()
+            .chunks_exact(4)
+            .skip(40)
+            .take(40)
+            .map(|p| p[3])
+            .collect();
+        assert!(
+            row.iter().all(|&a| a == 0 || a == 255),
+            "no partial pixels: {row:?}"
+        );
+        let runs: Vec<usize> = row.chunk_by(|a, b| a == b).map(<[u8]>::len).collect();
+        assert!(
+            runs[1..runs.len() - 1].iter().all(|&n| n == 3),
+            "every pixel three wide: {runs:?}"
+        );
+        // Its middle stays where it was: (3.3 + 8) × 1.4, less half its 24 device pixels.
+        assert_eq!(runs[0], 4);
     }
 
     #[test]

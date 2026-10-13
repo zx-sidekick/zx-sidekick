@@ -491,14 +491,13 @@ impl Plan<'_> {
                 if let Some(picture) = picture {
                     // A whole step smaller than the panel's own pixels, where the screen has one:
                     // a device pixel each on a 2x screen, so the room around it shows.
-                    let step = (c.scale() - 1.0).max(1.0) / c.scale();
+                    let step = (c.scale().round() - 1.0).max(1.0) / c.scale();
                     #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
                     let (pw, ph) = (picture.width as f32 * step, picture.height as f32 * step);
-                    let snap = |v: f32| (v * c.scale()).round() / c.scale();
                     crate::panel::draw_pixels(
                         c,
                         picture,
-                        (snap(mx - pw / 2.0), snap(my - ph / 2.0)),
+                        (mx - pw / 2.0, my - ph / 2.0),
                         step,
                         color,
                     );
@@ -521,15 +520,17 @@ pub struct Pin {
     pub label: String,
 }
 
-/// The picture's size, in logical pixels, for drawing pins over it.
-pub const PICTURE: (u32, u32) = (960, 768);
-
-/// Draws pins over the picture (`PICTURE` logical pixels, clear but for the pins): in the
-/// border at the edge each leaves by, side by side where they share one.
+/// Draws pins over a picture `size` logical pixels large, near the edge each leaves by.
+///
+/// The picture is three logical pixels to a Spectrum one, drawn at `scale` device pixels to a
+/// logical one; the canvas is clear but for the pins, side by side where they share an edge.
 #[must_use]
-pub fn pins(pins: &[Pin], fonts: &mut Fonts, scale: u32) -> Canvas {
-    let mut c = Canvas::new(PICTURE.0, PICTURE.1, scale);
+pub fn pins(pins: &[Pin], fonts: &mut Fonts, scale: f32, (width, height): (u32, u32)) -> Canvas {
+    let mut c = Canvas::new(width, height, scale);
+    #[allow(clippy::cast_precision_loss, reason = "a picture's size")]
+    let (width, height) = (width as f32, height as f32);
     let text = Style::new(14.0, PIN_TEXT).weight(Weight::SemiBold);
+    let (w, h) = (48.0, 40.0);
     for edge in [Edge::North, Edge::East, Edge::South, Edge::West] {
         let here: Vec<&Pin> = pins.iter().filter(|p| p.edge == edge).collect();
         #[allow(clippy::cast_precision_loss, reason = "a pin or two")]
@@ -538,12 +539,11 @@ pub fn pins(pins: &[Pin], fonts: &mut Fonts, scale: u32) -> Canvas {
             #[allow(clippy::cast_precision_loss, reason = "a pin or two")]
             let shift = first + i as f32 * 44.0;
             let (x, y) = match edge {
-                Edge::North => (456.0 + shift, 28.0),
-                Edge::South => (456.0 + shift, 700.0),
-                Edge::West => (28.0, 364.0 + shift),
-                Edge::East => (884.0, 364.0 + shift),
+                Edge::North => ((width - w) / 2.0 + shift, INSET),
+                Edge::South => ((width - w) / 2.0 + shift, height - INSET - h),
+                Edge::West => (INSET, (height - h) / 2.0 + shift),
+                Edge::East => (width - INSET - w, (height - h) / 2.0 + shift),
             };
-            let (w, h) = (48.0, 40.0);
             // The arrow points out of the room.
             let shape: [(f32, f32); 5] = match edge {
                 Edge::North => [(0.5, 0.0), (1.0, 0.3), (1.0, 1.0), (0.0, 1.0), (0.0, 0.3)],
@@ -561,3 +561,6 @@ pub fn pins(pins: &[Pin], fonts: &mut Fonts, scale: u32) -> Canvas {
     }
     c
 }
+
+/// How far a pin sits in from the picture's edge, in logical pixels.
+const INSET: f32 = 28.0;

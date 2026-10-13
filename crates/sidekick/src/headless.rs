@@ -1,6 +1,10 @@
 //! Running a machine without a window, and writing its picture as a PNG.
 
-use crate::{compose, keys::key_named, picture::to_rgba};
+use crate::{
+    compose,
+    keys::key_named,
+    picture::{to_rgba, Part},
+};
 use sidekick_core::{Key, Picture, Session};
 use sidekick_ui::{Fonts, PadLabels};
 use std::{fs, path::Path};
@@ -119,7 +123,12 @@ pub(crate) fn run(
         return Ok(());
     };
     let written = match shot {
-        Shot::Picture { scale } => write_png(session.machine().picture(), scale, path),
+        Shot::Picture { scale } => write_png(
+            session.machine().picture(),
+            compose::shown(session),
+            scale,
+            path,
+        ),
         Shot::Window { level, size } => {
             let rgba = compose::window(
                 session,
@@ -156,16 +165,28 @@ pub(crate) fn values(session: &Session) -> String {
     lines.join("\n") + "\n"
 }
 
-/// Writes the picture as a PNG, each Spectrum pixel `scale` × `scale` pixels.
-fn write_png(picture: &Picture, scale: u32, path: &Path) -> std::io::Result<()> {
+/// Writes the `part` of the picture shown as a PNG, each Spectrum pixel `scale` × `scale`
+/// pixels.
+fn write_png(picture: &Picture, part: Part, scale: u32, path: &Path) -> std::io::Result<()> {
     let mut rgba = Vec::new();
     to_rgba(picture, &mut rgba);
-    let (width, height) = (picture.width(), picture.height());
+    let (left, top, width, height) = (
+        part.0 as usize,
+        part.1 as usize,
+        part.2 as usize,
+        part.3 as usize,
+    );
     let k = usize::try_from(scale.max(1)).unwrap_or(1);
-    let mut scaled = Vec::with_capacity(rgba.len() * k * k);
-    for row in rgba.chunks_exact(width * 4) {
+    let mut scaled = Vec::with_capacity(width * height * 4 * k * k);
+    for row in rgba
+        .chunks_exact(picture.width() * 4)
+        .skip(top)
+        .take(height)
+    {
         let line: Vec<u8> = row
             .chunks_exact(4)
+            .skip(left)
+            .take(width)
             .flat_map(|p| std::iter::repeat_n([p[0], p[1], p[2], p[3]], k).flatten())
             .collect();
         for _ in 0..k {

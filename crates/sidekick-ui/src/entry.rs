@@ -55,7 +55,7 @@ impl EntryCard {
     /// Draws the card at `scale` device pixels to a logical one; outside its rounded corners
     /// stays clear.
     #[must_use]
-    pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
+    pub fn draw(&self, fonts: &mut Fonts, scale: f32) -> Canvas {
         let mut c = Canvas::new(WIDTH, HEIGHT, scale);
         #[allow(clippy::cast_precision_loss, reason = "a card's size")]
         let (w, h) = (WIDTH as f32, HEIGHT as f32);

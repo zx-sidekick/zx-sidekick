@@ -2,14 +2,14 @@
 //! the largest whole scale, its sound, and the keyboard.
 
 use crate::{
-    compose::{self, PICTURE},
+    compose,
     entry::{self, Entry, Stroke, Typing},
     games::{self, Game, Playing},
     keys::{spectrum_key, Spectrum},
     menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
-    picture::{placement, to_rgba, Layout},
+    picture::{placement, to_rgba, Layout, FULL, LOGICAL_PIXEL, SCREEN},
     press::{self, Pressed},
     saves::{self, SavePoint, Saves, Unsaved},
     scores,
@@ -30,10 +30,10 @@ use sdl3::{
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
 use sidekick_def::{Package, Role};
 use sidekick_ui::{
-    Canvas, EntryCard, Fonts, LibraryPage, Menu as MenuCard, Note, Offer, PadLabels, Panel,
+    device, Canvas, EntryCard, Fonts, LibraryPage, Menu as MenuCard, Note, Offer, PadLabels, Panel,
     PauseNotice, Pin, PromptButton, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT,
-    ENTRY_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, OFFER_HEIGHT, OFFER_WIDTH, QUESTION_WIDTH,
-    TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    ENTRY_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, OFFER_HEIGHT, OFFER_WIDTH, PAUSE_NOTICE_HEIGHT,
+    PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
     cell::RefCell,
@@ -72,14 +72,15 @@ enum MenuEvent {
 }
 
 /// Draws a card into a texture kept with what it was drawn from, drawing it anew only when
-/// that or the scale changed. Uploaded un-premultiplied, for blending over the picture.
-fn cached<'a, T: Clone + PartialEq>(
+/// that or its scale (or size) changed. Uploaded un-premultiplied, for blending over the
+/// picture.
+fn cached<'a, T: Clone + PartialEq, K: Copy + PartialEq>(
     creator: &'a TextureCreator<WindowContext>,
-    kept: &mut Option<(Texture<'a>, T, u32)>,
+    kept: &mut Option<(Texture<'a>, T, K)>,
     fonts: &mut Fonts,
     what: &T,
-    scale: u32,
-    draw: impl FnOnce(&T, &mut Fonts, u32) -> Canvas,
+    scale: K,
+    draw: impl FnOnce(&T, &mut Fonts, K) -> Canvas,
 ) -> Result<(), String> {
     if kept
         .as_ref()
@@ -195,6 +196,9 @@ struct Gamepads {
     last: Maker,
 }
 
+/// The scale pins are drawn at, and the logical size of the picture they're over.
+type PinsAt = (f32, (u32, u32));
+
 /// What the window draws with.
 struct Output<'a> {
     canvas: WindowCanvas,
@@ -202,21 +206,22 @@ struct Output<'a> {
     picture: Texture<'a>,
     prompt: Option<Texture<'a>>,
     /// The pause notice drawn, and what it was drawn from and at.
-    notice: Option<(Texture<'a>, PauseNotice, u32)>,
-    /// The panel, likewise, and the pins it puts over the picture.
-    panel: Option<(Texture<'a>, Panel, u32)>,
-    pins: Option<(Texture<'a>, Vec<Pin>, u32)>,
+    notice: Option<(Texture<'a>, PauseNotice, f32)>,
+    /// The panel, likewise (at its size), and the pins it puts over the picture (at their
+    /// scale, over a picture of their size).
+    panel: Option<(Texture<'a>, Panel, (u32, u32))>,
+    pins: Option<(Texture<'a>, Vec<Pin>, PinsAt)>,
     /// The panel's page after a game, likewise.
-    this_game: Option<(Texture<'a>, ThisGame, u32)>,
+    this_game: Option<(Texture<'a>, ThisGame, (u32, u32))>,
     /// The text-entry card, likewise.
-    entry: Option<(Texture<'a>, EntryCard, u32)>,
+    entry: Option<(Texture<'a>, EntryCard, f32)>,
     /// The notice, likewise.
-    note: Option<(Texture<'a>, Note, u32)>,
+    note: Option<(Texture<'a>, Note, f32)>,
     /// The offer to continue, likewise.
-    offer: Option<(Texture<'a>, Offer, u32)>,
+    offer: Option<(Texture<'a>, Offer, f32)>,
     /// The guidance menu and its question, likewise.
-    menu: Option<(Texture<'a>, MenuCard, u32)>,
-    question: Option<(Texture<'a>, Question, u32)>,
+    menu: Option<(Texture<'a>, MenuCard, f32)>,
+    question: Option<(Texture<'a>, Question, f32)>,
     sound: Option<AudioStreamOwner>,
     fonts: Fonts,
 }
@@ -267,7 +272,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
     // The textures live as long as the window, which lives as long as the program.
     let creator = Box::leak(Box::new(canvas.texture_creator()));
     let out = Output {
-        picture: new_texture(creator, PICTURE.0, PICTURE.1)?,
+        picture: new_texture(creator, FULL.2, FULL.3)?,
         canvas,
         creator,
         prompt: None,
@@ -517,6 +522,7 @@ impl Screen {
 
     /// Runs the frames due, and draws the screen.
     fn draw(&mut self, out: &mut Output, gamepads: &mut Gamepads) -> Result<(), String> {
+        self.keep_smallest(&mut out.canvas)?;
         out.canvas.set_draw_color(Color::RGB(0, 0, 0));
         out.canvas.clear();
         match self {
@@ -534,17 +540,34 @@ impl Screen {
             Self::Prompt(prompt) => {
                 let page = &prompt.page;
                 show(out, &mut prompt.drawn, |fonts, scale| {
-                    page.draw(fonts, scale)
+                    page.draw(fonts, as_scale(scale))
                 })?;
             }
             Self::Library(library) => {
                 let page = &library.page;
                 show(out, &mut library.drawn, |fonts, scale| {
-                    page.draw(fonts, scale)
+                    page.draw(fonts, as_scale(scale))
                 })?;
             }
         }
         out.canvas.present();
+        Ok(())
+    }
+
+    /// Keeps the window no smaller than a game's layout needs: in window points, the device
+    /// pixels of its smallest layout, so a screen of more pixels to a point shows it larger.
+    /// The pages before a game need no least size.
+    fn keep_smallest(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
+        let least = match self {
+            Self::Play(player) => compose::smallest_for(player.session.definition()),
+            Self::Prompt(_) | Self::Library(_) => (0, 0),
+        };
+        if canvas.window().minimum_size() != least {
+            canvas
+                .window_mut()
+                .set_minimum_size(least.0, least.1)
+                .map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 
@@ -739,7 +762,7 @@ impl Player {
             checked: Instant::now(),
             started: Instant::now(),
             frames_run: 0,
-            rgba: Vec::with_capacity((PICTURE.0 * PICTURE.1 * 4) as usize),
+            rgba: Vec::with_capacity((FULL.2 * FULL.3 * 4) as usize),
             samples: Vec::with_capacity(SAMPLE_RATE / 50 * 2),
         };
         // Started from a save (`--load`) past the title: the kept table goes back in, as
@@ -836,15 +859,16 @@ impl Player {
         }
         to_rgba(self.session.machine().picture(), &mut self.rgba);
         out.picture
-            .update(None::<Rect>, &self.rgba, PICTURE.0 as usize * 4)
+            .update(None::<Rect>, &self.rgba, FULL.2 as usize * 4)
             .map_err(|e| e.to_string())?;
         // Dimmed to 55% while the game is paused, under the notice.
         let dim = if self.paused() { compose::DIMMED } else { 255 };
         out.picture.set_color_mod(dim, dim, dim);
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
+        let part = compose::shown(&self.session);
         out.canvas
-            .copy(&out.picture, None, frect(layout.picture))
+            .copy(&out.picture, frect(part), frect(layout.picture))
             .map_err(|e| e.to_string())?;
         self.draw_panel(out, layout)
     }
@@ -857,7 +881,7 @@ impl Player {
                 &mut out.this_game,
                 &mut out.fonts,
                 page,
-                layout.scale,
+                (at.2, at.3),
                 ThisGame::draw,
             )?;
             if let Some((texture, _, _)) = &out.this_game {
@@ -876,7 +900,7 @@ impl Player {
                     &mut out.panel,
                     &mut out.fonts,
                     &panel,
-                    layout.scale,
+                    (at.2, at.3),
                     Panel::draw,
                 )?;
                 if let Some((texture, _, _)) = &mut out.panel {
@@ -893,13 +917,14 @@ impl Player {
                 }
                 let pins = panel::pins(&panel);
                 if !pins.is_empty() {
+                    let over = compose::logical(compose::shown(&self.session));
                     cached(
                         out.creator,
                         &mut out.pins,
                         &mut out.fonts,
                         &pins,
-                        layout.scale,
-                        |p, f, s| sidekick_ui::pins(p, f, s),
+                        (layout.scale(), over),
+                        |p, f, (scale, over)| sidekick_ui::pins(p, f, scale, over),
                     )?;
                     if let Some((texture, _, _)) = &mut out.pins {
                         // Dimmed with the picture.
@@ -1076,8 +1101,7 @@ impl Player {
         }
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let (px, py, pw, ph) = layout.picture;
-        let scale = layout.scale;
+        let scale = layout.scale();
         let offer = Offer {
             title: self.title.clone(),
             pad: labels,
@@ -1090,8 +1114,8 @@ impl Player {
             scale,
             Offer::draw,
         )?;
-        let (w, h) = (OFFER_WIDTH * scale, OFFER_HEIGHT * scale);
-        let at = (px + (pw - w.min(pw)) / 2, py + (ph - h.min(ph)) / 2, w, h);
+        let size = (device(OFFER_WIDTH, scale), device(OFFER_HEIGHT, scale));
+        let at = compose::centred(layout.picture, size);
         if let Some((texture, _, _)) = &out.offer {
             out.canvas
                 .copy(texture, None, frect(at))
@@ -1206,7 +1230,7 @@ impl Player {
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
         let (px, py, pw, ph) = layout.picture;
-        let scale = layout.scale;
+        let scale = layout.scale();
         cached(
             out.creator,
             &mut out.note,
@@ -1216,15 +1240,15 @@ impl Player {
             Note::draw,
         )?;
         let (w, h) = (
-            note.width(&mut out.fonts) * scale,
-            note.height(&mut out.fonts) * scale,
+            device(note.width(&mut out.fonts), scale),
+            device(note.height(&mut out.fonts), scale),
         );
-        // Placed as on the mockup's picture, three logical pixels to a Spectrum one, whatever
-        // the picture's own scale; a pill of more lines grows upwards from the same foot.
-        let (lw, lh) = (PICTURE.0 * 3, PICTURE.1 * 3);
-        let foot = py + ph * (NOTE_AT.1 + NOTE_HEIGHT) / lh;
+        // Centred, its foot as far above the picture's as on the mockup's picture with its
+        // border; a pill of more lines grows upwards from the same foot.
+        let above = device(FULL.3 * LOGICAL_PIXEL - (NOTE_AT.1 + NOTE_HEIGHT), scale);
+        let foot = (py + ph).saturating_sub(above);
         let at = (
-            (px + pw * NOTE_AT.0 / lw).saturating_sub(w / 2),
+            (px + pw / 2).saturating_sub(w / 2),
             foot.saturating_sub(h),
             w,
             h,
@@ -1295,7 +1319,7 @@ impl Player {
 
     /// Where the picture and, when the game has guidance levels, the panel go.
     fn layout(&self, output: (u32, u32)) -> Layout {
-        compose::layout_for(self.session.definition(), output)
+        compose::layout_for(&self.session, output)
     }
 
     /// Whether the game is in the state with `role`.
@@ -1523,7 +1547,7 @@ impl Player {
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
         let (px, py, pw, _) = layout.picture;
-        let scale = layout.scale;
+        let scale = layout.scale();
         let card = entry.card(labels);
         cached(
             out.creator,
@@ -1533,9 +1557,15 @@ impl Player {
             scale,
             EntryCard::draw,
         )?;
-        let (w, h) = (ENTRY_WIDTH * scale, ENTRY_HEIGHT * scale);
-        // Three logical pixels to a Spectrum pixel, below the 32-pixel border.
-        let at = (px + (pw - w) / 2, py + (32 + row * 8) * 3 * scale, w, h);
+        let (w, h) = (device(ENTRY_WIDTH, scale), device(ENTRY_HEIGHT, scale));
+        // The row's top on the screen, below the border when it's shown.
+        let screen_top = SCREEN.1 - compose::shown(&self.session).1;
+        let at = (
+            px + pw.saturating_sub(w) / 2,
+            py + (screen_top + row * 8) * layout.pixel,
+            w,
+            h,
+        );
         if let Some((texture, _, _)) = &out.entry {
             out.canvas
                 .copy(texture, None, frect(at))
@@ -1560,9 +1590,9 @@ impl Player {
             return Ok(());
         };
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
-        let scale = self.layout(output).scale;
+        let scale = self.layout(output).scale();
         let card = menu.card_at(labels, Some(Instant::now()));
-        let (w, h) = (MENU_WIDTH * scale, card.height() * scale);
+        let (w, h) = (device(MENU_WIDTH, scale), device(card.height(), scale));
         let at = (
             (output.0 - w.min(output.0)) / 2,
             (output.1 - h.min(output.1)) / 2,
@@ -1588,12 +1618,15 @@ impl Player {
         let place = (
             at.0 as f32,
             at.1 as f32,
-            scale as f32,
+            scale,
             output.0 as f32 / window_w.max(1) as f32,
         );
         self.menu_at = Some(place);
         if let Some(question) = menu.question(labels) {
-            let (qw, qh) = (QUESTION_WIDTH * scale, question.height() * scale);
+            let (qw, qh) = (
+                device(QUESTION_WIDTH, scale),
+                device(question.height(), scale),
+            );
             let q = (
                 (output.0 - qw.min(output.0)) / 2,
                 (output.1 - qh.min(output.1)) / 2,
@@ -1624,23 +1657,21 @@ impl Player {
         }
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let scale = layout.scale;
+        let scale = layout.scale();
         let notice = compose::pause_notice(self.session.definition(), labels);
-        if out
-            .notice
-            .as_ref()
-            .is_none_or(|(_, n, s)| *s != scale || *n != notice)
-        {
-            let card = notice.draw(&mut out.fonts, scale);
-            let (w, h) = card.size();
-            let mut texture = new_texture(out.creator, w, h)?;
-            texture
-                .update(None::<Rect>, &card.straight_rgba(), w as usize * 4)
-                .map_err(|e| e.to_string())?;
-            texture.set_blend_mode(BlendMode::Blend);
-            out.notice = Some((texture, notice, scale));
-        }
-        let at = compose::notice_at(layout);
+        cached(
+            out.creator,
+            &mut out.notice,
+            &mut out.fonts,
+            &notice,
+            scale,
+            PauseNotice::draw,
+        )?;
+        let size = (
+            device(PAUSE_NOTICE_WIDTH, scale),
+            device(PAUSE_NOTICE_HEIGHT, scale),
+        );
+        let at = compose::centred(layout.picture, size);
         if let Some((texture, _, _)) = &out.notice {
             out.canvas
                 .copy(texture, None, frect(at))
@@ -1927,6 +1958,12 @@ fn show(
     // Nothing moves on a page; don't spin.
     std::thread::sleep(Duration::from_millis(10));
     Ok(())
+}
+
+/// A whole scale, as the screens take one.
+#[allow(clippy::cast_precision_loss, reason = "a small whole number")]
+const fn as_scale(scale: u32) -> f32 {
+    scale as f32
 }
 
 fn new_texture(
