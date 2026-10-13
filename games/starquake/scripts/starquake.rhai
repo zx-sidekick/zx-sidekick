@@ -606,6 +606,7 @@ fn on_load(mem) {
 
     let cells = [];
     let doors = [];
+    let posts = [];
     for room in 0..512 {
         let out = if room == core_at { core } else { 0 };
         for w in ways[room] {
@@ -650,6 +651,9 @@ fn on_load(mem) {
             let lo = min(d.x, d.x + 6 * way(blocks[room], d));
             doors.push(#{ room: room, at: [lo + 3, d.y] });
         }
+        if room_marks[room].some(|m| m.kind == post()) {
+            posts.push(room);
+        }
     }
     // The whole planet's map cells, as level 6 shows them, made once; and every room's blocking
     // rows in one list, two rows a number, the first in its top 32 bits: 9 a room.
@@ -664,7 +668,14 @@ fn on_load(mem) {
         doors: doors,
         blocks: packed,
         bytes: bytes,
-        graph: #{ base: base, room_of: room_of, ring: ring, steps: steps, booths: booths },
+        graph: #{
+            base: base,
+            room_of: room_of,
+            ring: ring,
+            steps: steps,
+            booths: booths,
+            posts: posts,
+        },
     }
 }
 
@@ -943,10 +954,11 @@ fn heading(from, to) {
 // its room's cell, dashed into or out of a room not walked, a jump to a booth drawn as none.
 // `exit` is the edge it leaves BLOB's room by; `door` the room of the first security door it
 // passes: where the part it enters a room by isn't the part it leaves by (docs/games/starquake.md).
-fn route_of(nodes, how, room_of, rooms, door_rooms) {
+fn route_of(nodes, how, room_of, rooms, door_rooms, post_rooms) {
     let steps = [];
     let exit = ();
     let door = ();
+    let post = ();
     let first = nodes[0];
     let start = room_of[first];
     let left = false;
@@ -959,6 +971,9 @@ fn route_of(nodes, how, room_of, rooms, door_rooms) {
         }
         if door == () && nodes[k - 1] != first && door_rooms.contains(last) {
             door = last;
+        }
+        if post == () && nodes[k - 1] != first && post_rooms.contains(last) {
+            post = last;
         }
         if room < 0 {
             break;
@@ -978,7 +993,7 @@ fn route_of(nodes, how, room_of, rooms, door_rooms) {
             }
         }
     }
-    #{ steps: steps, exit: exit, door: door }
+    #{ steps: steps, exit: exit, door: door, post: post }
 }
 
 // The graph's places from the search's `start` to `end`, through each place's `parent`.
@@ -997,8 +1012,9 @@ fn path(parent, start, end) {
 // places, fewest steps, to the nearest three rooms with a missing piece and, while BLOB carries
 // a piece the core needs, to the core (docs/games/starquake.md). `#{ routes, rings, outlined,
 // route }`: the map's routes, the first to the piece `prev.route` picks of the nearest found;
-// the ring markers, on the core and on the items that answer the first door each route passes,
-// which `outlined` gives each route's colour by its room; and the piece picked.
+// the ring markers, on the core, on the items that answer the first door each route passes,
+// which `outlined` gives each route's colour by its room, and on the key where a route passes a
+// locked door's post; and the piece picked.
 fn guide(mem, prev, level, rooms, carrying, lying, listed) {
     let none = #{ routes: [], rings: [], outlined: #{}, route: 0 };
     let room = mem.value("room");
@@ -1130,6 +1146,7 @@ fn guide(mem, prev, level, rooms, carrying, lying, listed) {
     }
     let room_of = this.graph.room_of;
     let door_rooms = this.doors.map(|d| d.room);
+    let post_rooms = this.graph.posts;
     let chosen = 0;
     if type_of(prev) == "map" && "route" in prev && type_of(prev.route) == "i64" {
         chosen = prev.route;
@@ -1137,7 +1154,14 @@ fn guide(mem, prev, level, rooms, carrying, lying, listed) {
     let ways = [];
     if found.len() > 0 {
         chosen = chosen % found.len();
-        let way = route_of(path(parent, start, found[chosen]), how, room_of, rooms, door_rooms);
+        let way = route_of(
+            path(parent, start, found[chosen]),
+            how,
+            room_of,
+            rooms,
+            door_rooms,
+            post_rooms,
+        );
         way.color = "first";
         way.label = `Item ${chosen + 1}/${found.len()}`;
         ways.push(way);
@@ -1146,7 +1170,14 @@ fn guide(mem, prev, level, rooms, carrying, lying, listed) {
     }
     let rings = [];
     if core_found {
-        let way = route_of(path(parent, start, core_node), how, room_of, rooms, door_rooms);
+        let way = route_of(
+            path(parent, start, core_node),
+            how,
+            room_of,
+            rooms,
+            door_rooms,
+            post_rooms,
+        );
         way.color = "second";
         way.label = "Core";
         ways.push(way);
@@ -1154,7 +1185,8 @@ fn guide(mem, prev, level, rooms, carrying, lying, listed) {
     }
     // The first door each route passes, outlined in its colour, the first route's where both
     // pass one; and the items that would answer its cards not yet answered ringed, with any
-    // card that answers any card.
+    // card that answers any card. A route through a locked door's post rings the key, 16,
+    // unless BLOB carries it.
     let outlined = #{};
     let routes = [];
     for way in ways {
@@ -1176,6 +1208,13 @@ fn guide(mem, prev, level, rooms, carrying, lying, listed) {
                     if open.contains(p) || p == 14 || p == 15 {
                         rings.push(#{ kind: "target", x: item.x, y: item.y, color: way.color });
                     }
+                }
+            }
+        }
+        if way.post != () && !carrying.contains(16) {
+            for item in lying {
+                if item.picture == 16 {
+                    rings.push(#{ kind: "target", x: item.x, y: item.y, color: way.color });
                 }
             }
         }

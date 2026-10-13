@@ -701,6 +701,7 @@ fn inside(cell: &Fact) -> (Spots, Spots) {
 /// The kinds of medium tile the script looks for, by their type's top four bits
 /// (docs/re/starquake.md, "Medium tile types").
 const DOOR_ENTRY: u8 = 0;
+const POST: u8 = 11;
 const BOOTH: u8 = 13;
 const PASSAGE: u8 = 15;
 
@@ -1138,6 +1139,37 @@ fn a_door_on_the_way_is_outlined_and_the_cards_that_answer_it_ringed() {
     };
     assert!(!door.contains_key("outlined"));
     assert!(rings(&s).is_empty());
+}
+
+#[test]
+fn a_locked_door_s_post_on_the_way_rings_the_key() {
+    let mut s = session();
+    routed_planet(&mut s);
+    let mut painter = Painter::new();
+    // Room 100's wall is one cell thick, at column 17, with a post in it whose cells, rows 8
+    // to 10, open the way into the pocket behind.
+    painter.paint(&mut s, 100, |x, y| {
+        x == 17 || (x >= 18 && (!(2..16).contains(&y) || x >= 30))
+    });
+    painter.mark(&mut s, 100, POST, (16, 8));
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    lay(&mut s, 0, 100, 5, Some((24, 8)));
+    lay(&mut s, 1, 120, 16, None);
+    lay(&mut s, 2, 121, 9, None);
+    stand(&mut s, 100, (4, 8));
+    enter(&mut s, "play");
+    s.set_level(5);
+    s.run_frame().expect("a frame");
+    assert_eq!(routes(&s)[0].steps, steps(&["4,6"]), "within BLOB's room");
+    assert_eq!(
+        rings(&s),
+        [(120, "first".to_owned())],
+        "the key, not a card"
+    );
+
+    poke_into(&mut s, "carried", 0, &[16, 3]);
+    s.run_frame().expect("a frame");
+    assert!(rings(&s).is_empty(), "carried: nothing to fetch");
 }
 
 #[test]
