@@ -1,7 +1,7 @@
 //! The real Starquake tape loads and its game starts. Needs the player's tape in `assets/`
 //! (`Starquake.tap.zip` from World of Spectrum); skipped without it, as in CI.
 
-use sidekick_core::{Fact, Kempston, Key, Machine, Model, Script, Session};
+use sidekick_core::{Fact, Kempston, Key, Machine, Model, Read, Script, Session};
 use sidekick_def::{tapes_in, Package, Situation};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -321,34 +321,116 @@ fn list(fact: &Fact) -> &[Fact] {
     }
 }
 
+/// Enters `room` and runs until it's drawn and play goes on.
+fn walk_into(s: &mut Session, room: i64) {
+    enter_room(s, &[("room", room)]);
+    // Entering plays a transition; the room is drawn once play comes back.
+    assert!(until(s, 50, |s| s.state() != Some("play")));
+    assert!(until(s, 200, |s| s.state() == Some("play")));
+    s.run_frame().expect("a frame");
+    assert_eq!(s.script_off(), None);
+}
+
 #[test]
-fn starquake_s_rooms_decoded_from_its_data_have_the_walls_the_screen_shows() {
+fn starquake_s_rooms_decoded_from_its_data_have_the_cells_the_screen_shows() {
     // Given the script from the start, as the program does: its on_load runs once the tape
     // has loaded, and the room data must be in place by then.
     let Some(mut s) = in_play_from(|s| with_script(s, 0)) else {
         return;
     };
-    s.set_level(6);
-    // Room 20 has two-cell gaps on its bottom and left edges with rock behind them: shut.
-    for room in [8, 9, 20, 24, 176, 300, 511] {
-        enter_room(&mut s, &[("room", room)]);
-        // Entering plays a transition; the room is drawn once play comes back.
-        assert!(until(&mut s, 50, |s| s.state() != Some("play")));
-        assert!(until(&mut s, 200, |s| s.state() == Some("play")));
-        s.run_frame().expect("a frame");
-        assert_eq!(s.script_off(), None);
+    for room in [8, 9, 20, 24, 36, 41, 176, 300, 362, 511] {
+        walk_into(&mut s, room);
         let results = s.script_results();
         assert_eq!(results["room"], Fact::Number(room));
-        let map = &results["map"];
-        let cells = list(field(map, "cells"));
-        assert_eq!(cells.len(), 512, "level 6: every room");
-        let at = usize::try_from(room).expect("a room");
+        let Read::Bytes(area) = &s.reading()["play_area"] else {
+            panic!("the play area's attributes");
+        };
+        // A cell blocks when its attribute lacks BRIGHT.
+        let screen: Vec<Fact> = area
+            .chunks(32)
+            .map(|row| {
+                let bits = row.iter().fold(0i64, |bits, &attribute| {
+                    bits << 1 | i64::from(attribute & 0x40 == 0)
+                });
+                Fact::Number(bits)
+            })
+            .collect();
         assert_eq!(
-            field(&cells[at], "walls"),
-            &results["walls"],
-            "room {room}: decoded, and read from the screen"
+            results["blocks"],
+            Fact::List(screen),
+            "room {room}: decoded, and as the game draws it"
         );
     }
+}
+
+/// The map cell of `room` at level 6, every room's.
+fn cell_of(s: &Session, room: usize) -> Fact {
+    let cells = list(field(&s.script_results()["map"], "cells")).to_vec();
+    assert_eq!(cells.len(), 512, "level 6: every room");
+    cells[room].clone()
+}
+
+fn walls_of(cell: &Fact) -> &str {
+    match field(cell, "walls") {
+        Fact::Text(walls) => walls,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// How many wall and door cells are inside a map cell.
+fn inside_of(cell: &Fact) -> (usize, usize) {
+    match cell {
+        Fact::Map(map) => map.get("inside").map_or((0, 0), |inside| {
+            (
+                list(field(inside, "walls")).len(),
+                list(field(inside, "doors")).len(),
+            )
+        }),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn starquake_s_map_shows_the_walls_inside_its_rooms_and_its_doors() {
+    let Some(mut s) = in_play_from(|s| with_script(s, 6)) else {
+        return;
+    };
+    s.run_frame().expect("a frame");
+    assert_eq!(s.script_off(), None);
+    let start = cell_of(&s, 8);
+    assert_eq!(
+        walls_of(&start),
+        "N",
+        "the sky above; open left, right and down"
+    );
+    assert_eq!(inside_of(&start), (0, 0), "the start room is one part");
+    // A block of rock splits room 24; its left edge is shut, ledges filling it all the way
+    // down. A rock pillar splits room 36: one part leads out south, the other east.
+    for room in [24, 36] {
+        let (walls, doors) = inside_of(&cell_of(&s, room));
+        assert!(walls > 0, "room {room} in two parts, a wall between");
+        assert_eq!(doors, 0);
+    }
+    assert!(walls_of(&cell_of(&s, 24)).contains('W'));
+    assert_eq!(walls_of(&cell_of(&s, 36)), "NW");
+    // A pair of wall passages joins rooms 41 and 42.
+    assert!(!walls_of(&cell_of(&s, 41)).contains('E'));
+    assert!(!walls_of(&cell_of(&s, 42)).contains('W'));
+    // The core's room is entered from its left only.
+    assert_eq!(walls_of(&cell_of(&s, 199)), "NES");
+    assert!(!walls_of(&cell_of(&s, 198)).contains('E'));
+    // Room 176's security door, numbered at its place.
+    let (walls, doors) = inside_of(&cell_of(&s, 176));
+    assert!(walls > 0 && doors > 0, "a door in its wall");
+    let markers = list(field(&s.script_results()["map"], "markers")).to_vec();
+    let doors: Vec<&Fact> = markers
+        .iter()
+        .filter(|m| field(m, "kind") == &Fact::Text("door".to_owned()))
+        .collect();
+    assert_eq!(doors.len(), 8, "eight security doors, each numbered");
+    assert!(doors
+        .iter()
+        .all(|d| matches!(field(d, "at"), Fact::List(_))));
 }
 
 #[test]

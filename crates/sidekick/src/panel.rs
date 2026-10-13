@@ -5,8 +5,8 @@ use crate::picture::color;
 use sidekick_core::{Bitmap, Fact, Font, Read, Reading, Session};
 use sidekick_def::{Column, Definition, MarkerShape, Widget, WidgetKind};
 use sidekick_ui::{
-    CardRow, Cell, Chip, Color, Edge, Icon, Look, MapGrid, Marker, MarkerKind, Panel, PanelBody,
-    PanelColumn, PanelWidget, Pin, Pixels, Route, RouteColor,
+    CardRow, Cell, Chip, Color, Edge, Icon, Inside, Look, MapGrid, Marker, MarkerKind, Panel,
+    PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Route, RouteColor,
 };
 use std::collections::BTreeMap;
 
@@ -242,7 +242,27 @@ fn words(fact: Option<&Fact>) -> Option<&str> {
     }
 }
 
-/// The script's map: `{ width, height, cells, markers, routes }`.
+const fn flag(fact: Option<&Fact>) -> bool {
+    matches!(fact, Some(Fact::Flag(true)))
+}
+
+/// A pair of numbers, `[x, y]`.
+fn pair(fact: &Fact) -> Option<(usize, usize)> {
+    match fact {
+        Fact::List(xy) if xy.len() == 2 => Some((number(xy.first())?, number(xy.get(1))?)),
+        _ => None,
+    }
+}
+
+/// A list of `[x, y]` pairs; any that isn't one is left out.
+fn pairs(fact: Option<&Fact>) -> Vec<(usize, usize)> {
+    match fact {
+        Some(Fact::List(items)) => items.iter().filter_map(pair).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The script's map: `{ width, height, inside, cells, markers, routes }`.
 fn map(
     fact: &Fact,
     graphics: &Graphics,
@@ -263,7 +283,13 @@ fn map(
                     .chars()
                     .filter_map(|c| edge(&c.to_string()))
                     .collect(),
-                seen: matches!(get(cell, "seen"), Some(Fact::Flag(true))),
+                seen: flag(get(cell, "seen")),
+                dim: flag(get(cell, "dim")),
+                dashed: flag(get(cell, "dashed")),
+                inside: get(cell, "inside").map_or_else(Inside::default, |inside| Inside {
+                    walls: pairs(get(inside, "walls")),
+                    doors: pairs(get(inside, "doors")),
+                }),
             })
         })
         .collect();
@@ -280,10 +306,16 @@ fn map(
                 MarkerShape::Picture => {
                     MarkerKind::Picture(graphics.picture(get(marker, "picture")))
                 }
+                MarkerShape::Label => MarkerKind::Label(match get(marker, "label")? {
+                    Fact::Text(text) => text.clone(),
+                    Fact::Number(n) => n.to_string(),
+                    _ => return None,
+                }),
             };
             Some(Marker {
                 x: number(get(marker, "x"))?,
                 y: number(get(marker, "y"))?,
+                at: get(marker, "at").and_then(pair),
                 kind,
                 color: marker_color(get(marker, "color")),
             })
@@ -293,15 +325,7 @@ fn map(
         .iter()
         .filter_map(|route| {
             let steps = match get(route, "steps")? {
-                Fact::List(steps) => steps
-                    .iter()
-                    .filter_map(|step| match step {
-                        Fact::List(xy) if xy.len() == 2 => {
-                            Some((number(xy.first())?, number(xy.get(1))?))
-                        }
-                        _ => None,
-                    })
-                    .collect(),
+                Fact::List(steps) => steps.iter().filter_map(pair).collect(),
                 _ => return None,
             };
             Some(Route {
@@ -317,6 +341,7 @@ fn map(
     Some(MapGrid {
         width: number(get(fact, "width"))?,
         height: number(get(fact, "height"))?,
+        inside: get(fact, "inside").and_then(pair),
         cells,
         markers,
         routes,
@@ -853,7 +878,8 @@ markers = { player = "player", item = "picture", door = "square" }
                 x: 1,
                 y: 0,
                 walls: vec![Edge::North, Edge::East],
-                seen: true
+                seen: true,
+                ..Cell::default()
             }]
         );
         assert_eq!(grid.markers.len(), 3, "a kind it doesn't know is left out");
@@ -867,6 +893,7 @@ markers = { player = "player", item = "picture", door = "square" }
             Marker {
                 x: 1,
                 y: 1,
+                at: None,
                 kind: MarkerKind::Picture(Some(pixels(&dot(2)))),
                 color: Some(RouteColor::Second.color()),
             }
@@ -879,6 +906,108 @@ markers = { player = "player", item = "picture", door = "square" }
                 color: RouteColor::Second,
                 label: "core".to_owned()
             }]
+        );
+    }
+
+    #[test]
+    fn a_map_s_cells_carry_what_is_inside_them() {
+        let def = definition(
+            r#"
+[[panel]]
+kind = "map-grid"
+from_level = 1
+source = "script:map"
+markers = { door = "label" }
+"#,
+        );
+        let xy = |x, y| Fact::List(vec![Fact::Number(x), Fact::Number(y)]);
+        let number = |n| Fact::Number(n);
+        let the_map = map(vec![
+            ("width", number(2)),
+            ("height", number(2)),
+            ("inside", xy(8, 4)),
+            (
+                "cells",
+                Fact::List(vec![
+                    map(vec![
+                        ("x", number(0)),
+                        ("y", number(0)),
+                        ("seen", Fact::Flag(true)),
+                        ("dim", Fact::Flag(true)),
+                        (
+                            "inside",
+                            map(vec![
+                                ("walls", Fact::List(vec![xy(3, 0), xy(3, 1), number(5)])),
+                                ("doors", Fact::List(vec![xy(3, 2)])),
+                            ]),
+                        ),
+                    ]),
+                    map(vec![
+                        ("x", number(1)),
+                        ("y", number(1)),
+                        ("dashed", Fact::Flag(true)),
+                    ]),
+                ]),
+            ),
+            (
+                "markers",
+                Fact::List(vec![
+                    map(vec![
+                        ("x", number(0)),
+                        ("y", number(0)),
+                        ("at", xy(3, 2)),
+                        ("kind", Fact::Text("door".to_owned())),
+                        ("label", number(1)),
+                    ]),
+                    at(1, 0, "door"),
+                ]),
+            ),
+        ]);
+        let results = BTreeMap::from([("map".to_owned(), the_map)]);
+        let running = Script {
+            results: &results,
+            off: None,
+            kept: NO_KEPT,
+            chosen: None,
+        };
+        let shown = panel(Some(&def), 1, &reading(), &running, &stand_ins).expect("a panel");
+        let PanelBody::Map(grid) = &shown.widgets[0].body else {
+            panic!("a map: {:?}", shown.widgets[0].body);
+        };
+        assert_eq!(grid.inside, Some((8, 4)));
+        assert_eq!(
+            grid.cells,
+            [
+                Cell {
+                    x: 0,
+                    y: 0,
+                    seen: true,
+                    dim: true,
+                    inside: Inside {
+                        walls: vec![(3, 0), (3, 1)],
+                        doors: vec![(3, 2)],
+                    },
+                    ..Cell::default()
+                },
+                Cell {
+                    x: 1,
+                    y: 1,
+                    dashed: true,
+                    ..Cell::default()
+                },
+            ],
+            "a cell's inside, leaving out what isn't a place"
+        );
+        assert_eq!(
+            grid.markers,
+            [Marker {
+                x: 0,
+                y: 0,
+                at: Some((3, 2)),
+                kind: MarkerKind::Label("1".to_owned()),
+                color: None,
+            }],
+            "a door's number at its place inside the cell; one without a number isn't drawn"
         );
     }
 

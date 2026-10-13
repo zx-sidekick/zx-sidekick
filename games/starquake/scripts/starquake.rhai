@@ -13,31 +13,58 @@ fn picture_count() {
     35
 }
 
-// An edge's blocking cells after a tile draws over it: the cells it draws take its say.
-fn cover(edge, drawn, blocks) {
-    (edge & (-1 ^ drawn)) | blocks
+// A room's size in cells, across and down.
+fn across() {
+    32
 }
 
-// Whether an edge has a way out for BLOB, who is two cells by two: two cells side by side, open
-// in both the edge's own row (or column) and the one next to it. `blocks` holds the cells that
-// block in either, one bit a cell, `width` of them.
-fn opening(blocks, width) {
-    let all = (1 << width) - 1;
-    let open = all ^ (blocks & all);
-    (open & (open >> 1)) != 0
+fn down() {
+    18
 }
 
-// A medium tile's picture, as far as a room's edges need it: along each of its rows and down
-// its columns 0 to 3, 6 and 7, the cells it draws (`d`) and those that block (`b`, an attribute
-// without BRIGHT). Along a row, column c is bit 7 - c; down a column, row r is bit r. The
-// picture's first six bytes say which of its 8 x 6 cells it draws, row by row, the leftmost
-// highest; their attributes are stored before it, the first drawn cell's last.
+// The ways a part of a room leads out, a bit each.
+fn north() {
+    1
+}
+
+fn east() {
+    2
+}
+
+fn south() {
+    4
+}
+
+fn west() {
+    8
+}
+
+// What a medium tile's type says it is, in its top four bits (docs/re/starquake.md, "Medium
+// tile types"): a security door's entry, a locked door's post, a wall passage.
+fn door_entry() {
+    0
+}
+
+fn post() {
+    11
+}
+
+fn passage() {
+    15
+}
+
+// A row's blocking cells after a tile draws over it: the cells it draws take its say.
+fn cover(row, drawn, blocks) {
+    (row & (-1 ^ drawn)) | blocks
+}
+
+// A medium tile's picture as its six rows of eight cells, each `[drawn, blocks]`: the cells it
+// draws, and those that block (an attribute without BRIGHT), column c at bit 7 - c. The
+// picture's first six bytes say which cells it draws, row by row, the leftmost highest; their
+// attributes are stored before it, the first drawn cell's last.
 fn medium(mem, at) {
     let attr = at - 1;
-    let rd = [];
-    let rb = [];
-    let cd = [0, 0, 0, 0, 0, 0, 0, 0];
-    let cb = [0, 0, 0, 0, 0, 0, 0, 0];
+    let rows = [];
     for row in 0..6 {
         let drawn = mem.peek(at + row);
         let blocks = 0;
@@ -51,127 +78,199 @@ fn medium(mem, at) {
                     attr -= 1;
                 }
             }
-            for col in [0, 1, 2, 3, 6, 7] {
-                cd[col] = cd[col] | (((drawn >> (7 - col)) & 1) << row);
-                cb[col] = cb[col] | (((blocks >> (7 - col)) & 1) << row);
+        }
+        rows.push([drawn, blocks]);
+    }
+    rows
+}
+
+// Where a large tile's four medium tiles are drawn within it, in turn.
+fn offsets() {
+    [[4, 3], [0, 3], [4, 0], [0, 0]]
+}
+
+// A large tile as its medium tiles `m` draw it, in turn, later cells over earlier: nine rows
+// (its own six and three below) of twelve columns (its own eight and four beyond, column c at
+// bit 11 - c), each `[drawn, blocks]`.
+fn large(m) {
+    let at = offsets();
+    let rows = [];
+    for row in 0..9 {
+        let d = 0;
+        let b = 0;
+        for k in 0..4 {
+            let r = row - at[k][1];
+            if r >= 0 && r < 6 {
+                let shift = 4 - at[k][0];
+                let drawn = m[k][r][0] << shift;
+                d = d | drawn;
+                b = cover(b, drawn, m[k][r][1] << shift);
             }
         }
-        rd.push(drawn);
-        rb.push(blocks);
+        rows.push([d, b]);
     }
-    #{ rd: rd, rb: rb, cd: cd, cb: cb }
+    rows
 }
 
-// One row of a large tile, twelve columns (its own eight and four beyond, column c at bit
-// 15 - c), as its medium tiles `m` draw it: those three rows down at their row `low` (-1: they
-// don't reach it), then those at the top at their row `high`. As `[drawn, blocks]`.
-fn row_of(m, low, high) {
-    let d = 0;
-    let b = 0;
-    if low >= 0 {
-        d = (m[0].rd[low] << 4) | (m[1].rd[low] << 8);
-        b = cover(m[0].rb[low] << 4, m[1].rd[low] << 8, m[1].rb[low] << 8);
-    }
-    d = d | (m[2].rd[high] << 4) | (m[3].rd[high] << 8);
-    b = cover(b, m[2].rd[high] << 4, m[2].rb[high] << 4);
-    b = cover(b, m[3].rd[high] << 8, m[3].rb[high] << 8);
-    [d, b]
-}
-
-// One column of a large tile, nine rows (its own six and three below, row r at bit r): the
-// medium tiles four across at their column `right` (-1: they don't reach it), those at the left
-// at their column `left`, drawn in turn. As `[drawn, blocks]`.
-fn col_of(m, right, left) {
-    let d = 0;
-    let b = 0;
-    if right >= 0 {
-        d = m[0].cd[right] << 3;
-        b = m[0].cb[right] << 3;
-    }
-    d = d | (m[1].cd[left] << 3);
-    b = cover(b, m[1].cd[left] << 3, m[1].cb[left] << 3);
-    if right >= 0 {
-        d = d | m[2].cd[right];
-        b = cover(b, m[2].cd[right], m[2].cb[right]);
-    }
-    d = d | m[3].cd[left];
-    b = cover(b, m[3].cd[left], m[3].cb[left]);
-    [d, b]
-}
-
-// An edge's two rows across the room, the edge's own in the top 32 bits, the next in the low:
-// a large tile's twelve columns from `row_of`, placed at large tile column `i`, column c of the
-// room at bit 31 - c of its half; what falls past the room is dropped.
-fn across(pair, i) {
-    let shift = 16 - 8 * i;
-    let halves = [0, 0];
-    for k in 0..2 {
-        let bits = if shift >= 0 { pair[k] << shift } else { pair[k] >> -shift };
-        halves[k] = bits & 0xFFFFFFFF;
-    }
-    (halves[0] << 32) | halves[1]
-}
-
-// An edge's two columns down the room, likewise: a large tile's nine rows from `col_of`, placed
-// at large tile row `i`, row r of the room at bit r of its half.
-fn down(pair, i) {
-    ((pair[0] << (6 * i)) & 0x3FFFF) << 32 | ((pair[1] << (6 * i)) & 0x3FFFF)
-}
-
-// Two rows or columns, each `[drawn, blocks]`, as `[drawn pairs, blocks pairs]`.
-fn pairs(first, second) {
-    [[first[0], second[0]], [first[1], second[1]]]
-}
-
-// A large tile's say on a room's edges, at each place it could take on them: its top two rows,
-// its bottom two, its left two columns and its right two, the edge's own first, packed by
-// `across` and `down` (`nd` and `nb`: north, drawn and blocking, by column; and so on); and the
-// places of its doors. Its four medium tiles `m`, of types `kinds`, are drawn at (4, 3), (0, 3),
-// (4, 0) and (0, 0) in turn.
-fn large(m, kinds) {
-    let n = pairs(row_of(m, -1, 0), row_of(m, -1, 1));
-    let s = pairs(row_of(m, 2, 5), row_of(m, 1, 4));
-    let w = pairs(col_of(m, -1, 0), col_of(m, -1, 1));
-    let e = pairs(col_of(m, 3, 7), col_of(m, 2, 6));
-    let tile = #{ nd: [], nb: [], sd: [], sb: [], wd: [], wb: [], ed: [], eb: [], doors: [] };
-    for i in 0..4 {
-        tile.nd.push(across(n[0], i));
-        tile.nb.push(across(n[1], i));
-        tile.sd.push(across(s[0], i));
-        tile.sb.push(across(s[1], i));
-    }
-    for i in 0..3 {
-        tile.wd.push(down(w[0], i));
-        tile.wb.push(down(w[1], i));
-        tile.ed.push(down(e[0], i));
-        tile.eb.push(down(e[1], i));
-    }
-    // A security door: a medium tile whose type has its top four bits clear, the rest its place.
-    let offsets = [[4, 3], [0, 3], [4, 0], [0, 0]];
+// The doors, posts and passages a large tile's medium tiles of types `kinds` put in it:
+// `#{ kind, x, y }`, the type's top four bits and its marker's cell. A type is 0 for a plain
+// tile.
+fn marks(kinds) {
+    let at = offsets();
+    let found = [];
     for k in 0..4 {
         let kind = kinds[k];
-        if kind != 0 && (kind & 0xF0) == 0 {
-            tile.doors.push([offsets[k][0] + (kind & 3), offsets[k][1] + ((kind >> 2) & 3)]);
+        let what = kind >> 4;
+        if kind != 0 && (what == door_entry() || what == post() || what == passage()) {
+            found.push(#{ kind: what, x: at[k][0] + (kind & 3), y: at[k][1] + ((kind >> 2) & 3) });
         }
     }
-    tile
+    found
 }
 
-// The cells of an edge's two rows or columns that block in either, from a packed pair.
-fn either(packed) {
-    ((packed >> 32) & 0xFFFFFFFF) | (packed & 0xFFFFFFFF)
+// Whether the cell at column `x` blocks in a row.
+fn blocks_at(row, x) {
+    x < 0 || x >= across() || ((row >> (31 - x)) & 1) != 0
 }
 
-// Once, after loading: each room's walls and security doors, decoded from the room data the way
-// the game draws a room (docs/re/starquake.md, "The rooms"): 4 x 3 large tiles of 8 x 6 cells,
-// drawn in turn, later cells over earlier ones.
+// A room's cells for `grid`, row by row, from its rows: `bytes` holds each byte's eight cells.
+fn cells(rows, bytes) {
+    let all = [];
+    for row in rows {
+        for k in 0..4 {
+            all += bytes[(row >> (24 - 8 * k)) & 0xFF];
+        }
+    }
+    all
+}
+
+// A row's cells from `x` for `width`, as bits of a row.
+fn span(x, width) {
+    let bits = (1 << width) - 1;
+    let shift = 32 - x - width;
+    if shift >= 0 {
+        (bits << shift) & 0xFFFFFFFF
+    } else {
+        bits >> -shift
+    }
+}
+
+// The group a part is in, once doors join parts.
+fn group(joined, part) {
+    while joined[part] != part {
+        part = joined[part];
+    }
+    part
+}
+
+// Which way an entry or a passage leads: east when the rock is on its right, west otherwise.
+fn way(rows, mark) {
+    if blocks_at(rows[mark.y], mark.x + 2) && blocks_at(rows[mark.y + 1], mark.x + 2) {
+        1
+    } else {
+        -1
+    }
+}
+
+// What's inside a room, as `#{ walls, doors }` of cells `[x, y]`: the blocking cells on the
+// seams between the parts that lead out (`()` when there are none). A part leads out by a way
+// in `ways`, or through a door or a locked door's post to a part that does. A seam's cells in a
+// door's two entry tiles or on a post are the door's (docs/re/starquake.md).
+fn inside(g, shut, rows, ways, room_marks, bytes) {
+    if shut.count < 2 {
+        return ();
+    }
+    let doors = room_marks.filter(|m| m.kind == door_entry());
+    let posts = room_marks.filter(|m| m.kind == post());
+    let door_rows = [];
+    door_rows.pad(down(), 0);
+    // Doors open: a post's cells free, and each door's entry joined to where it puts BLOB.
+    let open = shut;
+    if posts.len() > 0 {
+        let cleared = rows;
+        for p in posts {
+            let col = span((p.x & 0xFC) + 1, 1);
+            for y in p.y..min(p.y + 3, down()) {
+                cleared[y] = cleared[y] & (-1 ^ col);
+                door_rows[y] = door_rows[y] | col;
+            }
+        }
+        open = grid(across(), down(), cells(cleared, bytes)).parts(2, 2);
+    }
+    let joined = [];
+    for part in 0..open.count {
+        joined.push(part);
+    }
+    for d in doors {
+        let other = d.x + 6 * way(rows, d);
+        let a = open.at(d.x, d.y);
+        let b = open.at(other, d.y);
+        if a != () && b != () {
+            joined[group(joined, a)] = group(joined, b);
+        }
+        let tiles = span(min(d.x, other), 8);
+        for y in max(d.y - 1, 0)..min(d.y + 2, down()) {
+            door_rows[y] = door_rows[y] | tiles;
+        }
+    }
+    let groups = [];
+    groups.pad(shut.count, ());
+    if doors.len() + posts.len() == 0 {
+        for part in 0..shut.count {
+            groups[part] = part;
+        }
+    } else {
+        for y in 0..shut.height {
+            for x in 0..shut.width {
+                let part = shut.at(x, y);
+                if part != () && groups[part] == () {
+                    groups[part] = group(joined, open.at(x, y));
+                }
+            }
+        }
+    }
+    let leading = [];
+    for part in 0..shut.count {
+        if ways[part] != 0 {
+            leading.push(groups[part]);
+        }
+    }
+    let sources = [];
+    for part in 0..shut.count {
+        if ways[part] != 0 || leading.contains(groups[part]) {
+            sources.push(part);
+        }
+    }
+    if sources.len() < 2 {
+        return ();
+    }
+    let seam = g.seams(shut, sources);
+    let walls = [];
+    let door_cells = [];
+    for i in 0..seam.len() {
+        if seam[i] {
+            let x = i % across();
+            let y = i / across();
+            if blocks_at(door_rows[y], x) {
+                door_cells.push([x, y]);
+            } else {
+                walls.push([x, y]);
+            }
+        }
+    }
+    #{ walls: walls, doors: door_cells }
+}
+
+// Once, after loading: every room decoded from the room data the way the game draws it
+// (docs/re/starquake.md, "The rooms"), then where BLOB fits in it, the parts those places make,
+// the ways each part leads out, and what's inside each room: its walls and its door.
 fn on_load(mem) {
     let rooms = mem.value("rooms");
     let bigs = mem.value("large_tiles");
     let types = mem.value("tile_types");
     let pictures = mem.value("tile_pictures");
     if rooms == () || bigs == () || types == () || pictures == () {
-        return #{ walls: [], cells: [], doors: [] };
+        return #{ cells: [], doors: [], blocks: [] };
     }
     // Only the medium tiles the large tiles use.
     let mediums = [];
@@ -181,8 +280,9 @@ fn on_load(mem) {
             mediums[id] = medium(mem, pictures[id * 2] + pictures[id * 2 + 1] * 256);
         }
     }
+    // Each large tile's nine rows, `[drawn, blocks]` in turn, 18 numbers a tile in one list.
     let larges = [];
-    let with_doors = [];
+    let tile_marks = [];
     for big in 0..256 {
         let m = [];
         let kinds = [];
@@ -190,65 +290,218 @@ fn on_load(mem) {
             m.push(mediums[id]);
             kinds.push(types[id]);
         }
-        let tile = large(m, kinds);
-        if tile.doors.len() > 0 {
-            with_doors.push(big);
+        for row in large(m) {
+            larges += row;
         }
-        larges.push(tile);
+        tile_marks.push(marks(kinds));
+    }
+    let marked = [];
+    for found in tile_marks {
+        marked.push(found.len() > 0);
+    }
+    let bytes = [];
+    for byte in 0..256 {
+        let eight = [];
+        for col in 0..8 {
+            eight.push(((byte >> (7 - col)) & 1) != 0);
+        }
+        bytes.push(eight);
     }
 
-    let walls = [];
-    let cells = [];
-    let doors = [];
+    // Each room's blocking cells, a row a number, column c at bit 31 - c: its 4 x 3 large tiles
+    // of 8 x 6 cells, drawn left to right, then down, later cells over earlier ones. Then its
+    // places and parts, and its grid where there are two parts or more; the parts of the
+    // places along its edges, top, bottom, left and right; and the marks of its doors, posts
+    // and passages. Done here rather than in functions, which would be handed copies of these
+    // lists.
+    let blocks = [];
+    let grids = [];
+    let parts = [];
+    let edges = [];
+    let room_marks = [];
+    let last_x = across() - 2;
+    let last_y = down() - 2;
     for room in 0..512 {
-        let at = room * 12;
-        // Each edge's two rows or columns, packed as `across` and `down` place them.
-        let north = 0;
-        let south = 0;
-        let west = 0;
-        let east = 0;
-        for i in 0..4 {
-            let top = larges[rooms[at + i]];
-            north = (north & (-1 ^ top.nd[i])) | top.nb[i];
-            let bottom = larges[rooms[at + 8 + i]];
-            south = (south & (-1 ^ bottom.sd[i])) | bottom.sb[i];
-        }
-        for i in 0..3 {
-            let left = larges[rooms[at + i * 4]];
-            west = (west & (-1 ^ left.wd[i])) | left.wb[i];
-            let right = larges[rooms[at + i * 4 + 3]];
-            east = (east & (-1 ^ right.ed[i])) | right.eb[i];
-        }
-        let shut = "";
-        if !opening(either(north), 32) {
-            shut += "N";
-        }
-        if !opening(either(east), 18) {
-            shut += "E";
-        }
-        if !opening(either(south), 32) {
-            shut += "S";
-        }
-        if !opening(either(west), 18) {
-            shut += "W";
-        }
-        walls.push(shut);
-        cells.push(#{ x: room % 16, y: room / 16, walls: shut, seen: true });
-        let places = [];
+        let tiles = rooms.extract(room * 12, 12);
+        let rows = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         for i in 0..12 {
-            let big = rooms[at + i];
-            if with_doors.contains(big) {
-                for place in larges[big].doors {
-                    places.push([(i % 4) * 8 + place[0], (i / 4) * 6 + place[1]]);
+            let at = tiles[i] * 18;
+            let top = (i / 4) * 6;
+            let shift = 20 - (i % 4) * 8;
+            for r in 0..min(9, 18 - top) {
+                let d = larges[at + r * 2];
+                if d != 0 {
+                    let b = larges[at + r * 2 + 1];
+                    if shift >= 0 {
+                        d = d << shift;
+                        b = b << shift;
+                    } else {
+                        d = d >> -shift;
+                        b = b >> -shift;
+                    }
+                    rows[top + r] = ((rows[top + r] & (-1 ^ d)) | b) & 0xFFFFFFFF;
                 }
             }
         }
-        if places.len() > 0 {
-            doors.push(#{ room: room, places: places });
+        let all = [];
+        for row in rows {
+            for k in 0..4 {
+                all += bytes[(row >> (24 - 8 * k)) & 0xFF];
+            }
+        }
+        let g = grid(across(), down(), all);
+        let p = g.parts(2, 2);
+        let top = [];
+        let bottom = [];
+        for x in 0..=last_x {
+            top.push(p.at(x, 0));
+            bottom.push(p.at(x, last_y));
+        }
+        let left = [];
+        let right = [];
+        for y in 0..=last_y {
+            left.push(p.at(0, y));
+            right.push(p.at(last_x, y));
+        }
+        edges.push([top, bottom, left, right]);
+        blocks.push(rows);
+        parts.push(p);
+        grids.push(if p.count >= 2 { g } else { () });
+        let here = [];
+        for i in 0..12 {
+            if !marked[tiles[i]] {
+                continue;
+            }
+            for mark in tile_marks[tiles[i]] {
+                mark.x += (i % 4) * 8;
+                mark.y += (i / 4) * 6;
+                if mark.x < across() - 1 && mark.y < down() - 1 {
+                    here.push(mark);
+                }
+            }
+        }
+        room_marks.push(here);
+    }
+
+    // The ways out of each part: an edge where BLOB fits against it and against the facing
+    // edge of the room beside, at the same place; and a wall passage, toward its rock, into a
+    // room beside that has one too. The core's room is shut in rock all round, and entering it
+    // is the game's own doing: an edge into it is open where BLOB fits against the room beside,
+    // and `core` holds the ways that leaves it open.
+    let ways = [];
+    for room in 0..512 {
+        let none = [];
+        none.pad(parts[room].count, 0);
+        ways.push(none);
+    }
+    let core = 0;
+    let core_at = core_room();
+    for room in 16..512 {
+        let above = room - 16;
+        let tops = edges[room][0];
+        let bottoms = edges[above][1];
+        for x in 0..=last_x {
+            let a = tops[x];
+            let b = bottoms[x];
+            if a != () && (b != () || above == core_at) {
+                ways[room][a] = ways[room][a] | north();
+                core = core | if above == core_at { south() } else { 0 };
+            }
+            if b != () && (a != () || room == core_at) {
+                ways[above][b] = ways[above][b] | south();
+                core = core | if room == core_at { north() } else { 0 };
+            }
         }
     }
-    // The whole planet's map cells, as level 6 shows them, made once.
-    #{ walls: walls, cells: cells, doors: doors }
+    for room in 0..512 {
+        if room % 16 == 0 {
+            continue;
+        }
+        let left = room - 1;
+        let lefts = edges[room][2];
+        let rights = edges[left][3];
+        for y in 0..=last_y {
+            let a = lefts[y];
+            let b = rights[y];
+            if a != () && (b != () || left == core_at) {
+                ways[room][a] = ways[room][a] | west();
+                core = core | if left == core_at { east() } else { 0 };
+            }
+            if b != () && (a != () || room == core_at) {
+                ways[left][b] = ways[left][b] | east();
+                core = core | if room == core_at { west() } else { 0 };
+            }
+        }
+    }
+    for room in 0..512 {
+        for mark in room_marks[room] {
+            if mark.kind == passage() {
+                let part = parts[room].at(mark.x, mark.y);
+                let side = way(blocks[room], mark);
+                let beside = room + side;
+                if part != () && beside / 16 == room / 16 && beside >= 0 && beside < 512 {
+                    if room_marks[beside].some(|m| m.kind == passage()) {
+                        let bit = if side > 0 { east() } else { west() };
+                        ways[room][part] = ways[room][part] | bit;
+                    }
+                }
+            }
+        }
+    }
+
+    let cells = [];
+    let doors = [];
+    for room in 0..512 {
+        let out = if room == core_at { core } else { 0 };
+        for w in ways[room] {
+            out = out | w;
+        }
+        let shut = "";
+        if (out & north()) == 0 {
+            shut += "N";
+        }
+        if (out & east()) == 0 {
+            shut += "E";
+        }
+        if (out & south()) == 0 {
+            shut += "S";
+        }
+        if (out & west()) == 0 {
+            shut += "W";
+        }
+        // Not entered, until the map is drawn for a game.
+        let cell = #{ x: room % 16, y: room / 16, walls: shut, seen: true, dim: true };
+        if grids[room] != () {
+            let inner = inside(
+                grids[room],
+                parts[room],
+                blocks[room],
+                ways[room],
+                room_marks[room],
+                bytes,
+            );
+            if inner != () {
+                cell.inside = inner;
+            }
+        }
+        cells.push(cell);
+        let entries = room_marks[room].filter(|m| m.kind == door_entry());
+        if entries.len() > 0 {
+            // The door's number sits in the middle of its two entries' tiles, over the door.
+            let d = entries[0];
+            let lo = min(d.x, d.x + 6 * way(blocks[room], d));
+            doors.push(#{ room: room, at: [lo + 3, d.y] });
+        }
+    }
+    // The whole planet's map cells, as level 6 shows them, made once; and every room's blocking
+    // rows in one list, two rows a number, the first in its top 32 bits: 9 a room.
+    let packed = [];
+    for rows in blocks {
+        for k in 0..9 {
+            packed.push((rows[2 * k] << 32) | rows[2 * k + 1]);
+        }
+    }
+    #{ cells: cells, doors: doors, blocks: packed }
 }
 
 // The pictures BLOB carries.
@@ -363,66 +616,52 @@ fn every_door(mem, loaded, met) {
     all
 }
 
-// The doors for the panel, numbered in order, each card answered when BLOB carries it.
-fn doors(met, carrying) {
-    let rows = [];
+// The doors listed, numbered in order: each door's room and number.
+fn numbered(listed) {
+    let doors = [];
     let number = 1;
-    for door in met {
+    for door in listed {
+        doors.push(#{ room: door.room, label: number, cards: door.cards });
+        number += 1;
+    }
+    doors
+}
+
+// The doors for the panel, by number, each card answered when BLOB carries it.
+fn doors(listed, carrying) {
+    let rows = [];
+    for door in listed {
         let cards = [];
         for card in door.cards {
             cards.push(#{ picture: card, answered: carrying.contains(card) });
         }
-        rows.push(#{ label: number, cards: cards });
-        number += 1;
+        rows.push(#{ label: door.label, cards: cards });
     }
     rows
 }
 
-// The edges of the room on screen without a way out for BLOB, by the same rule as the decoded
-// rooms': some of N, E, S and W. A cell blocks when its attribute lacks BRIGHT.
-fn walls(mem) {
-    let area = mem.value("play_area");
-    let across = [0, 0, 0, 0];
-    let rows = [0, 1, 17, 16];
-    for k in 0..4 {
-        for col in 0..32 {
-            if (area[rows[k] * 32 + col] & 0x40) == 0 {
-                across[k] = across[k] | (1 << (31 - col));
-            }
-        }
+// The room on screen's blocking cells as decoded from the room data, a row a number, column c
+// at bit 31 - c: to check against the cells the game draws.
+fn decoded(mem, loaded) {
+    let room = mem.value("room");
+    if room == () || room < 0 || (room + 1) * 9 > loaded.blocks.len() {
+        return [];
     }
-    let down = [0, 0, 0, 0];
-    let cols = [0, 1, 31, 30];
-    for k in 0..4 {
-        for row in 0..18 {
-            if (area[row * 32 + cols[k]] & 0x40) == 0 {
-                down[k] = down[k] | (1 << row);
-            }
-        }
+    let rows = [];
+    for pair in loaded.blocks.extract(room * 9, 9) {
+        rows.push((pair >> 32) & 0xFFFFFFFF);
+        rows.push(pair & 0xFFFFFFFF);
     }
-    let shut = "";
-    if !opening(across[0] | across[1], 32) {
-        shut += "N";
-    }
-    if !opening(down[2] | down[3], 18) {
-        shut += "E";
-    }
-    if !opening(across[2] | across[3], 32) {
-        shut += "S";
-    }
-    if !opening(down[0] | down[1], 18) {
-        shut += "W";
-    }
-    shut
+    rows
 }
 
-// The rooms walked this game, by room number as text, each with its walls as decoded: those
-// whose bit is clear in the game's own set of rooms not yet visited, a bit a room, the first
-// room the top bit of the first byte (docs/re/starquake.md).
+// The rooms walked this game, by room number as text, each with its room number: those whose
+// bit is clear in the game's own set of rooms not yet visited, a bit a room, the first room the
+// top bit of the first byte (docs/re/starquake.md).
 fn rooms_walked(mem, loaded) {
     let unvisited = mem.value("visited");
     let rooms = #{};
-    if unvisited == () || loaded.walls.len() != 512 {
+    if unvisited == () || loaded.cells.len() != 512 {
         return rooms;
     }
     for byte in 0..64 {
@@ -431,7 +670,7 @@ fn rooms_walked(mem, loaded) {
             for bit in 0..8 {
                 if (bits & (0x80 >> bit)) == 0 {
                     let room = byte * 8 + bit;
-                    rooms[`${room}`] = loaded.walls[room];
+                    rooms[`${room}`] = room;
                 }
             }
         }
@@ -486,17 +725,23 @@ fn items(mem, carrying) {
     lying
 }
 
-// The map: the rooms walked, or at level 6 every room, with their walls; the teleports and
-// doors in them; from level 3 the items in rooms walked, from level 4 in every room; BLOB's room.
-fn map(mem, loaded, kept, rooms, level, carrying) {
+// The map: the rooms walked with their walls and what's inside them, or at level 6 every room,
+// those not entered dimmer; the teleports in them, and the doors listed, each with its number;
+// from level 3 the items in rooms walked, from level 4 in every room, a room not walked that
+// holds a needed piece outlined; BLOB's room.
+fn map(mem, loaded, rooms, level, carrying, listed) {
     let everything = level >= 6 && loaded.cells.len() == 512;
     let cells = [];
     if everything {
         cells = loaded.cells;
+        for room in rooms.values() {
+            cells[room].dim = false;
+        }
     } else {
-        for key in rooms.keys() {
-            let room = parse_int(key);
-            cells.push(#{ x: room % 16, y: room / 16, walls: rooms[key], seen: true });
+        for room in rooms.values() {
+            let cell = loaded.cells[room];
+            cell.dim = false;
+            cells.push(cell);
         }
     }
     let markers = [];
@@ -505,13 +750,25 @@ fn map(mem, loaded, kept, rooms, level, carrying) {
             markers.push(#{ kind: "teleport", x: teleport.room % 16, y: teleport.room / 16 });
         }
     }
-    let doors = if everything { loaded.doors } else { doors_met(mem, kept) };
-    for door in doors {
-        markers.push(#{ kind: "door", x: door.room % 16, y: door.room / 16 });
+    for door in listed {
+        let mark = #{ kind: "door", x: door.room % 16, y: door.room / 16, label: door.label };
+        for found in loaded.doors {
+            if found.room == door.room {
+                mark.at = found.at;
+            }
+        }
+        markers.push(mark);
     }
     if level >= 3 {
+        let outlined = [];
         for item in items(mem, carrying) {
-            if level >= 4 || `${item.room}` in rooms {
+            let key = `${item.room}`;
+            if level >= 4 || key in rooms {
+                let away = !everything && !(key in rooms);
+                if item.kind == "piece" && away && !outlined.contains(item.room) {
+                    outlined.push(item.room);
+                    cells.push(#{ x: item.x, y: item.y, seen: false, dashed: true });
+                }
                 item.remove("room");
                 markers.push(item);
             }
@@ -519,7 +776,7 @@ fn map(mem, loaded, kept, rooms, level, carrying) {
     }
     let here = mem.value("room");
     markers.push(#{ kind: "player", x: here % 16, y: here / 16 });
-    #{ width: 16, height: 32, cells: cells, markers: markers, routes: [] }
+    #{ width: 16, height: 32, inside: [32, 18], cells: cells, markers: markers, routes: [] }
 }
 
 // At each sync point: the panel's data, and codes to keep.
@@ -536,19 +793,19 @@ fn on_frame(mem, loaded, prev, kept, level) {
     }
     let rooms = rooms_walked(mem, loaded);
     let met = doors_met(mem, kept);
-    let listed = if level >= 6 && "doors" in loaded {
+    let listed = numbered(if level >= 6 && "doors" in loaded {
         every_door(mem, loaded, met)
     } else {
         met
-    };
+    });
     #{
         core: core(mem, carrying),
         teleports: teleports(mem, kept, level),
         doors: doors(listed, carrying),
-        map: map(mem, loaded, kept, rooms, level, carrying),
+        map: map(mem, loaded, rooms, level, carrying, listed),
         kept: keep,
         room: mem.value("room"),
-        walls: walls(mem),
+        blocks: decoded(mem, loaded),
     }
 }
 

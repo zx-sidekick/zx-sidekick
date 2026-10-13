@@ -313,7 +313,7 @@ impl Panel {
             let bottom = if let Body::Map(map) = &widget.body {
                 let cell = map.cell_size((RIGHT - LEFT, HEIGHT_F - 56.0 - top));
                 map.legend(c, fonts, (reach + SPACING, top - 41.0));
-                map.draw(c, (LEFT, top), cell)
+                map.draw(c, fonts, (LEFT, top), cell)
             } else {
                 Self::widget(c, fonts, widget, (x, top), align)
             };
