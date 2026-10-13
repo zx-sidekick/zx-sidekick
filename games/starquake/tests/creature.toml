@@ -1,0 +1,6 @@
+# A new game with BLOB in a creature's path (room 478), and No harm on: without it, the
+# creature's touch drains his energy, and an empty bar costs a life.
+room = 478
+blob_x = 128
+blob_y = 63
+cheats = ["no-harm"]

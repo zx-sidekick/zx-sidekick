@@ -278,6 +278,83 @@ fn no_harm_keeps_blob_s_lives_against_deadly_scenery() {
     assert_eq!(lives_lost_walking(&mut s, 3600), 0, "with the switch, none");
 }
 
+/// One of Starquake's crafted situations, from `games/starquake/tests/`.
+fn situation(name: &str) -> Situation {
+    let text = std::fs::read_to_string(repo().join(format!("games/starquake/tests/{name}.toml")))
+        .expect("the situation");
+    Situation::from_toml(&text).expect("it parses")
+}
+
+/// Enters a situation's room, with its values, and runs until play goes on there.
+fn enter_situation(s: &mut Session, situation: &Situation) {
+    let values: Vec<(&str, i64)> = situation
+        .values
+        .iter()
+        .map(|(name, &number)| (name.as_str(), number))
+        .collect();
+    enter_room(s, &values);
+    assert!(until(s, 50, |s| s.state() != Some("play")));
+    assert!(until(s, 200, |s| s.state() == Some("play")));
+}
+
+/// Lives lost, and the most energy lost, while BLOB stands still for `frames` frames.
+fn harm_standing_still(s: &mut Session, frames: usize) -> (i64, i64) {
+    let number = |s: &Session, name: &str| s.reading()[name].number().expect(name);
+    let (lives, energy) = (number(s, "lives"), number(s, "energy"));
+    let (mut lost, mut most_drained) = (0, 0);
+    let mut before = lives;
+    for _ in 0..frames {
+        s.run_frame().expect("a frame");
+        let now = number(s, "lives");
+        lost += (before - now).max(0);
+        before = now;
+        most_drained = most_drained.max(energy - number(s, "energy"));
+    }
+    (lost, most_drained)
+}
+
+/// In a crafted situation with No harm among its switches, standing still costs BLOB lives
+/// without its switches; with them he keeps his lives, and his energy only runs down with time.
+fn no_harm_keeps_lives_and_energy_in(name: &str) {
+    let Some(base) = on_the_joystick(50) else {
+        return;
+    };
+    let situation = situation(name);
+    assert!(situation.cheats.iter().any(|id| id == "no-harm"));
+    // Long enough for the creature to reach BLOB whatever the game's seed, which the title's
+    // timing decides.
+    let frames = 3000;
+
+    let mut without = base.clone();
+    enter_situation(&mut without, &situation);
+    let (lost, _) = harm_standing_still(&mut without, frames);
+    assert!(lost > 0, "{name}: without No harm, a life goes");
+
+    let mut with = base;
+    for id in &situation.cheats {
+        with.switch(id, true).expect("the switch goes on");
+    }
+    enter_situation(&mut with, &situation);
+    let (lost, drained) = harm_standing_still(&mut with, frames);
+    assert_eq!(lost, 0, "{name}: with No harm, no life goes");
+    // Time alone takes 4 energy every 120 frames (docs/re/starquake.md).
+    let by_time = 4 * (i64::try_from(frames).expect("a few frames") / 120 + 1);
+    assert!(
+        drained <= by_time,
+        "{name}: with No harm, energy runs down with time only: {drained} > {by_time}"
+    );
+}
+
+#[test]
+fn no_harm_keeps_blob_s_lives_and_energy_in_a_zapper() {
+    no_harm_keeps_lives_and_energy_in("zapper");
+}
+
+#[test]
+fn no_harm_keeps_blob_s_lives_and_energy_against_a_creature_s_touch() {
+    no_harm_keeps_lives_and_energy_in("creature");
+}
+
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
