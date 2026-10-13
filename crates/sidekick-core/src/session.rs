@@ -81,6 +81,8 @@ pub struct Session {
     definition: Option<Definition>,
     reading: Reading,
     state: Option<String>,
+    /// Frames run since one last matched a state.
+    unmatched: u32,
     /// Held on the loading screen, until released.
     holding: bool,
     /// The training switches on, by id.
@@ -160,6 +162,7 @@ impl Session {
             definition,
             reading: Reading::new(),
             state: None,
+            unmatched: 0,
             holding: false,
             switches: BTreeSet::new(),
             level: 0,
@@ -246,6 +249,11 @@ impl Session {
     /// kept lists filled.
     fn end_frame(&mut self) {
         self.state = self.decide();
+        self.unmatched = if self.state.is_some() {
+            0
+        } else {
+            self.unmatched.saturating_add(1)
+        };
         self.track_games();
         self.run_script();
         self.keep_from_values();
@@ -802,6 +810,7 @@ impl Session {
         self.record = record;
         // The game the save was taken in goes on, not a new one, in the state it was in.
         self.state.clone_from(&progress.last_known);
+        self.unmatched = 0;
         self.progress = progress;
         self.next.loaded = false;
         self.holding = false;
@@ -937,6 +946,13 @@ impl Session {
     #[must_use]
     pub fn state(&self) -> Option<&str> {
         self.state.as_deref()
+    }
+
+    /// Frames run since one last matched a state: how long ago the game was last seen in the
+    /// state it was last known in.
+    #[must_use]
+    pub const fn frames_unmatched(&self) -> u32 {
+        self.unmatched
     }
 
     /// The first state that matches the last frame.

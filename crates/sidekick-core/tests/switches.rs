@@ -300,3 +300,20 @@ fn a_state_s_set_is_written_while_the_game_is_in_it() {
     frame(&mut s);
     assert_eq!(s.machine().peek(FREE), 3, "in play: left alone");
 }
+
+#[test]
+fn frames_that_match_no_state_are_counted_from_the_last_that_did() {
+    let mut s = session();
+    poke(&mut s, FREE + 2, &[1]);
+    frame(&mut s);
+    assert_eq!(s.frames_unmatched(), 0, "on the title");
+    poke(&mut s, FREE + 2, &[0]);
+    for _ in 0..3 {
+        frame(&mut s);
+    }
+    assert_eq!(s.frames_unmatched(), 3);
+    assert_eq!(s.progress().last_known.as_deref(), Some("title"));
+    poke(&mut s, FREE + 2, &[1]);
+    frame(&mut s);
+    assert_eq!(s.frames_unmatched(), 0, "the title again");
+}

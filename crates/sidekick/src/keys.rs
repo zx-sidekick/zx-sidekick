@@ -68,8 +68,9 @@ pub(crate) const fn spectrum_key(scancode: Scancode) -> Option<Spectrum> {
 }
 
 /// The pad part a key the Spectrum doesn't have plays as: the arrows are the D-pad, and the
-/// right Control and Alt (Option) the fire button (`west`), so they do what the definition
-/// maps those to, as a plugged-in pad does.
+/// right Control, the right Alt (Option) and `/` the fire button (`west`), so they do what the
+/// definition maps those to, as a plugged-in pad does. `/` is for a Mac, whose apps may take a
+/// modifier tapped twice for a shortcut of their own, whatever window has focus.
 #[must_use]
 pub(crate) const fn pad_part(scancode: Scancode) -> Option<Part> {
     match scancode {
@@ -77,7 +78,7 @@ pub(crate) const fn pad_part(scancode: Scancode) -> Option<Part> {
         Scancode::Down => Some(Part::DPad(Way::Down)),
         Scancode::Left => Some(Part::DPad(Way::Left)),
         Scancode::Right => Some(Part::DPad(Way::Right)),
-        Scancode::RCtrl | Scancode::RAlt => Some(Part::West),
+        Scancode::RCtrl | Scancode::RAlt | Scancode::Slash => Some(Part::West),
         _ => None,
     }
 }
@@ -172,11 +173,12 @@ mod tests {
     }
 
     #[test]
-    fn the_arrows_and_the_right_ctrl_and_option_play_as_a_pad() {
+    fn the_arrows_the_right_ctrl_and_option_and_the_slash_play_as_a_pad() {
         assert_eq!(pad_part(Scancode::Left), Some(Part::DPad(Way::Left)));
         assert_eq!(pad_part(Scancode::Up), Some(Part::DPad(Way::Up)));
         assert_eq!(pad_part(Scancode::RCtrl), Some(Part::West));
         assert_eq!(pad_part(Scancode::RAlt), Some(Part::West));
+        assert_eq!(pad_part(Scancode::Slash), Some(Part::West));
         assert_eq!(pad_part(Scancode::LCtrl), None, "SYMBOL SHIFT");
         assert_eq!(pad_part(Scancode::Q), None);
         for key in [
@@ -186,6 +188,7 @@ mod tests {
             Scancode::Down,
             Scancode::RCtrl,
             Scancode::RAlt,
+            Scancode::Slash,
         ] {
             assert!(
                 spectrum_key(key).is_none(),
