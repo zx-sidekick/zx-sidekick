@@ -3,8 +3,10 @@
 use crate::{Definition, Problem};
 use std::collections::BTreeMap;
 
-/// A crafted situation: `name = value` lines for the definition's writable values,
-/// `cheats = [..]` for training switches, and `kept.<list> = [..]` for kept-list entries.
+/// A crafted situation: what differs from a new game.
+///
+/// `name = value` lines for the definition's writable values, `cheats = [..]` for training
+/// switches, `kept.<list> = [..]` for kept-list entries, and `level = N` for the guidance level.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Situation {
     /// The values to write, by name.
@@ -13,13 +15,16 @@ pub struct Situation {
     pub cheats: Vec<String>,
     /// The entries to add to kept lists, by list.
     pub kept: BTreeMap<String, Vec<String>>,
+    /// The guidance level to play at, if it says.
+    pub level: Option<u8>,
 }
 
 impl Situation {
     /// Reads a crafted situation's TOML.
     ///
     /// # Errors
-    /// If it isn't TOML, or a line isn't a whole number, a list of switches, or kept lists.
+    /// If it isn't TOML, or a line isn't a whole number, a list of switches, kept lists, or a
+    /// level from 0 to 255.
     pub fn from_toml(text: &str) -> Result<Self, String> {
         let table: toml::Table = text.parse().map_err(|e: toml::de::Error| e.to_string())?;
         let mut situation = Self::default();
@@ -35,6 +40,10 @@ impl Situation {
                         situation.kept.insert(list, words(&path, entries)?);
                     }
                 }
+                ("level", toml::Value::Integer(level)) => {
+                    situation.level =
+                        Some(u8::try_from(level).map_err(|_| "level: 0 to 255".to_owned())?);
+                }
                 ("cheats" | "kept", _) => {
                     return Err(format!("{name}: a list (cheats) or lists (kept.<list>)"));
                 }
@@ -47,8 +56,8 @@ impl Situation {
         Ok(situation)
     }
 
-    /// What's wrong with it for `def`: names it doesn't know, values not writable, switches
-    /// and lists it doesn't have, or no `[situations]` to enter play with.
+    /// What's wrong with it for `def`: names it doesn't know, values not writable, switches,
+    /// lists and guidance levels it doesn't have, or no `[situations]` to enter play with.
     #[must_use]
     pub fn check(&self, def: &Definition) -> Vec<Problem> {
         let mut problems = Vec::new();
@@ -87,6 +96,15 @@ impl Situation {
             if !def.persist.contains_key(list) {
                 report(format!("kept.{list}"), "no such kept list");
             }
+        }
+        let levels = def.guidance.as_ref().map_or(0, |g| g.levels.len());
+        if let Some(level) = self.level.filter(|&l| l > 0 && usize::from(l) >= levels) {
+            let message = if levels == 0 {
+                "the definition has no guidance levels".to_owned()
+            } else {
+                format!("no level {level}: the definition has 0 to {}", levels - 1)
+            };
+            report("level".to_owned(), &message);
         }
         problems
     }
@@ -169,5 +187,38 @@ start = ["SPACE", "0"]
         assert_eq!(paths, ["room", "score", "cheats.fly", "kept.maps"]);
         assert!(Situation::from_toml("lives = \"many\"\n").is_err());
         assert!(Situation::from_toml("cheats = 3\n").is_err());
+    }
+
+    #[test]
+    fn a_level_is_one_the_definition_has() {
+        let guided = format!(
+            "{DEFINITION}[guidance]\nlevels = [{{ name = \"Off\", description = \"None.\" }}, \
+             {{ name = \"Some\", description = \"Some.\" }}]\n"
+        );
+        let def = Definition::from_toml(&guided).unwrap();
+        let at = |text: &str| Situation::from_toml(text).unwrap();
+        assert_eq!(at("level = 1\n").level, Some(1));
+        assert_eq!(at("lives = 9\n").level, None, "left as it is");
+        assert_eq!(at("level = 1\n").check(&def), []);
+        let problems: Vec<String> = at("level = 2\n")
+            .check(&def)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(problems, ["level: no level 2: the definition has 0 to 1"]);
+        let plain = Definition::from_toml(DEFINITION).unwrap();
+        assert_eq!(
+            at("level = 0\n").check(&plain),
+            [],
+            "level 0 is no guidance"
+        );
+        let problems: Vec<String> = at("level = 1\n")
+            .check(&plain)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(problems, ["level: the definition has no guidance levels"]);
+        assert!(Situation::from_toml("level = 300\n").is_err());
+        assert!(Situation::from_toml("level = -1\n").is_err());
     }
 }
