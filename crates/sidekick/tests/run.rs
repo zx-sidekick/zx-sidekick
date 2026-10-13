@@ -394,3 +394,44 @@ fn bad_options_are_refused() {
         assert_ne!(status, 0, "{args:?}");
     }
 }
+
+/// The size of the picture `sidekick run` writes of the real Starquake after `frames` frames,
+/// SPACE pressed at the loading screen; `None` without the player's tape in `assets/`.
+#[allow(clippy::print_stderr, reason = "a skipped test says why")]
+fn starquake_picture_after(frames: &str) -> Option<(u32, u32)> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let zip = root.join("assets/Starquake.tap.zip");
+    if !zip.exists() {
+        eprintln!("skipped: no {} (the player's own tape)", zip.display());
+        return None;
+    }
+    let dir = TempDir::new().expect("a folder");
+    let shot = dir.path().join("shot.png");
+    let output = Command::new(env!("CARGO_BIN_EXE_sidekick"))
+        .env("ZX_SIDEKICK_DATA", dir.path())
+        .arg("run")
+        .arg(&zip)
+        .arg("--games")
+        .arg(root.join("games"))
+        .args(["--frames", frames, "--key", "SPACE@300", "--screenshot"])
+        .arg(&shot)
+        .output()
+        .expect("sidekick runs");
+    assert!(output.status.success(), "{output:?}");
+    let (width, height, _) = read_png(&shot);
+    Some((width, height))
+}
+
+#[test]
+fn starquake_s_loading_screen_keeps_its_border() {
+    if let Some(size) = starquake_picture_after("300") {
+        assert_eq!(size, (320, 256), "waiting for a key, with its border");
+    }
+}
+
+#[test]
+fn starquake_s_game_goes_without_its_border() {
+    if let Some(size) = starquake_picture_after("1500") {
+        assert_eq!(size, (256, 192), "loaded: the screen alone");
+    }
+}
