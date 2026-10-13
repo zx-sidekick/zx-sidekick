@@ -4,7 +4,8 @@ description: >
   Use whenever a ZX Sidekick pull request should be merged or landed: "merge
   #NN", "land this PR", "merge the ready PRs", or a board pass finding a PR
   that carries `ready to merge`. Runs this repo's merge checks: the
-  `ready to merge` label (the maintainer's approval; NEVER merge without it),
+  `ready to merge` label (the maintainer's approval, or their yes to a test
+  with `test-prs`; NEVER merge without it),
   green required checks, every review thread resolved, a title that still
   describes the diff, and a local rebase if behind, then squash-merges.
   Dependabot PRs are not merged here: a workflow auto-merges them. Trigger for

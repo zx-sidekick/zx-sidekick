@@ -226,8 +226,8 @@ the maintainer's replies are part of the review.
 - **A mockup in the ticket?** Its image must reach `main` in this PR, and its
   embed is linked by commit too.
 - `gh pr ready <n>`, watch CI green, then **STOP. Never merge.** The
-  `ready to merge` label is the maintainer's; `merge-pr` lands it once they
-  add it.
+  `ready to merge` label comes from the maintainer, or from their yes to a
+  hands-on test (`test-prs`); `merge-pr` lands it then.
 - **Re-read the ticket's plan before handing over.** Every box this PR covers
   is ticked. If any box is still open, including one that's the maintainer's,
   the PR body must say `Part of #NN`, not `Closes #NN`; fix it now.
