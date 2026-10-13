@@ -28,6 +28,8 @@ sync = 0xA523
 # Its own loader already waits for a key on the loading screen (docs/re/starquake.md).
 hold_loading_screen = false
 joystick = "kempston"
+# It draws nothing in the border, which is one plain colour throughout (docs/re/starquake.md).
+border = "none"
 
 # States, checked in this order; the first that matches is the game's state.
 

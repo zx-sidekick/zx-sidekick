@@ -4,28 +4,116 @@
 
 use crate::{
     panel,
-    picture::{layout, to_rgba, Layout},
+    picture::{layout, smallest, to_rgba, Layout, Part, FULL, LOGICAL_PIXEL, SCREEN},
 };
 use sidekick_core::Session;
-use sidekick_def::{Definition, Role};
+use sidekick_def::{Border, Definition, Role};
 use sidekick_ui::{
-    Canvas, Face, Fonts, NoticeHint, PadLabels, PadMark, PauseNotice, PAUSE_NOTICE_HEIGHT,
+    device, Canvas, Face, Fonts, NoticeHint, PadLabels, PadMark, PauseNotice, PAUSE_NOTICE_HEIGHT,
     PAUSE_NOTICE_WIDTH,
 };
-
-/// The picture's size: the screen with 32 pixels of border all round.
-pub(crate) const PICTURE: (u32, u32) = (320, 256);
 
 /// How bright the picture is, out of 255, under the pause notice or the guidance menu.
 pub(crate) const DIMMED: u8 = 140;
 
+/// Whether the game has guidance levels, and so the panel.
+fn has_panel(definition: Option<&Definition>) -> bool {
+    definition
+        .and_then(|d| d.guidance.as_ref())
+        .is_some_and(|g| !g.levels.is_empty())
+}
+
+/// Whether the game's definition leaves the border out.
+fn borderless(definition: Option<&Definition>) -> bool {
+    definition
+        .and_then(|d| d.run.as_ref())
+        .is_some_and(|r| r.border == Border::None)
+}
+
+/// The part of the machine's picture shown: the screen alone for a game whose definition
+/// leaves the border out, once its tape has loaded; all of it otherwise.
+pub(crate) fn shown(session: &Session) -> Part {
+    if borderless(session.definition()) && !session.machine().tape_loading() {
+        SCREEN
+    } else {
+        FULL
+    }
+}
+
 /// Where the picture and, when the game has guidance levels, the panel go in a window `size`
 /// device pixels large.
-pub(crate) fn layout_for(definition: Option<&Definition>, size: (u32, u32)) -> Layout {
-    let panel = definition
-        .and_then(|d| d.guidance.as_ref())
-        .is_some_and(|g| !g.levels.is_empty());
-    layout(size, PICTURE, panel)
+pub(crate) fn layout_for(session: &Session, size: (u32, u32)) -> Layout {
+    let (_, _, w, h) = shown(session);
+    layout(size, (w, h), has_panel(session.definition()))
+}
+
+/// The smallest window for a game, as it's played: without its border once the tape has
+/// loaded, when its definition leaves the border out.
+pub(crate) fn smallest_for(definition: Option<&Definition>) -> (u32, u32) {
+    let (_, _, w, h) = if borderless(definition) { SCREEN } else { FULL };
+    smallest((w, h), has_panel(definition))
+}
+
+/// The size of the part of the picture shown, in the logical pixels of what's drawn over it.
+pub(crate) const fn logical((_, _, w, h): Part) -> (u32, u32) {
+    (w * LOGICAL_PIXEL, h * LOGICAL_PIXEL)
+}
+
+/// Where a canvas `size` device pixels large goes to sit in the middle of `rect`.
+pub(crate) const fn centred(
+    (x, y, w, h): (u32, u32, u32, u32),
+    size: (u32, u32),
+) -> (u32, u32, u32, u32) {
+    (
+        x + w.saturating_sub(size.0) / 2,
+        y + h.saturating_sub(size.1) / 2,
+        size.0,
+        size.1,
+    )
+}
+
+/// The room, in a card's logical pixels, kept between a card and the window's edge.
+const MARGIN: u32 = 16;
+
+/// The scale a card `logical` pixels large is drawn at: the picture's own third, as on the
+/// mockups, but never larger than fits a window `output` device pixels large with a margin
+/// all round.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "screen sizes are far below f32's limit"
+)]
+pub(crate) fn card_scale(layout: Layout, output: (u32, u32), logical: (u32, u32)) -> f32 {
+    let fit = |room: u32, length: u32| room as f32 / (length + 2 * MARGIN) as f32;
+    layout
+        .scale()
+        .min(fit(output.0, logical.0))
+        .min(fit(output.1, logical.1))
+}
+
+/// A card's place, `at`, moved inside the window's margin (at the card's `scale`) where it
+/// would cross it.
+pub(crate) fn within(
+    (x, y, w, h): (u32, u32, u32, u32),
+    output: (u32, u32),
+    scale: f32,
+) -> (u32, u32, u32, u32) {
+    let margin = device(MARGIN, scale);
+    let inside =
+        |at: u32, length: u32, room: u32| at.min(room.saturating_sub(length + margin)).max(margin);
+    (inside(x, w, output.0), inside(y, h, output.1), w, h)
+}
+
+/// Where a card `logical` pixels large goes, centred on `on`, and its scale: the picture's
+/// third, made smaller to fit the window and kept inside it.
+pub(crate) fn card_over(
+    on: (u32, u32, u32, u32),
+    output: (u32, u32),
+    layout: Layout,
+    logical: (u32, u32),
+) -> ((u32, u32, u32, u32), f32) {
+    let scale = card_scale(layout, output, logical);
+    let size = (device(logical.0, scale), device(logical.1, scale));
+    (within(centred(on, size), output, scale), scale)
 }
 
 /// Whether the game is in the state with `role`.
@@ -33,16 +121,6 @@ pub(crate) fn in_role(session: &Session, role: Role) -> bool {
     session
         .definition()
         .is_some_and(|d| d.is(session.state(), role))
-}
-
-/// Where the pause notice goes: in the middle of the picture.
-pub(crate) const fn notice_at(layout: Layout) -> (u32, u32, u32, u32) {
-    let (px, py, pw, ph) = layout.picture;
-    let (w, h) = (
-        PAUSE_NOTICE_WIDTH * layout.scale,
-        PAUSE_NOTICE_HEIGHT * layout.scale,
-    );
-    (px + (pw - w) / 2, py + (ph - h) / 2, w, h)
 }
 
 /// The pause notice a definition words, for a pad marked as `labels` says.
@@ -91,23 +169,30 @@ pub(crate) fn window(
     fonts: &mut Fonts,
 ) -> Vec<u8> {
     let mut out = Frame::new(size);
-    let layout = layout_for(session.definition(), size);
+    let layout = layout_for(session, size);
+    let part = shown(session);
     let paused = in_role(session, Role::Paused);
     let shade = if paused { DIMMED } else { 255 };
     let mut rgba = Vec::new();
     to_rgba(session.machine().picture(), &mut rgba);
-    out.picture(&rgba, layout.picture, shade);
+    out.picture(&rgba, part, layout, shade);
     if let (Some(at), Some(panel)) = (layout.panel, panel::of(session, level, None)) {
-        out.canvas(&panel.draw(fonts, layout.scale), at, 255);
+        out.canvas(&panel.draw(fonts, (at.2, at.3)), at, 255);
         let pins = panel::pins(&panel);
         if !pins.is_empty() {
-            let drawn = sidekick_ui::pins(&pins, fonts, layout.scale);
+            let drawn = sidekick_ui::pins(&pins, fonts, layout.scale(), logical(part));
             out.canvas(&drawn, layout.picture, shade);
         }
     }
     if paused {
-        let notice = pause_notice(session.definition(), labels);
-        out.canvas(&notice.draw(fonts, layout.scale), notice_at(layout), 255);
+        let (at, scale) = card_over(
+            layout.picture,
+            size,
+            layout,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
+        let notice = pause_notice(session.definition(), labels).draw(fonts, scale);
+        out.canvas(&notice, at, 255);
     }
     out.rgba
 }
@@ -138,14 +223,17 @@ impl Frame {
             .then(|| (y as usize * self.width as usize + x as usize) * 4)
     }
 
-    /// The Spectrum's picture (`PICTURE` large, RGBA), stretched by a whole number to fill
-    /// `rect`, each pixel's color times `shade` / 255.
-    fn picture(&mut self, rgba: &[u8], (x, y, w, h): (u32, u32, u32, u32), shade: u8) {
-        let scale = (w / PICTURE.0).max(1);
+    /// The `part` of the Spectrum's picture (all of it in `rgba`, row by row) where `layout`
+    /// puts it, each pixel `layout.pixel` square, its color times `shade` / 255.
+    fn picture(&mut self, rgba: &[u8], part: Part, layout: Layout, shade: u8) {
+        let (x, y, w, h) = layout.picture;
+        let (left, top, _, _) = part;
+        let scale = layout.pixel.max(1);
+        let across = FULL.2 as usize;
         for dy in 0..h {
             for dx in 0..w {
                 let source =
-                    ((dy / scale) as usize * PICTURE.0 as usize + (dx / scale) as usize) * 4;
+                    ((top + dy / scale) as usize * across + (left + dx / scale) as usize) * 4;
                 let (Some(target), Some(pixel)) =
                     (self.at(x + dx, y + dy), rgba.get(source..source + 4))
                 else {
@@ -188,6 +276,7 @@ fn mul(value: u8, by: u8) -> u8 {
 mod tests {
     use super::*;
     use sidekick_core::{Machine, Model};
+    use sidekick_ui::MENU_WIDTH;
     use std::path::PathBuf;
 
     /// Where the stand-in game sits while paused: a loop the processor is parked in.
@@ -197,6 +286,12 @@ mod tests {
     /// A game with guidance levels and a paused state, on a bare 48K whose screen is a plain
     /// stand-in: white paper, no ink.
     fn session() -> Session {
+        session_with("", false)
+    }
+
+    /// The same game, with `run` as its `[run]` section, and with a tape that hasn't loaded
+    /// when `loading`.
+    fn session_with(run: &str, loading: bool) -> Session {
         let definition = Definition::from_toml(&format!(
             r#"
             schema = 1
@@ -206,6 +301,8 @@ mod tests {
             machine = "48k"
             [[media]]
             name = "the tape"
+            [run]
+            {run}
             [[states]]
             name = "still"
             role = "paused"
@@ -232,7 +329,26 @@ mod tests {
         }
         let mut s = Session::new(machine, Some(definition));
         s.run_frame().expect("a frame");
+        if loading {
+            // A tape put in, not a frame run since: not a block of it loaded.
+            s.machine_mut()
+                .load_tap(&[2, 0, 0xFF, 0xFF])
+                .expect("a tape");
+        }
         s
+    }
+
+    /// Inks the screen's four corner characters black, so its edges show against the border.
+    fn mark_corners(s: &mut Session) {
+        for row in [0_u16, 23] {
+            for column in [0_u16, 31] {
+                for line in 0..8 {
+                    let addr = 0x4000 | ((row & 0x18) << 8) | (line << 8) | ((row & 7) << 5);
+                    s.machine_mut().write(addr | column, 0xFF);
+                }
+            }
+        }
+        s.machine_mut().draw_screen_from_memory();
     }
 
     fn pause(s: &mut Session) {
@@ -245,13 +361,22 @@ mod tests {
         assert!(in_role(s, Role::Paused));
     }
 
-    fn pixel(rgba: &[u8], (x, y): (u32, u32)) -> [u8; 3] {
-        let at = (y as usize * SIZE.0 as usize + x as usize) * 4;
+    fn pixel(rgba: &[u8], width: u32, (x, y): (u32, u32)) -> [u8; 3] {
+        let at = (y as usize * width as usize + x as usize) * 4;
         [rgba[at], rgba[at + 1], rgba[at + 2]]
     }
 
-    fn golden(name: &str, rgba: &[u8]) {
-        let png = sidekick_ui::png::encode(rgba, SIZE.0, SIZE.1);
+    /// The middle of the part of the picture shown, as the window should show it.
+    fn middle_of(session: &Session) -> [u8; 3] {
+        let (x, y, w, h) = shown(session);
+        let mut picture = Vec::new();
+        to_rgba(session.machine().picture(), &mut picture);
+        let at = ((y + h / 2) * FULL.2 + x + w / 2) as usize * 4;
+        [picture[at], picture[at + 1], picture[at + 2]]
+    }
+
+    fn golden(name: &str, rgba: &[u8], (width, height): (u32, u32)) {
+        let png = sidekick_ui::png::encode(rgba, width, height);
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/golden")
             .join(name);
@@ -270,18 +395,115 @@ mod tests {
     fn the_window_is_the_picture_with_the_panel_beside_it() {
         let s = session();
         let rgba = window(&s, 1, SIZE, PadLabels::Letters, &mut Fonts::new());
-        let layout = layout_for(s.definition(), SIZE);
-        let (left, top, width, height) = layout.picture;
-        let mut picture = Vec::new();
-        to_rgba(s.machine().picture(), &mut picture);
-        let middle = (PICTURE.1 / 2 * PICTURE.0 + PICTURE.0 / 2) as usize * 4;
+        let layout = layout_for(&s, SIZE);
         assert_eq!(
-            pixel(&rgba, (left + width / 2, top + height / 2)),
-            [picture[middle], picture[middle + 1], picture[middle + 2]],
+            shown(&s),
+            FULL,
+            "a definition that says nothing keeps the border"
+        );
+        let (left, top, width, height) = layout.picture;
+        assert_eq!(
+            pixel(&rgba, SIZE.0, (left + width / 2, top + height / 2)),
+            middle_of(&s),
             "the picture, scaled, where the layout puts it"
         );
         assert!(layout.panel.is_some());
-        golden("window.png", &rgba);
+        golden("window.png", &rgba, SIZE);
+    }
+
+    #[test]
+    fn without_its_border_the_screen_alone_takes_a_larger_whole_scale() {
+        const WIDE: (u32, u32) = (1920, 1080);
+        let mut s = session_with(r#"border = "none""#, false);
+        mark_corners(&mut s);
+        assert_eq!(shown(&s), SCREEN);
+        let layout = layout_for(&s, WIDE);
+        assert_eq!(layout.pixel, 5);
+        assert_eq!(layout.panel, Some((1346, 0, 574, 1080)));
+        let rgba = window(&s, 1, WIDE, PadLabels::Letters, &mut Fonts::new());
+        let (left, top, width, height) = layout.picture;
+        assert_eq!(
+            pixel(&rgba, WIDE.0, (left + width / 2, top + height / 2)),
+            middle_of(&s)
+        );
+        assert_eq!(
+            pixel(&rgba, WIDE.0, (left, top)),
+            [0, 0, 0],
+            "the screen's own top-left corner, inked, at the picture's corner"
+        );
+        assert_eq!(
+            pixel(&rgba, WIDE.0, (left + width - 1, top + height - 1)),
+            [0, 0, 0]
+        );
+        assert_eq!(smallest_for(s.definition()), (920, 768));
+        golden("window-no-border.png", &rgba, WIDE);
+    }
+
+    #[test]
+    fn while_its_tape_loads_the_border_shows() {
+        let s = session_with(r#"border = "none""#, true);
+        assert!(s.machine().tape_loading());
+        assert_eq!(shown(&s), FULL);
+        assert_eq!(layout_for(&s, (1920, 1080)).pixel, 4);
+        assert_eq!(
+            smallest_for(s.definition()),
+            (920, 768),
+            "the smallest window is the one the game is played in"
+        );
+        assert_eq!(smallest_for(session().definition()), (1048, 768));
+    }
+
+    /// Whether `rect` lies inside a window `output` large.
+    const fn inside((x, y, w, h): (u32, u32, u32, u32), output: (u32, u32)) -> bool {
+        x + w <= output.0 && y + h <= output.1
+    }
+
+    #[test]
+    fn a_card_fits_a_narrow_window() {
+        for output in [(920, 768), (1000, 1400), (919, 600), (1920, 1080)] {
+            let laid = layout(output, (SCREEN.2, SCREEN.3), true);
+            for height in [300, 560, 700] {
+                let (menu, scale) = card_over(
+                    (0, 0, output.0, output.1),
+                    output,
+                    laid,
+                    (MENU_WIDTH, height),
+                );
+                assert!(inside(menu, output), "the menu at {output:?}: {menu:?}");
+                assert!(menu.0 > 0 && menu.1 > 0, "with a margin: {menu:?}");
+                assert!(scale <= laid.scale());
+            }
+            let (notice, _) = card_over(
+                laid.picture,
+                output,
+                laid,
+                (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+            );
+            assert!(inside(notice, output), "the notice at {output:?}");
+        }
+    }
+
+    #[test]
+    fn a_card_takes_the_picture_s_third_where_the_window_has_room() {
+        let output = (1920, 1080);
+        let laid = layout(output, (SCREEN.2, SCREEN.3), true);
+        let (menu, scale) = card_over((0, 0, 1920, 1080), output, laid, (MENU_WIDTH, 400));
+        assert!((scale - 5.0 / 3.0).abs() < f32::EPSILON);
+        assert_eq!(menu, (528, 206, 863, 667));
+        let narrow = layout((920, 768), (SCREEN.2, SCREEN.3), true);
+        let (menu, scale) = card_over((0, 0, 920, 768), (920, 768), narrow, (MENU_WIDTH, 400));
+        assert!(
+            (scale - 2.0 / 3.0).abs() < f32::EPSILON,
+            "the picture's third fits"
+        );
+        assert_eq!((menu.2, menu.3), (345, 267));
+        let (notice, _) = card_over(
+            narrow.picture,
+            (920, 768),
+            narrow,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
+        assert_eq!(notice.0, 110, "centred on the picture");
     }
 
     #[test]
@@ -290,12 +512,12 @@ mod tests {
         let playing = window(&s, 1, SIZE, PadLabels::Letters, &mut Fonts::new());
         pause(&mut s);
         let paused = window(&s, 1, SIZE, PadLabels::Letters, &mut Fonts::new());
-        let (x, y, _, _) = layout_for(s.definition(), SIZE).picture;
+        let (x, y, _, _) = layout_for(&s, SIZE).picture;
         let corner = (x + 4, y + 4);
         assert_eq!(
-            pixel(&paused, corner),
-            pixel(&playing, corner).map(|c| mul(c, DIMMED))
+            pixel(&paused, SIZE.0, corner),
+            pixel(&playing, SIZE.0, corner).map(|c| mul(c, DIMMED))
         );
-        golden("window-paused.png", &paused);
+        golden("window-paused.png", &paused, SIZE);
     }
 }

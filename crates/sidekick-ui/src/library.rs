@@ -71,7 +71,7 @@ impl LibraryPage {
 
     /// Draws the page at `scale` device pixels to a logical one.
     #[must_use]
-    pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
+    pub fn draw(&self, fonts: &mut Fonts, scale: f32) -> Canvas {
         let mut c = Canvas::new(WIDTH, HEIGHT, scale);
         c.fill(colors::PROMPT);
         let label = Style::new(11.0, colors::LABEL)

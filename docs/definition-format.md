@@ -112,6 +112,7 @@ One entry per dump the definition supports. A tape that matches none is refused 
 | `hold_loading_screen` | `true`: the loading screen stays until a key or pad button is pressed, for a game that otherwise starts the moment its tape has loaded. The machine stops the moment the tape's last block has gone in through the ROM's loader, so the screen is as the tape left it and the game hasn't started; the press doesn't reach it. A game that waits by itself doesn't need this, and a tape with a loader of its own (a turbo loader) isn't held. |
 | `joystick` | What the pad's directions drive in play: `"kempston"` (default), `"sinclair1"`, `"sinclair2"`, `"cursor"`, or `"keys"`. |
 | `keys` | With `joystick = "keys"`: the game's own keys, `{ up = "Q", down = "A", left = "O", right = "P", fire = "SPACE" }`. |
+| `border` | `"full"` (default): the picture is the screen with its border. `"none"`: for a game that never draws in the border, the screen alone, so it can be shown larger. The border still shows while the tape loads, with its stripes; it goes once the tape has loaded. |
 
 ## `[[states]]`: moments of the game
 

@@ -73,7 +73,7 @@ impl Note {
 
     /// Draws the pill at `scale` device pixels to a logical one.
     #[must_use]
-    pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
+    pub fn draw(&self, fonts: &mut Fonts, scale: f32) -> Canvas {
         let (width, height) = (self.width(fonts), self.height(fonts));
         let mut c = Canvas::new(width, height, scale);
         #[allow(clippy::cast_precision_loss, reason = "a pill's size")]

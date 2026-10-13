@@ -1,7 +1,8 @@
 //! ZX Sidekick's own screens, drawn in software into an RGBA canvas, pixel-exact.
 //!
-//! Screens are laid out in the mockups' pixels (`docs/mockups/starquake/`) and drawn at a
-//! whole-number scale, so every line lands on whole pixels. Text is Inter; shapes are
+//! Screens are laid out in the mockups' pixels (`docs/mockups/starquake/`) and drawn at any
+//! scale; a game's own pixel art in them is drawn at whole device pixels, so every pixel of it
+//! stays even. Text is Inter; shapes are
 //! tiny-skia's scalar path, which gives the same pixels on every platform.
 
 #![allow(
@@ -31,7 +32,6 @@ pub use hints::{Face, PadLabels};
 pub use library::{LibraryEntry, LibraryPage};
 pub use map::{
     pins, Cell, Edge, Inside, MapGrid, Marker, MarkerKind, Pin, Place, Route, RouteColor,
-    PICTURE as PINS_SIZE,
 };
 pub use menu::{Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH};
 pub use note::{Note, AT as NOTE_AT, HEIGHT as NOTE_HEIGHT};
@@ -142,24 +142,45 @@ pub enum Align {
     Right,
 }
 
-/// A canvas `width` × `height` logical pixels, drawn at a whole-number scale.
+/// A canvas `width` × `height` logical pixels, drawn at any scale.
 pub struct Canvas {
     pixmap: Pixmap,
     scale: f32,
 }
 
+/// A length of `logical` pixels at `scale` device pixels to a logical one, in whole device
+/// pixels: the nearest, at least one.
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    reason = "screen sizes, far inside both types' ranges, and never negative"
+)]
+pub fn device(logical: u32, scale: f32) -> u32 {
+    ((logical as f32 * scale).round() as u32).max(1)
+}
+
 impl Canvas {
-    /// A canvas of this logical size, `scale` device pixels to a logical one.
+    /// A canvas of this logical size, `scale` device pixels to a logical one, rounded to whole
+    /// device pixels.
+    ///
+    /// # Panics
+    /// If the size is too large to allocate.
+    #[must_use]
+    pub fn new(width: u32, height: u32, scale: f32) -> Self {
+        Self::with_size((device(width, scale), device(height, scale)), scale)
+    }
+
+    /// A canvas `width` × `height` device pixels, `scale` device pixels to a logical one.
     ///
     /// # Panics
     /// If the size is zero or too large to allocate.
     #[must_use]
-    pub fn new(width: u32, height: u32, scale: u32) -> Self {
-        let scale = scale.max(1);
+    pub fn with_size((width, height): (u32, u32), scale: f32) -> Self {
         Self {
-            pixmap: Pixmap::new(width * scale, height * scale).expect("a canvas of a sane size"),
-            #[allow(clippy::cast_precision_loss, reason = "scales are small whole numbers")]
-            scale: scale as f32,
+            pixmap: Pixmap::new(width, height).expect("a canvas of a sane size"),
+            scale: if scale > 0.0 { scale } else { 1.0 },
         }
     }
 
@@ -253,6 +274,15 @@ impl Canvas {
                 Transform::identity(),
                 None,
             );
+        }
+    }
+
+    /// A rectangle in device pixels, whole ones: for pixel art, whose every pixel is the same
+    /// size.
+    pub(crate) fn device_rect(&mut self, (x, y, w, h): (f32, f32, f32, f32), color: Color) {
+        if let Some(rect) = Rect::from_xywh(x, y, w, h) {
+            self.pixmap
+                .fill_rect(rect, &paint(color), Transform::identity(), None);
         }
     }
 

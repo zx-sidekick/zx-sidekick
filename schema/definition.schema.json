@@ -299,6 +299,21 @@
         }
       ]
     },
+    "Border": {
+      "description": "How much of the border round the screen is shown.",
+      "oneOf": [
+        {
+          "description": "All of it.",
+          "type": "string",
+          "const": "full"
+        },
+        {
+          "description": "None: the game draws nothing there, so the screen alone is shown, larger.",
+          "type": "string",
+          "const": "none"
+        }
+      ]
+    },
     "Bytes": {
       "description": "Bytes in hex, separated by spaces: \"CD 40 75\".",
       "type": "string",
@@ -1280,6 +1295,10 @@
       "description": "`[run]`: how the game is run.",
       "type": "object",
       "properties": {
+        "border": {
+          "description": "How much of the border is shown once the tape has loaded.",
+          "$ref": "#/$defs/Border"
+        },
         "hold_loading_screen": {
           "description": "Whether the loading screen stays until a key is pressed.",
           "type": "boolean"

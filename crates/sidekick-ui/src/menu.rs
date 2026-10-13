@@ -213,7 +213,7 @@ impl Menu {
     /// Draws the card at `scale` device pixels to a logical one; outside its rounded corners
     /// stays clear.
     #[must_use]
-    pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
+    pub fn draw(&self, fonts: &mut Fonts, scale: f32) -> Canvas {
         let layout = self.layout();
         let mut c = Canvas::new(WIDTH, self.height(), scale);
         #[allow(clippy::cast_precision_loss, reason = "a card's size")]
@@ -575,7 +575,7 @@ impl Question {
 
     /// Draws the card at `scale` device pixels to a logical one.
     #[must_use]
-    pub fn draw(&self, fonts: &mut Fonts, scale: u32) -> Canvas {
+    pub fn draw(&self, fonts: &mut Fonts, scale: f32) -> Canvas {
         let mut c = Canvas::new(QUESTION_WIDTH, self.height(), scale);
         #[allow(clippy::cast_precision_loss, reason = "a card's size")]
         let (w, h) = (QUESTION_WIDTH as f32, self.height() as f32);
