@@ -209,10 +209,10 @@ fn rooms_visited_are_mapped_with_their_decoded_walls() {
     assert_eq!(
         walked,
         [
-            (0, Fact::Text(String::new())),
+            (0, Fact::Text("N".to_owned())),
             (18, Fact::Text("N".to_owned())),
         ],
-        "rooms 8 and 300, with their walls as decoded"
+        "rooms 8 and 300, with their walls as decoded: no room above the top row"
     );
 }
 
@@ -322,7 +322,17 @@ fn level_6_maps_every_room_with_the_walls_its_tiles_draw() {
     let cells = list(field(&map, "cells"));
     assert_eq!(cells.len(), 512);
     assert_eq!(field(&cells[300], "walls"), &Fact::Text("N".to_owned()));
-    assert_eq!(field(&cells[0], "walls"), &Fact::Text(String::new()));
+    assert_eq!(
+        field(&cells[284], "walls"),
+        &Fact::Text("S".to_owned()),
+        "the room above it is shut against it too"
+    );
+    assert_eq!(field(&cells[17], "walls"), &Fact::Text(String::new()));
+    assert_eq!(
+        field(&cells[0], "walls"),
+        &Fact::Text("NW".to_owned()),
+        "the planet's edge"
+    );
 }
 
 #[test]
@@ -477,45 +487,6 @@ fn a_door_met_keeps_its_number_at_level_6() {
 }
 
 #[test]
-fn an_edge_is_open_only_where_blob_fits_against_it() {
-    let mut s = session();
-    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
-    poke_into(&mut s, "room", 0, &[8, 0]);
-    // Open everywhere but the bottom two rows and the left two columns, which block.
-    let mut cells = [0x47u8; 576];
-    for col in 0..32 {
-        cells[16 * 32 + col] = 0x07;
-        cells[17 * 32 + col] = 0x07;
-    }
-    for row in 0..18 {
-        cells[row * 32] = 0x07;
-        cells[row * 32 + 1] = 0x07;
-    }
-    // Two-cell gaps on the bottom edge and the left one, with rock just behind them.
-    cells[17 * 32 + 5] = 0x47;
-    cells[17 * 32 + 6] = 0x47;
-    cells[9 * 32] = 0x47;
-    cells[10 * 32] = 0x47;
-    poke_into(&mut s, "play_area", 0, &cells);
-    enter(&mut s, "play");
-    s.run_frame().expect("a frame");
-    assert_eq!(
-        s.script_results()["walls"],
-        Fact::Text("SW".to_owned()),
-        "BLOB is two cells deep: a gap with rock behind it is no way out"
-    );
-
-    // Room behind the gaps: now BLOB fits against both edges.
-    cells[16 * 32 + 5] = 0x47;
-    cells[16 * 32 + 6] = 0x47;
-    cells[9 * 32 + 1] = 0x47;
-    cells[10 * 32 + 1] = 0x47;
-    poke_into(&mut s, "play_area", 0, &cells);
-    s.run_frame().expect("a frame");
-    assert_eq!(s.script_results()["walls"], Fact::Text(String::new()));
-}
-
-#[test]
 fn items_are_marked_by_what_the_game_does_with_them() {
     let mut s = session();
     blank_planet(&mut s);
@@ -541,4 +512,354 @@ fn items_are_marked_by_what_the_game_does_with_them() {
         ],
         "a needed piece, the carried one's twin as any piece, a card, no pack, a piece"
     );
+}
+
+/// Where painted rooms' stand-in medium tile pictures go, 64 bytes apart: each picture's six
+/// rows, its cells' attributes in the bytes before it.
+const PAINTED: u16 = 0xB000;
+
+/// Rooms painted cell by cell from stand-in tiles: each 8 × 6 block of a room is a large tile
+/// whose last medium tile, drawn at its top left, draws the block's blocking cells.
+struct Painter {
+    /// The next free medium and large tile; 0 to 7 are left to the tests above.
+    next: u8,
+    /// Each painted room's large tiles.
+    tiles: std::collections::BTreeMap<usize, [u8; 12]>,
+}
+
+impl Painter {
+    const fn new() -> Self {
+        Self {
+            next: 8,
+            tiles: std::collections::BTreeMap::new(),
+        }
+    }
+
+    fn take(&mut self) -> u8 {
+        let id = self.next;
+        self.next += 1;
+        assert!(id < 64, "room for 56 stand-in tiles");
+        id
+    }
+
+    /// Paints `room` from 18 rows of 32 cells, where `blocks(x, y)`.
+    fn paint(&mut self, s: &mut Session, room: usize, blocks: impl Fn(usize, usize) -> bool) {
+        let mut tiles = [0u8; 12];
+        for (i, tile) in tiles.iter_mut().enumerate() {
+            let id = self.take();
+            *tile = id;
+            let picture = PAINTED + u16::from(id) * 64;
+            let (left, top) = ((i % 4) * 8, (i / 4) * 6);
+            let mut drawn = 0u16;
+            for r in 0..6 {
+                let row = (0..8).fold(0u8, |row, c| {
+                    if blocks(left + c, top + r) {
+                        row | (0x80 >> c)
+                    } else {
+                        row
+                    }
+                });
+                poke(s, picture + u16::try_from(r).expect("a row"), &[row]);
+                drawn += u16::try_from(row.count_ones()).expect("a few");
+            }
+            for k in 1..=drawn {
+                poke(s, picture - k, &[0x07]);
+            }
+            poke_into(
+                s,
+                "tile_pictures",
+                u16::from(id) * 2,
+                &picture.to_le_bytes(),
+            );
+            poke_into(s, "large_tiles", u16::from(id) * 4, &[0, 0, 0, id]);
+        }
+        poke_into(
+            s,
+            "rooms",
+            u16::try_from(room * 12).expect("a room"),
+            &tiles,
+        );
+        self.tiles.insert(room, tiles);
+    }
+
+    /// Marks a painted room's cell (`x`, `y`) with a medium tile type's top four bits, `kind`:
+    /// on a medium tile of the large tile there whose marker can reach it.
+    fn mark(&mut self, s: &mut Session, room: usize, kind: u8, (x, y): (usize, usize)) {
+        let large = self.tiles[&room][(y / 6) * 4 + x / 8];
+        let (dx, dy) = (x % 8, y % 6);
+        // The large tile's medium tiles are drawn at (4, 3), (0, 3), (4, 0) and (0, 0).
+        let place = |(ox, oy): (usize, usize)| {
+            (dx >= ox && dx - ox <= 3 && dy >= oy && dy - oy <= 3)
+                .then(|| (dx - ox) | (dy - oy) << 2)
+        };
+        let byte = |at: usize| kind << 4 | u8::try_from(at).expect("a place in a tile");
+        if let Some(at) = place((0, 0)) {
+            poke_into(s, "tile_types", u16::from(large), &[byte(at)]);
+            return;
+        }
+        let (slot, at) = [(4, 3), (0, 3), (4, 0)]
+            .into_iter()
+            .enumerate()
+            .find_map(|(k, offset)| place(offset).map(|at| (k, at)))
+            .expect("a medium tile reaches the cell");
+        let id = self.take();
+        poke_into(s, "tile_types", u16::from(id), &[byte(at)]);
+        let slot = u16::try_from(slot).expect("a slot");
+        poke_into(s, "large_tiles", u16::from(large) * 4 + slot, &[id]);
+    }
+}
+
+/// The map's cells at level 6, every room's.
+fn every_cell(s: &mut Session) -> Vec<Fact> {
+    s.set_level(6);
+    s.run_frame().expect("a frame");
+    assert_eq!(s.script_off(), None);
+    let map = s.script_results()["map"].clone();
+    let cells = list(field(&map, "cells"));
+    assert_eq!(cells.len(), 512);
+    cells
+}
+
+fn walls(cell: &Fact) -> String {
+    match field(cell, "walls") {
+        Fact::Text(walls) => walls.clone(),
+        other => panic!("walls: {other:?}"),
+    }
+}
+
+/// Cells of a map cell's inside, as `[x, y]` pairs.
+type Spots = Vec<(i64, i64)>;
+
+/// A cell's inside walls and doors; both empty when it has no inside.
+fn inside(cell: &Fact) -> (Spots, Spots) {
+    let Fact::Map(map) = cell else {
+        panic!("a cell: {cell:?}")
+    };
+    let Some(inside) = map.get("inside") else {
+        return (Vec::new(), Vec::new());
+    };
+    let pairs = |key| {
+        list(field(inside, key))
+            .iter()
+            .map(|xy| {
+                let xy = list(xy);
+                (number(&xy[0]), number(&xy[1]))
+            })
+            .collect()
+    };
+    (pairs("walls"), pairs("doors"))
+}
+
+/// The kinds of medium tile the script looks for, by their type's top four bits
+/// (docs/re/starquake.md, "Medium tile types").
+const DOOR_ENTRY: u8 = 0;
+const PASSAGE: u8 = 15;
+
+#[test]
+fn an_edge_is_open_only_where_blob_fits_against_both_rooms() {
+    let mut s = session();
+    blank_planet(&mut s);
+    let mut painter = Painter::new();
+    // Room 116's top two rows are rock: BLOB fits against room 100's bottom edge, not
+    // against 116's. Room 117 has a gap two cells wide through them.
+    painter.paint(&mut s, 116, |_, y| y < 2);
+    painter.paint(&mut s, 117, |x, y| y < 2 && !(10..12).contains(&x));
+    enter(&mut s, "play");
+    let cells = every_cell(&mut s);
+    assert_eq!(walls(&cells[100]), "S");
+    assert_eq!(walls(&cells[116]), "N");
+    assert_eq!(walls(&cells[101]), "");
+    assert_eq!(walls(&cells[117]), "");
+}
+
+#[test]
+fn a_wall_across_a_room_is_drawn_inside_it_and_a_ledge_is_not() {
+    let mut s = session();
+    blank_planet(&mut s);
+    let mut painter = Painter::new();
+    // Rows 8 and 9 of room 100 are rock all the way across: two parts, one leading up and
+    // one down. Room 101 has the same rock from its left wall to column 20 only: one part.
+    painter.paint(&mut s, 100, |_, y| (8..10).contains(&y));
+    painter.paint(&mut s, 101, |x, y| (8..10).contains(&y) && x < 20);
+    enter(&mut s, "play");
+    let cells = every_cell(&mut s);
+    let (walls_100, doors_100) = inside(&cells[100]);
+    let across: Vec<(i64, i64)> = (8..10).flat_map(|y| (0..32).map(move |x| (x, y))).collect();
+    assert_eq!(walls_100, across, "the seam between the two parts");
+    assert!(doors_100.is_empty());
+    assert_eq!(walls(&cells[100]), "", "each part leads out");
+    assert_eq!(inside(&cells[101]), (Vec::new(), Vec::new()), "a ledge");
+}
+
+#[test]
+fn a_sealed_pocket_draws_no_wall() {
+    let mut s = session();
+    blank_planet(&mut s);
+    let mut painter = Painter::new();
+    // A ring of rock two cells thick, with room for BLOB inside it.
+    painter.paint(&mut s, 100, |x, y| {
+        (5..13).contains(&y)
+            && (10..22).contains(&x)
+            && !((7..11).contains(&y) && (12..20).contains(&x))
+    });
+    enter(&mut s, "play");
+    let cells = every_cell(&mut s);
+    assert_eq!(inside(&cells[100]), (Vec::new(), Vec::new()));
+}
+
+/// A room split by a wall four cells thick, columns 18 to 21, with a pocket on its right that
+/// has no way out but through the wall.
+fn door_room(x: usize, y: usize) -> bool {
+    let wall = (18..22).contains(&x);
+    let pocket = x >= 22 && (!(2..16).contains(&y) || x >= 30);
+    wall || pocket
+}
+
+#[test]
+fn a_door_leads_into_the_pocket_behind_it_and_is_drawn_dotted_with_its_number() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    let mut painter = Painter::new();
+    // Room 100's wall is a security door, its entries at (16, 8) and (22, 8); room 101's is
+    // rock.
+    painter.paint(&mut s, 100, door_room);
+    painter.mark(&mut s, 100, DOOR_ENTRY, (16, 8));
+    painter.mark(&mut s, 100, DOOR_ENTRY, (22, 8));
+    painter.paint(&mut s, 101, door_room);
+    enter(&mut s, "play");
+    let cells = every_cell(&mut s);
+    let (walls_100, doors_100) = inside(&cells[100]);
+    assert!(!walls_100.is_empty(), "the wall above and below the door");
+    assert!(!doors_100.is_empty(), "the door");
+    assert!(
+        doors_100
+            .iter()
+            .all(|&(x, y)| (16..24).contains(&x) && (7..10).contains(&y)),
+        "a door's cells are in its two entries' tiles: {doors_100:?}"
+    );
+    assert!(
+        walls_100.iter().all(|&(x, _)| (18..22).contains(&x)),
+        "{walls_100:?}"
+    );
+    assert_eq!(
+        inside(&cells[101]),
+        (Vec::new(), Vec::new()),
+        "with no door, the pocket is sealed"
+    );
+    let map = s.script_results()["map"].clone();
+    let door = list(field(&map, "markers"))
+        .into_iter()
+        .find(|m| field(m, "kind") == &Fact::Text("door".to_owned()))
+        .expect("the door's marker");
+    assert_eq!(
+        field(&door, "label"),
+        &Fact::Number(1),
+        "door 1 in the rail"
+    );
+    assert_eq!(
+        (number(field(&door, "x")), number(field(&door, "y"))),
+        (4, 6),
+        "in room 100"
+    );
+    assert_eq!(
+        list(field(&door, "at")),
+        [Fact::Number(23), Fact::Number(8)],
+        "on its right-hand entry"
+    );
+}
+
+#[test]
+fn a_pair_of_wall_passages_opens_the_edge_between_their_rooms() {
+    let mut s = session();
+    blank_planet(&mut s);
+    let mut painter = Painter::new();
+    // Rooms 100 and 101 meet rock to rock, a passage on each side; rooms 102 and 103 too,
+    // with a passage on 102's side only.
+    let left = |x: usize, _| x >= 26;
+    let right = |x: usize, _| x < 6;
+    painter.paint(&mut s, 100, left);
+    painter.paint(&mut s, 101, right);
+    painter.paint(&mut s, 102, left);
+    painter.paint(&mut s, 103, right);
+    painter.mark(&mut s, 100, PASSAGE, (24, 6));
+    painter.mark(&mut s, 101, PASSAGE, (6, 6));
+    painter.mark(&mut s, 102, PASSAGE, (24, 6));
+    enter(&mut s, "play");
+    let cells = every_cell(&mut s);
+    assert_eq!(walls(&cells[100]), "");
+    assert_eq!(walls(&cells[101]), "");
+    assert_eq!(walls(&cells[102]), "E", "a passage alone leads nowhere");
+    assert_eq!(walls(&cells[103]), "W");
+}
+
+#[test]
+fn the_core_s_room_is_open_where_blob_fits_against_the_room_beside() {
+    let mut s = session();
+    blank_planet(&mut s);
+    let mut painter = Painter::new();
+    // The core's room is shut in rock all round, with room for BLOB in its middle. Rooms 183,
+    // 200 and 215 are rock against it too; room 198, on its left, is open.
+    painter.paint(&mut s, 199, |x, y| {
+        !((4..14).contains(&y) && (10..22).contains(&x))
+    });
+    painter.paint(&mut s, 183, |_, y| y >= 16);
+    painter.paint(&mut s, 200, |x, _| x < 2);
+    painter.paint(&mut s, 215, |_, y| y < 2);
+    enter(&mut s, "play");
+    let cells = every_cell(&mut s);
+    assert_eq!(walls(&cells[199]), "NES", "entered from its left");
+    assert_eq!(walls(&cells[198]), "");
+    assert_eq!(walls(&cells[200]), "W");
+    assert_eq!(walls(&cells[183]), "S");
+    assert_eq!(inside(&cells[199]), (Vec::new(), Vec::new()));
+}
+
+/// The map's cells as (room, dim, dashed).
+fn looks(s: &Session) -> Vec<(i64, bool, bool)> {
+    let map = s.script_results()["map"].clone();
+    let flag = |cell: &Fact, key| {
+        let Fact::Map(map) = cell else {
+            panic!("{cell:?}")
+        };
+        map.get(key) == Some(&Fact::Flag(true))
+    };
+    let mut cells: Vec<(i64, bool, bool)> = list(field(&map, "cells"))
+        .iter()
+        .map(|c| {
+            let room = number(field(c, "y")) * 16 + number(field(c, "x"));
+            (room, flag(c, "dim"), flag(c, "dashed"))
+        })
+        .collect();
+    cells.sort_unstable();
+    cells
+}
+
+#[test]
+fn rooms_not_entered_are_dimmer_and_a_needed_piece_s_room_is_outlined() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    // The core still needs picture 5, lying in room 300 (its ninth bit is the second byte's
+    // top bit), which isn't walked.
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    poke_into(&mut s, "items", 0, &[3, 0x94, 0x2C, 5]);
+    visit(&mut s, &[8]);
+    enter(&mut s, "play");
+    s.set_level(3);
+    s.run_frame().expect("a frame");
+    assert_eq!(looks(&s), [(8, false, false)], "level 3: rooms walked");
+    s.set_level(4);
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        looks(&s),
+        [(8, false, false), (300, false, true)],
+        "level 4: the piece's room outlined"
+    );
+    s.set_level(6);
+    s.run_frame().expect("a frame");
+    let cells = looks(&s);
+    assert_eq!(cells.len(), 512);
+    assert_eq!(cells[8], (8, false, false), "walked");
+    assert_eq!(cells[300], (300, true, false), "never entered");
 }
