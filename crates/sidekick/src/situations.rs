@@ -20,8 +20,8 @@ const SYNC_TRIES: u32 = 100;
 
 /// Starts a crafted situation from a session whose tape has gone in: the definition's start
 /// keys take it to play; there, at the sync point, the values are written, the switches
-/// turned on and the kept lists added to, and `[situations] enter` is called. The game is
-/// marked loaded.
+/// turned on, the guidance level set and the kept lists added to, and `[situations] enter` is
+/// called. The game is marked loaded.
 ///
 /// # Errors
 /// What the situation or definition lacks, or the game never reached play.
@@ -61,6 +61,9 @@ pub(crate) fn start(session: &mut Session, situation: &Situation) -> Result<(), 
         session
             .switch(id, true)
             .map_err(|e| format!("cheats.{id}: {e}"))?;
+    }
+    if let Some(level) = situation.level {
+        session.set_level(level);
     }
     let mut kept = session.kept().clone();
     for (list, entries) in &situation.kept {
@@ -178,9 +181,13 @@ mod tests {
             .collect();
         files.sort();
         assert!(!files.is_empty());
-        // Lower than a new game's, under a switch that holds it from going down.
+        // Lower than a new game's, under a switch that holds it from going down; at a level.
         let held = data.path().join("held.toml");
-        fs::write(&held, "lives = 1\ncheats = [\"endless-lives\"]\n").unwrap();
+        fs::write(
+            &held,
+            "lives = 1\ncheats = [\"endless-lives\"]\nlevel = 6\n",
+        )
+        .unwrap();
         files.push(held);
         for file in files {
             let mut playing = game.playing(&tapes[0]).expect("the tape plays");
@@ -202,6 +209,9 @@ mod tests {
                 );
             }
             assert!(situation.cheats.iter().all(|id| s.switched_on(id)));
+            if let Some(level) = situation.level {
+                assert_eq!(s.level(), level, "{}: its guidance level", file.display());
+            }
             assert!(s.record().loaded, "marked");
         }
     }

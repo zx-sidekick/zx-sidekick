@@ -445,14 +445,15 @@ enter = 0x6400          # the routine that starts play in the current room
 start = ["SPACE", "0"]  # the keys from the loaded tape to play
 ```
 
-A crafted situation is a TOML file in `situations/`, of `name = value` lines naming only what differs from a new game: `[values]` names (which must be `writable`), `cheats = [..]` and `kept.<list> = [..]`.
+A crafted situation is a TOML file in `situations/`, of `name = value` lines naming only what differs from a new game: `[values]` names (which must be `writable`), `cheats = [..]`, `kept.<list> = [..]`, and `level = N`, the guidance level to play at (one of `[guidance]`'s levels; without it, the level is left as it is).
 
 ```
 lives = 9
 cheats = ["no-harm"]
+level = 6
 ```
 
-The program starts a new game by tapping the `start` keys in turn. Each is tapped a second after the state last changed, and again every forty seconds while it stays the same. Once the game is in the state with role `play` (which a situation needs), at the sync address, the program writes the values, turns the switches on and adds the kept entries. Then it calls `enter`, with the sync address as its return, so the main loop carries on after it. The game is marked loaded. `sidekick TAPE --load FILE.toml`, or `sidekick run TAPE --load FILE.toml`, starts from one.
+The program starts a new game by tapping the `start` keys in turn. Each is tapped a second after the state last changed, and again every forty seconds while it stays the same. Once the game is in the state with role `play` (which a situation needs), at the sync address, the program writes the values, turns the switches on, sets the guidance level and adds the kept entries. Then it calls `enter`, with the sync address as its return, so the main loop carries on after it. The game is marked loaded. `sidekick TAPE --load FILE.toml`, or `sidekick run TAPE --load FILE.toml`, starts from one.
 
 ## Scripts
 
