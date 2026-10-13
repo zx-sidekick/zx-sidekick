@@ -8,7 +8,10 @@ use crate::{
 };
 use sidekick_core::Session;
 use sidekick_def::{Border, Definition, Role};
-use sidekick_ui::{Canvas, Face, Fonts, NoticeHint, PadLabels, PadMark, PauseNotice};
+use sidekick_ui::{
+    device, Canvas, Face, Fonts, NoticeHint, PadLabels, PadMark, PauseNotice, PAUSE_NOTICE_HEIGHT,
+    PAUSE_NOTICE_WIDTH,
+};
 
 /// How bright the picture is, out of 255, under the pause notice or the guidance menu.
 pub(crate) const DIMMED: u8 = 140;
@@ -67,6 +70,50 @@ pub(crate) const fn centred(
         size.0,
         size.1,
     )
+}
+
+/// The room, in a card's logical pixels, kept between a card and the window's edge.
+const MARGIN: u32 = 16;
+
+/// The scale a card `logical` pixels large is drawn at: the picture's own third, as on the
+/// mockups, but never larger than fits a window `output` device pixels large with a margin
+/// all round.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "screen sizes are far below f32's limit"
+)]
+pub(crate) fn card_scale(layout: Layout, output: (u32, u32), logical: (u32, u32)) -> f32 {
+    let fit = |room: u32, length: u32| room as f32 / (length + 2 * MARGIN) as f32;
+    layout
+        .scale()
+        .min(fit(output.0, logical.0))
+        .min(fit(output.1, logical.1))
+}
+
+/// A card's place, `at`, moved inside the window's margin (at the card's `scale`) where it
+/// would cross it.
+pub(crate) fn within(
+    (x, y, w, h): (u32, u32, u32, u32),
+    output: (u32, u32),
+    scale: f32,
+) -> (u32, u32, u32, u32) {
+    let margin = device(MARGIN, scale);
+    let inside =
+        |at: u32, length: u32, room: u32| at.min(room.saturating_sub(length + margin)).max(margin);
+    (inside(x, w, output.0), inside(y, h, output.1), w, h)
+}
+
+/// Where a card `logical` pixels large goes, centred on `on`, and its scale: the picture's
+/// third, made smaller to fit the window and kept inside it.
+pub(crate) fn card_over(
+    on: (u32, u32, u32, u32),
+    output: (u32, u32),
+    layout: Layout,
+    logical: (u32, u32),
+) -> ((u32, u32, u32, u32), f32) {
+    let scale = card_scale(layout, output, logical);
+    let size = (device(logical.0, scale), device(logical.1, scale));
+    (within(centred(on, size), output, scale), scale)
 }
 
 /// Whether the game is in the state with `role`.
@@ -138,8 +185,13 @@ pub(crate) fn window(
         }
     }
     if paused {
-        let notice = pause_notice(session.definition(), labels).draw(fonts, layout.scale());
-        let at = centred(layout.picture, notice.size());
+        let (at, scale) = card_over(
+            layout.picture,
+            size,
+            layout,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
+        let notice = pause_notice(session.definition(), labels).draw(fonts, scale);
         out.canvas(&notice, at, 255);
     }
     out.rgba
@@ -224,6 +276,7 @@ fn mul(value: u8, by: u8) -> u8 {
 mod tests {
     use super::*;
     use sidekick_core::{Machine, Model};
+    use sidekick_ui::MENU_WIDTH;
     use std::path::PathBuf;
 
     /// Where the stand-in game sits while paused: a loop the processor is parked in.
@@ -398,6 +451,59 @@ mod tests {
             "the smallest window is the one the game is played in"
         );
         assert_eq!(smallest_for(session().definition()), (1048, 768));
+    }
+
+    /// Whether `rect` lies inside a window `output` large.
+    const fn inside((x, y, w, h): (u32, u32, u32, u32), output: (u32, u32)) -> bool {
+        x + w <= output.0 && y + h <= output.1
+    }
+
+    #[test]
+    fn a_card_fits_a_narrow_window() {
+        for output in [(920, 768), (1000, 1400), (919, 600), (1920, 1080)] {
+            let laid = layout(output, (SCREEN.2, SCREEN.3), true);
+            for height in [300, 560, 700] {
+                let (menu, scale) = card_over(
+                    (0, 0, output.0, output.1),
+                    output,
+                    laid,
+                    (MENU_WIDTH, height),
+                );
+                assert!(inside(menu, output), "the menu at {output:?}: {menu:?}");
+                assert!(menu.0 > 0 && menu.1 > 0, "with a margin: {menu:?}");
+                assert!(scale <= laid.scale());
+            }
+            let (notice, _) = card_over(
+                laid.picture,
+                output,
+                laid,
+                (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+            );
+            assert!(inside(notice, output), "the notice at {output:?}");
+        }
+    }
+
+    #[test]
+    fn a_card_takes_the_picture_s_third_where_the_window_has_room() {
+        let output = (1920, 1080);
+        let laid = layout(output, (SCREEN.2, SCREEN.3), true);
+        let (menu, scale) = card_over((0, 0, 1920, 1080), output, laid, (MENU_WIDTH, 400));
+        assert!((scale - 5.0 / 3.0).abs() < f32::EPSILON);
+        assert_eq!(menu, (528, 206, 863, 667));
+        let narrow = layout((920, 768), (SCREEN.2, SCREEN.3), true);
+        let (menu, scale) = card_over((0, 0, 920, 768), (920, 768), narrow, (MENU_WIDTH, 400));
+        assert!(
+            (scale - 2.0 / 3.0).abs() < f32::EPSILON,
+            "the picture's third fits"
+        );
+        assert_eq!((menu.2, menu.3), (345, 267));
+        let (notice, _) = card_over(
+            narrow.picture,
+            (920, 768),
+            narrow,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
+        assert_eq!(notice.0, 110, "centred on the picture");
     }
 
     #[test]

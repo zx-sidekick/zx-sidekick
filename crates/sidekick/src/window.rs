@@ -1101,7 +1101,8 @@ impl Player {
         }
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let scale = layout.scale();
+        let (at, scale) =
+            compose::card_over(layout.picture, output, layout, (OFFER_WIDTH, OFFER_HEIGHT));
         let offer = Offer {
             title: self.title.clone(),
             pad: labels,
@@ -1114,8 +1115,6 @@ impl Player {
             scale,
             Offer::draw,
         )?;
-        let size = (device(OFFER_WIDTH, scale), device(OFFER_HEIGHT, scale));
-        let at = compose::centred(layout.picture, size);
         if let Some((texture, _, _)) = &out.offer {
             out.canvas
                 .copy(texture, None, frect(at))
@@ -1230,7 +1229,8 @@ impl Player {
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
         let (px, py, pw, ph) = layout.picture;
-        let scale = layout.scale();
+        let logical = (note.width(&mut out.fonts), note.height(&mut out.fonts));
+        let scale = compose::card_scale(layout, output, logical);
         cached(
             out.creator,
             &mut out.note,
@@ -1239,19 +1239,20 @@ impl Player {
             scale,
             Note::draw,
         )?;
-        let (w, h) = (
-            device(note.width(&mut out.fonts), scale),
-            device(note.height(&mut out.fonts), scale),
-        );
+        let (w, h) = (device(logical.0, scale), device(logical.1, scale));
         // Centred, its foot as far above the picture's as on the mockup's picture with its
         // border; a pill of more lines grows upwards from the same foot.
         let above = device(FULL.3 * LOGICAL_PIXEL - (NOTE_AT.1 + NOTE_HEIGHT), scale);
         let foot = (py + ph).saturating_sub(above);
-        let at = (
-            (px + pw / 2).saturating_sub(w / 2),
-            foot.saturating_sub(h),
-            w,
-            h,
+        let at = compose::within(
+            (
+                (px + pw / 2).saturating_sub(w / 2),
+                foot.saturating_sub(h),
+                w,
+                h,
+            ),
+            output,
+            scale,
         );
         if let Some((texture, _, _)) = &out.note {
             out.canvas
@@ -1547,7 +1548,7 @@ impl Player {
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
         let (px, py, pw, _) = layout.picture;
-        let scale = layout.scale();
+        let scale = compose::card_scale(layout, output, (ENTRY_WIDTH, ENTRY_HEIGHT));
         let card = entry.card(labels);
         cached(
             out.creator,
@@ -1560,11 +1561,15 @@ impl Player {
         let (w, h) = (device(ENTRY_WIDTH, scale), device(ENTRY_HEIGHT, scale));
         // The row's top on the screen, below the border when it's shown.
         let screen_top = SCREEN.1 - compose::shown(&self.session).1;
-        let at = (
-            px + pw.saturating_sub(w) / 2,
-            py + (screen_top + row * 8) * layout.pixel,
-            w,
-            h,
+        let at = compose::within(
+            (
+                px + pw.saturating_sub(w) / 2,
+                py + (screen_top + row * 8) * layout.pixel,
+                w,
+                h,
+            ),
+            output,
+            scale,
         );
         if let Some((texture, _, _)) = &out.entry {
             out.canvas
@@ -1583,20 +1588,18 @@ impl Player {
     }
 
     /// Draws the guidance menu over the picture while it's open, centred on the window at the
-    /// notice's scale, and the question over it while it's asked.
+    /// notice's scale (smaller where the window is too small for it), and the question over it
+    /// while it's asked.
     fn draw_menu(&mut self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
         let Some(menu) = &self.menu else {
             out.menu = None;
             return Ok(());
         };
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
-        let scale = self.layout(output).scale();
+        let layout = self.layout(output);
         let card = menu.card_at(labels, Some(Instant::now()));
-        let (w, h) = (device(MENU_WIDTH, scale), device(card.height(), scale));
-        let at = (
-            (output.0 - w.min(output.0)) / 2,
-            (output.1 - h.min(output.1)) / 2,
-        );
+        let window = (0, 0, output.0, output.1);
+        let (at, scale) = compose::card_over(window, output, layout, (MENU_WIDTH, card.height()));
         cached(
             out.creator,
             &mut out.menu,
@@ -1607,7 +1610,7 @@ impl Player {
         )?;
         if let Some((texture, _, _)) = &out.menu {
             out.canvas
-                .copy(texture, None, frect((at.0, at.1, w, h)))
+                .copy(texture, None, frect(at))
                 .map_err(|e| e.to_string())?;
         }
         let (window_w, _) = out.canvas.window().size();
@@ -1623,14 +1626,8 @@ impl Player {
         );
         self.menu_at = Some(place);
         if let Some(question) = menu.question(labels) {
-            let (qw, qh) = (
-                device(QUESTION_WIDTH, scale),
-                device(question.height(), scale),
-            );
-            let q = (
-                (output.0 - qw.min(output.0)) / 2,
-                (output.1 - qh.min(output.1)) / 2,
-            );
+            let (q, scale) =
+                compose::card_over(window, output, layout, (QUESTION_WIDTH, question.height()));
             cached(
                 out.creator,
                 &mut out.question,
@@ -1641,7 +1638,7 @@ impl Player {
             )?;
             if let Some((texture, _, _)) = &out.question {
                 out.canvas
-                    .copy(texture, None, frect((q.0, q.1, qw, qh)))
+                    .copy(texture, None, frect(q))
                     .map_err(|e| e.to_string())?;
             }
         }
@@ -1650,14 +1647,19 @@ impl Player {
 
     /// Draws the pause notice over the picture while the game is paused, centred on it, at the
     /// layout's scale (the notice is laid out on the picture at three logical pixels to the
-    /// Spectrum's one).
+    /// Spectrum's one), smaller where the window is too small for it.
     fn notice(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
         if !self.paused() {
             return Ok(());
         }
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let scale = layout.scale();
+        let (at, scale) = compose::card_over(
+            layout.picture,
+            output,
+            layout,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
         let notice = compose::pause_notice(self.session.definition(), labels);
         cached(
             out.creator,
@@ -1667,11 +1669,6 @@ impl Player {
             scale,
             PauseNotice::draw,
         )?;
-        let size = (
-            device(PAUSE_NOTICE_WIDTH, scale),
-            device(PAUSE_NOTICE_HEIGHT, scale),
-        );
-        let at = compose::centred(layout.picture, size);
         if let Some((texture, _, _)) = &out.notice {
             out.canvas
                 .copy(texture, None, frect(at))
