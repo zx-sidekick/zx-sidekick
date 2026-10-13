@@ -893,6 +893,13 @@ impl Session {
         self.holding
     }
 
+    /// Whether the loading screen waits for a key: held by the program
+    /// (`[run] hold_loading_screen`), or by the tape's own loader.
+    #[must_use]
+    pub fn on_loading_screen(&self) -> bool {
+        self.holding || self.machine.waits_on_loading_screen()
+    }
+
     /// Lets the game go on from its loading screen.
     pub const fn release(&mut self) {
         self.holding = false;

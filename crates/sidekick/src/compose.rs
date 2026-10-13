@@ -152,12 +152,30 @@ pub(crate) fn pause_notice(definition: Option<&Definition>, labels: PadLabels) -
     })
 }
 
-/// The title's notice, when the definition words one: how the game plays here.
-pub(crate) fn title_notice(
-    definition: Option<&Definition>,
-    labels: PadLabels,
-) -> Option<PauseNotice> {
-    notice_of(definition, Role::Title, labels)
+/// The notice at the picture's foot, the picture not dimmed: on the loading screen, what goes
+/// on; at the title, how the game plays, when the definition words it.
+pub(crate) fn foot_notice(session: &Session, labels: PadLabels) -> Option<PauseNotice> {
+    if session.on_loading_screen() {
+        Some(loading_notice(labels))
+    } else if last_in_role(session, Role::Title) {
+        notice_of(session.definition(), Role::Title, labels)
+    } else {
+        None
+    }
+}
+
+/// The loading screen's notice: a key goes on loading.
+fn loading_notice(labels: PadLabels) -> PauseNotice {
+    PauseNotice {
+        heading: "Loading screen".to_owned(),
+        text: "The rest of the game loads once you press a key.".to_owned(),
+        hints: vec![NoticeHint {
+            keys: Some("Any key".to_owned()),
+            pad: Some(PadMark::Start),
+            does: "go on".to_owned(),
+        }],
+        pad: labels,
+    }
 }
 
 /// A notice's keys as this computer names them: a Mac has no right Control (a laptop's
@@ -252,10 +270,7 @@ pub(crate) fn window(
         );
         let notice = pause_notice(session.definition(), labels).draw(fonts, scale);
         out.canvas(&notice, at, 255);
-    } else if let Some(notice) = last_in_role(session, Role::Title)
-        .then(|| title_notice(session.definition(), labels))
-        .flatten()
-    {
+    } else if let Some(notice) = foot_notice(session, labels) {
         let (at, scale) = card_at_foot(
             layout.picture,
             size,

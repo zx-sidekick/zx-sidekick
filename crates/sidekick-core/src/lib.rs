@@ -45,6 +45,9 @@ const BORDER: BorderSize = BorderSize::Tall;
 
 /// Sample rate the beeper and AY are mixed at.
 pub const SAMPLE_RATE: usize = 44_100;
+/// The 48K ROM's `PAUSE` loop, from its `HALT` to the jump back: where a BASIC loader's
+/// `PAUSE 0` waits for a key.
+const ROM_PAUSE_LOOP: std::ops::RangeInclusive<u16> = 0x1F3D..=0x1F4E;
 
 /// Why [`Machine::run`] returned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -381,5 +384,13 @@ impl Machine {
     #[must_use]
     pub const fn tape_loading(&self) -> bool {
         self.tape_loading
+    }
+
+    /// Whether the tape's loader waits for a key on its loading screen: in the ROM's `PAUSE`
+    /// with blocks still to load, as a loader does that shows its screen until a key is
+    /// pressed.
+    #[must_use]
+    pub fn waits_on_loading_screen(&self) -> bool {
+        self.tape_loading && ROM_PAUSE_LOOP.contains(&self.registers().get_pc())
     }
 }

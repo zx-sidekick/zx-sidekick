@@ -154,7 +154,7 @@ Most of what a definition says is plain data. A few things are computations no d
   ![The tape prompt refusing a different dump](docs/mockups/starquake/tape-prompt-wrong-dump.png)
 
   The mockup's text says "the graphics, maps and sound are read from your own tape". The emulator's should say the game *runs* from the player's own tape.
-- **The loading screen:** the picture the tape draws as it loads stays up until a key or pad button is pressed, when the definition asks for it (`[run] hold_loading_screen`): fast loading would otherwise show it for a moment. The machine stops the moment the tape's last block has gone in through the ROM's loader, before the loader or the game runs on, and the press doesn't reach it. Games that wait by themselves, as Starquake does, don't ask.
+- **The loading screen:** the picture the tape draws as it loads stays up until a key or pad button is pressed, when the definition asks for it (`[run] hold_loading_screen`): fast loading would otherwise show it for a moment. The machine stops the moment the tape's last block has gone in through the ROM's loader, before the loader or the game runs on, and the press doesn't reach it. Games that wait by themselves, as Starquake does, don't ask. Either way, a card at the picture's foot says that a key, or the pad's Start, goes on: the program knows a loader waits when it sits in the ROM's `PAUSE` with tape still to load.
 - **A frame's picture during blocking sound effects:** while an effect holds the game, the screen as it was when the effect started stays up. The emulator gets this right as long as it presents the screen at the moment each frame ends.
 
 ## 9. Controls

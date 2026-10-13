@@ -28,6 +28,8 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 **The pause notice:** in the original, any move or fire continues once the pause key is let go. On a pad, A or B dismisses it.
 
+**The loading screen:** the game's loader shows its screen until a key is pressed, and the rest of the tape loads after it; a card at the screen's foot says so, with Start on the pad (it taps SPACE).
+
 **The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), so a card over the foot of the title says "Ignore the list: play with the arrow keys or a gamepad", with the keys to move, fire and start.
 
 ## Guidance levels

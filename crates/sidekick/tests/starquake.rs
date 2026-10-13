@@ -28,6 +28,10 @@ fn starquake_loads_and_its_game_runs() {
     // The loading screen waits for a key, as on a Spectrum.
     let colors: BTreeSet<u8> = machine.picture().pixels().iter().copied().collect();
     assert!(colors.len() > 2, "the loading screen is up: {colors:?}");
+    assert!(
+        machine.waits_on_loading_screen(),
+        "its loader waits for a key"
+    );
     machine.key(Key::Space, true);
     for _ in 0..5 {
         machine.run_frame().expect("a frame");
@@ -38,6 +42,10 @@ fn starquake_loads_and_its_game_runs() {
         machine.registers().get_pc() >= 0x4000
     });
     assert!(in_game, "after a key, the game's own code runs");
+    assert!(
+        !machine.waits_on_loading_screen(),
+        "the loading screen's notice goes with the key"
+    );
 }
 
 /// Runs frames until `done` holds, at most `most`; returns whether it did.

@@ -1736,11 +1736,7 @@ impl Player {
                 compose::pause_notice(self.session.definition(), labels),
                 compose::card_over(layout.picture, output, layout, size),
             )
-        } else if let Some(notice) = compose::last_in_role(&self.session, Role::Title)
-            .then(|| compose::title_notice(self.session.definition(), labels))
-            .flatten()
-        {
-            // How the game plays here, at the foot of the title, the title not dimmed.
+        } else if let Some(notice) = compose::foot_notice(&self.session, labels) {
             (
                 notice,
                 compose::card_at_foot(layout.picture, output, layout, size),

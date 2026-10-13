@@ -1,7 +1,7 @@
 //! The loading screen held: the frame stops the moment the tape's last block has loaded,
 //! before the loader or the game runs on, with the screen drawn from memory.
 
-use sidekick_core::{Machine, Model, Session};
+use sidekick_core::{Key, Machine, Model, Session};
 use sidekick_def::Definition;
 
 /// Where our test program's code goes, and runs from.
@@ -34,10 +34,13 @@ fn header(kind: u8, name: &[u8; 10], len: u16, one: u16, two: u16) -> Vec<u8> {
 /// A tape of our own: `10 LOAD ""SCREEN$: LOAD ""CODE: CLS: RANDOMIZE USR 32768`,
 /// auto-running; a screen all red paper; and two bytes of code at 32768 that loop on the spot
 /// (`JR $`). The `CLS` after the last block would wipe the screen if the hold came later.
-fn tape() -> Vec<u8> {
-    let mut line = vec![
-        0xEF, b'"', b'"', 0xAA, b':', 0xEF, b'"', b'"', 0xAF, b':', 0xFB, b':', 0xF9, 0xC0,
-    ];
+/// With `pause`, `PAUSE 0` after the screen waits for a key, as many loaders do.
+fn tape(pause: bool) -> Vec<u8> {
+    let mut line = vec![0xEF, b'"', b'"', 0xAA, b':'];
+    if pause {
+        line.extend_from_slice(&[0xF2, b'0', 0x0E, 0, 0, 0, 0, 0, b':']);
+    }
+    line.extend_from_slice(&[0xEF, b'"', b'"', 0xAF, b':', 0xFB, b':', 0xF9, 0xC0]);
     line.extend_from_slice(b"32768");
     line.extend_from_slice(&[0x0E, 0x00, 0x00, 0x00, 0x80, 0x00, 0x0D]);
     let mut program = vec![0x00, 0x0A];
@@ -58,6 +61,10 @@ fn tape() -> Vec<u8> {
 }
 
 fn session(hold: bool) -> Session {
+    session_with(hold, &tape(false))
+}
+
+fn session_with(hold: bool, tape: &[u8]) -> Session {
     let text = format!(
         r#"
 schema = 1
@@ -73,7 +80,7 @@ hold_loading_screen = {hold}
     );
     let definition = Definition::from_toml(&text).expect("the test definition parses");
     let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
-    machine.load_tap(&tape()).expect("our tape");
+    machine.load_tap(tape).expect("our tape");
     Session::new(machine, Some(definition))
 }
 
@@ -114,5 +121,51 @@ fn a_game_that_doesn_t_ask_isn_t_held() {
     for _ in 0..LOADING_FRAMES {
         s.run_frame().expect("a frame");
         assert!(!s.holding());
+    }
+}
+
+#[test]
+fn held_the_loading_screen_waits_for_a_key() {
+    let mut s = session(true);
+    for _ in 0..LOADING_FRAMES {
+        s.run_frame().expect("a frame");
+    }
+    assert!(s.holding());
+    assert!(s.on_loading_screen());
+}
+
+#[test]
+fn a_loader_s_own_pause_is_a_loading_screen_waiting_for_a_key() {
+    let mut s = session_with(false, &tape(true));
+    let mut frames = 0;
+    while !s.on_loading_screen() {
+        assert!(
+            frames < LOADING_FRAMES,
+            "the loader should pause on its screen"
+        );
+        s.run_frame().expect("a frame");
+        frames += 1;
+    }
+    assert_ne!(s.machine().peek(CODE), 0x18, "the code is still to load");
+    // Not SPACE, which breaks the next LOAD while held, as on a Spectrum; nor ENTER, which the
+    // ROM still counts as held from the LOAD "" that started the tape.
+    s.machine_mut().key(Key::A, true);
+    for _ in 0..5 {
+        s.run_frame().expect("a frame");
+    }
+    s.machine_mut().key(Key::A, false);
+    for _ in 0..LOADING_FRAMES {
+        s.run_frame().expect("a frame");
+        assert!(!s.on_loading_screen(), "a key goes on loading");
+    }
+    assert_eq!(s.machine().peek(CODE), 0x18, "the code is in");
+}
+
+#[test]
+fn a_loader_that_doesn_t_pause_has_no_loading_screen_wait() {
+    let mut s = session(false);
+    for _ in 0..LOADING_FRAMES {
+        s.run_frame().expect("a frame");
+        assert!(!s.on_loading_screen());
     }
 }
