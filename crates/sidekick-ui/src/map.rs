@@ -9,6 +9,8 @@ use crate::{colors, panel::Pixels, Align, Canvas, Color, Fonts, Line, Style, Wei
 const MOST_CELL: f32 = 15.0;
 /// A label marker's text size.
 const LABEL_SIZE: f32 = 9.0;
+/// How far apart routes sharing a step are drawn, middle to middle.
+const SIDE_BY_SIDE: f32 = 2.5;
 
 const FLOOR: Color = Color::rgb(0x23, 0x27, 0x33);
 const FLOOR_DIM: Color = Color::rgb(0x1E, 0x21, 0x29);
@@ -143,13 +145,42 @@ pub enum Place {
     TopRight,
 }
 
+/// How a route comes to a step from the one before.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StepLine {
+    /// A solid line.
+    #[default]
+    Solid,
+    /// A dashed line: into or out of a place not yet visited.
+    Dashed,
+    /// No line: a jump, such as a teleport.
+    Jump,
+}
+
+/// A step of a route: the cell it goes through, and how it comes there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Step {
+    /// The cell's column and row.
+    pub at: (usize, usize),
+    /// The line from the step before.
+    pub line: StepLine,
+}
+
+impl Step {
+    /// A step to (`x`, `y`), drawn as `line` says.
+    #[must_use]
+    pub const fn new(x: usize, y: usize, line: StepLine) -> Self {
+        Self { at: (x, y), line }
+    }
+}
+
 /// A route through cells.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Route {
     /// Its colour.
     pub color: RouteColor,
     /// The cells it goes through, in order.
-    pub steps: Vec<(usize, usize)>,
+    pub steps: Vec<Step>,
     /// What it leads to: "Item 1/3".
     pub label: Option<String>,
     /// The way out of the room, for its pin at the picture's edge.
@@ -210,18 +241,8 @@ impl MapGrid {
             let (w, h) = (self.width as f32 * cell, self.height as f32 * cell);
             c.rect((x, y, w, h), 0.0, None, Some(Line::solid(WALL_DIM, 1.0)));
         }
-        for route in &self.routes {
-            let points: Vec<(f32, f32)> = route
-                .steps
-                .iter()
-                .map(|&(cx, cy)| plan.centre(cx, cy))
-                .collect();
-            let line = Line {
-                color: route.color.color(),
-                width: 2.0,
-                dash: Some((2.0, 3.0)),
-            };
-            c.polyline(&points, line);
+        for (r, route) in self.routes.iter().enumerate() {
+            plan.route(c, r, route);
         }
         // One picture a place, so the room's first item shows whole; a dot says there are more.
         let mut pictured = std::collections::BTreeSet::new();
@@ -321,6 +342,69 @@ impl Plan<'_> {
             Edge::South => self.seen(Some(place.x), place.y.checked_add(1)),
             Edge::West => self.seen(place.x.checked_sub(1), Some(place.y)),
             Edge::East => self.seen(place.x.checked_add(1), Some(place.y)),
+        }
+    }
+
+    /// A route, through its cells' middles: each step's line as its line says, and where
+    /// routes share a step, side by side and thinner. `r` is its place among the map's routes.
+    fn route(&self, c: &mut Canvas, r: usize, route: &Route) {
+        // A run of steps drawn alike, as one line, so its dashes go on round corners.
+        let mut run: Vec<(f32, f32)> = Vec::new();
+        let mut drawn: Option<(Line, (StepLine, u32))> = None;
+        let flush = |c: &mut Canvas, run: &mut Vec<(f32, f32)>, drawn: Option<(Line, _)>| {
+            if let Some((line, _)) = drawn {
+                c.polyline(run, line);
+            }
+            run.clear();
+        };
+        for pair in route.steps.windows(2) {
+            let (from, to) = (pair[0].at, pair[1].at);
+            if pair[1].line == StepLine::Jump || from == to {
+                flush(c, &mut run, drawn.take());
+                continue;
+            }
+            let (offset, width) = self.beside(r, from, to);
+            let line = Line {
+                color: route.color.color(),
+                width,
+                dash: (pair[1].line == StepLine::Dashed).then_some((2.0, 3.0)),
+            };
+            let key = (pair[1].line, offset.to_bits());
+            let (a, b) = (self.centre(from.0, from.1), self.centre(to.0, to.1));
+            // Offset across the step, the same side whichever way a route takes it.
+            let (lo, hi) = if from < to { (a, b) } else { (b, a) };
+            let length = (hi.0 - lo.0).hypot(hi.1 - lo.1).max(f32::EPSILON);
+            let (nx, ny) = ((lo.1 - hi.1) / length, (hi.0 - lo.0) / length);
+            if drawn.is_none_or(|(_, k)| k != key) {
+                flush(c, &mut run, drawn.take());
+                run.push((a.0 + nx * offset, a.1 + ny * offset));
+            }
+            run.push((b.0 + nx * offset, b.1 + ny * offset));
+            drawn = Some((line, key));
+        }
+        flush(c, &mut run, drawn);
+    }
+
+    /// Where route `r`'s step between two cells is drawn across it, and how wide: in the
+    /// middle, unless other routes take the same step, when each is drawn beside the others.
+    fn beside(&self, r: usize, from: (usize, usize), to: (usize, usize)) -> (f32, f32) {
+        let takes = |route: &Route| {
+            route.steps.windows(2).any(|pair| {
+                pair[1].line != StepLine::Jump
+                    && ((pair[0].at, pair[1].at) == (from, to)
+                        || (pair[0].at, pair[1].at) == (to, from))
+            })
+        };
+        let sharing: Vec<usize> = (0..self.map.routes.len())
+            .filter(|&k| takes(&self.map.routes[k]))
+            .collect();
+        match sharing.iter().position(|&k| k == r) {
+            Some(place) if sharing.len() > 1 => {
+                #[allow(clippy::cast_precision_loss, reason = "a route or two")]
+                let middle = place as f32 - (sharing.len() - 1) as f32 / 2.0;
+                (middle * SIDE_BY_SIDE, 1.5)
+            }
+            _ => (0.0, 2.0),
         }
     }
 

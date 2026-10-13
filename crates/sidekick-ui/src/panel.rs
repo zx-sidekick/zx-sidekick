@@ -126,6 +126,8 @@ pub struct CardRow {
     pub label: Vec<Pixels>,
     /// Its pictures, each answered or not yet.
     pub cards: Vec<(Pixels, bool)>,
+    /// Its outline's colour, when it's outlined.
+    pub outline: Option<Color>,
 }
 
 const TEAL: Color = Color::rgb(0x6F, 0xD6, 0xC4);
@@ -574,6 +576,12 @@ impl Panel {
                 x + label + 3.0
             };
             word(c, &row.label, (cards_left - 3.0 - label, y + 2.0), TEAL);
+            if let Some(color) = row.outline {
+                // Round the label and the cards, outside them, as a chip's.
+                let left = cards_left - 3.0 - label - 4.0;
+                let ring = (left - 1.5, y - 1.5, width + label + 7.0 + 3.0, 23.0);
+                c.rect(ring, 4.5, None, Some(Line::solid(color, 1.5)));
+            }
             for (i, (picture, answered)) in row.cards.iter().enumerate() {
                 #[allow(clippy::cast_precision_loss, reason = "a few cards")]
                 let cx = cards_left + i as f32 * 22.0;

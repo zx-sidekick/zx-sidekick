@@ -5,8 +5,8 @@ use sidekick_ui::{
     pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Inside, Levels,
     LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer,
     PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels,
-    Place, PromptButton, Question, Refusal, Route, RouteColor, Row, ScoreRow, SwitchRow,
-    TapePrompt, ThisGame,
+    Place, PromptButton, Question, Refusal, Route, RouteColor, Row, ScoreRow, Step, StepLine,
+    SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -414,6 +414,7 @@ fn the_panel_in_the_game_s_own_font_and_pictures() {
         .collect();
     let cards = (1..=3)
         .map(|r| CardRow {
+            outline: None,
             label: stand_in_word(&r.to_string()),
             cards: (0..3)
                 .map(|c| (stand_in(40 + r * 3 + c), (r + c) % 3 == 0))
@@ -451,6 +452,14 @@ fn the_panel_in_the_game_s_own_font_and_pictures() {
     let wide = panel.draw(&mut fonts, PANEL_AT_1080);
     assert_eq!(wide.size(), PANEL_AT_1080);
     golden("panel-game-pictures-1080.png", &wide.png());
+}
+
+/// A route's steps through cells, every line dashed, as through rooms not yet visited.
+fn dashed(cells: &[(usize, usize)]) -> Vec<Step> {
+    cells
+        .iter()
+        .map(|&(x, y)| Step::new(x, y, StepLine::Dashed))
+        .collect()
 }
 
 /// A stand-in map, 16 × 32 as the mockups' is: walls from a seeded coin where `seen`.
@@ -506,13 +515,13 @@ fn stand_in_map(seen: bool) -> MapGrid {
         routes: vec![
             Route {
                 color: RouteColor::First,
-                steps: vec![(8, 1), (8, 0), (10, 0), (10, 2), (8, 2), (8, 3)],
+                steps: dashed(&[(8, 1), (8, 0), (10, 0), (10, 2), (8, 2), (8, 3)]),
                 label: Some("Item 1/3".to_owned()),
                 exit: Some(Edge::North),
             },
             Route {
                 color: RouteColor::Second,
-                steps: vec![
+                steps: dashed(&[
                     (8, 1),
                     (7, 1),
                     (7, 6),
@@ -521,7 +530,7 @@ fn stand_in_map(seen: bool) -> MapGrid {
                     (8, 7),
                     (8, 13),
                     (6, 13),
-                ],
+                ]),
                 label: Some("Core".to_owned()),
                 exit: Some(Edge::South),
             },
@@ -751,6 +760,106 @@ fn a_map_of_some_rooms_walked_has_no_frame() {
     };
     golden(
         "panel-map-walked.png",
+        &panel.draw(&mut fonts, PANEL_AT_1).png(),
+    );
+}
+
+#[test]
+fn routes_are_solid_through_rooms_walked_and_side_by_side_where_they_meet() {
+    let mut fonts = Fonts::new();
+    let walked: Vec<Cell> = [(8, 1), (8, 2), (8, 3), (9, 3), (9, 4)]
+        .iter()
+        .map(|&(x, y)| Cell {
+            x,
+            y,
+            seen: true,
+            ..Cell::default()
+        })
+        .collect();
+    let step = Step::new;
+    let map = MapGrid {
+        width: 16,
+        height: 32,
+        inside: None,
+        cells: walked,
+        markers: vec![
+            Marker::new(8, 1, MarkerKind::Player),
+            Marker {
+                color: Some(RouteColor::Second.color()),
+                ..Marker::new(9, 12, MarkerKind::Ring)
+            },
+        ],
+        routes: vec![
+            // Through rooms walked, out into one not, then a teleport.
+            Route {
+                color: RouteColor::First,
+                steps: vec![
+                    step(8, 1, StepLine::Solid),
+                    step(8, 2, StepLine::Solid),
+                    step(8, 3, StepLine::Solid),
+                    step(9, 3, StepLine::Solid),
+                    step(10, 3, StepLine::Dashed),
+                    step(3, 20, StepLine::Jump),
+                    step(3, 21, StepLine::Dashed),
+                ],
+                label: Some("Item 1/3".to_owned()),
+                exit: Some(Edge::South),
+            },
+            // The same first steps, then its own way.
+            Route {
+                color: RouteColor::Second,
+                steps: vec![
+                    step(8, 1, StepLine::Solid),
+                    step(8, 2, StepLine::Solid),
+                    step(8, 3, StepLine::Solid),
+                    step(9, 3, StepLine::Solid),
+                    step(9, 4, StepLine::Solid),
+                    step(9, 12, StepLine::Dashed),
+                ],
+                label: Some("Core".to_owned()),
+                exit: Some(Edge::South),
+            },
+        ],
+    };
+    let cards = (1..=2)
+        .map(|r| CardRow {
+            outline: (r == 2).then(|| RouteColor::First.color()),
+            label: stand_in_word(&r.to_string()),
+            cards: (0..3).map(|c| (stand_in(40 + r * 3 + c), c == 0)).collect(),
+        })
+        .collect();
+    let panel = Panel {
+        level: 5,
+        name: "Routes".to_owned(),
+        description: String::new(),
+        widgets: vec![
+            PanelWidget {
+                column: PanelColumn::Left,
+                title: Some("Core".to_owned()),
+                body: PanelBody::Icons {
+                    columns: 3,
+                    icons: (1..=9)
+                        .map(|i| Icon {
+                            picture: stand_in(i),
+                            look: Look::Dim,
+                        })
+                        .collect(),
+                },
+            },
+            PanelWidget {
+                column: PanelColumn::Right,
+                title: Some("Doors".to_owned()),
+                body: PanelBody::Cards(cards),
+            },
+            PanelWidget {
+                column: PanelColumn::Left,
+                title: None,
+                body: PanelBody::Map(map),
+            },
+        ],
+    };
+    golden(
+        "panel-map-routes.png",
         &panel.draw(&mut fonts, PANEL_AT_1).png(),
     );
 }
