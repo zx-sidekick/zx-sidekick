@@ -115,6 +115,14 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Turns a .pok file's trainers into [[cheats]], to paste into a definition.
+    ImportPok {
+        /// A .pok file, the POKE format Fuse and ZXDB use.
+        file: PathBuf,
+        /// Where to write them (standard output when not given).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 /// Something couldn't be read or written: exit status 2.
@@ -127,6 +135,7 @@ fn main() -> ExitCode {
     match (cli.command, cli.target) {
         (Some(Command::Check { definition, tape }), _) => check(&definition, tape.as_deref()),
         (Some(Command::Convert { file, output }), _) => convert(&file, output.as_deref()),
+        (Some(Command::ImportPok { file, output }), _) => import_pok(&file, output.as_deref()),
         (
             Some(Command::Run {
                 tape,
@@ -371,6 +380,30 @@ fn check(path: &Path, tape: Option<&Path>) -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(PROBLEMS)
+    }
+}
+
+/// `sidekick import-pok`: a `.pok` file's trainers as `[[cheats]]`.
+fn import_pok(file: &Path, output: Option<&Path>) -> ExitCode {
+    let cheats = fs::read(file)
+        .map_err(|e| e.to_string())
+        .and_then(|bytes| {
+            sidekick_def::pok::read(&String::from_utf8_lossy(&bytes)).map_err(|e| e.to_string())
+        })
+        .map(|trainers| sidekick_def::pok::cheats_toml(&trainers));
+    let written = cheats.and_then(|toml| match output {
+        None => {
+            print!("{toml}");
+            Ok(())
+        }
+        Some(path) => fs::write(path, toml).map_err(|e| format!("{}: {e}", path.display())),
+    });
+    match written {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{}: {e}", file.display());
+            ExitCode::from(UNREADABLE)
+        }
     }
 }
 
