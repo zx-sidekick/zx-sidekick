@@ -294,6 +294,8 @@ pub(crate) struct Playing {
     pub(crate) keep_lists: bool,
     /// Where F9 goes back to: the quick slot, or the save or situation `--load` started from.
     pub(crate) save_point: SavePoint,
+    /// Started with `--paused`: the game is paused once it's in play.
+    pub(crate) paused: bool,
     /// Where the game's definition was read from, to read again when it changes; none for a
     /// tape played plainly.
     pub(crate) source: Option<PathBuf>,
@@ -314,6 +316,7 @@ impl Game {
             quit_slot: true,
             keep_lists: true,
             save_point: SavePoint::Quick,
+            paused: false,
             source: Some(self.package.path.clone()),
         })
     }

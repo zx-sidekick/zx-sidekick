@@ -619,6 +619,13 @@ impl Play {
         changed
     }
 
+    /// Whether `part` does anything in the game's state now.
+    pub(crate) fn maps(&self, part: Part) -> bool {
+        self.mapping
+            .parts(self.state.as_deref())
+            .contains_key(&part)
+    }
+
     /// A part was pressed: starts its tap, and keeps what it holds going for the frames it
     /// lasts at least. Returns the script function it calls, if it calls one.
     pub(crate) fn pressed(&mut self, part: Part) -> Option<String> {
@@ -1131,6 +1138,9 @@ mod tests {
             "no [pad.play]"
         );
         assert!(holds(&mut play, &[Part::Start]).is_empty());
+        assert!(!play.maps(Part::Start), "Start does nothing in play here");
+        play.enter(Some("title"));
+        assert!(play.maps(Part::Start), "but on the title");
     }
 
     const ACTIONS: &str = r#"

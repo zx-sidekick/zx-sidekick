@@ -34,7 +34,8 @@ work. The maintainer's yes to a hands-on test is what lets you add
 2. **Start where the change shows**, so the maintainer doesn't have to walk
    there: `--load` a crafted situation (`room = 20`, BLOB's place, switches),
    the definition's own situations (`door.toml`), or the title for start-up
-   changes. Launch it in the background.
+   changes. Launch it in the background with `--paused`, so it waits until the
+   maintainer is looking, and say to resume (any move or fire, or the pad's A or B).
 3. **Ask with AskUserQuestion**, in the same turn as the launch. Say the PR
    number and what it changes in a few words; say what to do and what to look
    at, concretely (the level to set, the room on the map by row and column, the

@@ -49,6 +49,10 @@ struct Cli {
     /// Start from a save (.sav, .szx) or a crafted situation (.toml).
     #[arg(long, value_name = "FILE")]
     load: Option<PathBuf>,
+    /// Start the game paused once it's in play (or at the moment --load sets up), so a test
+    /// waits until you're looking.
+    #[arg(long)]
+    paused: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -187,6 +191,7 @@ fn main() -> ExitCode {
         }
         (None, target) => match open(target.as_deref(), &cli.games)
             .and_then(|start| loading(start, cli.load.as_deref()))
+            .map(|start| pausing(start, cli.paused))
             .and_then(window::run)
         {
             Ok(()) => ExitCode::SUCCESS,
@@ -231,6 +236,17 @@ fn open(target: Option<&str>, extra: &[PathBuf]) -> Result<Start, String> {
 
 /// The window's start with `--load` applied: a game started from the file, and no offer to
 /// continue.
+/// The window's start with `--paused` applied: the game to be paused once it's in play.
+fn pausing(start: Start, paused: bool) -> Start {
+    match start {
+        Start::Play(mut playing) => {
+            playing.paused = paused;
+            Start::Play(playing)
+        }
+        other => other,
+    }
+}
+
 fn loading(start: Start, load: Option<&Path>) -> Result<Start, String> {
     let Some(file) = load else {
         return Ok(start);
@@ -293,6 +309,7 @@ fn tape_session(file: &Path, library: &Library, data: &Path) -> Result<Playing, 
         quit_slot: true,
         keep_lists: true,
         save_point: SavePoint::Quick,
+        paused: false,
         source: None,
     })
 }
@@ -475,6 +492,7 @@ mod tests {
             quit_slot: true,
             keep_lists: true,
             save_point: SavePoint::Quick,
+            paused: false,
             source: None,
         }
     }
