@@ -11,6 +11,7 @@ use std::{
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 /// A game ready to start: its definition and its folder in the data folder.
@@ -287,6 +288,9 @@ pub(crate) struct Playing {
     pub(crate) quit_slot: bool,
     /// Whether kept lists are saved: not for a crafted situation, whose entries are made up.
     pub(crate) keep_lists: bool,
+    /// Where the game's definition was read from, to read again when it changes; none for a
+    /// tape played plainly.
+    pub(crate) source: Option<PathBuf>,
 }
 
 impl Game {
@@ -303,8 +307,35 @@ impl Game {
             saves: Saves::of_game(&self.definition().game.id, &tape.sha1, &self.folder),
             quit_slot: true,
             keep_lists: true,
+            source: Some(self.package.path.clone()),
         })
     }
+}
+
+/// When a definition's files last changed: the file itself, or the newest file in its folder
+/// and the folders in that (its scripts, its situations); `None` when that can't be read.
+pub(crate) fn changed(path: &Path) -> Option<SystemTime> {
+    let meta = fs::metadata(path).ok()?;
+    if !meta.is_dir() {
+        return meta.modified().ok();
+    }
+    let mut newest = meta.modified().ok();
+    for entry in fs::read_dir(path).ok()?.flatten() {
+        let inner = entry.path();
+        let stamp = if inner.is_dir() {
+            fs::read_dir(&inner)
+                .ok()
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter_map(|e| e.metadata().ok()?.modified().ok())
+                .max()
+        } else {
+            entry.metadata().ok()?.modified().ok()
+        };
+        newest = newest.max(stamp);
+    }
+    newest
 }
 
 /// A package's script, compiled, or why it couldn't be; `None` without one.
@@ -344,6 +375,34 @@ pub(crate) fn start(model: Model, tape: &Tape) -> Result<Machine, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_definition_folder_changed_when_any_of_its_files_did() {
+        use std::time::{Duration, UNIX_EPOCH};
+        let dir = tempfile::TempDir::new().unwrap();
+        let at = |secs: u64| UNIX_EPOCH + Duration::from_secs(secs);
+        let stamp = |path: &Path, secs: u64| {
+            fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(at(secs))
+                .unwrap();
+        };
+        let game = dir.path().join("game.toml");
+        fs::write(&game, "schema = 1").unwrap();
+        fs::create_dir(dir.path().join("scripts")).unwrap();
+        let script = dir.path().join("scripts/game.rhai");
+        fs::write(&script, "fn on_frame() {}").unwrap();
+        stamp(&game, 1_000);
+        stamp(&script, 2_000);
+        let folder = changed(dir.path()).unwrap();
+        assert!(folder >= at(2_000), "the script, a folder down");
+        stamp(&script, 3_000_000_000);
+        assert_eq!(changed(dir.path()), Some(at(3_000_000_000)));
+        assert_eq!(changed(&game), Some(at(1_000)), "a file alone");
+        assert_eq!(changed(&dir.path().join("missing.toml")), None);
+    }
     use sidekick_def::Definition;
     use std::io::Write as _;
 

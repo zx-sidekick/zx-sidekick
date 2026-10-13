@@ -126,30 +126,35 @@ pub struct Progress {
     pub in_game: bool,
 }
 
+/// Sets the machine to stop at a definition's sync address and to watch its states'
+/// addresses; with none, neither.
+fn follow(machine: &mut Machine, definition: Option<&Definition>) {
+    let sync = definition
+        .and_then(|d| d.run.as_ref())
+        .and_then(|r| r.sync)
+        .map(|a| a.0);
+    machine.set_sync(sync);
+    let watched: Vec<u16> = definition
+        .iter()
+        .flat_map(|d| &d.states)
+        .flat_map(|s| s.pc.iter().flatten())
+        .map(|a| a.0)
+        .collect();
+    machine.watch(&watched);
+}
+
 impl Session {
     /// The game a definition describes, on this machine; `None` plays a tape plainly, with
     /// nothing named. The machine stops at the definition's sync address and watches its
     /// states' addresses.
     #[must_use]
     pub fn new(mut machine: Machine, definition: Option<Definition>) -> Self {
-        let sync = definition
-            .as_ref()
-            .and_then(|d| d.run.as_ref())
-            .and_then(|r| r.sync)
-            .map(|a| a.0);
-        machine.set_sync(sync);
+        follow(&mut machine, definition.as_ref());
         let hold = definition
             .as_ref()
             .and_then(|d| d.run.as_ref())
             .is_some_and(|r| r.hold_loading_screen);
         machine.stop_when_loaded(hold);
-        let watched: Vec<u16> = definition
-            .iter()
-            .flat_map(|d| &d.states)
-            .flat_map(|s| s.pc.iter().flatten())
-            .map(|a| a.0)
-            .collect();
-        machine.watch(&watched);
         Self {
             machine: Box::new(machine),
             definition,
@@ -339,12 +344,46 @@ impl Session {
         }
     }
 
-    /// Gives the session its definition's script, compiled; or why it couldn't be.
+    /// Gives the session its definition's script, compiled; or why it couldn't be. A script
+    /// given anew starts afresh: its `on_load` runs again.
     pub fn set_script(&mut self, script: Result<Script, String>) {
+        self.script_loaded = false;
+        self.results.clear();
         match script {
-            Ok(script) => self.script = Some(script),
-            Err(why) => self.script_off = Some(why),
+            Ok(script) => {
+                self.script = Some(script);
+                self.script_off = None;
+            }
+            Err(why) => {
+                self.script = None;
+                self.script_off = Some(why);
+            }
         }
+    }
+
+    /// Takes a new definition while the game runs, as when its author edits it. The switches
+    /// on come off, their patches taken off; the machine stops at the new definition's sync
+    /// address and watches its states; then each switch the new definition still has goes back
+    /// on. Returns the switches left off: gone from the definition, or whose patches no longer
+    /// find the game's bytes. The script stays: give the new one with `set_script`.
+    pub fn reload(&mut self, definition: Definition) -> Vec<String> {
+        let on = std::mem::take(&mut self.switches);
+        let patches: Vec<Patch> = self
+            .definition
+            .iter()
+            .flat_map(|d| &d.cheats)
+            .filter(|c| on.contains(&c.id))
+            .flat_map(|c| c.patch.iter().cloned())
+            .collect();
+        for patch in &patches {
+            self.unpatch(patch);
+        }
+        follow(&mut self.machine, Some(&definition));
+        self.definition = Some(definition);
+        self.reading_anew();
+        on.into_iter()
+            .filter(|id| self.switch(id, true).is_err())
+            .collect()
     }
 
     /// Runs the script for a frame: `on_load` once, when the tape has loaded or the game's
