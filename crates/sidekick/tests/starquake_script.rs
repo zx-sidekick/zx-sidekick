@@ -448,3 +448,22 @@ fn items_are_marked_by_kind_from_level_3_in_rooms_walked_and_level_4_everywhere(
         "level 4: in rooms not reached too, a card cyan"
     );
 }
+
+#[test]
+fn no_item_off_the_floor_is_marked() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    // Rows 1 to 5 are off the floor: picked up, or otherwise not lying in the room.
+    for (k, row) in (0..).zip(1..=5u8) {
+        poke_into(&mut s, "items", k * 4, &[3, row, 8, 20 + row]);
+    }
+    // Row 6 lies on the floor; row 0 isn't placed yet, but its room is known.
+    poke_into(&mut s, "items", 20, &[3, 6, 8, 30]);
+    poke_into(&mut s, "items", 24, &[3, 0, 9, 31]);
+    enter(&mut s, "play");
+    s.set_level(4);
+    s.run_frame().expect("a frame");
+    let pictures: Vec<i64> = item_marks(&s).iter().map(|&(p, _, _)| p).collect();
+    assert_eq!(pictures, [30, 31]);
+}
