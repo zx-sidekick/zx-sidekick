@@ -38,6 +38,8 @@ pub struct LibraryPage {
     pub games: Vec<LibraryEntry>,
     /// The chosen one.
     pub chosen: usize,
+    /// The one pressed, drawn pressed while its press shows.
+    pub pressed: Option<usize>,
     /// What the last pad used marks its buttons with.
     pub pad: PadLabels,
 }
@@ -105,7 +107,12 @@ impl LibraryPage {
         {
             #[allow(clippy::cast_precision_loss, reason = "a few rows")]
             let y = FIRST + row as f32 * STEP;
-            self.card(&mut c, fonts, y, game, i == self.chosen);
+            let fill = if self.pressed == Some(i) {
+                Some(colors::PRESSED)
+            } else {
+                (i == self.chosen).then_some(CHOSEN_BG)
+            };
+            self.card(&mut c, fonts, y, game, fill);
             bottom = y + CARD;
         }
 
@@ -150,12 +157,18 @@ impl LibraryPage {
     }
 
     #[allow(clippy::unused_self, reason = "drawn as part of the page")]
-    fn card(&self, c: &mut Canvas, fonts: &mut Fonts, y: f32, game: &LibraryEntry, chosen: bool) {
-        let (fill, edge) = if chosen {
-            (CHOSEN_BG, Line::solid(colors::ACCENT, 1.5))
-        } else {
-            (colors::CARD, Line::solid(CARD_EDGE, 1.0))
-        };
+    /// A game's card; `lit` is its fill when it's chosen or pressed.
+    fn card(
+        &self,
+        c: &mut Canvas,
+        fonts: &mut Fonts,
+        y: f32,
+        game: &LibraryEntry,
+        lit: Option<Color>,
+    ) {
+        let (fill, edge) = lit.map_or((colors::CARD, Line::solid(CARD_EDGE, 1.0)), |fill| {
+            (fill, Line::solid(colors::ACCENT, 1.5))
+        });
         c.rect((120.0, y, 720.0, CARD), 10.0, Some(fill), Some(edge));
         let title = Style::new(18.0, colors::TEXT).weight(Weight::SemiBold);
         c.text(
@@ -206,6 +219,7 @@ mod tests {
                 })
                 .collect(),
             chosen,
+            pressed: None,
             pad: PadLabels::Letters,
         }
     }

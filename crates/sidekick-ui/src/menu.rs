@@ -33,6 +33,9 @@ pub struct SwitchRow {
     pub label: String,
     /// Whether it's on.
     pub on: bool,
+    /// Where its knob is, from 0 at the left (off) to 100 at the right (on); between them while
+    /// it slides.
+    pub knob: u8,
     /// Why it wouldn't go on, when it wouldn't.
     pub refusal: Option<String>,
 }
@@ -61,6 +64,8 @@ pub struct Menu {
     pub actions: Vec<String>,
     /// The row chosen.
     pub chosen: Row,
+    /// The row or button pressed, drawn pressed while its press shows.
+    pub pressed: Option<Row>,
     /// An action pressed once, waiting for a second press: its index, and what the second
     /// press does ("end this game").
     pub armed: Option<(usize, String)>,
@@ -248,7 +253,7 @@ impl Menu {
             );
         }
         for (i, (switch, &top)) in self.switches.iter().zip(&layout.switches).enumerate() {
-            self.switch_row(&mut c, fonts, top, switch, self.chosen == Row::Switch(i));
+            self.switch_row(&mut c, fonts, top, switch, self.lit(Row::Switch(i)));
         }
         c.rect((1.0, layout.rule, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
         for (i, (action, &top)) in self.actions.iter().zip(&layout.actions).enumerate() {
@@ -289,19 +294,29 @@ impl Menu {
         c
     }
 
-    fn chosen_box(c: &mut Canvas, (x, y, w, h): (f32, f32, f32, f32)) {
+    /// A row's fill when it's lit: pressed, or chosen.
+    fn lit(&self, row: Row) -> Option<Color> {
+        if self.pressed == Some(row) {
+            Some(colors::PRESSED)
+        } else {
+            (self.chosen == row).then_some(CHOSEN_BG)
+        }
+    }
+
+    fn chosen_box(c: &mut Canvas, (x, y, w, h): (f32, f32, f32, f32), fill: Color) {
         c.rect(
             (x, y, w, h),
             8.0,
-            Some(CHOSEN_BG),
+            Some(fill),
             Some(Line::solid(colors::ACCENT, 1.5)),
         );
     }
 
     fn level_box(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, levels: &Levels) {
-        let chosen = self.chosen == Row::Level;
-        if chosen {
-            Self::chosen_box(c, (12.0, top, 494.0, LEVEL_BOX));
+        let lit = self.lit(Row::Level);
+        let chosen = lit.is_some();
+        if let Some(fill) = lit {
+            Self::chosen_box(c, (12.0, top, 494.0, LEVEL_BOX), fill);
         } else {
             c.rect(
                 (12.0, top, 494.0, LEVEL_BOX),
@@ -398,26 +413,23 @@ impl Menu {
         fonts: &mut Fonts,
         top: f32,
         row: &SwitchRow,
-        chosen: bool,
+        lit: Option<Color>,
     ) {
-        if chosen {
+        if let Some(fill) = lit {
             let height = if row.refusal.is_some() {
                 30.0 + REFUSAL
             } else {
                 30.0
             };
-            Self::chosen_box(c, (12.0, top - 7.0, 494.0, height));
+            Self::chosen_box(c, (12.0, top - 7.0, 494.0, height), fill);
         }
         let label = Style::new(14.0, SWITCH_TEXT).weight(Weight::Medium);
         span(c, fonts, &row.label, (27.0, top), Align::Left, &label);
-        let (fill, ink, word) = if row.on {
-            (colors::ACCENT, colors::PROMPT, "On")
-        } else {
-            (PILL_OFF, colors::TEXT, "Off")
-        };
-        c.rect((447.0, top - 3.0, 44.0, 22.0), 4.0, Some(fill), None);
-        let pill = Style::new(13.0, ink).weight(Weight::Medium);
-        c.text(fonts, word, (469.0, top - 3.0), 22.0, Align::Center, &pill);
+        // A toggle: a track, its knob at the right when on, the track's colour following it.
+        let track = between(PILL_OFF, colors::ACCENT, row.knob);
+        c.rect((451.0, top - 3.0, 40.0, 22.0), 11.0, Some(track), None);
+        let knob_x = 18.0f32.mul_add(f32::from(row.knob.min(100)) / 100.0, 462.0);
+        c.circle((knob_x, top + 8.0), 8.0, Some(colors::TEXT), None);
         if let Some(refusal) = &row.refusal {
             let red = Style::new(12.0, colors::RED);
             span(c, fonts, refusal, (27.0, top + 22.0), Align::Left, &red);
@@ -430,8 +442,8 @@ impl Menu {
         for (i, (word, keys)) in SAVE_BUTTONS.iter().enumerate() {
             #[allow(clippy::cast_precision_loss, reason = "three buttons")]
             let x = 12.0 + i as f32 * 168.0;
-            if self.chosen == Row::Save(i) {
-                Self::chosen_box(c, (x, top, 160.0, 39.0));
+            if let Some(fill) = self.lit(Row::Save(i)) {
+                Self::chosen_box(c, (x, top, 160.0, 39.0), fill);
             } else {
                 c.rect(
                     (x, top, 160.0, 39.0),
@@ -481,8 +493,8 @@ impl Menu {
     }
 
     fn action_row(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, i: usize, action: &str) {
-        if self.chosen == Row::Action(i) {
-            Self::chosen_box(c, (12.0, top - 9.0, 494.0, 36.0));
+        if let Some(fill) = self.lit(Row::Action(i)) {
+            Self::chosen_box(c, (12.0, top - 9.0, 494.0, 36.0), fill);
         }
         let armed = self.armed.as_ref().filter(|(at, _)| *at == i);
         let (words, color) = armed.map_or_else(
@@ -606,5 +618,34 @@ impl Question {
             ],
         );
         c
+    }
+}
+
+/// The colour `percent` of the way from `from` to `to`, opaque.
+fn between(from: Color, to: Color, percent: u8) -> Color {
+    let t = u16::from(percent.min(100));
+    let mix = |a: u8, b: u8| {
+        let (a, b) = (u16::from(a), u16::from(b));
+        let mixed = (a * (100 - t) + b * t) / 100;
+        u8::try_from(mixed).unwrap_or(u8::MAX)
+    };
+    Color::rgb(mix(from.r, to.r), mix(from.g, to.g), mix(from.b, to.b))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_toggle_s_track_fades_with_its_knob() {
+        assert_eq!(between(PILL_OFF, colors::ACCENT, 0), PILL_OFF);
+        assert_eq!(between(PILL_OFF, colors::ACCENT, 100), colors::ACCENT);
+        let half = between(Color::rgb(0, 100, 200), Color::rgb(100, 200, 0), 50);
+        assert_eq!(half, Color::rgb(50, 150, 100));
+        assert_eq!(
+            between(PILL_OFF, colors::ACCENT, 255),
+            colors::ACCENT,
+            "past the end"
+        );
     }
 }

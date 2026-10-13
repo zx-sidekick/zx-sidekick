@@ -1,10 +1,12 @@
 //! The guidance menu's state: its rows from the definition, the changes made in it until
-//! they're applied, second presses, and the question before the score shows more. No SDL
-//! here; the window feeds it and draws it.
+//! they're applied, presses shown before they act, second presses, and the question before
+//! the score shows more. No SDL here; the window feeds it and draws it.
 
+use crate::press::{self, Pressed};
 use sidekick_core::{Record, Session, SwitchError};
 use sidekick_def::Definition;
 use sidekick_ui::{Levels, Menu as Card, PadLabels, Question, Row, SwitchRow};
+use std::time::Instant;
 
 /// What the menu is asked to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,6 +62,8 @@ struct Switch {
     marks_score: bool,
     on: bool,
     refusal: Option<String>,
+    /// When it last flipped, while its knob slides across.
+    flipped: Option<Instant>,
 }
 
 /// The guidance menu, open.
@@ -70,6 +74,8 @@ pub(crate) struct Menu {
     switches: Vec<Switch>,
     actions: Vec<(Action, String)>,
     chosen: Row,
+    /// The row pressed, while its press shows; what it does waits until then.
+    pressed: Option<Pressed<Row>>,
     armed: Option<usize>,
     /// What the score would show anew, while the question is asked.
     question: Option<Vec<String>>,
@@ -103,6 +109,7 @@ impl Menu {
                 marks_score: c.marks_score,
                 on: session.switched_on(&c.id),
                 refusal: None,
+                flipped: None,
             })
             .collect();
         let mut actions = vec![(Action::Back, "Back to the game".to_owned())];
@@ -131,6 +138,7 @@ impl Menu {
             switches,
             actions,
             chosen,
+            pressed: None,
             armed: None,
             question: None,
             can_load,
@@ -150,8 +158,29 @@ impl Menu {
             .collect()
     }
 
-    /// Takes an input; `session` is asked whether a switch could go on, and applied to.
-    pub(crate) fn input(&mut self, input: Input, session: &mut Session) -> Outcome {
+    /// Takes an input at `now`; `session` is asked whether a switch could go on, and applied
+    /// to. A press (Enter, the pad's confirm, a click) shows first: what it does waits for
+    /// [`Self::press_due`], or for the next input, which never waits behind it. A switch flips
+    /// at once, its knob sliding across: the slide is its press.
+    pub(crate) fn input(&mut self, input: Input, session: &mut Session, now: Instant) -> Outcome {
+        let before: Vec<bool> = self.switches.iter().map(|s| s.on).collect();
+        let outcome = self.take(input, session, now);
+        for (switch, was) in self.switches.iter_mut().zip(before) {
+            if switch.on != was {
+                switch.flipped = Some(now);
+            }
+        }
+        outcome
+    }
+
+    fn take(&mut self, input: Input, session: &mut Session, now: Instant) -> Outcome {
+        if let Some(pressed) = self.pressed.take() {
+            self.chosen = pressed.what();
+            let outcome = self.press(session);
+            if outcome != Outcome::Stay {
+                return outcome;
+            }
+        }
         if let Some(items) = &self.question {
             debug_assert!(!items.is_empty());
             return match input {
@@ -185,19 +214,34 @@ impl Menu {
                 Outcome::Stay
             }
             Input::Back => Outcome::Cancelled,
-            Input::Confirm => self.press(session),
+            Input::Confirm => {
+                if matches!(self.chosen, Row::Switch(_)) {
+                    return self.press(session);
+                }
+                self.pressed = Some(Pressed::new(self.chosen, now));
+                Outcome::Stay
+            }
             Input::Click(row) | Input::Choose(row) => {
                 if self.chosen != row {
                     self.armed = None;
                 }
                 self.chosen = row;
                 if matches!(input, Input::Click(_)) {
-                    self.press(session)
-                } else {
-                    Outcome::Stay
+                    if matches!(row, Row::Switch(_)) {
+                        return self.press(session);
+                    }
+                    self.pressed = Some(Pressed::new(row, now));
                 }
+                Outcome::Stay
             }
         }
+    }
+
+    /// What a press does, once it has shown long enough at `now`; nothing while it shows, or
+    /// with no press.
+    pub(crate) fn press_due(&mut self, session: &mut Session, now: Instant) -> Option<Outcome> {
+        self.chosen = press::take_due(&mut self.pressed, now)?;
+        Some(self.press(session))
     }
 
     /// Changes the chosen level or switch: `up` steps the level up (or turns a switch on);
@@ -324,8 +368,13 @@ impl Menu {
         self.level
     }
 
-    /// The card, as it stands, for a pad marked as `pad` says.
+    /// The card, as it stands, for a pad marked as `pad` says, its switches' knobs at rest.
     pub(crate) fn card(&self, pad: PadLabels) -> Card {
+        self.card_at(pad, None)
+    }
+
+    /// The card at `now`, a switch flipped in the last moment drawn with its knob on the way.
+    pub(crate) fn card_at(&self, pad: PadLabels, now: Option<Instant>) -> Card {
         Card {
             levels: (!self.levels.is_empty()).then(|| Levels {
                 levels: self.levels.clone(),
@@ -337,12 +386,14 @@ impl Menu {
                 .map(|s| SwitchRow {
                     label: s.label.clone(),
                     on: s.on,
+                    knob: knob(s, now),
                     refusal: s.refusal.clone(),
                 })
                 .collect(),
             actions: self.actions.iter().map(|(_, a)| a.clone()).collect(),
             saves: Some(self.can_load),
             chosen: self.chosen,
+            pressed: self.pressed.map(|p| p.what()),
             armed: self.armed.and_then(|i| {
                 let (action, words) = self.actions.get(i)?;
                 let what = match action {
@@ -397,6 +448,26 @@ fn menu_actions(definition: Option<&Definition>, state: Option<&str>) -> Vec<(us
         .collect()
 }
 
+/// Where a switch's knob is at `now`, 0 to 100: sliding over [`press::SHOWN`] since it flipped,
+/// at rest after, or with no time given.
+fn knob(switch: &Switch, now: Option<Instant>) -> u8 {
+    let rest = if switch.on { 100 } else { 0 };
+    let (Some(now), Some(flipped)) = (now, switch.flipped) else {
+        return rest;
+    };
+    let gone = now.saturating_duration_since(flipped).as_millis();
+    let whole = press::SHOWN.as_millis();
+    if gone >= whole {
+        return rest;
+    }
+    let way = u8::try_from(gone * 100 / whole).unwrap_or(100);
+    if switch.on {
+        way
+    } else {
+        100 - way
+    }
+}
+
 /// Words as the second press's prompt says them: "End this game" as "end this game".
 fn lower_first(words: &str) -> String {
     let mut chars = words.chars();
@@ -409,6 +480,7 @@ fn lower_first(words: &str) -> String {
 mod tests {
     use super::*;
     use sidekick_core::{Machine, Model};
+    use std::time::Duration;
 
     const DEFINITION: &str = r#"
 schema = 1
@@ -464,12 +536,60 @@ menu = "End this game"
         Session::new(machine, Some(definition))
     }
 
+    /// An input, and what a press it makes does once it has shown.
+    fn act(menu: &mut Menu, s: &mut Session, input: Input) -> Outcome {
+        let now = Instant::now();
+        match menu.input(input, s, now) {
+            Outcome::Stay => menu
+                .press_due(s, now + press::SHOWN)
+                .unwrap_or(Outcome::Stay),
+            outcome => outcome,
+        }
+    }
+
     fn press(menu: &mut Menu, s: &mut Session, inputs: &[Input]) -> Outcome {
         inputs
             .iter()
-            .map(|&i| menu.input(i, s))
+            .map(|&i| act(menu, s, i))
             .last()
             .unwrap_or(Outcome::Stay)
+    }
+
+    #[test]
+    fn a_switch_flips_at_once_and_its_knob_slides_across() {
+        let mut s = session(DEFINITION);
+        let mut menu = Menu::open(&s, 0, "Test", false);
+        let t0 = Instant::now();
+        menu.input(Input::Down, &mut s, t0);
+        assert_eq!(menu.input(Input::Confirm, &mut s, t0), Outcome::Stay);
+        let at = |menu: &Menu, ms: u64| {
+            menu.card_at(PadLabels::Letters, Some(t0 + Duration::from_millis(ms)))
+                .switches[0]
+                .clone()
+        };
+        assert!(at(&menu, 0).on, "on at once, no press to wait for");
+        assert_eq!(
+            [0, 60, 120, 500].map(|ms| at(&menu, ms).knob),
+            [0, 50, 100, 100],
+            "the knob slides right over 120 ms"
+        );
+        assert_eq!(
+            menu.card(PadLabels::Letters).switches[0].knob,
+            100,
+            "at rest"
+        );
+        assert_eq!(
+            menu.card(PadLabels::Letters).pressed,
+            None,
+            "no pressed look"
+        );
+
+        // A click turns it off again, the knob sliding back.
+        let t1 = t0 + Duration::from_secs(1);
+        menu.input(Input::Click(Row::Switch(0)), &mut s, t1);
+        let back = menu.card_at(PadLabels::Letters, Some(t1 + Duration::from_millis(30)));
+        assert!(!back.switches[0].on);
+        assert_eq!(back.switches[0].knob, 75);
     }
 
     #[test]
@@ -590,12 +710,12 @@ menu = "End this game"
         let card = menu.card(PadLabels::Letters);
         assert_eq!(card.actions[1], "Forget the teleport codes");
         let forget = Row::Action(1);
-        assert_eq!(menu.input(Input::Click(forget), &mut s), Outcome::Stay);
+        assert_eq!(act(&mut menu, &mut s, Input::Click(forget)), Outcome::Stay);
         assert_eq!(
             menu.card(PadLabels::Letters).armed,
             Some((1, "forget the teleport codes".to_owned()))
         );
-        assert_eq!(menu.input(Input::Click(forget), &mut s), Outcome::Stay);
+        assert_eq!(act(&mut menu, &mut s, Input::Click(forget)), Outcome::Stay);
         assert!(s.kept()["codes"].is_empty(), "forgotten");
         assert_eq!(
             menu.card(PadLabels::Letters).actions,
@@ -609,22 +729,26 @@ menu = "End this game"
         let mut s = session(DEFINITION);
         let mut menu = Menu::open(&s, 0, "Test", false);
         let end = Row::Action(1);
-        assert_eq!(menu.input(Input::Click(end), &mut s), Outcome::Stay);
+        assert_eq!(act(&mut menu, &mut s, Input::Click(end)), Outcome::Stay);
         assert_eq!(
             menu.card(PadLabels::Letters).armed,
             Some((1, "end this game".to_owned()))
         );
-        assert_eq!(menu.input(Input::Up, &mut s), Outcome::Stay, "moving away");
-        assert_eq!(menu.card(PadLabels::Letters).armed, None);
-        assert_eq!(menu.input(Input::Click(end), &mut s), Outcome::Stay);
         assert_eq!(
-            menu.input(Input::Confirm, &mut s),
+            act(&mut menu, &mut s, Input::Up),
+            Outcome::Stay,
+            "moving away"
+        );
+        assert_eq!(menu.card(PadLabels::Letters).armed, None);
+        assert_eq!(act(&mut menu, &mut s, Input::Click(end)), Outcome::Stay);
+        assert_eq!(
+            act(&mut menu, &mut s, Input::Confirm),
             Outcome::Act(1),
             "the definition's action, past one with no row"
         );
         let exit = Row::Action(2);
-        menu.input(Input::Click(exit), &mut s);
-        assert_eq!(menu.input(Input::Click(exit), &mut s), Outcome::Exit);
+        act(&mut menu, &mut s, Input::Click(exit));
+        assert_eq!(act(&mut menu, &mut s, Input::Click(exit)), Outcome::Exit);
     }
 
     #[test]
@@ -653,11 +777,11 @@ menu = "End this game"
     fn choosing_a_row_doesn_t_press_it() {
         let mut s = session(DEFINITION);
         let mut menu = Menu::open(&s, 0, "Test", false);
-        menu.input(Input::Choose(Row::Switch(0)), &mut s);
+        act(&mut menu, &mut s, Input::Choose(Row::Switch(0)));
         assert_eq!(menu.card(PadLabels::Letters).chosen, Row::Switch(0));
         assert!(!menu.card(PadLabels::Letters).switches[0].on);
-        menu.input(Input::Choose(Row::Level), &mut s);
-        menu.input(Input::Left, &mut s);
+        act(&mut menu, &mut s, Input::Choose(Row::Level));
+        act(&mut menu, &mut s, Input::Left);
         assert_eq!(menu.level(), 0, "no wrapping round down");
     }
 
@@ -679,7 +803,7 @@ menu = "End this game"
             Row::Save(2),
             "no further"
         );
-        assert_eq!(menu.input(Input::Confirm, &mut s), Outcome::OpenSave);
+        assert_eq!(act(&mut menu, &mut s, Input::Confirm), Outcome::OpenSave);
         press(&mut menu, &mut s, &[Input::Left, Input::Down]);
         assert_eq!(
             menu.card(PadLabels::Letters).chosen,
@@ -688,9 +812,9 @@ menu = "End this game"
         );
         press(&mut menu, &mut s, &[Input::Up]);
         assert_eq!(menu.card(PadLabels::Letters).chosen, Row::Save(0));
-        assert_eq!(menu.input(Input::Confirm, &mut s), Outcome::Save);
+        assert_eq!(act(&mut menu, &mut s, Input::Confirm), Outcome::Save);
         assert_eq!(
-            menu.input(Input::Click(Row::Save(1)), &mut s),
+            act(&mut menu, &mut s, Input::Click(Row::Save(1))),
             Outcome::Load
         );
     }
@@ -703,5 +827,87 @@ menu = "End this game"
         assert_eq!(menu.level(), 0);
         press(&mut menu, &mut s, &[Input::Left, Input::Confirm]);
         assert_eq!(menu.level(), 1);
+    }
+
+    #[test]
+    fn a_press_shows_for_a_moment_before_it_acts() {
+        let mut s = session(DEFINITION);
+        let mut menu = Menu::open(&s, 0, "Test", true);
+        press(&mut menu, &mut s, &[Input::Down; 5]);
+        let t0 = Instant::now();
+        assert_eq!(menu.input(Input::Confirm, &mut s, t0), Outcome::Stay);
+        let card = menu.card(PadLabels::Letters);
+        assert_eq!(card.pressed, Some(Row::Save(0)), "drawn pressed");
+        assert_eq!(card.chosen, Row::Save(0));
+        let shy = t0 + press::SHOWN.saturating_sub(Duration::from_millis(1));
+        assert_eq!(menu.press_due(&mut s, shy), None, "still showing");
+        assert_eq!(
+            menu.press_due(&mut s, t0 + press::SHOWN),
+            Some(Outcome::Save)
+        );
+        assert_eq!(menu.card(PadLabels::Letters).pressed, None);
+        assert_eq!(menu.press_due(&mut s, t0 + press::SHOWN * 2), None, "once");
+    }
+
+    #[test]
+    fn a_click_shows_on_the_button_clicked() {
+        let mut s = session(DEFINITION);
+        let mut menu = Menu::open(&s, 0, "Test", true);
+        let t0 = Instant::now();
+        assert_eq!(
+            menu.input(Input::Click(Row::Save(2)), &mut s, t0),
+            Outcome::Stay
+        );
+        let card = menu.card(PadLabels::Letters);
+        assert_eq!(
+            (card.chosen, card.pressed),
+            (Row::Save(2), Some(Row::Save(2)))
+        );
+        assert_eq!(
+            menu.press_due(&mut s, t0 + press::SHOWN),
+            Some(Outcome::OpenSave)
+        );
+
+        // A switch flips at once: its knob's slide is its press.
+        menu.input(Input::Click(Row::Switch(1)), &mut s, t0);
+        assert_eq!(menu.card(PadLabels::Letters).pressed, None);
+        assert!(menu.card(PadLabels::Letters).switches[1].on);
+        assert_eq!(menu.press_due(&mut s, t0 + press::SHOWN), None);
+    }
+
+    #[test]
+    fn choosing_a_row_shows_no_press() {
+        let mut s = session(DEFINITION);
+        let mut menu = Menu::open(&s, 0, "Test", false);
+        let t0 = Instant::now();
+        menu.input(Input::Choose(Row::Switch(0)), &mut s, t0);
+        menu.input(Input::Down, &mut s, t0);
+        assert_eq!(menu.card(PadLabels::Letters).pressed, None);
+        assert_eq!(menu.press_due(&mut s, t0 + press::SHOWN), None);
+    }
+
+    #[test]
+    fn an_input_while_a_press_shows_does_the_press_first() {
+        let mut s = session(DEFINITION);
+        let mut menu = Menu::open(&s, 0, "Test", false);
+        let t0 = Instant::now();
+        menu.input(Input::Click(Row::Switch(0)), &mut s, t0);
+        menu.input(Input::Down, &mut s, t0);
+        let card = menu.card(PadLabels::Letters);
+        assert!(card.switches[0].on, "the press wasn't lost");
+        assert_eq!((card.chosen, card.pressed), (Row::Switch(1), None));
+
+        let exit = Row::Action(2);
+        menu.input(Input::Click(exit), &mut s, t0);
+        menu.input(Input::Click(exit), &mut s, t0);
+        assert!(
+            menu.card(PadLabels::Letters).armed.is_some(),
+            "the first press armed it"
+        );
+        assert_eq!(
+            menu.input(Input::Back, &mut s, t0),
+            Outcome::Exit,
+            "a quick second press counts"
+        );
     }
 }

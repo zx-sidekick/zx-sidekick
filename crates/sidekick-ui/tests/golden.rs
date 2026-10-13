@@ -5,7 +5,8 @@ use sidekick_ui::{
     pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Inside, Levels,
     LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer,
     PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels,
-    Place, Question, Refusal, Route, RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
+    Place, PromptButton, Question, Refusal, Route, RouteColor, Row, ScoreRow, SwitchRow,
+    TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -36,6 +37,7 @@ fn starquake() -> TapePrompt {
         )),
         refusal: None,
         pad: None,
+        pressed: None,
     }
 }
 
@@ -74,6 +76,27 @@ fn the_tape_prompt_with_a_pad_plugged_in() {
 }
 
 #[test]
+fn the_tape_prompt_s_buttons_pressed() {
+    let mut fonts = Fonts::new();
+    let locate = TapePrompt {
+        pressed: Some(PromptButton::Locate),
+        ..starquake()
+    };
+    golden(
+        "tape-prompt-locate-pressed.png",
+        &locate.draw(&mut fonts, 1).png(),
+    );
+    let download = TapePrompt {
+        pressed: Some(PromptButton::Download),
+        ..starquake()
+    };
+    golden(
+        "tape-prompt-download-pressed.png",
+        &download.draw(&mut fonts, 1).png(),
+    );
+}
+
+#[test]
 fn at_scale_2_every_logical_pixel_is_four() {
     let mut fonts = Fonts::new();
     let canvas = starquake().draw(&mut fonts, 2);
@@ -95,9 +118,16 @@ fn the_library() {
             entry("Deep Vault", "1986 · Another Label", false),
         ],
         chosen: 0,
+        pressed: None,
         pad: PadLabels::Letters,
     };
     golden("library.png", &page.draw(&mut fonts, 1).png());
+    let pressed = LibraryPage {
+        chosen: 1,
+        pressed: Some(1),
+        ..page.clone()
+    };
+    golden("library-pressed.png", &pressed.draw(&mut fonts, 1).png());
     let playstation = LibraryPage {
         pad: PadLabels::Shapes,
         ..page
@@ -148,6 +178,7 @@ fn starquake_menu() -> Menu {
     let switch = |label: &str| SwitchRow {
         label: label.to_owned(),
         on: false,
+        knob: 0,
         refusal: None,
     };
     Menu {
@@ -179,6 +210,7 @@ fn starquake_menu() -> Menu {
             .map(str::to_owned)
             .to_vec(),
         chosen: Row::Level,
+        pressed: None,
         armed: None,
         pad: PadLabels::Letters,
         saves: Some(false),
@@ -193,6 +225,10 @@ fn the_guidance_menu() {
 
     let mut refused = starquake_menu();
     refused.switches[0].on = true;
+    refused.switches[0].knob = 100;
+    // Halfway, sliding on.
+    refused.switches[1].on = true;
+    refused.switches[1].knob = 50;
     refused.switches[4].refusal =
         Some("Not this tape's code here: the switch can't go on.".to_owned());
     refused.chosen = Row::Switch(4);
@@ -207,6 +243,22 @@ fn the_guidance_menu() {
         ..starquake_menu()
     };
     golden("menu-plain-armed.png", &armed.draw(&mut fonts, 1).png());
+
+    // As the mockup has it (`docs/mockups/2026-10-13-pressed-button.png`).
+    let save = Menu {
+        chosen: Row::Save(0),
+        pressed: Some(Row::Save(0)),
+        ..starquake_menu()
+    };
+    golden("menu-save-pressed.png", &save.draw(&mut fonts, 1).png());
+    let back = Menu {
+        levels: None,
+        switches: Vec::new(),
+        chosen: Row::Action(0),
+        pressed: Some(Row::Action(0)),
+        ..starquake_menu()
+    };
+    golden("menu-row-pressed.png", &back.draw(&mut fonts, 1).png());
 
     let question = Question {
         items: vec!["Guidance level 4".to_owned(), "Full energy".to_owned()],
