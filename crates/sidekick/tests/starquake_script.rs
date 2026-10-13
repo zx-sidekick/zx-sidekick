@@ -160,62 +160,60 @@ fn field<'a>(fact: &'a Fact, key: &str) -> &'a Fact {
     }
 }
 
+/// The game's set of rooms not yet visited, with `rooms` visited: a bit a room, the first
+/// room the top bit of the first byte, set while not visited.
+fn visit(s: &mut Session, rooms: &[usize]) {
+    let mut bits = [0xFFu8; 64];
+    for &room in rooms {
+        bits[room / 8] &= !(0x80 >> (room % 8));
+    }
+    let at = addr(s, "visited");
+    poke(s, at, &bits);
+}
+
 #[test]
-fn a_room_walked_is_mapped_with_the_edges_the_screen_shuts() {
+fn rooms_visited_are_mapped_with_their_decoded_walls() {
     let mut s = session();
-    let (seed, room, area) = (addr(&s, "seed"), addr(&s, "room"), addr(&s, "play_area"));
-    poke(&mut s, seed, &[0x34, 0x12]);
-    poke(&mut s, room, &[8, 0]);
-    // Open everywhere (BRIGHT), but the top row and the right column, which block.
-    let mut cells = [0x47u8; 576];
-    cells[..32].fill(0x07);
-    for row in 0..18 {
-        cells[row * 32 + 31] = 0x07;
-    }
-    // A one-cell gap on the left is too small to count as an opening.
-    for row in 0..18 {
-        cells[row * 32] = if row == 9 { 0x47 } else { 0x07 };
-    }
-    poke(&mut s, area, &cells);
+    blank_planet(&mut s);
+    // Room 300's top row is large tile 1, whose medium tile 2 draws a blocking row.
+    poke(&mut s, ROW, &[0xFF, 0, 0, 0, 0, 0]);
+    poke(&mut s, ROW - 8, &[0x07; 8]);
+    let pictures = addr(&s, "tile_pictures");
+    poke(&mut s, pictures + 4, &ROW.to_le_bytes());
+    let large = addr(&s, "large_tiles");
+    poke(&mut s, large + 4, &[0, 0, 2, 2]);
+    let rooms = addr(&s, "rooms");
+    poke(&mut s, rooms + 300 * 12, &[1, 1, 1, 1]);
+    // Before a game, the game's set has every room unvisited.
     enter(&mut s, "play");
-    s.run_frame().expect("a frame");
-    assert_eq!(kept(&s, "rooms-walked"), ["4660:8:NEW"]);
-    // The map is drawn from the kept rooms as the frame began: it shows the room a frame on.
-    s.run_frame().expect("a frame");
-
-    let map = s.script_results()["map"].clone();
-    let Fact::List(rooms) = field(&map, "cells").clone() else {
-        panic!("cells");
-    };
-    assert_eq!(rooms.len(), 1);
-    assert_eq!(field(&rooms[0], "x"), &Fact::Number(8));
-    assert_eq!(field(&rooms[0], "walls"), &Fact::Text("NEW".to_owned()));
-    let Fact::List(markers) = field(&map, "markers").clone() else {
-        panic!("markers");
-    };
-    assert!(markers
-        .iter()
-        .any(|m| field(m, "kind") == &Fact::Text("player".to_owned())));
-
-    poke(&mut s, seed, &[0x35, 0x12]);
-    poke(&mut s, room, &[9, 0]);
+    s.set_level(2);
     s.run_frame().expect("a frame");
     let map = s.script_results()["map"].clone();
     assert_eq!(
         field(&map, "cells"),
         &Fact::List(Vec::new()),
-        "another game: none walked yet"
+        "none walked yet"
     );
-}
 
-/// A room's attributes: open (BRIGHT) everywhere but its bottom row, where only the cells
-/// `gap` let BLOB through.
-fn room_with_floor(gap: std::ops::Range<usize>) -> [u8; 576] {
-    let mut cells = [0x47u8; 576];
-    for column in 0..32 {
-        cells[17 * 32 + column] = if gap.contains(&column) { 0x47 } else { 0x07 };
-    }
-    cells
+    visit(&mut s, &[8, 300]);
+    s.run_frame().expect("a frame");
+    let map = s.script_results()["map"].clone();
+    let Fact::List(cells) = field(&map, "cells").clone() else {
+        panic!("cells");
+    };
+    let mut walked: Vec<(i64, Fact)> = cells
+        .iter()
+        .map(|c| (number(field(c, "y")), field(c, "walls").clone()))
+        .collect();
+    walked.sort_by_key(|&(y, _)| y);
+    assert_eq!(
+        walked,
+        [
+            (0, Fact::Text(String::new())),
+            (18, Fact::Text("N".to_owned())),
+        ],
+        "rooms 8 and 300, with their walls as decoded"
+    );
 }
 
 fn markers(s: &Session) -> Vec<String> {
@@ -233,40 +231,6 @@ fn markers(s: &Session) -> Vec<String> {
 }
 
 #[test]
-fn a_room_is_kept_once_a_game_from_two_readings_in_play() {
-    let mut s = session();
-    let (seed, room, area) = (addr(&s, "seed"), addr(&s, "room"), addr(&s, "play_area"));
-    poke(&mut s, seed, &[0x34, 0x12]);
-    poke(&mut s, room, &[8, 0]);
-    // Two open cells at the bottom are a way down: about BLOB's width.
-    poke(&mut s, area, &room_with_floor(5..7));
-    enter(&mut s, "booth");
-    s.run_frame().expect("a frame");
-    assert!(kept(&s, "rooms-walked").is_empty(), "not in play");
-    enter(&mut s, "play");
-    s.run_frame().expect("a frame");
-    assert_eq!(kept(&s, "rooms-walked"), ["4660:8:"], "open all round");
-
-    // The floor shut later (a platform across the gap): the first reading stands.
-    poke(&mut s, area, &room_with_floor(5..6));
-    for _ in 0..3 {
-        s.run_frame().expect("a frame");
-    }
-    assert_eq!(kept(&s, "rooms-walked"), ["4660:8:"], "kept once a game");
-
-    // A new room isn't kept on its first frame, only once read twice the same.
-    poke(&mut s, room, &[9, 0]);
-    s.run_frame().expect("a frame");
-    assert_eq!(kept(&s, "rooms-walked").len(), 1, "not on its first frame");
-    s.run_frame().expect("a frame");
-    assert_eq!(
-        kept(&s, "rooms-walked"),
-        ["4660:8:", "4660:9:S"],
-        "one open cell isn't a way down"
-    );
-}
-
-#[test]
 fn teleports_and_doors_in_rooms_walked_are_marked() {
     let mut s = session();
     let (seed, room, area) = (addr(&s, "seed"), addr(&s, "room"), addr(&s, "play_area"));
@@ -278,6 +242,7 @@ fn teleports_and_doors_in_rooms_walked_are_marked() {
     poke(&mut s, seed, &[0x34, 0x12]);
     poke(&mut s, room, &[8, 0]);
     poke(&mut s, area, &[0x47; 576]);
+    visit(&mut s, &[8]);
     // A teleport in room 8 and one in room 300, which isn't walked.
     poke(&mut s, teleports, b"AAAAA");
     poke(&mut s, teleports + 5, &[8, 0]);
@@ -304,8 +269,9 @@ fn poke_into(s: &mut Session, name: &str, offset: u16, bytes: &[u8]) {
     poke(s, at, bytes);
 }
 
-/// A planet of rooms that draw nothing, so open all round, and no items.
+/// A planet of rooms that draw nothing, so open all round, none visited, and no items.
 fn blank_planet(s: &mut Session) {
+    visit(s, &[]);
     let pictures = addr(s, "tile_pictures");
     for id in 0..256 {
         poke(s, pictures + id * 2, &BLANK.to_le_bytes());
@@ -421,9 +387,7 @@ fn items_are_marked_by_kind_from_level_3_in_rooms_walked_and_level_4_everywhere(
     // Kept in the core's own room, and one picked up: neither is on the map.
     poke(&mut s, items + 12, &[0, 10, 199, 0]);
     poke(&mut s, items + 16, &[0, 1, 8, 7]);
-    let mut kept = s.kept().clone();
-    kept.insert("rooms-walked".to_owned(), vec!["4660:8:".to_owned()]);
-    s.set_kept(kept);
+    visit(&mut s, &[8]);
     enter(&mut s, "play");
     s.set_level(2);
     s.run_frame().expect("a frame");

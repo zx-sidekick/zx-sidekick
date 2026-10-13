@@ -416,30 +416,22 @@ fn walls(mem) {
     shut
 }
 
-// The room BLOB is in, as a kept entry: the game's seed, the room and its walls. Kept once a
-// game, the first time its walls read the same two frames running in play, so a room drawn
-// part-way, or a platform built across an opening later, doesn't change its walls.
-fn room_walked(mem, prev, shut, walked) {
-    let room = mem.value("room");
-    if mem.state != "play" || `${room}` in walked || prev == () || !("room" in prev) {
-        return ();
-    }
-    if prev.room != room || prev.walls != shut {
-        return ();
-    }
-    `${mem.value("seed")}:${room}:${shut}`
-}
-
-// The rooms walked this game, by room number as text, each its walls.
-fn rooms_walked(mem, kept) {
-    let seed = `${mem.value("seed")}:`;
+// The rooms walked this game, by room number as text, each with its walls as decoded: those
+// whose bit is clear in the game's own set of rooms not yet visited, a bit a room, the first
+// room the top bit of the first byte (docs/re/starquake.md).
+fn rooms_walked(mem, loaded) {
+    let unvisited = mem.value("visited");
     let rooms = #{};
-    if "rooms-walked" in kept {
-        for entry in kept["rooms-walked"] {
-            if entry.starts_with(seed) {
-                let parts = entry.split(":");
-                if !(parts[1] in rooms) {
-                    rooms[parts[1]] = if parts.len() > 2 { parts[2] } else { "" };
+    if unvisited == () || loaded.walls.len() != 512 {
+        return rooms;
+    }
+    for byte in 0..64 {
+        let bits = unvisited[byte];
+        if bits != 0xFF {
+            for bit in 0..8 {
+                if (bits & (0x80 >> bit)) == 0 {
+                    let room = byte * 8 + bit;
+                    rooms[`${room}`] = loaded.walls[room];
                 }
             }
         }
@@ -539,12 +531,7 @@ fn on_frame(mem, loaded, prev, kept, level) {
     if door != () {
         keep["doors-met"] = [door];
     }
-    let shut = walls(mem);
-    let rooms = rooms_walked(mem, kept);
-    let walked = room_walked(mem, prev, shut, rooms);
-    if walked != () {
-        keep["rooms-walked"] = [walked];
-    }
+    let rooms = rooms_walked(mem, loaded);
     let met = doors_met(mem, kept);
     let listed = if level >= 6 && "doors" in loaded {
         every_door(mem, loaded, met)
@@ -558,7 +545,7 @@ fn on_frame(mem, loaded, prev, kept, level) {
         map: map(mem, loaded, kept, rooms, level),
         kept: keep,
         room: mem.value("room"),
-        walls: shut,
+        walls: walls(mem),
     }
 }
 
