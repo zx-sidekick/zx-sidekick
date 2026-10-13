@@ -213,6 +213,7 @@ impl MapGrid {
         }
         places
     }
+
     /// Draws the routes' labels underlined in their colours, in a row from (`x`, `y`).
     pub(crate) fn legend(&self, c: &mut Canvas, fonts: &mut Fonts, (x, y): (f32, f32)) {
         let style = Style::new(12.0, BODY);
