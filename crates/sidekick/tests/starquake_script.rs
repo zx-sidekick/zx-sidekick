@@ -397,7 +397,8 @@ fn items_are_marked_by_kind_from_level_3_in_rooms_walked_and_level_4_everywhere(
     // Kept in the core's own room, and one picked up: neither is on the map.
     poke(&mut s, items + 12, &[0, 10, 199, 0]);
     poke(&mut s, items + 16, &[0, 1, 8, 7]);
-    visit(&mut s, &[8]);
+    // Room 8 walked, and the core's room, so what the core needs is known.
+    visit(&mut s, &[8, 199]);
     enter(&mut s, "play");
     s.set_level(2);
     s.run_frame().expect("a frame");
@@ -512,6 +513,40 @@ fn items_are_marked_by_what_the_game_does_with_them() {
         ],
         "a needed piece, the carried one's twin as any piece, a card, no pack, a piece"
     );
+}
+
+#[test]
+fn below_level_4_the_core_and_its_pieces_show_once_the_core_is_seen() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    // The core still needs a 5, and one lies in room 9, walked.
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    poke_into(&mut s, "items", 0, &[3, 20, 9, 5]);
+    visit(&mut s, &[9]);
+    enter(&mut s, "play");
+    let at = |s: &mut Session, level: u8| {
+        s.set_level(level);
+        s.run_frame().expect("a frame");
+        (result(s, "core").len(), item_marks(s))
+    };
+    let white = vec![(5, Fact::Number(7), 9)];
+    let pink = vec![(5, Fact::Text("first".to_owned()), 9)];
+    assert_eq!(at(&mut s, 1).0, 0, "level 1: the core not seen yet");
+    assert_eq!(
+        at(&mut s, 3),
+        (0, white),
+        "level 3: a piece, not known to be needed"
+    );
+    assert_eq!(
+        at(&mut s, 4),
+        (9, pink.clone()),
+        "level 4: known regardless"
+    );
+    // Been in the core's room.
+    visit(&mut s, &[9, 199]);
+    assert_eq!(at(&mut s, 1).0, 9, "level 1: the core seen");
+    assert_eq!(at(&mut s, 3), (9, pink), "level 3: needed, in pink");
 }
 
 /// Where painted rooms' stand-in medium tile pictures go, 64 bytes apart: each picture's six

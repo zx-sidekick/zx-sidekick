@@ -1197,11 +1197,27 @@ mod real_tape {
     }
 
     #[test]
-    fn starquake_s_level_1_shows_its_core_from_a_new_game() {
+    fn starquake_s_level_1_shows_its_core_once_seen() {
         let Some((mut playing, _data)) = new_game(1) else {
             return;
         };
         let s = &mut playing.session;
+        let addr = |s: &Session, name: &str| {
+            s.definition().expect("a definition").values[name]
+                .addr
+                .expect("an address")
+                .0
+        };
+        assert_eq!(
+            body(s, 1, Some("CORE")),
+            Body::Empty("Not seen yet".to_owned()),
+            "a new game hasn't been to the core"
+        );
+        // Been in the core's room (199): its bit cleared in the game's set of rooms not visited.
+        let visited = addr(s, "visited") + 199 / 8;
+        let bits = s.machine().peek(visited) & !(0x80 >> (199 % 8));
+        s.machine_mut().write(visited, bits);
+        s.run_frame().expect("a frame");
         let Body::Icons { icons, .. } = body(s, 1, Some("CORE")) else {
             panic!("the core's icons");
         };
@@ -1227,13 +1243,7 @@ mod real_tape {
 
         // The first slot's piece carried, the second delivered: what the game writes then, at
         // the addresses the definition gives.
-        let addr = |name: &str| {
-            s.definition().expect("a definition").values[name]
-                .addr
-                .expect("an address")
-                .0
-        };
-        let (carried, slots) = (addr("carried"), addr("core_slots"));
+        let (carried, slots) = (addr(s, "carried"), addr(s, "core_slots"));
         let first = s.machine().peek(slots) & 0x7F;
         let machine = s.machine_mut();
         machine.write(carried, first);

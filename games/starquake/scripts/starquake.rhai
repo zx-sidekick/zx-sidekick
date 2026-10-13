@@ -678,6 +678,17 @@ fn rooms_walked(mem, loaded) {
     rooms
 }
 
+// Whether BLOB has been in the core's room this game, where the game shows what the core wants:
+// its bit is clear in the game's own set of rooms not yet visited (docs/re/starquake.md).
+fn core_seen(mem) {
+    let unvisited = mem.value("visited");
+    if unvisited == () {
+        return false;
+    }
+    let room = core_room();
+    (unvisited[room / 8] & (0x80 >> (room % 8))) == 0
+}
+
 // The pictures of the core pieces still to deliver.
 fn needed(mem) {
     let pictures = [];
@@ -694,9 +705,10 @@ fn needed(mem) {
 // carries; a card, 9 to 13 for doors and 14 and 15 that answer any card; the key, 16; anything
 // else is a core piece a pyramid takes. Packs (17 to 24) act when picked up: nothing to fetch.
 // Not those off the floor (rows 1 to 5: the game lays an item down at row 6 or more, and a
-// carried one has a row below that), nor those kept in the core's room.
-fn items(mem, carrying) {
-    let pieces = needed(mem);
+// carried one has a row below that), nor those kept in the core's room. Which pieces are needed
+// is only `known` once the core has been seen, below level 4.
+fn items(mem, carrying, known) {
+    let pieces = if known { needed(mem) } else { [] };
     let lying = [];
     for item in mem.table("items") {
         let picture = item.picture;
@@ -761,7 +773,7 @@ fn map(mem, loaded, rooms, level, carrying, listed) {
     }
     if level >= 3 {
         let outlined = [];
-        for item in items(mem, carrying) {
+        for item in items(mem, carrying, level >= 4 || core_seen(mem)) {
             let key = `${item.room}`;
             if level >= 4 || key in rooms {
                 let away = !everything && !(key in rooms);
@@ -799,7 +811,7 @@ fn on_frame(mem, loaded, prev, kept, level) {
         met
     });
     #{
-        core: core(mem, carrying),
+        core: if level >= 4 || core_seen(mem) { core(mem, carrying) } else { [] },
         teleports: teleports(mem, kept, level),
         doors: doors(listed, carrying),
         map: map(mem, loaded, rooms, level, carrying, listed),

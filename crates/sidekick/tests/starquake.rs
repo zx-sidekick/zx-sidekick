@@ -593,3 +593,25 @@ fn full_platforms_draws_its_bar_full_as_it_goes_on() {
     assert!(ink(&with) > ink(&without), "and longer");
     assert_eq!(on.reading()["platforms"].number(), Some(127));
 }
+
+#[test]
+fn walking_into_the_core_s_room_marks_it_visited() {
+    let Some(mut s) = on_the_joystick(50) else {
+        return;
+    };
+    let visited = |s: &Session| {
+        let at = s.definition().expect("its definition").values["visited"]
+            .addr
+            .expect("an address")
+            .0;
+        s.machine().peek(at + 199 / 8) & (0x80 >> (199 % 8)) == 0
+    };
+    assert!(!visited(&s), "a new game hasn't been there");
+    // At floor level near the right of room 198, walking right into the core's room.
+    enter_room(&mut s, &[("room", 198), ("blob_x", 224), ("blob_y", 39)]);
+    s.machine_mut().kempston(Kempston::Right, true);
+    assert!(
+        until(&mut s, 300, visited),
+        "the core's room is marked visited"
+    );
+}
