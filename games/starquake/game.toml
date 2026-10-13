@@ -287,14 +287,16 @@ hold = "lives"
 [[cheats]]
 id = "no-harm"
 label = "No harm from enemies"
-# Skips each of the three ways a touch takes a life (docs/re/starquake.md): a deadly
-# creature's, the creature loop's, and deadly scenery's.
+# Skips each of the three ways a touch takes a life (docs/re/starquake.md): a zapper's, the
+# creature loop's, and deadly scenery's; and the creatures whose touch runs the energy timer
+# faster add nothing to it.
 patch = [
   { addr = 0xA56A, bytes = "00 00 00", expect = "C4 50 C3" },
   { addr = 0xA341, bytes = "C9 00 00 00", expect = "E1 C3 50 C3" },
   { addr = 0xCE79, bytes = "18", expect = "20" },
+  { addr = 0xA349, bytes = "C6 00", expect = "C6 0A" },
 ]
-note = "Stops creatures, and deadly scenery, taking a life when they touch BLOB."
+note = "Stops zappers, creatures and deadly scenery taking a life, and creatures draining energy, when they touch BLOB."
 
 # The pad.
 

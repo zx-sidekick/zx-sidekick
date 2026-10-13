@@ -1,0 +1,6 @@
+# A new game with BLOB standing in a zapper (room 240), creatures passing by, and No harm on:
+# without it, the zapper takes a life whenever it's on, and the creatures' touch drains energy.
+room = 240
+blob_x = 64
+blob_y = 71
+cheats = ["no-harm"]
