@@ -288,6 +288,7 @@ What a part can do:
 - `"up"`, `"down"`, `"left"`, `"right"`, `"fire"`: one joystick direction or fire.
 - `{ keys = ["SYMBOL SHIFT", "A"] }`: those keys, held as long as the button is.
 - `{ tap = ["P"], frames = 2 }`: those keys for a fixed number of frames, however long the button is held. `frames` is 2 when not given.
+- `{ sequence = ["1", "0"], frames = 5 }`: those keys tapped one after another, each for `frames` frames with as many between; for a menu that wants several keys, such as choosing the controls and then starting.
 - `{ action = "build" }`, or just `"build"`: an `[[actions]]` entry.
 - `"menu"`: the guidance menu. `select` is always `"menu"`, so every game's pad can reach it.
 - `"none"`.
@@ -323,7 +324,7 @@ host_key = "Tab"
 |---|---|
 | `id`, `label` | Its name, and its text where shown. |
 | `menu`, `menu_in` | A row in the guidance menu, in `menu`'s words, offered in the states `menu_in` names (every state when left out). Like Exit, it wants a second press, and then the menu closes and the action is done. |
-| `keys`, `tap`, `frames`, `joystick` | What reaches the game, as in `[pad]`. |
+| `keys`, `tap`, `sequence`, `frames`, `joystick` | What reaches the game, as in `[pad]`. |
 | `patch_for_frame` | Patches applied for the frames the action lasts, then undone; `expect` as in `[[cheats]]`. This is how a pad splits a direction's two meanings. |
 | `script` | A function of the script to call (see Scripts). |
 | `host_key` | A key the Spectrum doesn't have that also does this, as a pad button would: `Tab`, `F1` to `F12`, `Insert`, `Delete`, `Home`, `End`, `PageUp` or `PageDown`. Esc, F5, F9 and F11 are the program's own. |

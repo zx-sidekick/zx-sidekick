@@ -486,20 +486,24 @@ impl Checker<'_> {
                     PadTarget::Table(table) => {
                         self.keys(&path, &table.keys);
                         self.keys(&path, &table.tap);
+                        self.keys(&path, &table.sequence);
                         if let Some(action) = &table.action {
                             if !self.action_exists(action) {
                                 self.report(&path, format!("no action named {action:?}"));
                             }
                         }
-                        match (table.frames, table.tap.is_empty()) {
+                        let taps = table.tap.is_empty() && table.sequence.is_empty();
+                        match (table.frames, taps) {
                             (Some(0), false) => {
                                 self.report(&path, "a tap lasts at least one frame");
                             }
-                            (Some(_), true) => self.report(&path, "frames is only for a tap"),
+                            (Some(_), true) => {
+                                self.report(&path, "frames is only for a tap or a sequence");
+                            }
                             _ => {}
                         }
-                        if table.keys.is_empty() && table.tap.is_empty() && table.action.is_none() {
-                            self.report(path, "needs keys, tap or action");
+                        if table.keys.is_empty() && taps && table.action.is_none() {
+                            self.report(path, "needs keys, tap, sequence or action");
                         }
                     }
                 }
@@ -519,6 +523,7 @@ impl Checker<'_> {
             }
             self.keys(&path, &action.keys);
             self.keys(&path, &action.tap);
+            self.keys(&path, &action.sequence);
             for direction in &action.joystick {
                 if !DIRECTIONS.contains(&direction.as_str()) {
                     self.report(
@@ -534,12 +539,13 @@ impl Checker<'_> {
             // A row whose action lasts no frame and calls nothing would do nothing.
             if action.menu.is_some()
                 && action.tap.is_empty()
+                && action.sequence.is_empty()
                 && action.frames.is_none()
                 && action.script.is_none()
             {
                 self.report(
                     format!("{path}.menu"),
-                    "a menu row's action needs tap, frames or script, or it does nothing",
+                    "a menu row's action needs tap, sequence, frames or script, or it does nothing",
                 );
             }
             if !action.menu_in.is_empty() && action.menu.is_none() {
@@ -556,6 +562,7 @@ impl Checker<'_> {
             }
             if action.keys.is_empty()
                 && action.tap.is_empty()
+                && action.sequence.is_empty()
                 && action.joystick.is_empty()
                 && action.patch_for_frame.is_empty()
                 && action.script.is_none()

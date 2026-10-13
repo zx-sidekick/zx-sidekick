@@ -593,6 +593,9 @@ pub struct PadTable {
     /// Keys pressed for `frames` frames, however long the button is held.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tap: Vec<String>,
+    /// Keys tapped one after another, each for `frames` frames with as many between.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sequence: Vec<String>,
     /// How many frames a tap lasts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frames: Option<u32>,
@@ -622,6 +625,9 @@ pub struct Action {
     /// Keys pressed for `frames` frames.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tap: Vec<String>,
+    /// Keys tapped one after another, each for `frames` frames with as many between.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sequence: Vec<String>,
     /// How many frames it lasts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frames: Option<u32>,

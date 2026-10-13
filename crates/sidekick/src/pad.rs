@@ -307,7 +307,8 @@ pub(crate) enum Input {
 }
 
 /// What a part does in play: inputs held and patches applied while it's held (and for at least
-/// `lasts` frames from the press), and inputs tapped for `frames` frames from the press.
+/// `lasts` frames from the press), inputs tapped for `frames` frames from the press, and a
+/// sequence of inputs tapped in turn, each for `frames` frames with as many between.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Does {
     /// A function of the definition's script to call on the press.
@@ -316,6 +317,7 @@ struct Does {
     patches: Vec<Patch>,
     lasts: u32,
     tap: Vec<Input>,
+    sequence: Vec<Input>,
     frames: u32,
 }
 
@@ -495,6 +497,7 @@ impl Joy<'_> {
                 let mut does = Does {
                     hold: keys(&table.keys),
                     tap: keys(&table.tap),
+                    sequence: keys(&table.sequence),
                     frames: table.frames.unwrap_or(TAP_FRAMES),
                     ..Does::default()
                 };
@@ -502,6 +505,7 @@ impl Joy<'_> {
                     let action = self.named_action(action);
                     does.hold.extend(action.hold);
                     does.tap.extend(action.tap);
+                    does.sequence.extend(action.sequence);
                     does.patches = action.patches;
                     does.lasts = action.lasts;
                     does.script = action.script;
@@ -538,6 +542,7 @@ impl Joy<'_> {
             patches: action.patch_for_frame.clone(),
             lasts: action.frames.unwrap_or(0),
             tap: keys(&action.tap),
+            sequence: keys(&action.sequence),
             frames: action.frames.unwrap_or(TAP_FRAMES),
         }
     }
@@ -552,11 +557,13 @@ fn keys(names: &[String]) -> Vec<Input> {
         .collect()
 }
 
-/// Something going on for a number of frames from a press, however long it's held.
+/// Something going on for a number of frames from a press, however long it's held, after
+/// `wait` frames.
 #[derive(Debug)]
 struct Lasting {
     inputs: Vec<Input>,
     patches: Vec<Patch>,
+    wait: u32,
     left: u32,
 }
 
@@ -633,6 +640,15 @@ impl Play {
             lasting.push(Lasting {
                 inputs: does.tap.clone(),
                 patches: Vec::new(),
+                wait: 0,
+                left: does.frames,
+            });
+        }
+        for (wait, &input) in (0..).step_by(2).zip(&does.sequence) {
+            lasting.push(Lasting {
+                inputs: vec![input],
+                patches: Vec::new(),
+                wait: wait * does.frames,
                 left: does.frames,
             });
         }
@@ -640,6 +656,7 @@ impl Play {
             lasting.push(Lasting {
                 inputs: does.hold.clone(),
                 patches: does.patches.clone(),
+                wait: 0,
                 left: does.lasts,
             });
         }
@@ -660,7 +677,7 @@ impl Play {
                 }
             }
         };
-        for lasting in &self.lasting {
+        for lasting in self.lasting.iter().filter(|l| l.wait == 0) {
             add(&lasting.inputs, &lasting.patches);
         }
         let parts = self.mapping.parts(self.state.as_deref());
@@ -681,7 +698,11 @@ impl Play {
     /// A frame ran: what's lasting has one frame fewer left.
     pub(crate) fn frame_ran(&mut self) {
         for lasting in &mut self.lasting {
-            lasting.left = lasting.left.saturating_sub(1);
+            if lasting.wait > 0 {
+                lasting.wait -= 1;
+            } else {
+                lasting.left = lasting.left.saturating_sub(1);
+            }
         }
         self.lasting.retain(|l| l.left > 0);
     }
@@ -870,6 +891,114 @@ mod tests {
             play.frame_ran();
         }
         assert!(holds(&mut play, &[]).is_empty());
+    }
+
+    #[test]
+    fn a_sequence_taps_its_keys_in_turn() {
+        let mapping = Mapping::new(Some(&def(r#"
+            [pad.default]
+            start = { sequence = ["1", "0"], frames = 2 }
+            "#)));
+        let mut play = Play::new(mapping);
+        play.pressed(Part::Start);
+        let mut seen = Vec::new();
+        for _ in 0..8 {
+            seen.push(holds(&mut play, &[]));
+            play.frame_ran();
+        }
+        let one = vec![key(Key::N1)];
+        let zero = vec![key(Key::N0)];
+        assert_eq!(
+            seen,
+            [
+                one.clone(),
+                one,
+                vec![],
+                vec![],
+                zero.clone(),
+                zero,
+                vec![],
+                vec![]
+            ],
+            "each for two frames, with two between"
+        );
+    }
+
+    /// Presses and lets go on the Spectrum what `play` changed, as the window does.
+    fn send(machine: &mut sidekick_core::Machine, changes: Changes) {
+        let inputs = changes
+            .release
+            .into_iter()
+            .map(|i| (i, false))
+            .chain(changes.press.into_iter().map(|i| (i, true)));
+        for (input, pressed) in inputs {
+            match input {
+                Input::Kempston(direction) => machine.kempston(direction.kempston(), pressed),
+                Input::Key(key) => machine.key(key.0, pressed),
+            }
+        }
+    }
+
+    /// Runs a frame of `s` with what `play` holds for `held`.
+    fn frame(s: &mut sidekick_core::Session, play: &mut Play, held: &[Part]) {
+        let changes = play.update(held.iter().copied());
+        send(s.machine_mut(), changes);
+        s.run_frame().expect("a frame");
+        play.frame_ran();
+        play.enter(s.state());
+    }
+
+    #[test]
+    #[allow(clippy::print_stderr, reason = "a skipped test says why")]
+    fn starquake_s_start_on_the_title_plays_on_the_joystick() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let zip = repo.join("assets/Starquake.tap.zip");
+        if !zip.exists() {
+            eprintln!("skipped: no {} (the player's own tape)", zip.display());
+            return;
+        }
+        let tapes = sidekick_def::tapes_in(&zip).expect("the zip holds a tape");
+        let package = sidekick_def::Package::load(&repo.join("games/starquake"))
+            .expect("Starquake's definition");
+        let mut play = Play::new(Mapping::new(Some(&package.definition)));
+        let mut machine =
+            sidekick_core::Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        machine.load_tap(&tapes[0].bytes).expect("the tape goes in");
+        let mut s = sidekick_core::Session::new(machine, Some(package.definition));
+        for _ in 0..400 {
+            frame(&mut s, &mut play, &[]);
+        }
+        // The loading screen waits for a key, as on a Spectrum.
+        s.machine_mut().key(Key::Space, true);
+        for _ in 0..4 {
+            frame(&mut s, &mut play, &[]);
+        }
+        s.machine_mut().key(Key::Space, false);
+        let titled = (0..1500).any(|_| {
+            frame(&mut s, &mut play, &[]);
+            s.state() == Some("title")
+        });
+        assert!(titled, "the title");
+
+        play.pressed(Part::Start);
+        let playing = (0..500).any(|_| {
+            frame(&mut s, &mut play, &[]);
+            s.state() == Some("play")
+        });
+        assert!(playing, "Start on the title starts a game");
+        for _ in 0..100 {
+            frame(&mut s, &mut play, &[]);
+        }
+        let x = |s: &sidekick_core::Session| s.reading()["blob_x"].number().expect("BLOB's x");
+        let before = x(&s);
+        for _ in 0..40 {
+            frame(&mut s, &mut play, &[Part::DPad(Way::Left)]);
+        }
+        assert_ne!(
+            x(&s),
+            before,
+            "the pad moves BLOB: the game is on the joystick"
+        );
     }
 
     #[test]

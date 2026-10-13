@@ -55,5 +55,6 @@ Dump: Starquake (Bubble Bus Software), as World of Spectrum distributes it: `STA
 | Pyramids | — | A pyramid (interaction type 1) asks for two cards, worked out as a door's are but with 0x0F and 0x0D; answered, it takes a carried item whose picture isn't 9 to 25, a core piece | read | (#123) |
 | Core pieces | — | A new game picks five pieces at random among pictures 9 to 14 and 26 to 34, each in a random empty slot; the four slots left get the picture of their own number (0 to 8) | read | The core's set-up at a new game (#101) |
 | The control method | `0x5E58` | The menu's choice: 1 Kempston, 4 the keyboard (the default), and so on | confirmed | Chose Kempston: 4 became 1 (#78) |
+| Starting a game | — | 0 on the title starts a game: the game draws for about 40 frames, then plays a tune that goes on until any key is pressed, and play begins once one is | confirmed | Started from the title by pad taps, frame by frame (#111) |
 
 `docs/games/starquake.md`, "Facts to find", lists what's still needed.

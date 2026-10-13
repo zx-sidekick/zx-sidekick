@@ -191,26 +191,29 @@ keys = { up = "Q", down = "A", left = "O", right = "P", fire = "FIRE" }"#
 }
 
 #[test]
-fn a_tap_lasts_at_least_a_frame() {
+fn a_tap_lasts_at_least_a_frame_and_a_sequence_s_keys_are_keys() {
     let text = format!(
         r#"{HEADER}
 [pad.default]
 north = {{ tap = ["P"], frames = 0 }}
 east = {{ keys = ["H"], frames = 3 }}
+south = {{ sequence = ["1", "NOPE"], frames = 5 }}
 "#
     );
     let def = Definition::from_toml(&text).expect("it parses");
-    let problems: Vec<String> = def
+    let mut problems: Vec<String> = def
         .check()
         .iter()
         .map(ToString::to_string)
         .filter(|p| p.starts_with("pad."))
         .collect();
+    problems.sort();
     assert_eq!(
         problems,
         [
-            "pad.default.east: frames is only for a tap",
+            "pad.default.east: frames is only for a tap or a sequence",
             "pad.default.north: a tap lasts at least one frame",
+            "pad.default.south: \"NOPE\" isn't a Spectrum key",
         ]
     );
 }

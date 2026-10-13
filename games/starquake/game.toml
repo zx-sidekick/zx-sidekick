@@ -278,7 +278,10 @@ north = "next-route"
 start = { tap = ["P"], frames = 2 }
 
 [pad.title]
-# start = TODO: the key that starts a game from the title screen
+# The title takes its controls from 1 to 5 and starts on 0: Start chooses the Kempston joystick,
+# then starts, so the pad drives BLOB from the first move. After 0 the game plays a tune until
+# a key is pressed, so 0 comes again once it has begun (docs/re/starquake.md).
+start = { sequence = ["1", "0", "0"], frames = 30 }
 
 [[actions]]
 id = "end-game"
