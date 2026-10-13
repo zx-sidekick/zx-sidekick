@@ -59,7 +59,8 @@ game fact: an address only read from a disassembly is **read**, not
 
 - **Never decide design direction.** Open questions go TO the maintainer
   (`Your input`).
-- **Never grant `ready to merge`, and never merge without it.** Re-read the
+- **Grant `ready to merge` only on the maintainer's yes to a hands-on test
+  (`test-prs`), and never merge without it.** Re-read the
   label from the API at the moment you merge, never from a notification: a
   label can be added and withdrawn within a minute. The same goes for CI: green
   before a push is not green after it.

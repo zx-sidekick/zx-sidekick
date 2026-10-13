@@ -55,7 +55,7 @@ cargo test -p sidekick-core
 - **A card dragged to `Spec` means "your call"**: first decide whether it needs a spec at all, and say so on the ticket. With no design question left it goes on to `Plan`; a bug or tweak needing no plan goes on to `Build`.
 - **A card dragged to `Build` is the go**, even when its plan is missing: the plan is written into the body before the first commit, and built, with no sign-off round.
 - **The `Backlog` column's order is the priority.** Nothing leaves `Backlog` without the maintainer; "pick up the next one" means its top card.
-- **Merging needs the `ready to merge` label** on the PR, re-read from the API at the moment of merging. Claude never adds it and never merges without it.
+- **Merging needs the `ready to merge` label** on the PR, re-read from the API at the moment of merging. Claude never merges without it, and adds it only on the maintainer's yes to a hands-on test of that PR (`test-prs`), or their choice to accept one with nothing to see on its tests.
 - **A position in the flow is a Status; a property of a ticket is a label**: `ready to merge`, `hold` (skip entirely), `dependencies` (Dependabot's), and, **only while a ticket waits in `Backlog`**, its route: `needs: spec` (a design question to settle) or `needs: build` (none left), with the routing reason in the body. The route says where the card goes when it is picked up. **A card in a lane carries no route label**: the label comes off in the same step as the move out of `Backlog`. A parent carries none either.
 - **A ticket ported from a sibling repository goes in the lane its content puts it in**: open questions to `Your input`, a settled spec with a plan to `Your sign-off` and one without to `Plan`, a parent to `Backlog` with no label.
 - **The body is the living spec; the comments are append-only history.** When a question is answered it moves into _Decisions_ and is deleted from _Open questions_. Every state change gets a NEW `> 🤖 **Next steps**` comment; never edit an old one.
@@ -71,7 +71,7 @@ cargo test -p sidekick-core
 
 **Pull request descriptions and commit messages carry no attribution line and no trailer**: the maintainer reviews and merges each PR and takes accountability for it, and the squash-merge commit on `main` is the maintainer's own, signed by GitHub.
 
-The procedure behind each step lives in the skills: `work-the-board` (and its `/board` alias), `design-slice`, `mockup`, `build-slice`, `merge-pr`, `issue-comment-replies`.
+The procedure behind each step lives in the skills: `work-the-board` (and its `/board` alias), `design-slice`, `mockup`, `build-slice`, `test-prs`, `merge-pr`, `issue-comment-replies`.
 
 ## CI required checks
 
