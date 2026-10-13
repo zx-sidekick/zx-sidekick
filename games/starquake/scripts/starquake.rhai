@@ -475,7 +475,7 @@ fn items(mem, carrying) {
             mark.kind = "piece";
             mark.color = "first";
         } else if picture >= 9 && picture <= 15 {
-            mark.color = "#C8A2E8";
+            mark.color = "#A066FF";
         } else if picture == 16 {
             mark.color = 6;
         } else {

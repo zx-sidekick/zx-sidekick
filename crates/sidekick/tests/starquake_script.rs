@@ -408,8 +408,8 @@ fn items_are_marked_by_kind_from_level_3_in_rooms_walked_and_level_4_everywhere(
     s.run_frame().expect("a frame");
     assert_eq!(
         item_marks(&s).last(),
-        Some(&(10, Fact::Text("#C8A2E8".to_owned()), 300)),
-        "level 4: in rooms not reached too, a card lilac"
+        Some(&(10, Fact::Text("#A066FF".to_owned()), 300)),
+        "level 4: in rooms not reached too, a card violet"
     );
 }
 
@@ -537,7 +537,7 @@ fn items_are_marked_by_what_the_game_does_with_them() {
         [
             (5, Fact::Text("first".to_owned()), 9),
             (6, Fact::Number(7), 9),
-            (14, Fact::Text("#C8A2E8".to_owned()), 9),
+            (14, Fact::Text("#A066FF".to_owned()), 9),
             (27, Fact::Number(7), 9),
         ],
         "a needed piece, the carried one's twin as any piece, a card, no pack, a piece"

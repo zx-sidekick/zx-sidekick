@@ -470,10 +470,10 @@ mod tests {
     fn a_marker_s_color_is_a_route_s_a_spectrum_one_or_any() {
         let text = |t: &str| marker_color(Some(&Fact::Text(t.to_owned())));
         assert_eq!(text("first"), Some(RouteColor::First.color()));
-        assert_eq!(text("#C8A2E8"), Some(Color::rgb(0xC8, 0xA2, 0xE8)));
-        assert_eq!(text("#C8A2E"), None, "six digits");
-        assert_eq!(text("C8A2E8"), None, "after a #");
-        assert_eq!(text("#C8A2EG"), None, "hex");
+        assert_eq!(text("#A066FF"), Some(Color::rgb(0xA0, 0x66, 0xFF)));
+        assert_eq!(text("#A066F"), None, "six digits");
+        assert_eq!(text("A066FF"), None, "after a #");
+        assert_eq!(text("#A066FG"), None, "hex");
         let [r, g, b, _] = color(13);
         assert_eq!(
             marker_color(Some(&Fact::Number(13))),
