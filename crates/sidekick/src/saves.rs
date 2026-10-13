@@ -144,6 +144,45 @@ impl Refused {
     }
 }
 
+/// Where F9 goes back to: the session's last save point.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SavePoint {
+    /// The quick slot, which F5 writes.
+    Quick,
+    /// A save the session started from (`--load`) or opened: read again each time, never
+    /// written.
+    File(PathBuf),
+    /// A crafted situation being set up: held once its first frame ends.
+    Starting,
+    /// The moment a crafted situation had been set up, held as a save.
+    Held(Vec<u8>),
+}
+
+impl SavePoint {
+    /// Whether there's a save to go back to.
+    pub(crate) fn exists(&self, saves: &Saves) -> bool {
+        match self {
+            Self::Quick => saves.quick.exists(),
+            Self::File(path) => path.exists(),
+            Self::Starting => false,
+            Self::Held(_) => true,
+        }
+    }
+
+    /// Goes back to it: the session as it was there, its game marked loaded.
+    ///
+    /// # Errors
+    /// Why it wasn't loaded; the session is left as it was.
+    pub(crate) fn load(&self, session: &mut Session, saves: &Saves) -> Result<(), Refused> {
+        match self {
+            Self::Quick => read(&saves.quick, session, saves),
+            Self::File(path) => read(path, session, saves),
+            Self::Starting => Err(Refused::NoSave),
+            Self::Held(bytes) => from_bytes(bytes, session, saves, true),
+        }
+    }
+}
+
 /// Saves the session to `path`, between frames: the machine whole, and the guidance level,
 /// switches, record and progress. Written beside it first, then moved over it, so a save cut
 /// short never replaces a good one.
@@ -151,6 +190,15 @@ impl Refused {
 /// # Errors
 /// While the tape loads, or if the machine can't be saved or the file can't be written.
 pub(crate) fn write(session: &mut Session, saves: &Saves, path: &Path) -> Result<(), Unsaved> {
+    let bytes = to_bytes(session, saves)?;
+    write_whole(path, &bytes).map_err(|e| Unsaved::Failed(format!("{}: {e}", path.display())))
+}
+
+/// The session as a save's bytes, between frames.
+///
+/// # Errors
+/// While the tape loads, or if the machine can't be saved.
+pub(crate) fn to_bytes(session: &mut Session, saves: &Saves) -> Result<Vec<u8>, Unsaved> {
     if session.machine().tape_loading() {
         return Err(Unsaved::TapeLoading);
     }
@@ -186,8 +234,7 @@ pub(crate) fn write(session: &mut Session, saves: &Saves, path: &Path) -> Result
         zip.write_all(text.as_bytes())?;
         Ok(zip.finish()?.into_inner())
     };
-    let bytes = zip().map_err(|e| Unsaved::Failed(e.to_string()))?;
-    write_whole(path, &bytes).map_err(|e| Unsaved::Failed(format!("{}: {e}", path.display())))
+    zip().map_err(|e| Unsaved::Failed(e.to_string()))
 }
 
 /// Loads a save into the session, its game marked loaded: a `.sav` whole, once it's found to
@@ -426,6 +473,41 @@ patch = [{ addr = 0x8010, bytes = "00", expect = "CD" }]
 
         fresh.switch("no-harm", false).unwrap();
         assert_eq!(fresh.machine().peek(0x8010), 0xCD, "off, its bytes go back");
+    }
+
+    #[test]
+    fn f9_goes_back_to_the_save_point_and_never_writes_a_file_it_came_from() {
+        let folder = tempfile::TempDir::new().unwrap();
+        let saves = saves(folder.path());
+        let started = folder.path().join("started.sav");
+        let mut s = played();
+        write(&mut s, &saves, &started).unwrap();
+        let bytes = fs::read(&started).unwrap();
+
+        // Played on from the file, then back to it.
+        s.machine_mut().write(0x9000, 0x99);
+        let point = SavePoint::File(started.clone());
+        assert!(point.exists(&saves));
+        point.load(&mut s, &saves).unwrap();
+        assert_eq!(s.machine().peek(0x9000), 0x42, "back where it started");
+        assert!(s.record().loaded, "marked loaded");
+        assert_eq!(fs::read(&started).unwrap(), bytes, "never written");
+
+        // A situation's start, held.
+        let held = SavePoint::Held(to_bytes(&mut s, &saves).unwrap());
+        s.machine_mut().write(0x9000, 0x77);
+        assert!(held.exists(&saves));
+        held.load(&mut s, &saves).unwrap();
+        assert_eq!(s.machine().peek(0x9000), 0x42);
+
+        // The quick slot, once an F5 has written it.
+        assert!(!SavePoint::Quick.exists(&saves), "nothing saved yet");
+        s.machine_mut().write(0x9000, 0x55);
+        write(&mut s, &saves, &saves.quick).unwrap();
+        s.machine_mut().write(0x9000, 0x66);
+        SavePoint::Quick.load(&mut s, &saves).unwrap();
+        assert_eq!(s.machine().peek(0x9000), 0x55);
+        assert_eq!(fs::read(&started).unwrap(), bytes, "still never written");
     }
 
     #[test]

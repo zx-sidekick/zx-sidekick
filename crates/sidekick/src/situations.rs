@@ -15,6 +15,9 @@ const TAP_AGAIN: u32 = 2000;
 const TAP_FRAMES: u32 = 4;
 /// The most frames spent reaching play: two emulated minutes.
 const MOST_FRAMES: u32 = 6000;
+/// The most frames to wait for the game to leave play to change room, once entered.
+const LEAVE_FRAMES: u32 = 50;
+
 /// The most runs spent reaching the sync address once in play.
 const SYNC_TRIES: u32 = 100;
 
@@ -79,6 +82,35 @@ pub(crate) fn start(session: &mut Session, situation: &Situation) -> Result<(), 
     session.reading_anew();
     session.machine_mut().call(enter.0, sync.0);
     session.mark_loaded();
+    through_the_change_of_room(session)
+}
+
+/// Runs through the game's change of room after entering one: out of play, and back. So the
+/// game starts, and F9 returns, with the room set up drawn, not the one the game started in.
+/// A game that doesn't leave play to change room goes on at once.
+fn through_the_change_of_room(session: &mut Session) -> Result<(), String> {
+    let play = session
+        .definition()
+        .and_then(|d| d.state_for(Role::Play))
+        .map(str::to_owned);
+    let in_play = |session: &Session| session.state() == play.as_deref();
+    let mut left = false;
+    for _ in 0..LEAVE_FRAMES {
+        session.run_frame().map_err(|e| e.to_string())?;
+        if !in_play(session) {
+            left = true;
+            break;
+        }
+    }
+    if left {
+        for _ in 0..MOST_FRAMES {
+            if in_play(session) {
+                return Ok(());
+            }
+            session.run_frame().map_err(|e| e.to_string())?;
+        }
+        return Err("the game didn't come back to play after entering the room".to_owned());
+    }
     Ok(())
 }
 
@@ -193,6 +225,12 @@ mod tests {
             let mut playing = game.playing(&tapes[0]).expect("the tape plays");
             let s = &mut playing.session;
             load(s, &playing.saves, &file).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                s.state(),
+                Some("play"),
+                "{}: through the change of room, in play at once",
+                file.display()
+            );
             for _ in 0..100 {
                 s.run_frame().expect("a frame");
             }

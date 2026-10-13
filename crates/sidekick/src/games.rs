@@ -1,6 +1,9 @@
 //! Games: where their definitions and tapes are, and which tape a game takes.
 
-use crate::{pad::Mapping, saves::Saves};
+use crate::{
+    pad::Mapping,
+    saves::{SavePoint, Saves},
+};
 use sidekick_core::{Machine, Model, Script, Session};
 use sidekick_def::{
     tapes_in, Definition, Library, LoadError, Machine as Spectrum, Package, Tape, TapeFormat,
@@ -288,6 +291,8 @@ pub(crate) struct Playing {
     pub(crate) quit_slot: bool,
     /// Whether kept lists are saved: not for a crafted situation, whose entries are made up.
     pub(crate) keep_lists: bool,
+    /// Where F9 goes back to: the quick slot, or the save or situation `--load` started from.
+    pub(crate) save_point: SavePoint,
     /// Where the game's definition was read from, to read again when it changes; none for a
     /// tape played plainly.
     pub(crate) source: Option<PathBuf>,
@@ -307,6 +312,7 @@ impl Game {
             saves: Saves::of_game(&self.definition().game.id, &tape.sha1, &self.folder),
             quit_slot: true,
             keep_lists: true,
+            save_point: SavePoint::Quick,
             source: Some(self.package.path.clone()),
         })
     }

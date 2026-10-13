@@ -24,7 +24,7 @@ mod window;
 use clap::{Parser, Subcommand};
 use games::{Game, Playing};
 use pad::Mapping;
-use saves::Saves;
+use saves::{SavePoint, Saves};
 use sidekick_core::{Machine, Model, Session};
 use sidekick_def::{tapes_in, Definition, Identified, Library, Package, Tape, TapeFormat};
 use std::{
@@ -239,6 +239,13 @@ fn loading(start: Start, load: Option<&Path>) -> Result<Start, String> {
             situations::load(&mut playing.session, &playing.saves, file)?;
             playing.quit_slot = false;
             playing.keep_lists = !is_situation(file);
+            // F9 goes back to where the session started, until an F5: a save read again, or a
+            // situation's moment held once its first frame ends. The file is never written.
+            playing.save_point = if is_situation(file) {
+                SavePoint::Starting
+            } else {
+                SavePoint::File(file.to_owned())
+            };
             Ok(Start::Play(playing))
         }
         Start::Prompt(_) => Err(format!(
@@ -284,6 +291,7 @@ fn tape_session(file: &Path, library: &Library, data: &Path) -> Result<Playing, 
         saves: Saves::of_tape(&tape.name, &tape.sha1, data),
         quit_slot: true,
         keep_lists: true,
+        save_point: SavePoint::Quick,
         source: None,
     })
 }
@@ -465,6 +473,7 @@ mod tests {
             saves: Saves::of_tape("plain.tap", "ABC123", data),
             quit_slot: true,
             keep_lists: true,
+            save_point: SavePoint::Quick,
             source: None,
         }
     }
@@ -485,6 +494,11 @@ mod tests {
         assert!(playing.session.record().loaded);
         assert!(!playing.quit_slot, "neither offered nor written over");
         assert!(playing.keep_lists, "a save's lists are the player's");
+        assert_eq!(
+            playing.save_point,
+            SavePoint::File(file),
+            "F9 goes back to it, until an F5"
+        );
         assert!(is_situation(Path::new("a/stocked-up.TOML")));
     }
 

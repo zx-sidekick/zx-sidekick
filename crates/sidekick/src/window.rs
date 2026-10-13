@@ -10,7 +10,7 @@ use crate::{
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
     picture::{placement, to_rgba, Layout},
-    saves::{self, Saves, Unsaved},
+    saves::{self, SavePoint, Saves, Unsaved},
     scores,
 };
 use sdl3::{
@@ -161,6 +161,8 @@ struct Player {
     /// Whether the quit slot and the kept lists are this session's to write (`Playing`).
     quit_slot: bool,
     keep_lists: bool,
+    /// Where F9 goes back to (`Playing`).
+    save_point: SavePoint,
     /// Where the game's definition was read from, when its files last changed, and when they
     /// were last looked at.
     source: Option<PathBuf>,
@@ -679,6 +681,7 @@ impl Player {
             offer,
             quit_slot: playing.quit_slot,
             keep_lists: playing.keep_lists,
+            save_point: playing.save_point,
             changed: playing.source.as_deref().and_then(games::changed),
             source: playing.source,
             checked: Instant::now(),
@@ -747,6 +750,15 @@ impl Player {
                 self.session.unpatch(patch);
             }
             ran.map_err(|e| e.to_string())?;
+            if self.save_point == SavePoint::Starting {
+                match saves::to_bytes(&mut self.session, &self.saves) {
+                    Ok(bytes) => self.save_point = SavePoint::Held(bytes),
+                    Err(unsaved) => {
+                        eprintln!("The situation's start couldn't be held: {unsaved:?}");
+                        self.save_point = SavePoint::Quick;
+                    }
+                }
+            }
             self.play.frame_ran();
             // The card goes when the game leaves its state, press or no press.
             if self.entry.is_some() && self.text_entry().is_none() {
@@ -876,8 +888,8 @@ impl Player {
         self.table = scores::after_game(&kept, now, "from the tape", false).0;
     }
 
-    /// F5 saves to the quick slot and F9 loads it, wherever the game is. Returns whether the
-    /// event was one of them.
+    /// F5 saves to the quick slot and F9 goes back to the save point, wherever the game is.
+    /// Returns whether the event was one of them.
     fn save_keys(&mut self, event: &Event, pads: &mut Pads) -> bool {
         let Event::KeyDown {
             scancode: Some(scancode @ (Scancode::F5 | Scancode::F9)),
@@ -901,6 +913,7 @@ impl Player {
     fn quick_save(&mut self) {
         match saves::write(&mut self.session, &self.saves, &self.saves.quick) {
             Ok(()) => {
+                self.save_point = SavePoint::Quick;
                 if let Some(menu) = &mut self.menu {
                     menu.saved();
                 }
@@ -915,19 +928,25 @@ impl Player {
         }
     }
 
-    /// Loads the quick slot.
+    /// Goes back to the save point: the quick slot, or the save or situation the session
+    /// started from or opened, until an F5.
     fn quick_load(&mut self, pads: &mut Pads) {
-        let quick = self.saves.quick.clone();
-        self.load(&quick, pads);
-    }
-
-    /// Loads a save, and says how it went. The game goes on from it with nothing held, and
-    /// the menu, card and page after a game closed.
-    fn load(&mut self, path: &Path, pads: &mut Pads) {
-        let result = saves::read(path, &mut self.session, &self.saves);
+        let point = self.save_point.clone();
+        let result = point.load(&mut self.session, &self.saves);
         if self.after_load(result, pads) {
             self.say("Game loaded");
         }
+    }
+
+    /// Loads a save, and says how it went. The game goes on from it with nothing held, and
+    /// the menu, card and page after a game closed. Returns whether it loaded.
+    fn load(&mut self, path: &Path, pads: &mut Pads) -> bool {
+        let result = saves::read(path, &mut self.session, &self.saves);
+        let loaded = self.after_load(result, pads);
+        if loaded {
+            self.say("Game loaded");
+        }
+        loaded
     }
 
     /// Answers the offer to continue: `go_on` loads the game kept on quitting; either way the
@@ -1062,7 +1081,9 @@ impl Player {
         }
         let path = self.opened.lock().ok().and_then(|mut o| o.take());
         if let Some(path) = path {
-            self.load(&path, pads);
+            if self.load(&path, pads) {
+                self.save_point = SavePoint::File(path);
+            }
         }
     }
 
@@ -1252,7 +1273,7 @@ impl Player {
                 }
             );
             if esc || presses.iter().any(|&(p, _)| p == Part::Select) {
-                let can_load = self.saves.quick.exists();
+                let can_load = self.save_point.exists(&self.saves);
                 self.menu = Some(Menu::open(&self.session, self.level, &self.title, can_load));
                 return MenuEvent::Taken;
             }
