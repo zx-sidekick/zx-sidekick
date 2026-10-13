@@ -425,8 +425,8 @@ impl Menu {
         }
         let label = Style::new(14.0, SWITCH_TEXT).weight(Weight::Medium);
         span(c, fonts, &row.label, (27.0, top), Align::Left, &label);
-        // A toggle: a track, its knob at the right when on.
-        let track = if row.on { colors::ACCENT } else { PILL_OFF };
+        // A toggle: a track, its knob at the right when on, the track's colour following it.
+        let track = between(PILL_OFF, colors::ACCENT, row.knob);
         c.rect((451.0, top - 3.0, 40.0, 22.0), 11.0, Some(track), None);
         let knob_x = 18.0f32.mul_add(f32::from(row.knob.min(100)) / 100.0, 462.0);
         c.circle((knob_x, top + 8.0), 8.0, Some(colors::TEXT), None);
@@ -618,5 +618,34 @@ impl Question {
             ],
         );
         c
+    }
+}
+
+/// The colour `percent` of the way from `from` to `to`, opaque.
+fn between(from: Color, to: Color, percent: u8) -> Color {
+    let t = u16::from(percent.min(100));
+    let mix = |a: u8, b: u8| {
+        let (a, b) = (u16::from(a), u16::from(b));
+        let mixed = (a * (100 - t) + b * t) / 100;
+        u8::try_from(mixed).unwrap_or(u8::MAX)
+    };
+    Color::rgb(mix(from.r, to.r), mix(from.g, to.g), mix(from.b, to.b))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_toggle_s_track_fades_with_its_knob() {
+        assert_eq!(between(PILL_OFF, colors::ACCENT, 0), PILL_OFF);
+        assert_eq!(between(PILL_OFF, colors::ACCENT, 100), colors::ACCENT);
+        let half = between(Color::rgb(0, 100, 200), Color::rgb(100, 200, 0), 50);
+        assert_eq!(half, Color::rgb(50, 150, 100));
+        assert_eq!(
+            between(PILL_OFF, colors::ACCENT, 255),
+            colors::ACCENT,
+            "past the end"
+        );
     }
 }
