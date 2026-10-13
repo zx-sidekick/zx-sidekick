@@ -36,10 +36,11 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - run: scripts/check.sh guard fmt clippy
+      - run: scripts/check.sh guard package fmt clippy
 
   # The program built and tested on each platform it ships for, SDL3 built from source into
-  # it. The binary is kept as an artifact, to try a pull request's build.
+  # it. Packed ready to run (scripts/package.sh) and kept as an artifact, to try a pull
+  # request's build.
   build:
     name: build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -68,8 +69,10 @@ jobs:
           key: ${{ matrix.name }}
       - run: cargo test --workspace
       - run: cargo build --release -p sidekick
+      - run: scripts/package.sh target/release/${{ matrix.binary }} ${{ matrix.name }}
+        shell: bash
       - uses: actions/upload-artifact@v7
         with:
           name: sidekick-${{ matrix.name }}
-          path: target/release/${{ matrix.binary }}
+          path: target/package/zx-sidekick-*
           retention-days: 7

@@ -328,7 +328,7 @@ Each step ends green, committed, and on a reviewed pull request.
 12. **Saves:** quick slot, Open, saved on quitting, the offer, the loaded mark, crafted situations and `--load`.
 13. **Split pad meanings**, if they hold up.
 14. **The 128K and the AY** in definitions, and a second, simpler reference definition.
-15. **Releases:** archives for each platform, with the player's guide, the authors' guide, `THIRD-PARTY.md` and the font's licence; each definition zipped without its `tests/`.
+15. **Releases:** archives for each platform, with the player's guide, the authors' guide, `THIRD-PARTY.md` and the font's licence; each definition zipped without its `tests/`. `scripts/package.sh` packs a platform's archive (the binary, `games/` without any `tests/`, the README, licence and third-party notes) and refuses a tape, snapshot or ROM file; CI's build jobs keep its archive as their artifact.
 
 ## Mockups
 
