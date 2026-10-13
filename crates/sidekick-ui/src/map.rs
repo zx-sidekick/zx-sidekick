@@ -437,6 +437,12 @@ impl Plan<'_> {
 
     fn marker(&self, c: &mut Canvas, fonts: &mut Fonts, marker: &Marker) {
         let (mx, my) = self.spot(marker);
+        // A shape in a corner is drawn at two thirds of its size, so the middle stays clear.
+        let small = if marker.place == Place::Middle || marker.at.is_some() {
+            1.0
+        } else {
+            2.0 / 3.0
+        };
         match &marker.kind {
             MarkerKind::Player => {
                 let (left, top) = self.at(marker.x, marker.y);
@@ -450,18 +456,14 @@ impl Plan<'_> {
                 );
             }
             MarkerKind::Diamond => {
-                let size = if marker.place == Place::Middle {
-                    3.5
-                } else {
-                    2.25
-                };
-                let r = size * std::f32::consts::SQRT_2;
+                let r = 3.5 * small * std::f32::consts::SQRT_2;
                 let points = [(mx, my - r), (mx + r, my), (mx, my + r), (mx - r, my)];
                 c.polygon(&points, marker.color.unwrap_or(TEAL));
             }
             MarkerKind::Square => {
+                let half = 3.5 * small;
                 c.rect(
-                    (mx - 3.5, my - 3.5, 7.0, 7.0),
+                    (mx - half, my - half, half * 2.0, half * 2.0),
                     1.0,
                     Some(marker.color.unwrap_or(TEAL)),
                     None,
@@ -482,7 +484,7 @@ impl Plan<'_> {
             }
             MarkerKind::Ring => {
                 let ring = Line::solid(marker.color.unwrap_or(colors::ACCENT), 1.5);
-                c.circle((mx, my), 4.0, None, Some(ring));
+                c.circle((mx, my), 4.0 * small, None, Some(ring));
             }
             MarkerKind::Picture(picture) => {
                 let color = marker.color.unwrap_or_else(|| RouteColor::First.color());
