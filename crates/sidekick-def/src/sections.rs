@@ -805,7 +805,7 @@ pub struct Widget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MarkerShape {
-    /// Where the player is: a box, with a bar above its cell.
+    /// Where the player is: a box in its cell.
     Player,
     /// A diamond.
     Diamond,

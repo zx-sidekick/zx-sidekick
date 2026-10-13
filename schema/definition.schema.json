@@ -770,7 +770,7 @@
       "description": "A shape the map draws a marker as.",
       "oneOf": [
         {
-          "description": "Where the player is: a box, with a bar above its cell.",
+          "description": "Where the player is: a box in its cell.",
           "type": "string",
           "const": "player"
         },

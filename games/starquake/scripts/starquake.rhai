@@ -487,10 +487,10 @@ fn on_load(mem) {
         cells.push(cell);
         let entries = room_marks[room].filter(|m| m.kind == door_entry());
         if entries.len() > 0 {
-            // The door's number sits on its right-hand entry, beside its wall.
+            // The door's number sits in the middle of its two entries' tiles, over the door.
             let d = entries[0];
             let lo = min(d.x, d.x + 6 * way(blocks[room], d));
-            doors.push(#{ room: room, at: [lo + 7, d.y] });
+            doors.push(#{ room: room, at: [lo + 3, d.y] });
         }
     }
     // The whole planet's map cells, as level 6 shows them, made once; and every room's blocking

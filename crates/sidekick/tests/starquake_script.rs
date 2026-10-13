@@ -764,8 +764,8 @@ fn a_door_leads_into_the_pocket_behind_it_and_is_drawn_dotted_with_its_number() 
     );
     assert_eq!(
         list(field(&door, "at")),
-        [Fact::Number(23), Fact::Number(8)],
-        "on its right-hand entry"
+        [Fact::Number(19), Fact::Number(8)],
+        "in the middle of its tile"
     );
 }
 

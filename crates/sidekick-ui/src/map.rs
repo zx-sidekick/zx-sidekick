@@ -15,7 +15,6 @@ const FLOOR_DIM: Color = Color::rgb(0x1E, 0x21, 0x29);
 const WALL: Color = Color::rgb(0x9A, 0xA3, 0xB5);
 const WALL_DIM: Color = Color::rgb(0x5A, 0x60, 0x70);
 const DOT: Color = Color::rgb(0x23, 0x26, 0x2D);
-const PLAYER_BAR: Color = Color::rgb(0x8A, 0x90, 0xA0);
 const TEAL: Color = Color::rgb(0x6F, 0xD6, 0xC4);
 const BODY: Color = Color::rgb(0xC4, 0xC7, 0xCE);
 const PIN_TEXT: Color = Color::rgb(0x1B, 0x13, 0x08);
@@ -85,7 +84,7 @@ pub struct Inside {
 /// What a marker marks.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MarkerKind {
-    /// Where the player is: a box, with a bar above its cell.
+    /// Where the player is: a box in its cell.
     Player,
     /// A diamond.
     Diamond,
@@ -374,12 +373,9 @@ impl Plan<'_> {
     }
 
     fn marker(&self, c: &mut Canvas, fonts: &mut Fonts, marker: &Marker) {
-        let cell = self.cell;
-        let (left, top) = self.at(marker.x, marker.y);
         let (mx, my) = self.spot(marker);
         match &marker.kind {
             MarkerKind::Player => {
-                c.rect((left, top - 3.0, cell, 2.0), 0.0, Some(PLAYER_BAR), None);
                 let edge = Line::solid(colors::TEXT, 2.0);
                 c.rect((mx - 4.5, my - 4.5, 9.0, 9.0), 2.0, None, Some(edge));
             }
