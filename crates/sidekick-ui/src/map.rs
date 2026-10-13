@@ -84,7 +84,7 @@ pub struct Inside {
 /// What a marker marks.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MarkerKind {
-    /// Where the player is: a box in its cell.
+    /// Where the player is: an outline round its cell, so what's in it still shows.
     Player,
     /// A diamond.
     Diamond,
@@ -108,10 +108,39 @@ pub struct Marker {
     /// The cell of its cell's inside it sits on, on the map's `inside` grid; its cell's
     /// middle when `None`.
     pub at: Option<(usize, usize)>,
+    /// Where in its cell it sits, when `at` doesn't say.
+    pub place: Place,
     /// What it marks.
     pub kind: MarkerKind,
     /// Its colour, where the kind has none of its own.
     pub color: Option<Color>,
+}
+
+impl Marker {
+    /// A marker of `kind` in the middle of the cell at (`x`, `y`), in its kind's own colour.
+    #[must_use]
+    pub const fn new(x: usize, y: usize, kind: MarkerKind) -> Self {
+        Self {
+            x,
+            y,
+            at: None,
+            place: Place::Middle,
+            kind,
+            color: None,
+        }
+    }
+}
+
+/// Where in its cell a marker sits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Place {
+    /// The middle.
+    #[default]
+    Middle,
+    /// The top-left corner, small.
+    TopLeft,
+    /// The top-right corner, small.
+    TopRight,
 }
 
 /// A route through cells.
@@ -194,8 +223,21 @@ impl MapGrid {
             };
             c.polyline(&points, line);
         }
+        // One picture a place, so the room's first item shows whole; a dot says there are more.
+        let mut pictured = std::collections::BTreeSet::new();
+        let mut more = std::collections::BTreeSet::new();
         for marker in &self.markers {
+            if matches!(marker.kind, MarkerKind::Picture(_))
+                && marker.at.is_none()
+                && !pictured.insert((marker.x, marker.y))
+            {
+                more.insert((marker.x, marker.y));
+                continue;
+            }
             plan.marker(c, fonts, marker);
+        }
+        for &(cx, cy) in &more {
+            plan.more(c, cx, cy);
         }
         #[allow(clippy::cast_precision_loss, reason = "a map's few cells")]
         let bottom = y + self.height as f32 * cell;
@@ -368,25 +410,60 @@ impl Plan<'_> {
                 );
                 spot
             }
-            _ => self.centre(marker.x, marker.y),
+            _ => {
+                let (left, top) = self.at(marker.x, marker.y);
+                let corner = self.cell * 0.25;
+                match marker.place {
+                    Place::Middle => self.centre(marker.x, marker.y),
+                    Place::TopLeft => (left + corner, top + corner),
+                    Place::TopRight => (left + self.cell - corner, top + corner),
+                }
+            }
         }
+    }
+
+    /// The dot in a place's bottom-right corner that says it holds more items than the one
+    /// drawn.
+    fn more(&self, c: &mut Canvas, cx: usize, cy: usize) {
+        let (left, top) = self.at(cx, cy);
+        let inset = self.cell * 0.2;
+        c.circle(
+            (left + self.cell - inset, top + self.cell - inset),
+            1.25,
+            Some(colors::TEXT),
+            None,
+        );
     }
 
     fn marker(&self, c: &mut Canvas, fonts: &mut Fonts, marker: &Marker) {
         let (mx, my) = self.spot(marker);
+        // A shape in a corner is drawn at two thirds of its size, so the middle stays clear.
+        let small = if marker.place == Place::Middle || marker.at.is_some() {
+            1.0
+        } else {
+            2.0 / 3.0
+        };
         match &marker.kind {
             MarkerKind::Player => {
-                let edge = Line::solid(colors::TEXT, 2.0);
-                c.rect((mx - 4.5, my - 4.5, 9.0, 9.0), 2.0, None, Some(edge));
+                let (left, top) = self.at(marker.x, marker.y);
+                let edge = Line::solid(colors::TEXT, 1.5);
+                let cell = self.cell;
+                c.rect(
+                    (left + 0.75, top + 0.75, cell - 1.5, cell - 1.5),
+                    1.5,
+                    None,
+                    Some(edge),
+                );
             }
             MarkerKind::Diamond => {
-                let r = 3.5 * std::f32::consts::SQRT_2;
+                let r = 3.5 * small * std::f32::consts::SQRT_2;
                 let points = [(mx, my - r), (mx + r, my), (mx, my + r), (mx - r, my)];
                 c.polygon(&points, marker.color.unwrap_or(TEAL));
             }
             MarkerKind::Square => {
+                let half = 3.5 * small;
                 c.rect(
-                    (mx - 3.5, my - 3.5, 7.0, 7.0),
+                    (mx - half, my - half, half * 2.0, half * 2.0),
                     1.0,
                     Some(marker.color.unwrap_or(TEAL)),
                     None,
@@ -407,18 +484,22 @@ impl Plan<'_> {
             }
             MarkerKind::Ring => {
                 let ring = Line::solid(marker.color.unwrap_or(colors::ACCENT), 1.5);
-                c.circle((mx, my), 4.0, None, Some(ring));
+                c.circle((mx, my), 4.0 * small, None, Some(ring));
             }
             MarkerKind::Picture(picture) => {
                 let color = marker.color.unwrap_or_else(|| RouteColor::First.color());
                 if let Some(picture) = picture {
+                    // A whole step smaller than the panel's own pixels, where the screen has one:
+                    // a device pixel each on a 2x screen, so the room around it shows.
+                    let step = (c.scale() - 1.0).max(1.0) / c.scale();
                     #[allow(clippy::cast_precision_loss, reason = "a picture's few pixels")]
-                    let (pw, ph) = (picture.width as f32, picture.height as f32);
+                    let (pw, ph) = (picture.width as f32 * step, picture.height as f32 * step);
+                    let snap = |v: f32| (v * c.scale()).round() / c.scale();
                     crate::panel::draw_pixels(
                         c,
                         picture,
-                        ((mx - pw / 2.0).round(), (my - ph / 2.0).round()),
-                        1.0,
+                        (snap(mx - pw / 2.0), snap(my - ph / 2.0)),
+                        step,
                         color,
                     );
                 } else {

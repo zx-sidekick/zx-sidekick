@@ -3,10 +3,10 @@
 
 use crate::picture::color;
 use sidekick_core::{Bitmap, Fact, Font, Read, Reading, Session};
-use sidekick_def::{Column, Definition, MarkerShape, Widget, WidgetKind};
+use sidekick_def::{Column, Definition, MarkerPlace, MarkerShape, Widget, WidgetKind};
 use sidekick_ui::{
     CardRow, Cell, Chip, Color, Edge, Icon, Inside, Look, MapGrid, Marker, MarkerKind, Panel,
-    PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Route, RouteColor,
+    PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Place, Route, RouteColor,
 };
 use std::collections::BTreeMap;
 
@@ -131,7 +131,7 @@ pub(crate) fn panel(
                     Source::Script(fact),
                 ) => pictured(w, fact, &graphics(w), script.chosen)?,
                 (WidgetKind::MapGrid, Source::Script(fact)) => {
-                    PanelBody::Map(map(fact, &graphics(w), &w.markers)?)
+                    PanelBody::Map(map(fact, &graphics(w), &w.markers, &w.places)?)
                 }
                 (WidgetKind::Text, Source::Value(read, _)) => PanelBody::Text(read.as_text()),
                 (WidgetKind::Counter, Source::Value(read, _)) => PanelBody::Counter(read.number()?),
@@ -267,6 +267,7 @@ fn map(
     fact: &Fact,
     graphics: &Graphics,
     shapes: &BTreeMap<String, MarkerShape>,
+    places: &BTreeMap<String, MarkerPlace>,
 ) -> Option<MapGrid> {
     let list = |key: &str| match get(fact, key) {
         Some(Fact::List(items)) => items.as_slice(),
@@ -298,7 +299,13 @@ fn map(
         .filter_map(|marker| {
             // The script's kind, drawn as the widget's markers say; one it doesn't list isn't
             // drawn.
-            let kind = match shapes.get(words(get(marker, "kind"))?)? {
+            let name = words(get(marker, "kind"))?;
+            let place = match places.get(name).copied().unwrap_or_default() {
+                MarkerPlace::Middle => Place::Middle,
+                MarkerPlace::TopLeft => Place::TopLeft,
+                MarkerPlace::TopRight => Place::TopRight,
+            };
+            let kind = match shapes.get(name)? {
                 MarkerShape::Player => MarkerKind::Player,
                 MarkerShape::Diamond => MarkerKind::Diamond,
                 MarkerShape::Square => MarkerKind::Square,
@@ -316,6 +323,7 @@ fn map(
                 x: number(get(marker, "x"))?,
                 y: number(get(marker, "y"))?,
                 at: get(marker, "at").and_then(pair),
+                place,
                 kind,
                 color: marker_color(get(marker, "color")),
             })
@@ -894,6 +902,7 @@ markers = { player = "player", item = "picture", door = "square" }
                 x: 1,
                 y: 1,
                 at: None,
+                place: Place::Middle,
                 kind: MarkerKind::Picture(Some(pixels(&dot(2)))),
                 color: Some(RouteColor::Second.color()),
             }
@@ -1004,6 +1013,7 @@ markers = { door = "label" }
                 x: 0,
                 y: 0,
                 at: Some((3, 2)),
+                place: Place::Middle,
                 kind: MarkerKind::Label("1".to_owned()),
                 color: None,
             }],

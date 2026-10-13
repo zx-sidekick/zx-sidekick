@@ -416,6 +416,7 @@ kind = "map-grid"
 from_level = 1
 source = "value:mode"
 markers = {{ item = "picture" }}
+places = {{ item = "top-right", door = "top-left" }}
 "#
     );
     let def = Definition::from_toml(&text).expect("it parses");
@@ -428,6 +429,7 @@ markers = {{ item = "picture" }}
         "panel[0].markers",
         "panel[1].markers",
         "panel[2].pictures",
+        "panel[2].places.door",
     ] {
         assert!(
             problems.iter().any(|p| p == expected),
@@ -441,5 +443,9 @@ markers = {{ item = "picture" }}
             .count(),
         2,
         "no menu, and a state it doesn't have"
+    );
+    assert!(
+        !problems.iter().any(|p| p == "panel[2].places.item"),
+        "a kind it draws may have a place"
     );
 }

@@ -426,6 +426,7 @@ pictures = "item_pictures"
 source = "script:map"
 # The kinds of marker the script puts on the map, and the shape each is drawn as.
 markers = { player = "player", teleport = "diamond", door = "label", piece = "picture", item = "picture" }
+places = { teleport = "top-left" }
 
 [situations]
 # The routine that starts play in the current room (docs/re/starquake.md).
