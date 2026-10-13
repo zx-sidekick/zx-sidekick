@@ -579,7 +579,24 @@ fn the_notice() {
         text: "Game saved".to_owned(),
     };
     assert_eq!(note.width(&mut fonts), 128, "the mockup's pill");
+    assert_eq!(note.height(&mut fonts), 35);
+    assert_eq!(note.seconds(), 2);
     golden("note.png", &note.draw(&mut fonts, 1).png());
+}
+
+#[test]
+fn a_long_notice_wraps_and_shows_longer() {
+    let mut fonts = Fonts::new();
+    let note = Note {
+        text: "Definition not reloaded: games/starquake/game.toml: unknown field `snyc`, expected one of `id`, `title`, `year`, `publisher`, `authors`, `machine` at line 13 column 1".to_owned(),
+    };
+    assert!(
+        note.width(&mut fonts) <= 640,
+        "no wider than the widest pill"
+    );
+    assert!(note.height(&mut fonts) > 35, "more than a line");
+    assert!(note.seconds() > 2 && note.seconds() <= 10);
+    golden("note-long.png", &note.draw(&mut fonts, 1).png());
 }
 
 #[test]

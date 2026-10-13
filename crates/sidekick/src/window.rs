@@ -55,9 +55,6 @@ const MOST_FRAMES_A_PASS: usize = 5;
 /// How often a game's definition is looked at for a change, to reload it.
 const RELOAD_CHECK: Duration = Duration::from_secs(1);
 
-/// How long a notice such as "Game saved" shows.
-const NOTE_TIME: Duration = Duration::from_secs(2);
-
 /// The menu card's width, for halving it.
 #[allow(clippy::cast_precision_loss, reason = "a card's width")]
 const MENU_WIDTH_F: f32 = MENU_WIDTH as f32;
@@ -1104,9 +1101,8 @@ impl Player {
                 true
             }
             Err(e) => {
-                let why = e.to_string();
-                let first = why.lines().next().unwrap_or_default();
-                self.say(&format!("Definition not reloaded: {first}"));
+                let why: Vec<String> = e.to_string().lines().map(str::to_owned).collect();
+                self.say(&format!("Definition not reloaded: {}", why.join(" ")));
                 false
             }
         }
@@ -1126,7 +1122,7 @@ impl Player {
         if self
             .note
             .as_ref()
-            .is_some_and(|(_, at)| at.elapsed() >= NOTE_TIME)
+            .is_some_and(|(note, at)| at.elapsed() >= Duration::from_secs(note.seconds()))
         {
             self.note = None;
         }
@@ -1146,13 +1142,17 @@ impl Player {
             scale,
             Note::draw,
         )?;
-        let (w, h) = (note.width(&mut out.fonts) * scale, NOTE_HEIGHT * scale);
+        let (w, h) = (
+            note.width(&mut out.fonts) * scale,
+            note.height(&mut out.fonts) * scale,
+        );
         // Placed as on the mockup's picture, three logical pixels to a Spectrum one, whatever
-        // the picture's own scale.
+        // the picture's own scale; a pill of more lines grows upwards from the same foot.
         let (lw, lh) = (PICTURE.0 * 3, PICTURE.1 * 3);
+        let foot = py + ph * (NOTE_AT.1 + NOTE_HEIGHT) / lh;
         let at = (
             (px + pw * NOTE_AT.0 / lw).saturating_sub(w / 2),
-            py + ph * NOTE_AT.1 / lh,
+            foot.saturating_sub(h),
             w,
             h,
         );
