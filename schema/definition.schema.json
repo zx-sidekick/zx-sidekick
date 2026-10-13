@@ -793,6 +793,11 @@
           "description": "The marker's own picture, from the widget's `pictures`.",
           "type": "string",
           "const": "picture"
+        },
+        {
+          "description": "The marker's `label`, a few characters: a door's number.",
+          "type": "string",
+          "const": "label"
         }
       ]
     },

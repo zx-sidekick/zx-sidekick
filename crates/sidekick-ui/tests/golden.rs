@@ -2,10 +2,10 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Levels, LibraryEntry,
-    LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer, PadLabels,
-    PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Question,
-    Refusal, Route, RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
+    pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Inside, Levels,
+    LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer,
+    PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels,
+    Question, Refusal, Route, RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -384,12 +384,19 @@ fn stand_in_map(seen: bool) -> MapGrid {
             if coin() {
                 walls.push(Edge::South);
             }
-            Cell { x, y, walls, seen }
+            Cell {
+                x,
+                y,
+                walls,
+                seen,
+                ..Cell::default()
+            }
         })
         .collect();
     let item = |x, y, seed| Marker {
         x,
         y,
+        at: None,
         kind: MarkerKind::Picture(Some(stand_in(seed))),
         color: None,
     };
@@ -397,6 +404,7 @@ fn stand_in_map(seen: bool) -> MapGrid {
         Marker {
             x: 8,
             y: 1,
+            at: None,
             kind: MarkerKind::Player,
             color: None,
         },
@@ -409,6 +417,7 @@ fn stand_in_map(seen: bool) -> MapGrid {
         markers.push(Marker {
             x: 1,
             y: 20,
+            at: None,
             kind: MarkerKind::Diamond,
             color: None,
         });
@@ -416,6 +425,7 @@ fn stand_in_map(seen: bool) -> MapGrid {
     MapGrid {
         width: 16,
         height: 32,
+        inside: None,
         cells,
         markers,
         routes: vec![
@@ -616,6 +626,7 @@ fn a_map_of_some_rooms_walked_has_no_frame() {
     let map = MapGrid {
         width: 16,
         height: 32,
+        inside: None,
         cells: walked
             .iter()
             .map(|&(x, y, walls)| Cell {
@@ -631,11 +642,13 @@ fn a_map_of_some_rooms_walked_has_no_frame() {
                     })
                     .collect(),
                 seen: true,
+                ..Cell::default()
             })
             .collect(),
         markers: vec![Marker {
             x: 8,
             y: 1,
+            at: None,
             kind: MarkerKind::Player,
             color: None,
         }],
@@ -652,4 +665,108 @@ fn a_map_of_some_rooms_walked_has_no_frame() {
         }],
     };
     golden("panel-map-walked.png", &panel.draw(&mut fonts, 1).png());
+}
+
+#[test]
+fn the_map_shows_what_is_inside_each_room() {
+    let mut fonts = Fonts::new();
+    let edges = |walls: &str| -> Vec<Edge> {
+        walls
+            .chars()
+            .map(|c| match c {
+                'N' => Edge::North,
+                'E' => Edge::East,
+                'S' => Edge::South,
+                _ => Edge::West,
+            })
+            .collect()
+    };
+    let room = |x, y, walls: &str| Cell {
+        x,
+        y,
+        walls: edges(walls),
+        seen: true,
+        ..Cell::default()
+    };
+    let block = |cols: std::ops::Range<usize>, rows: std::ops::Range<usize>| {
+        rows.flat_map(|y| cols.clone().map(move |x| (x, y)))
+            .collect::<Vec<_>>()
+    };
+    // A ledge from the left wall parts one room; a door's wall parts the one beside it.
+    let ledge = Cell {
+        inside: Inside {
+            walls: block(0..12, 6..8),
+            doors: Vec::new(),
+        },
+        ..room(8, 1, "W")
+    };
+    let mut door_wall = block(19..21, 0..9);
+    door_wall.extend(block(19..21, 12..18));
+    let door = Cell {
+        inside: Inside {
+            walls: door_wall,
+            doors: block(19..21, 9..12),
+        },
+        ..room(9, 1, "ES")
+    };
+    let never_entered = Cell {
+        dim: true,
+        ..room(10, 0, "NES")
+    };
+    let to_fetch = Cell {
+        x: 11,
+        y: 3,
+        dashed: true,
+        ..Cell::default()
+    };
+    let map = MapGrid {
+        width: 16,
+        height: 32,
+        inside: Some((32, 18)),
+        cells: vec![
+            room(8, 0, "NW"),
+            room(9, 0, "N"),
+            ledge,
+            door,
+            room(8, 2, "WSE"),
+            never_entered,
+            to_fetch,
+        ],
+        markers: vec![
+            Marker {
+                x: 9,
+                y: 0,
+                at: None,
+                kind: MarkerKind::Player,
+                color: None,
+            },
+            Marker {
+                x: 9,
+                y: 1,
+                at: Some((23, 10)),
+                kind: MarkerKind::Label("1".to_owned()),
+                color: None,
+            },
+            Marker {
+                x: 11,
+                y: 3,
+                at: None,
+                kind: MarkerKind::Picture(Some(stand_in(5))),
+                color: None,
+            },
+        ],
+        routes: Vec::new(),
+    };
+    let panel = Panel {
+        level: 4,
+        name: "Everything".to_owned(),
+        description: String::new(),
+        widgets: vec![PanelWidget {
+            column: PanelColumn::Left,
+            title: None,
+            body: PanelBody::Map(map),
+        }],
+    };
+    golden("panel-map-inside.png", &panel.draw(&mut fonts, 1).png());
+    golden("panel-map-inside-2x.png", &panel.draw(&mut fonts, 2).png());
 }

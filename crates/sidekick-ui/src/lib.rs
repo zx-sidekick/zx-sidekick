@@ -30,7 +30,8 @@ pub use entry::{EntryCard, EntryMode, HEIGHT as ENTRY_HEIGHT, WIDTH as ENTRY_WID
 pub use hints::{Face, PadLabels};
 pub use library::{LibraryEntry, LibraryPage};
 pub use map::{
-    pins, Cell, Edge, MapGrid, Marker, MarkerKind, Pin, Route, RouteColor, PICTURE as PINS_SIZE,
+    pins, Cell, Edge, Inside, MapGrid, Marker, MarkerKind, Pin, Route, RouteColor,
+    PICTURE as PINS_SIZE,
 };
 pub use menu::{Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH};
 pub use note::{Note, AT as NOTE_AT, HEIGHT as NOTE_HEIGHT};

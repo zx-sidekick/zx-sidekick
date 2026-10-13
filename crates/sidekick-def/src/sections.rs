@@ -815,6 +815,8 @@ pub enum MarkerShape {
     Ring,
     /// The marker's own picture, from the widget's `pictures`.
     Picture,
+    /// The marker's `label`, a few characters: a door's number.
+    Label,
 }
 
 /// Where a widget goes in the panel.
