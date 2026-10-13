@@ -72,3 +72,66 @@ fn without_a_sync_address_running_to_it_ends_the_frame() {
         "a whole frame ran"
     );
 }
+
+/// A switch that fills a value and calls the routine at 0x8000 once to show it.
+const SWITCHED: &str = r#"
+[values.mode]
+addr = 0x9001
+type = "u8"
+[values.energy]
+addr = 0x9002
+type = "u8"
+writable = true
+max = 200
+[[states]]
+name = "play"
+role = "play"
+when = { value = "mode", equals = 2 }
+[[cheats]]
+id = "full-energy"
+label = "Full energy"
+set = { value = "energy", to = "max" }
+call = 0x8000
+"#;
+
+/// LD A,(0x9000); INC A; LD (0x9000),A; RET: counts its calls at 0x9000.
+const COUNTER: [u8; 8] = [0x3A, 0x00, 0x90, 0x3C, 0x32, 0x00, 0x90, 0xC9];
+
+#[test]
+fn a_switch_s_routine_is_called_once_in_play_after_it_goes_on() {
+    let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+    for _ in 0..BOOT_FRAMES {
+        machine.run_frame().expect("a frame");
+    }
+    let definition = Definition::from_toml(&format!("{DEFINITION}{SWITCHED}")).expect("it parses");
+    let mut s = Session::new(machine, Some(definition));
+    for (at, &byte) in (0x8000..).zip(&COUNTER) {
+        s.machine_mut().write(at, byte);
+    }
+    s.switch("full-energy", true).expect("on");
+    for _ in 0..3 {
+        s.run_frame().expect("a frame");
+    }
+    assert_eq!(s.machine().peek(0x9000), 0, "not called outside play");
+    s.machine_mut().write(0x9001, 2);
+    for _ in 0..5 {
+        s.run_frame().expect("a frame");
+    }
+    assert_eq!(s.machine().peek(0x9000), 1, "called once, in play");
+    assert_eq!(s.machine().peek(0x9002), 200, "after the set");
+    let frames = s.machine().peek(FRAMES);
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        s.machine().peek(FRAMES),
+        frames.wrapping_add(1),
+        "the interrupt handler goes on after it"
+    );
+    s.switch("full-energy", false).expect("off");
+    s.switch("full-energy", true).expect("on again");
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        s.machine().peek(0x9000),
+        2,
+        "and once more each time it goes on"
+    );
+}

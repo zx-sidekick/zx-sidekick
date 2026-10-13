@@ -338,6 +338,17 @@
       "description": "`[[cheats]]`: a training switch.",
       "type": "object",
       "properties": {
+        "call": {
+          "description": "A routine of the game's called once, at the next sync point in play after it goes on,\nreturning to the sync address: one that redraws what `set` changed.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Address"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "hold": {
           "description": "Values that may not go down while it's on.",
           "anyOf": [

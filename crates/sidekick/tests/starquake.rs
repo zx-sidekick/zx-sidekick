@@ -202,6 +202,13 @@ fn starquake_s_training_switches_work_on_the_game() {
 /// tape.
 #[allow(clippy::print_stderr, reason = "a skipped test says why")]
 fn in_play_on_the_joystick() -> Option<Session> {
+    on_the_joystick(900)
+}
+
+/// Starquake in play on the Kempston joystick, `settle` frames after play began; `None` without
+/// the tape.
+#[allow(clippy::print_stderr, reason = "a skipped test says why")]
+fn on_the_joystick(settle: usize) -> Option<Session> {
     let zip = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/Starquake.tap.zip");
     if !zip.exists() {
         eprintln!("skipped: no {} (the player's own tape)", zip.display());
@@ -223,7 +230,7 @@ fn in_play_on_the_joystick() -> Option<Session> {
         until(&mut s, 200, |s| s.state() == Some("play"))
     });
     assert!(started, "play");
-    until(&mut s, 900, |_| false);
+    until(&mut s, settle, |_| false);
     Some(s)
 }
 
@@ -412,4 +419,95 @@ fn the_rooms_walked_are_the_game_s_own() {
     assert!(until(&mut s, 200, |s| s.state() == Some("play")));
     s.run_frame().expect("a frame");
     assert_eq!(rooms_on_the_map(&s), [8, 9], "and the room entered");
+}
+
+/// The screen bytes of the status area above the play area: its six character rows' pixels.
+fn status_area(s: &Session) -> Vec<u8> {
+    (0x4000u16..0x4800)
+        .filter(|a| (a >> 5) & 7 < 6)
+        .map(|a| s.machine().peek(a))
+        .collect()
+}
+
+/// Holds `input` on the joystick for a few frames, then lets go, `times` times.
+fn tap_joystick(s: &mut Session, input: Kempston, times: usize) {
+    for _ in 0..times {
+        s.machine_mut().kempston(input, true);
+        until(s, 8, |_| false);
+        s.machine_mut().kempston(input, false);
+        until(s, 30, |_| false);
+    }
+}
+
+/// With `switch` on from the start of play, the game's own bar for `value` stays as drawn once
+/// the switch went on while `act` runs; without it, the bar is drawn shorter.
+fn bar_stays_full(switch: &str, value: &str, act: impl Fn(&mut Session)) {
+    // Soon after play begins, before anything has taken from the bars.
+    let Some(base) = on_the_joystick(50) else {
+        return;
+    };
+    let mut off = base.clone();
+    let mut on = base;
+    on.switch(switch, true)
+        .expect("its patches find the game's bytes");
+    until(&mut on, 5, |_| false);
+    until(&mut off, 5, |_| false);
+    let first = status_area(&on);
+    act(&mut off);
+    act(&mut on);
+    // Where the two games' status areas differ is the bar the switch keeps.
+    let (with, without) = (status_area(&on), status_area(&off));
+    let bar: Vec<usize> = (0..with.len()).filter(|&i| with[i] != without[i]).collect();
+    assert!(!bar.is_empty(), "{switch}: without it, the bar goes down");
+    assert!(
+        bar.iter().all(|&i| with[i] == first[i]),
+        "{switch}: with it, the bar is as drawn when it went on"
+    );
+    assert_eq!(
+        on.reading()[value].number(),
+        Some(127),
+        "{switch}: and {value} is full"
+    );
+}
+
+#[test]
+fn full_laser_keeps_its_bar_full_on_screen_while_firing() {
+    bar_stays_full("full-laser", "laser", |s| {
+        tap_joystick(s, Kempston::Fire, 4);
+    });
+}
+
+#[test]
+fn full_platforms_keeps_its_bar_full_on_screen_while_building() {
+    bar_stays_full("full-platforms", "platforms", |s| {
+        tap_joystick(s, Kempston::Down, 2);
+    });
+}
+
+#[test]
+fn full_energy_keeps_its_bar_full_on_screen_as_time_goes() {
+    // Long enough for the game's timer to take from energy a few times.
+    bar_stays_full("full-energy", "energy", |s| {
+        until(s, 800, |_| false);
+    });
+}
+
+#[test]
+fn full_platforms_draws_its_bar_full_as_it_goes_on() {
+    // Platforms start at 50 of 127: switched on, the bar is drawn longer at once.
+    let Some(base) = on_the_joystick(50) else {
+        return;
+    };
+    let mut off = base.clone();
+    let mut on = base;
+    on.switch("full-platforms", true)
+        .expect("its patches find the game's bytes");
+    until(&mut off, 5, |_| false);
+    until(&mut on, 5, |_| false);
+    let (with, without) = (status_area(&on), status_area(&off));
+    let bar: Vec<usize> = (0..with.len()).filter(|&i| with[i] != without[i]).collect();
+    assert!(!bar.is_empty(), "the bar is drawn again");
+    let ink = |area: &[u8]| bar.iter().map(|&i| area[i].count_ones()).sum::<u32>();
+    assert!(ink(&with) > ink(&without), "and longer");
+    assert_eq!(on.reading()["platforms"].number(), Some(127));
 }

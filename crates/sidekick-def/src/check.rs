@@ -453,6 +453,12 @@ impl Checker<'_> {
                 self.need_writable_number(&format!("{path}.hold"), held);
             }
             self.patches(&format!("{path}.patch"), &cheat.patch);
+            if cheat.call.is_some() && self.def.run.as_ref().and_then(|r| r.sync).is_none() {
+                self.report(
+                    format!("{path}.call"),
+                    "a routine is called at the sync point, and there's none (run.sync)",
+                );
+            }
         }
     }
 

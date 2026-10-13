@@ -79,9 +79,9 @@ Five `[[cheats]]`:
 
 | Switch | How |
 |---|---|
-| Full energy | `set` energy to `max` |
-| Full bridging platforms | `set` platforms to `max` |
-| Full laser | `set` laser to `max` |
+| Full energy | `set` energy to `max`, and `patch` out the timer's call that takes from it, so its bar on screen stays full too |
+| Full bridging platforms | `set` platforms to `max`, and `patch` out the call that takes 2 for each platform built |
+| Full laser | `set` laser to `max`, and `patch` out the two calls that take 1 for each shot |
 | Endless lives | `hold` lives |
 | No harm from enemies | a `patch` where the game decides an enemy has hurt BLOB, or a write that undoes the hit before it counts; find which by tracing |
 
