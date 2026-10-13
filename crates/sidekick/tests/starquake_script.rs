@@ -553,6 +553,11 @@ fn below_level_4_the_core_and_its_pieces_show_once_the_core_is_seen() {
 /// rows, its cells' attributes in the bytes before it.
 const PAINTED: u16 = 0xB000;
 
+/// Attributes: a cell without BRIGHT blocks; a vacuum tube's cells are bright
+/// (docs/re/starquake.md).
+const BLOCKS: u8 = 0x07;
+const TUBE: u8 = 0x64;
+
 /// Rooms painted cell by cell from stand-in tiles: each 8 × 6 block of a room is a large tile
 /// whose last medium tile, drawn at its top left, draws the block's blocking cells.
 struct Painter {
@@ -579,26 +584,34 @@ impl Painter {
 
     /// Paints `room` from 18 rows of 32 cells, where `blocks(x, y)`.
     fn paint(&mut self, s: &mut Session, room: usize, blocks: impl Fn(usize, usize) -> bool) {
+        self.paint_in(s, room, |x, y| blocks(x, y).then_some(BLOCKS));
+    }
+
+    /// Paints `room` from 18 rows of 32 cells, each drawn in an attribute or not drawn.
+    fn paint_in(
+        &mut self,
+        s: &mut Session,
+        room: usize,
+        drawn: impl Fn(usize, usize) -> Option<u8>,
+    ) {
         let mut tiles = [0u8; 12];
         for (i, tile) in tiles.iter_mut().enumerate() {
             let id = self.take();
             *tile = id;
             let picture = PAINTED + u16::from(id) * 64;
             let (left, top) = ((i % 4) * 8, (i / 4) * 6);
-            let mut drawn = 0u16;
+            // Each drawn cell's attribute, the first just before the picture, going down.
+            let mut attribute = picture;
             for r in 0..6 {
-                let row = (0..8).fold(0u8, |row, c| {
-                    if blocks(left + c, top + r) {
-                        row | (0x80 >> c)
-                    } else {
-                        row
+                let mut row = 0u8;
+                for c in 0..8 {
+                    if let Some(a) = drawn(left + c, top + r) {
+                        row |= 0x80 >> c;
+                        attribute -= 1;
+                        poke(s, attribute, &[a]);
                     }
-                });
+                }
                 poke(s, picture + u16::try_from(r).expect("a row"), &[row]);
-                drawn += u16::try_from(row.count_ones()).expect("a few");
-            }
-            for k in 1..=drawn {
-                poke(s, picture - k, &[0x07]);
             }
             poke_into(
                 s,
@@ -688,6 +701,8 @@ fn inside(cell: &Fact) -> (Spots, Spots) {
 /// The kinds of medium tile the script looks for, by their type's top four bits
 /// (docs/re/starquake.md, "Medium tile types").
 const DOOR_ENTRY: u8 = 0;
+const POST: u8 = 11;
+const BOOTH: u8 = 13;
 const PASSAGE: u8 = 15;
 
 #[test]
@@ -897,4 +912,334 @@ fn rooms_not_entered_are_dimmer_and_a_needed_piece_s_room_is_outlined() {
     assert_eq!(cells.len(), 512);
     assert_eq!(cells[8], (8, false, false), "walked");
     assert_eq!(cells[300], (300, true, false), "never entered");
+}
+
+/// Puts BLOB in `room` with his top left on cell (`x`, `y`): his left edge in pixels, and his
+/// height up from the screen's bottom as entering a room lines it up (docs/re/starquake.md).
+fn stand(s: &mut Session, room: u16, (x, y): (u8, u8)) {
+    poke_into(s, "room", 0, &room.to_le_bytes());
+    poke_into(s, "blob_x", 0, &[x * 8]);
+    poke_into(s, "blob_y", 0, &[(17 - y) * 8 + 7]);
+}
+
+/// Item record `k`: a `picture` in `room`, laid down with its top left on a cell, or not yet
+/// placed (docs/re/starquake.md, "The items").
+fn lay(s: &mut Session, k: u16, room: u16, picture: u8, cell: Option<(u8, u8)>) {
+    let ninth = u8::try_from(room >> 8).expect("a bit") << 7;
+    let [low, _] = room.to_le_bytes();
+    let (x, row) = cell.map_or((0, 0), |(x, y)| (x, y + 6));
+    poke_into(s, "items", k * 4, &[x, row | ninth, low, picture]);
+}
+
+/// A route on the map: its colour, its label, the edge it leaves BLOB's room by, and its
+/// steps as `"x,y"`, with how it comes to a step where it isn't a solid line.
+#[derive(Debug, PartialEq, Eq)]
+struct Shown {
+    color: String,
+    label: String,
+    exit: Option<String>,
+    steps: Vec<String>,
+}
+
+fn text(fact: &Fact) -> String {
+    match fact {
+        Fact::Text(t) => t.clone(),
+        other => panic!("text: {other:?}"),
+    }
+}
+
+fn routes(s: &Session) -> Vec<Shown> {
+    assert_eq!(s.script_off(), None);
+    let map = s.script_results()["map"].clone();
+    list(field(&map, "routes"))
+        .iter()
+        .map(|route| {
+            let Fact::Map(fields) = route else {
+                panic!("a route: {route:?}")
+            };
+            Shown {
+                color: text(&fields["color"]),
+                label: text(&fields["label"]),
+                exit: fields.get("exit").map(text),
+                steps: list(&fields["steps"])
+                    .iter()
+                    .map(|step| {
+                        let step = list(step);
+                        let xy = format!("{},{}", number(&step[0]), number(&step[1]));
+                        step.get(2)
+                            .map_or_else(|| xy.clone(), |how| format!("{xy} {}", text(how)))
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
+}
+
+fn steps(cells: &[&str]) -> Vec<String> {
+    cells.iter().map(|&c| c.to_owned()).collect()
+}
+
+/// The ring markers on the map, as (room, color).
+fn rings(s: &Session) -> Vec<(i64, String)> {
+    let map = s.script_results()["map"].clone();
+    list(field(&map, "markers"))
+        .iter()
+        .filter(|m| field(m, "kind") == &Fact::Text("target".to_owned()))
+        .map(|m| {
+            let room = number(field(m, "y")) * 16 + number(field(m, "x"));
+            (room, text(field(m, "color")))
+        })
+        .collect()
+}
+
+/// A new game's planet with nothing in its way: seeded, BLOB at the top left of room 8.
+fn routed_planet(s: &mut Session) {
+    blank_planet(s);
+    poke_into(s, "seed", 0, &[0x34, 0x12]);
+    stand(s, 8, (4, 8));
+}
+
+#[test]
+fn level_5_routes_to_the_nearest_missing_piece_and_tab_picks_the_next() {
+    let mut s = session();
+    routed_planet(&mut s);
+    // The core needs pictures 5, 6 and 7: lying two, three and four rooms from BLOB.
+    poke_into(&mut s, "core_slots", 0, &[0x85, 0x86, 0x87]);
+    lay(&mut s, 0, 72, 7, None);
+    lay(&mut s, 1, 10, 5, Some((20, 10)));
+    lay(&mut s, 2, 56, 6, None);
+    visit(&mut s, &[8, 9]);
+    enter(&mut s, "play");
+    s.set_level(4);
+    s.run_frame().expect("a frame");
+    assert!(routes(&s).is_empty(), "level 4: no routes");
+
+    s.set_level(5);
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        routes(&s),
+        [Shown {
+            color: "first".to_owned(),
+            label: "Item 1/3".to_owned(),
+            exit: Some("E".to_owned()),
+            steps: steps(&["8,0", "9,0", "10,0 dashed"]),
+        }],
+        "through rooms walked, dashed into one not"
+    );
+
+    let label = |s: &mut Session| {
+        s.script_action("next_route").expect("Tab");
+        s.run_frame().expect("a frame");
+        let shown = routes(s);
+        (shown[0].label.clone(), shown[0].steps.last().cloned())
+    };
+    assert_eq!(
+        label(&mut s),
+        ("Item 2/3".to_owned(), Some("8,3 dashed".to_owned()))
+    );
+    assert_eq!(
+        label(&mut s),
+        ("Item 3/3".to_owned(), Some("8,4 dashed".to_owned()))
+    );
+    assert_eq!(label(&mut s).0, "Item 1/3", "and round again");
+}
+
+#[test]
+fn a_vacuum_tube_at_an_edge_carries_blob_up_it_only() {
+    let mut s = session();
+    routed_planet(&mut s);
+    let mut painter = Painter::new();
+    // Room 116's top row is a vacuum tube all the way across: up into room 100, never down
+    // from it.
+    painter.paint_in(&mut s, 116, |_, y| (y == 0).then_some(TUBE));
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    lay(&mut s, 0, 116, 5, None);
+    stand(&mut s, 100, (4, 8));
+    enter(&mut s, "play");
+    s.set_level(5);
+    s.run_frame().expect("a frame");
+    let down = &routes(&s)[0].steps;
+    assert_eq!(down.len(), 4, "round by a room beside: {down:?}");
+    assert_ne!(down[1], "4,7 dashed");
+
+    lay(&mut s, 0, 100, 5, None);
+    stand(&mut s, 116, (4, 8));
+    s.run_frame().expect("a frame");
+    assert_eq!(routes(&s)[0].steps, steps(&["4,7", "4,6 dashed"]), "up it");
+    assert_eq!(routes(&s)[0].exit.as_deref(), Some("N"));
+}
+
+#[test]
+fn a_pair_of_wall_passages_is_a_step_between_their_rooms() {
+    let mut s = session();
+    routed_planet(&mut s);
+    let mut painter = Painter::new();
+    painter.paint(&mut s, 100, |x, _| x >= 26);
+    painter.paint(&mut s, 101, |x, _| x < 6);
+    painter.mark(&mut s, 100, PASSAGE, (24, 6));
+    painter.mark(&mut s, 101, PASSAGE, (6, 6));
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    lay(&mut s, 0, 101, 5, Some((10, 8)));
+    stand(&mut s, 100, (4, 8));
+    enter(&mut s, "play");
+    s.set_level(5);
+    s.run_frame().expect("a frame");
+    let shown = &routes(&s)[0];
+    assert_eq!(shown.steps, steps(&["4,6", "5,6 dashed"]));
+    assert_eq!(shown.exit.as_deref(), Some("E"));
+}
+
+#[test]
+fn a_door_on_the_way_is_outlined_and_the_cards_that_answer_it_ringed() {
+    let mut s = session();
+    routed_planet(&mut s);
+    let mut painter = Painter::new();
+    // Room 100's wall is a security door, the pocket behind it shut but for the door.
+    painter.paint(&mut s, 100, door_room);
+    painter.mark(&mut s, 100, DOOR_ENTRY, (16, 8));
+    painter.mark(&mut s, 100, DOOR_ENTRY, (22, 8));
+    // The door met, its cards 9, 12 and 13; BLOB carries a 12.
+    let mut kept = s.kept().clone();
+    kept.insert("doors-met".to_owned(), vec!["4660:100:9-12-13".to_owned()]);
+    s.set_kept(kept);
+    poke_into(&mut s, "carried", 0, &[12, 3]);
+    // A piece the core needs lies in the pocket; cards lie in other rooms: a 9 and a 13 the
+    // door asks for, a 14 that answers any card, the 12's twin, and a 10 it doesn't ask for.
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    lay(&mut s, 0, 100, 5, Some((24, 8)));
+    for (k, (room, picture)) in (1..).zip([(120, 9), (121, 13), (122, 14), (123, 12), (124, 10)]) {
+        lay(&mut s, k, room, picture, None);
+    }
+    stand(&mut s, 100, (4, 8));
+    enter(&mut s, "play");
+    s.set_level(5);
+    s.run_frame().expect("a frame");
+    let shown = &routes(&s)[0];
+    assert_eq!(shown.steps, steps(&["4,6"]), "within BLOB's room");
+    assert_eq!(shown.exit, None);
+    let doors = result(&s, "doors");
+    assert_eq!(
+        field(&doors[0], "outlined"),
+        &Fact::Text("first".to_owned())
+    );
+    assert_eq!(
+        rings(&s),
+        [
+            (120, "first".to_owned()),
+            (121, "first".to_owned()),
+            (122, "first".to_owned())
+        ]
+    );
+
+    // With the piece outside the pocket, no door is on the way.
+    lay(&mut s, 0, 100, 5, Some((4, 12)));
+    s.run_frame().expect("a frame");
+    let Fact::Map(door) = &result(&s, "doors")[0] else {
+        panic!("a door")
+    };
+    assert!(!door.contains_key("outlined"));
+    assert!(rings(&s).is_empty());
+}
+
+#[test]
+fn a_locked_door_s_post_on_the_way_rings_the_key() {
+    let mut s = session();
+    routed_planet(&mut s);
+    let mut painter = Painter::new();
+    // Room 100's wall is one cell thick, at column 17, with a post in it whose cells, rows 8
+    // to 10, open the way into the pocket behind.
+    painter.paint(&mut s, 100, |x, y| {
+        x == 17 || (x >= 18 && (!(2..16).contains(&y) || x >= 30))
+    });
+    painter.mark(&mut s, 100, POST, (16, 8));
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    lay(&mut s, 0, 100, 5, Some((24, 8)));
+    lay(&mut s, 1, 120, 16, None);
+    lay(&mut s, 2, 121, 9, None);
+    stand(&mut s, 100, (4, 8));
+    enter(&mut s, "play");
+    s.set_level(5);
+    s.run_frame().expect("a frame");
+    assert_eq!(routes(&s)[0].steps, steps(&["4,6"]), "within BLOB's room");
+    assert_eq!(
+        rings(&s),
+        [(120, "first".to_owned())],
+        "the key, not a card"
+    );
+
+    poke_into(&mut s, "carried", 0, &[16, 3]);
+    s.run_frame().expect("a frame");
+    assert!(rings(&s).is_empty(), "carried: nothing to fetch");
+}
+
+#[test]
+fn teleport_booths_shown_on_the_map_are_a_step_from_each_other() {
+    let mut s = session();
+    routed_planet(&mut s);
+    let mut painter = Painter::new();
+    // Booths in rooms 8 and 300, rooms that draw nothing else.
+    for room in [8, 300] {
+        painter.paint(&mut s, room, |_, _| false);
+        painter.mark(&mut s, room, BOOTH, (12, 10));
+    }
+    poke_into(&mut s, "teleports", 0, b"AAAAA");
+    poke_into(&mut s, "teleports", 5, &[8, 0]);
+    poke_into(&mut s, "teleports", 7, b"BBBBB");
+    poke_into(&mut s, "teleports", 12, &300u16.to_le_bytes());
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    lay(&mut s, 0, 301, 5, None);
+    visit(&mut s, &[8]);
+    enter(&mut s, "play");
+    s.set_level(5);
+    s.run_frame().expect("a frame");
+    assert!(
+        routes(&s)[0].steps.len() > 20,
+        "room 300's booth not on the map: walked all the way"
+    );
+
+    visit(&mut s, &[8, 300]);
+    s.run_frame().expect("a frame");
+    let shown = &routes(&s)[0];
+    assert_eq!(shown.steps, steps(&["8,0", "12,18 jump", "13,18 dashed"]));
+    assert_eq!(shown.exit, None, "no edge: by the booth");
+}
+
+#[test]
+fn carrying_a_piece_the_core_needs_routes_to_the_core_from_its_left_only() {
+    let mut s = session();
+    routed_planet(&mut s);
+    // The core needs a 5, which BLOB carries, in room 183 above the core's room. On this
+    // planet every room is open, the core's room too, but it's entered from its left only.
+    poke_into(&mut s, "core_slots", 0, &[0x85]);
+    poke_into(&mut s, "carried", 0, &[5, 3]);
+    stand(&mut s, 183, (4, 8));
+    enter(&mut s, "play");
+    s.set_level(5);
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        routes(&s),
+        [Shown {
+            color: "second".to_owned(),
+            label: "Core".to_owned(),
+            exit: Some("W".to_owned()),
+            steps: steps(&["7,11", "6,11 dashed", "6,12 dashed", "7,12 dashed"]),
+        }]
+    );
+    assert_eq!(rings(&s), [(199, "second".to_owned())], "the core's end");
+}
+
+#[test]
+fn routes_and_the_core_s_route_are_shown_together() {
+    let mut s = session();
+    routed_planet(&mut s);
+    poke_into(&mut s, "core_slots", 0, &[0x85, 0x86]);
+    poke_into(&mut s, "carried", 0, &[5, 3]);
+    lay(&mut s, 0, 9, 6, None);
+    enter(&mut s, "play");
+    s.set_level(6);
+    s.run_frame().expect("a frame");
+    let shown = routes(&s);
+    let colors: Vec<&str> = shown.iter().map(|r| r.color.as_str()).collect();
+    assert_eq!(colors, ["first", "second"], "level 6 too");
+    assert_eq!(shown[0].label, "Item 1/1");
 }

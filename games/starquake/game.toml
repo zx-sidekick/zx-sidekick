@@ -443,7 +443,7 @@ column = "left"
 pictures = "item_pictures"
 source = "script:map"
 # The kinds of marker the script puts on the map, and the shape each is drawn as.
-markers = { player = "player", teleport = "diamond", door = "label", piece = "picture", item = "picture" }
+markers = { player = "player", teleport = "diamond", door = "label", piece = "picture", item = "picture", target = "ring" }
 places = { teleport = "top-left" }
 
 [situations]

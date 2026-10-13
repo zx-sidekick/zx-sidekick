@@ -674,3 +674,114 @@ fn a_game_started_from_the_keyboard_plays_on_the_joystick() {
         "the joystick moves BLOB: the title chose it"
     );
 }
+
+/// A route on the map: its label, its exit, and its steps' cells.
+type RouteShown = (Fact, Option<Fact>, Vec<(i64, i64)>);
+
+/// The map's routes, and its ring markers' rooms.
+fn routes_of(s: &Session) -> (Vec<RouteShown>, Vec<i64>) {
+    assert_eq!(s.script_off(), None, "the script within its limits");
+    let map = &s.script_results()["map"];
+    let number = |fact: &Fact| match fact {
+        Fact::Number(n) => *n,
+        other => panic!("{other:?}"),
+    };
+    let routes = list(field(map, "routes"))
+        .iter()
+        .map(|route| {
+            let Fact::Map(fields) = route else {
+                panic!("{route:?}")
+            };
+            let steps = list(&fields["steps"])
+                .iter()
+                .map(|step| (number(&list(step)[0]), number(&list(step)[1])))
+                .collect();
+            (fields["label"].clone(), fields.get("exit").cloned(), steps)
+        })
+        .collect();
+    let rings = list(field(map, "markers"))
+        .iter()
+        .filter(|m| field(m, "kind") == &Fact::Text("target".to_owned()))
+        .map(|m| number(field(m, "y")) * 16 + number(field(m, "x")))
+        .collect();
+    (routes, rings)
+}
+
+#[test]
+fn level_5_routes_from_blob_s_place_to_the_nearest_pieces() {
+    let Some(mut s) = in_play_from(|s| with_script(s, 5)) else {
+        return;
+    };
+    s.run_frame().expect("a frame");
+    let (routes, _) = routes_of(&s);
+    assert_eq!(routes.len(), 1, "a piece, and nothing carried for the core");
+    let (label, exit, steps) = &routes[0];
+    assert_eq!(label, &Fact::Text("Item 1/3".to_owned()));
+    assert!(exit.is_some(), "out of the start room");
+    assert_eq!(steps[0], (8, 0), "from the start room");
+    assert!(steps.len() > 1);
+
+    s.script_action("next_route").expect("Tab");
+    s.run_frame().expect("a frame");
+    let (routes, _) = routes_of(&s);
+    assert_eq!(routes[0].0, Fact::Text("Item 2/3".to_owned()));
+}
+
+#[test]
+fn carrying_a_piece_the_core_needs_routes_into_the_core_s_room_from_its_left() {
+    let Some(mut s) = on_the_joystick(50) else {
+        return;
+    };
+    with_script(&mut s, 5);
+    // At floor level near the right of room 198, carrying a piece the core needs.
+    enter_room(&mut s, &[("room", 198), ("blob_x", 224), ("blob_y", 39)]);
+    assert!(until(&mut s, 50, |s| s.state() != Some("play")));
+    assert!(until(&mut s, 200, |s| s.state() == Some("play")));
+    let definition = s.definition().expect("its definition");
+    let slots = definition.values["core_slots"].addr.expect("an address").0;
+    let carried = definition.values["carried"].addr.expect("an address").0;
+    let piece = (0..9)
+        .map(|k| s.machine().peek(slots + k))
+        .find(|slot| slot & 0x80 != 0)
+        .expect("a piece missing")
+        & 0x7F;
+    s.machine_mut().write(carried, piece);
+    s.machine_mut().write(carried + 1, 3);
+    s.run_frame().expect("a frame");
+    let (routes, rings) = routes_of(&s);
+    let core = routes
+        .iter()
+        .find(|r| r.0 == Fact::Text("Core".to_owned()))
+        .expect("a route to the core");
+    assert_eq!(core.2, [(6, 12), (7, 12)], "one step right, into room 199");
+    assert_eq!(core.1, Some(Fact::Text("E".to_owned())));
+    assert!(rings.contains(&199), "the core's end ringed");
+}
+
+#[test]
+fn blob_s_place_is_found_wherever_he_walks() {
+    let Some(mut s) = on_the_joystick(50) else {
+        return;
+    };
+    with_script(&mut s, 5);
+    s.switch("no-harm", true).expect("it goes on");
+    s.switch("full-energy", true).expect("it goes on");
+    let mut rooms = BTreeSet::new();
+    for frame in 0..1500 {
+        let machine = s.machine_mut();
+        let phase = frame % 500;
+        machine.kempston(Kempston::Right, phase < 250);
+        machine.kempston(Kempston::Left, phase >= 250);
+        machine.kempston(Kempston::Up, frame % 120 < 30);
+        s.run_frame().expect("a frame");
+        if s.state() == Some("play") && frame > 0 {
+            rooms.insert(s.reading()["room"].number());
+            let (routes, _) = routes_of(&s);
+            assert!(
+                !routes.is_empty(),
+                "frame {frame}: no route from BLOB's place"
+            );
+        }
+    }
+    assert!(rooms.len() > 1, "walked through rooms: {rooms:?}");
+}

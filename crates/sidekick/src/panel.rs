@@ -6,7 +6,7 @@ use sidekick_core::{Bitmap, Fact, Font, Read, Reading, Session};
 use sidekick_def::{Column, Definition, MarkerPlace, MarkerShape, Widget, WidgetKind};
 use sidekick_ui::{
     CardRow, Cell, Chip, Color, Edge, Icon, Inside, Look, MapGrid, Marker, MarkerKind, Panel,
-    PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Place, Route, RouteColor,
+    PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Place, Route, RouteColor, Step, StepLine,
 };
 use std::collections::BTreeMap;
 
@@ -254,6 +254,28 @@ fn pair(fact: &Fact) -> Option<(usize, usize)> {
     }
 }
 
+/// A route's step, `[x, y]`, or `[x, y, how]` where `how` is `"dashed"` or `"jump"`.
+fn step(fact: &Fact) -> Option<Step> {
+    let Fact::List(parts) = fact else {
+        return None;
+    };
+    let line = match parts.get(2) {
+        None => StepLine::Solid,
+        Some(Fact::Text(how)) if how == "dashed" => StepLine::Dashed,
+        Some(Fact::Text(how)) if how == "jump" => StepLine::Jump,
+        Some(_) => return None,
+    };
+    (parts.len() <= 3)
+        .then(|| {
+            Some(Step::new(
+                number(parts.first())?,
+                number(parts.get(1))?,
+                line,
+            ))
+        })
+        .flatten()
+}
+
 /// A list of `[x, y]` pairs; any that isn't one is left out.
 fn pairs(fact: Option<&Fact>) -> Vec<(usize, usize)> {
     match fact {
@@ -333,7 +355,7 @@ fn map(
         .iter()
         .filter_map(|route| {
             let steps = match get(route, "steps")? {
-                Fact::List(steps) => steps.iter().filter_map(pair).collect(),
+                Fact::List(steps) => steps.iter().filter_map(step).collect(),
                 _ => return None,
             };
             Some(Route {
@@ -450,6 +472,7 @@ fn pictured(
                         return None;
                     };
                     Some(CardRow {
+                        outline: outline(field(item, "outlined").as_ref()),
                         label: graphics.word(&label)?,
                         cards: cards
                             .iter()
@@ -711,10 +734,17 @@ source = "script:doors"
             ),
             (
                 "doors".to_owned(),
-                Fact::List(vec![map(vec![
-                    ("label", Fact::Number(1)),
-                    ("cards", Fact::List(vec![card])),
-                ])]),
+                Fact::List(vec![
+                    map(vec![
+                        ("label", Fact::Number(1)),
+                        ("cards", Fact::List(vec![card.clone()])),
+                    ]),
+                    map(vec![
+                        ("label", Fact::Number(2)),
+                        ("cards", Fact::List(vec![card])),
+                        ("outlined", Fact::Text("second".to_owned())),
+                    ]),
+                ]),
             ),
         ])
     }
@@ -758,10 +788,19 @@ source = "script:doors"
         );
         assert_eq!(
             shown.widgets[2].body,
-            PanelBody::Cards(vec![CardRow {
-                label: vec![px(0)],
-                cards: vec![(px(0), true)],
-            }])
+            PanelBody::Cards(vec![
+                CardRow {
+                    label: vec![px(0)],
+                    cards: vec![(px(0), true)],
+                    outline: None,
+                },
+                CardRow {
+                    label: vec![px(1)],
+                    cards: vec![(px(0), true)],
+                    outline: Some(RouteColor::Second.color()),
+                },
+            ]),
+            "door 2 outlined in the second route's colour"
         );
 
         let nothing = BTreeMap::from([("codes".to_owned(), Fact::List(Vec::new()))]);
@@ -815,6 +854,23 @@ source = "script:doors"
             ("y", Fact::Number(y)),
             ("kind", Fact::Text(kind.to_owned())),
         ])
+    }
+
+    #[test]
+    fn a_route_s_step_says_how_the_route_comes_to_it() {
+        let cell = |how: Option<&str>| {
+            let mut xy = vec![Fact::Number(3), Fact::Number(4)];
+            xy.extend(how.map(|h| Fact::Text(h.to_owned())));
+            step(&Fact::List(xy))
+        };
+        assert_eq!(cell(None), Some(Step::new(3, 4, StepLine::Solid)));
+        assert_eq!(
+            cell(Some("dashed")),
+            Some(Step::new(3, 4, StepLine::Dashed))
+        );
+        assert_eq!(cell(Some("jump")), Some(Step::new(3, 4, StepLine::Jump)));
+        assert_eq!(cell(Some("hop")), None, "neither: left out");
+        assert_eq!(step(&Fact::List(vec![Fact::Number(3)])), None);
     }
 
     #[test]
@@ -907,7 +963,8 @@ markers = { player = "player", item = "picture", door = "square" }
                 color: Some(RouteColor::Second.color()),
             }
         );
-        assert_eq!(grid.routes[0].steps, [(0, 1), (1, 1)]);
+        let solid = |x, y| Step::new(x, y, StepLine::Solid);
+        assert_eq!(grid.routes[0].steps, [solid(0, 1), solid(1, 1)]);
         assert_eq!(
             pins(&shown),
             [Pin {

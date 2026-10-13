@@ -1,6 +1,5 @@
 // Starquake's script: the map, routes, and the panel's core, teleports and doors.
 // See docs/games/starquake.md and the Scripts section of docs/definition-format.md.
-// Routes are still to come.
 
 // The core's own room: entering it delivers what BLOB carries and puts him back next door. The
 // items kept there are never placed (docs/re/starquake.md).
@@ -49,6 +48,10 @@ fn post() {
     11
 }
 
+fn booth() {
+    13
+}
+
 fn passage() {
     15
 }
@@ -58,28 +61,37 @@ fn cover(row, drawn, blocks) {
     (row & (-1 ^ drawn)) | blocks
 }
 
-// A medium tile's picture as its six rows of eight cells, each `[drawn, blocks]`: the cells it
-// draws, and those that block (an attribute without BRIGHT), column c at bit 7 - c. The
-// picture's first six bytes say which cells it draws, row by row, the leftmost highest; their
-// attributes are stored before it, the first drawn cell's last.
+// A vacuum tube's cells' attribute (docs/re/starquake.md).
+fn tube() {
+    0x64
+}
+
+// A medium tile's picture as its six rows of eight cells, each `[drawn, blocks, tubes]`: the
+// cells it draws, those that block (an attribute without BRIGHT), and those of a vacuum tube,
+// column c at bit 7 - c. The picture's first six bytes say which cells it draws, row by row,
+// the leftmost highest; their attributes are stored before it, the first drawn cell's last.
 fn medium(mem, at) {
     let attr = at - 1;
     let rows = [];
     for row in 0..6 {
         let drawn = mem.peek(at + row);
         let blocks = 0;
+        let tubes = 0;
         if drawn != 0 {
             for col in 0..8 {
                 let bit = 0x80 >> col;
                 if (drawn & bit) != 0 {
-                    if (mem.peek(attr) & 0x40) == 0 {
+                    let a = mem.peek(attr);
+                    if (a & 0x40) == 0 {
                         blocks = blocks | bit;
+                    } else if a == tube() {
+                        tubes = tubes | bit;
                     }
                     attr -= 1;
                 }
             }
         }
-        rows.push([drawn, blocks]);
+        rows.push([drawn, blocks, tubes]);
     }
     rows
 }
@@ -91,13 +103,14 @@ fn offsets() {
 
 // A large tile as its medium tiles `m` draw it, in turn, later cells over earlier: nine rows
 // (its own six and three below) of twelve columns (its own eight and four beyond, column c at
-// bit 11 - c), each `[drawn, blocks]`.
+// bit 11 - c), each `[drawn, blocks, tubes]`.
 fn large(m) {
     let at = offsets();
     let rows = [];
     for row in 0..9 {
         let d = 0;
         let b = 0;
+        let t = 0;
         for k in 0..4 {
             let r = row - at[k][1];
             if r >= 0 && r < 6 {
@@ -105,14 +118,15 @@ fn large(m) {
                 let drawn = m[k][r][0] << shift;
                 d = d | drawn;
                 b = cover(b, drawn, m[k][r][1] << shift);
+                t = cover(t, drawn, m[k][r][2] << shift);
             }
         }
-        rows.push([d, b]);
+        rows.push([d, b, t]);
     }
     rows
 }
 
-// The doors, posts and passages a large tile's medium tiles of types `kinds` put in it:
+// The doors, posts, passages and booths a large tile's medium tiles of types `kinds` put in it:
 // `#{ kind, x, y }`, the type's top four bits and its marker's cell. A type is 0 for a plain
 // tile.
 fn marks(kinds) {
@@ -121,7 +135,8 @@ fn marks(kinds) {
     for k in 0..4 {
         let kind = kinds[k];
         let what = kind >> 4;
-        if kind != 0 && (what == door_entry() || what == post() || what == passage()) {
+        let wanted = what == door_entry() || what == post() || what == passage() || what == booth();
+        if kind != 0 && wanted {
             found.push(#{ kind: what, x: at[k][0] + (kind & 3), y: at[k][1] + ((kind >> 2) & 3) });
         }
     }
@@ -172,14 +187,10 @@ fn way(rows, mark) {
     }
 }
 
-// What's inside a room, as `#{ walls, doors }` of cells `[x, y]`: the blocking cells on the
-// seams between the parts that lead out (`()` when there are none). A part leads out by a way
-// in `ways`, or through a door or a locked door's post to a part that does. A seam's cells in a
-// door's two entry tiles or on a post are the door's (docs/re/starquake.md).
-fn inside(g, shut, rows, ways, room_marks, bytes) {
-    if shut.count < 2 {
-        return ();
-    }
+// A room's parts with its doors and posts open, as `#{ groups, door_rows }`: the group each
+// part of `shut` is in once doors and posts join parts, and the cells of its doors' entry tiles
+// and posts, a row a number (docs/re/starquake.md).
+fn opened(shut, rows, room_marks, bytes) {
     let doors = room_marks.filter(|m| m.kind == door_entry());
     let posts = room_marks.filter(|m| m.kind == post());
     let door_rows = [];
@@ -229,6 +240,16 @@ fn inside(g, shut, rows, ways, room_marks, bytes) {
             }
         }
     }
+    #{ groups: groups, door_rows: door_rows }
+}
+
+// What's inside a room, as `#{ walls, doors }` of cells `[x, y]`: the blocking cells on the
+// seams between the parts that lead out (`()` when there are none). A part leads out by a way
+// in `ways`, or through a door or a locked door's post to a part that does, as `open` groups
+// them. A seam's cells in a door's two entry tiles or on a post are the door's.
+fn inside(g, shut, ways, open) {
+    let groups = open.groups;
+    let door_rows = open.door_rows;
     let leading = [];
     for part in 0..shut.count {
         if ways[part] != 0 {
@@ -261,9 +282,24 @@ fn inside(g, shut, rows, ways, room_marks, bytes) {
     #{ walls: walls, doors: door_cells }
 }
 
+// The place BLOB fits nearest a cell `[x, y]` of a room's places `p`, as the part it's in: BLOB's
+// top left on the cell, or a cell left of it or above it. `()` when he fits at none.
+fn part_near(p, x, y) {
+    for dy in [0, -1, 1] {
+        for dx in [0, -1, 1] {
+            let part = p.at(x + dx, y + dy);
+            if part != () {
+                return part;
+            }
+        }
+    }
+    ()
+}
+
 // Once, after loading: every room decoded from the room data the way the game draws it
 // (docs/re/starquake.md, "The rooms"), then where BLOB fits in it, the parts those places make,
-// the ways each part leads out, and what's inside each room: its walls and its door.
+// the ways each part leads out, and what's inside each room: its walls and its door. Then the
+// graph routes are found on: its places, each a part of a room, and the steps between them.
 fn on_load(mem) {
     let rooms = mem.value("rooms");
     let bigs = mem.value("large_tiles");
@@ -280,8 +316,10 @@ fn on_load(mem) {
             mediums[id] = medium(mem, pictures[id * 2] + pictures[id * 2 + 1] * 256);
         }
     }
-    // Each large tile's nine rows, `[drawn, blocks]` in turn, 18 numbers a tile in one list.
+    // Each large tile's nine rows, `[drawn, blocks]` in turn, 18 numbers a tile in one list; and
+    // the vacuum tubes in its own top and bottom rows, two numbers a tile.
     let larges = [];
+    let tile_tubes = [];
     let tile_marks = [];
     for big in 0..256 {
         let m = [];
@@ -290,9 +328,13 @@ fn on_load(mem) {
             m.push(mediums[id]);
             kinds.push(types[id]);
         }
-        for row in large(m) {
-            larges += row;
+        let drawn = large(m);
+        for row in drawn {
+            larges.push(row[0]);
+            larges.push(row[1]);
         }
+        tile_tubes.push(drawn[0][2]);
+        tile_tubes.push(drawn[5][2]);
         tile_marks.push(marks(kinds));
     }
     let marked = [];
@@ -311,13 +353,14 @@ fn on_load(mem) {
     // Each room's blocking cells, a row a number, column c at bit 31 - c: its 4 x 3 large tiles
     // of 8 x 6 cells, drawn left to right, then down, later cells over earlier ones. Then its
     // places and parts, and its grid where there are two parts or more; the parts of the
-    // places along its edges, top, bottom, left and right; and the marks of its doors, posts
-    // and passages. Done here rather than in functions, which would be handed copies of these
-    // lists.
+    // places along its edges, top, bottom, left and right; the vacuum tubes in its top and
+    // bottom rows; and the marks of its doors, posts, passages and booths. Done here rather
+    // than in functions, which would be handed copies of these lists.
     let blocks = [];
     let grids = [];
     let parts = [];
     let edges = [];
+    let tubes = [];
     let room_marks = [];
     let last_x = across() - 2;
     let last_y = down() - 2;
@@ -343,6 +386,26 @@ fn on_load(mem) {
                 }
             }
         }
+        // The top row is the first row of the top tiles; the bottom row the last of the bottom
+        // ones, which no tile above reaches.
+        let edge_tubes = [0, 0];
+        for k in 0..2 {
+            let r = k * 5;
+            for i in (k * 8)..(k * 8 + 4) {
+                let shift = 20 - (i % 4) * 8;
+                let d = larges[tiles[i] * 18 + r * 2];
+                let t = tile_tubes[tiles[i] * 2 + k];
+                if shift >= 0 {
+                    d = d << shift;
+                    t = t << shift;
+                } else {
+                    d = d >> -shift;
+                    t = t >> -shift;
+                }
+                edge_tubes[k] = ((edge_tubes[k] & (-1 ^ d)) | t) & 0xFFFFFFFF;
+            }
+        }
+        tubes.push(edge_tubes);
         let all = [];
         for row in rows {
             for k in 0..4 {
@@ -383,11 +446,57 @@ fn on_load(mem) {
         room_marks.push(here);
     }
 
+    // The graph's places: each room's parts, numbered room by room from `base[room]`. A room's
+    // parts joined by its doors and posts are one place: each part's `ring` is the next part
+    // of its place, round to itself. `steps[i]` are the parts one step from part i.
+    let base = [];
+    let room_of = [];
+    let count = 0;
+    for room in 0..512 {
+        base.push(count);
+        for k in 0..parts[room].count {
+            room_of.push(room);
+        }
+        count += parts[room].count;
+    }
+    base.push(count);
+    let ring = [];
+    for i in 0..count {
+        ring.push(i);
+    }
+    let steps = [];
+    steps.pad(count, []);
+    let opens = [];
+    opens.pad(512, ());
+    for room in 0..512 {
+        if parts[room].count < 2 {
+            continue;
+        }
+        let shut = room_marks[room].filter(|m| m.kind == door_entry() || m.kind == post());
+        if shut.len() == 0 {
+            continue;
+        }
+        let open = opened(parts[room], blocks[room], room_marks[room], bytes);
+        opens[room] = open;
+        let groups = open.groups;
+        for a in 0..groups.len() {
+            for b in (a + 1)..groups.len() {
+                if groups[a] == groups[b] && ring[base[room] + b] == base[room] + b {
+                    // b joins a's ring, just after a.
+                    ring[base[room] + b] = ring[base[room] + a];
+                    ring[base[room] + a] = base[room] + b;
+                }
+            }
+        }
+    }
+
     // The ways out of each part: an edge where BLOB fits against it and against the facing
     // edge of the room beside, at the same place; and a wall passage, toward its rock, into a
     // room beside that has one too. The core's room is shut in rock all round, and entering it
     // is the game's own doing: an edge into it is open where BLOB fits against the room beside,
-    // and `core` holds the ways that leaves it open.
+    // and `core` holds the ways that leaves it open. On the graph, each is a step both ways,
+    // but down where a vacuum tube stands at the edge, which carries BLOB up only; and the core's
+    // room is a step from the room on its left only, one way.
     let ways = [];
     for room in 0..512 {
         let none = [];
@@ -400,6 +509,8 @@ fn on_load(mem) {
         let above = room - 16;
         let tops = edges[room][0];
         let bottoms = edges[above][1];
+        let tubed = tubes[above][1] | tubes[room][0];
+        let near_core = room == core_at || above == core_at;
         for x in 0..=last_x {
             let a = tops[x];
             let b = bottoms[x];
@@ -411,6 +522,16 @@ fn on_load(mem) {
                 ways[above][b] = ways[above][b] | south();
                 core = core | if room == core_at { north() } else { 0 };
             }
+            if a != () && b != () && !near_core {
+                let up = base[room] + a;
+                let to = base[above] + b;
+                if !steps[up].contains(to) {
+                    steps[up].push(to);
+                }
+                if (tubed & span(x, 2)) == 0 && !steps[to].contains(up) {
+                    steps[to].push(up);
+                }
+            }
         }
     }
     for room in 0..512 {
@@ -420,6 +541,7 @@ fn on_load(mem) {
         let left = room - 1;
         let lefts = edges[room][2];
         let rights = edges[left][3];
+        let near_core = room == core_at || left == core_at;
         for y in 0..=last_y {
             let a = lefts[y];
             let b = rights[y];
@@ -431,6 +553,20 @@ fn on_load(mem) {
                 ways[left][b] = ways[left][b] | east();
                 core = core | if room == core_at { west() } else { 0 };
             }
+            if b != () && room == core_at && parts[core_at].count > 0 {
+                let from = base[left] + b;
+                if !steps[from].contains(base[core_at]) {
+                    steps[from].push(base[core_at]);
+                }
+            }
+            if a != () && b != () && !near_core {
+                let i = base[room] + a;
+                let j = base[left] + b;
+                if !steps[i].contains(j) {
+                    steps[i].push(j);
+                    steps[j].push(i);
+                }
+            }
         }
     }
     for room in 0..512 {
@@ -440,10 +576,29 @@ fn on_load(mem) {
                 let side = way(blocks[room], mark);
                 let beside = room + side;
                 if part != () && beside / 16 == room / 16 && beside >= 0 && beside < 512 {
-                    if room_marks[beside].some(|m| m.kind == passage()) {
+                    let far = room_marks[beside].filter(|m| m.kind == passage());
+                    if far.len() > 0 {
                         let bit = if side > 0 { east() } else { west() };
                         ways[room][part] = ways[room][part] | bit;
+                        let there = parts[beside].at(far[0].x, far[0].y);
+                        let i = base[room] + part;
+                        if there != () && !steps[i].contains(base[beside] + there) {
+                            steps[i].push(base[beside] + there);
+                        }
                     }
+                }
+            }
+        }
+    }
+    // The teleport booths: the part of each room with one where BLOB stands in it.
+    let booths = [];
+    for room in 0..512 {
+        for mark in room_marks[room] {
+            if mark.kind == booth() {
+                let part = part_near(parts[room], mark.x, mark.y);
+                if part != () {
+                    booths.push([room, base[room] + part]);
+                    break;
                 }
             }
         }
@@ -451,6 +606,7 @@ fn on_load(mem) {
 
     let cells = [];
     let doors = [];
+    let posts = [];
     for room in 0..512 {
         let out = if room == core_at { core } else { 0 };
         for w in ways[room] {
@@ -472,14 +628,17 @@ fn on_load(mem) {
         // Not entered, until the map is drawn for a game.
         let cell = #{ x: room % 16, y: room / 16, walls: shut, seen: true, dim: true };
         if grids[room] != () {
-            let inner = inside(
-                grids[room],
-                parts[room],
-                blocks[room],
-                ways[room],
-                room_marks[room],
-                bytes,
-            );
+            let open = opens[room];
+            if open == () {
+                let groups = [];
+                for part in 0..parts[room].count {
+                    groups.push(part);
+                }
+                let none = [];
+                none.pad(down(), 0);
+                open = #{ groups: groups, door_rows: none };
+            }
+            let inner = inside(grids[room], parts[room], ways[room], open);
             if inner != () {
                 cell.inside = inner;
             }
@@ -492,6 +651,9 @@ fn on_load(mem) {
             let lo = min(d.x, d.x + 6 * way(blocks[room], d));
             doors.push(#{ room: room, at: [lo + 3, d.y] });
         }
+        if room_marks[room].some(|m| m.kind == post()) {
+            posts.push(room);
+        }
     }
     // The whole planet's map cells, as level 6 shows them, made once; and every room's blocking
     // rows in one list, two rows a number, the first in its top 32 bits: 9 a room.
@@ -501,7 +663,20 @@ fn on_load(mem) {
             packed.push((rows[2 * k] << 32) | rows[2 * k + 1]);
         }
     }
-    #{ cells: cells, doors: doors, blocks: packed }
+    #{
+        cells: cells,
+        doors: doors,
+        blocks: packed,
+        bytes: bytes,
+        graph: #{
+            base: base,
+            room_of: room_of,
+            ring: ring,
+            steps: steps,
+            booths: booths,
+            posts: posts,
+        },
+    }
 }
 
 // The pictures BLOB carries.
@@ -627,15 +802,21 @@ fn numbered(listed) {
     doors
 }
 
-// The doors for the panel, by number, each card answered when BLOB carries it.
-fn doors(listed, carrying) {
+// The doors for the panel, by number, each card answered when BLOB carries it; a door a route
+// passes first outlined in its colour, as `outlined` has it by room.
+fn doors(listed, carrying, outlined) {
     let rows = [];
     for door in listed {
         let cards = [];
         for card in door.cards {
             cards.push(#{ picture: card, answered: carrying.contains(card) });
         }
-        rows.push(#{ label: door.label, cards: cards });
+        let row = #{ label: door.label, cards: cards };
+        let room = `${door.room}`;
+        if room in outlined {
+            row.outlined = outlined[room];
+        }
+        rows.push(row);
     }
     rows
 }
@@ -722,6 +903,10 @@ fn items(mem, carrying, known) {
             continue;
         }
         let mark = #{ kind: "item", x: room % 16, y: room / 16, room: room, picture: picture };
+        if row >= 6 {
+            // Laid down: its column, and its screen row less the six rows above the room.
+            mark.place = [item.first & 0x1F, row - 6];
+        }
         if pieces.contains(picture) && !carrying.contains(picture) {
             mark.kind = "piece";
             mark.color = "first";
@@ -737,11 +922,316 @@ fn items(mem, carrying, known) {
     lying
 }
 
+// The places of a room's parts, from its blocking rows as `on_load` decoded them: numbered as
+// `on_load` numbered them. Called on `loaded`, which isn't copied then.
+fn room_parts(room) {
+    let rows = [];
+    for pair in this.blocks.extract(room * 9, 9) {
+        rows.push((pair >> 32) & 0xFFFFFFFF);
+        rows.push(pair & 0xFFFFFFFF);
+    }
+    grid(across(), down(), cells(rows, this.bytes)).parts(2, 2)
+}
+
+// The way from one room to the next, beside it.
+fn heading(from, to) {
+    let step = to - from;
+    if step == -16 {
+        "N"
+    } else if step == 16 {
+        "S"
+    } else if step == 1 {
+        "E"
+    } else if step == -1 {
+        "W"
+    } else {
+        ()
+    }
+}
+
+// A route as the map draws it, from the graph's places in `nodes`, in order, each reached as
+// `how` says (0 a step, 1 within a place, 2 a teleport): `#{ steps, exit, door }`. A step is
+// its room's cell, dashed into or out of a room not walked, a jump to a booth drawn as none.
+// `exit` is the edge it leaves BLOB's room by; `door` the room of the first security door it
+// passes: where the part it enters a room by isn't the part it leaves by (docs/games/starquake.md).
+fn route_of(nodes, how, room_of, rooms, door_rooms, post_rooms) {
+    let steps = [];
+    let exit = ();
+    let door = ();
+    let post = ();
+    let first = nodes[0];
+    let start = room_of[first];
+    let left = false;
+    steps.push([start % 16, start / 16]);
+    for k in 1..=nodes.len() {
+        let last = room_of[nodes[k - 1]];
+        let room = if k < nodes.len() { room_of[nodes[k]] } else { -1 };
+        if room == last {
+            continue;
+        }
+        if door == () && nodes[k - 1] != first && door_rooms.contains(last) {
+            door = last;
+        }
+        if post == () && nodes[k - 1] != first && post_rooms.contains(last) {
+            post = last;
+        }
+        if room < 0 {
+            break;
+        }
+        first = nodes[k];
+        let step = [room % 16, room / 16];
+        if how[nodes[k]] == 2 {
+            step.push("jump");
+        } else if !(`${room}` in rooms) || !(`${last}` in rooms) {
+            step.push("dashed");
+        }
+        steps.push(step);
+        if !left {
+            left = true;
+            if how[nodes[k]] != 2 {
+                exit = heading(last, room);
+            }
+        }
+    }
+    #{ steps: steps, exit: exit, door: door, post: post }
+}
+
+// The graph's places from the search's `start` to `end`, through each place's `parent`.
+fn path(parent, start, end) {
+    let nodes = [end];
+    let at = end;
+    while at != start {
+        at = parent[at];
+        nodes.push(at);
+    }
+    nodes.reverse();
+    nodes
+}
+
+// Level 5's routes, called on `loaded`: breadth-first from BLOB's place over the graph of
+// places, fewest steps, to the nearest three rooms with a missing piece and, while BLOB carries
+// a piece the core needs, to the core (docs/games/starquake.md). `#{ routes, rings, outlined,
+// route }`: the map's routes, the first to the piece `prev.route` picks of the nearest found;
+// the ring markers, on the core, on the items that answer the first door each route passes,
+// which `outlined` gives each route's colour by its room, and on the key where a route passes a
+// locked door's post; and the piece picked.
+fn guide(mem, prev, level, rooms, carrying, lying, listed) {
+    let none = #{ routes: [], rings: [], outlined: #{}, route: 0 };
+    let room = mem.value("room");
+    if !("graph" in this) || room == () || room < 0 || room >= 512 {
+        return none;
+    }
+    let base = this.graph.base;
+    let count = base[512];
+    // BLOB's place: his left edge's column, his top's row; a cell on when he's between them
+    // (docs/re/starquake.md).
+    let here = this.room_parts(room);
+    let x = mem.value("blob_x") >> 3;
+    let y = down() - 1 - (mem.value("blob_y") >> 3);
+    let part = ();
+    for c in [[0, 0], [1, 0], [0, 1], [1, 1]] {
+        if part == () {
+            part = here.at(x + c[0], y + c[1]);
+        }
+    }
+    if part == () {
+        return none;
+    }
+    let start = base[room] + part;
+    // What's sought: each missing piece's place, the part it lies in, or its room's every part
+    // until it's laid down; and the core's room.
+    let goal = [];
+    goal.pad(count, -1);
+    for item in lying {
+        if item.kind != "piece" {
+            continue;
+        }
+        let r = item.room;
+        let first = base[r];
+        let n = base[r + 1] - first;
+        let at = ();
+        if "place" in item && n > 1 {
+            at = part_near(this.room_parts(r), item.place[0], item.place[1]);
+        }
+        if at != () {
+            goal[first + at] = r;
+        } else {
+            for k in 0..n {
+                goal[first + k] = r;
+            }
+        }
+    }
+    let pieces = needed(mem);
+    let core_at = core_room();
+    let core_node = -1;
+    if carrying.some(|c| pieces.contains(c)) && base[core_at + 1] > base[core_at] {
+        core_node = base[core_at];
+    }
+    let booths = [];
+    for b in this.graph.booths {
+        if level >= 6 || `${b[0]}` in rooms {
+            booths.push(b[1]);
+        }
+    }
+    let ring = this.graph.ring;
+    let parent = [];
+    parent.pad(count, -1);
+    let how = [];
+    how.pad(count, 0);
+    let queue = [start];
+    parent[start] = start;
+    let k = ring[start];
+    let before = start;
+    while k != start {
+        parent[k] = before;
+        how[k] = 1;
+        queue.push(k);
+        before = k;
+        k = ring[k];
+    }
+    let head = 0;
+    let found = [];
+    let found_rooms = [];
+    let core_found = false;
+    let jumped = false;
+    while head < queue.len() {
+        let i = queue[head];
+        head += 1;
+        let r = goal[i];
+        if r >= 0 && found.len() < 3 && !found_rooms.contains(r) {
+            found_rooms.push(r);
+            found.push(i);
+        }
+        if i == core_node {
+            core_found = true;
+        }
+        if found.len() >= 3 && (core_found || core_node < 0) {
+            break;
+        }
+        let next = [];
+        for j in this.graph.steps[i] {
+            if parent[j] < 0 {
+                next.push([j, 0]);
+            }
+        }
+        if !jumped && booths.contains(i) {
+            jumped = true;
+            for b in booths {
+                if parent[b] < 0 {
+                    next.push([b, 2]);
+                }
+            }
+        }
+        for step in next {
+            let j = step[0];
+            if parent[j] >= 0 {
+                continue;
+            }
+            parent[j] = i;
+            how[j] = step[1];
+            queue.push(j);
+            // The rest of its place, joined by a door or a post: reached with it.
+            let k = ring[j];
+            let before = j;
+            while k != j {
+                if parent[k] < 0 {
+                    parent[k] = before;
+                    how[k] = 1;
+                    queue.push(k);
+                }
+                before = k;
+                k = ring[k];
+            }
+        }
+    }
+    let room_of = this.graph.room_of;
+    let door_rooms = this.doors.map(|d| d.room);
+    let post_rooms = this.graph.posts;
+    let chosen = 0;
+    if type_of(prev) == "map" && "route" in prev && type_of(prev.route) == "i64" {
+        chosen = prev.route;
+    }
+    let ways = [];
+    if found.len() > 0 {
+        chosen = chosen % found.len();
+        let way = route_of(
+            path(parent, start, found[chosen]),
+            how,
+            room_of,
+            rooms,
+            door_rooms,
+            post_rooms,
+        );
+        way.color = "first";
+        way.label = `Item ${chosen + 1}/${found.len()}`;
+        ways.push(way);
+    } else {
+        chosen = 0;
+    }
+    let rings = [];
+    if core_found {
+        let way = route_of(
+            path(parent, start, core_node),
+            how,
+            room_of,
+            rooms,
+            door_rooms,
+            post_rooms,
+        );
+        way.color = "second";
+        way.label = "Core";
+        ways.push(way);
+        rings.push(#{ kind: "target", x: core_at % 16, y: core_at / 16, color: "second" });
+    }
+    // The first door each route passes, outlined in its colour, the first route's where both
+    // pass one; and the items that would answer its cards not yet answered ringed, with any
+    // card that answers any card. A route through a locked door's post rings the key, 16,
+    // unless BLOB carries it.
+    let outlined = #{};
+    let routes = [];
+    for way in ways {
+        let door = way.door;
+        if door != () {
+            if !(`${door}` in outlined) {
+                outlined[`${door}`] = way.color;
+            }
+            let cards = door_cards(mem.value("seed"), door);
+            for met in listed {
+                if met.room == door {
+                    cards = met.cards;
+                }
+            }
+            let open = cards.filter(|c| !carrying.contains(c));
+            if open.len() > 0 {
+                for item in lying {
+                    let p = item.picture;
+                    if open.contains(p) || p == 14 || p == 15 {
+                        rings.push(#{ kind: "target", x: item.x, y: item.y, color: way.color });
+                    }
+                }
+            }
+        }
+        if way.post != () && !carrying.contains(16) {
+            for item in lying {
+                if item.picture == 16 {
+                    rings.push(#{ kind: "target", x: item.x, y: item.y, color: way.color });
+                }
+            }
+        }
+        let shown = #{ color: way.color, steps: way.steps, label: way.label };
+        if way.exit != () {
+            shown.exit = way.exit;
+        }
+        routes.push(shown);
+    }
+    #{ routes: routes, rings: rings, outlined: outlined, route: chosen }
+}
+
 // The map: the rooms walked with their walls and what's inside them, or at level 6 every room,
 // those not entered dimmer; the teleports in them, and the doors listed, each with its number;
-// from level 3 the items in rooms walked, from level 4 in every room, a room not walked that
-// holds a needed piece outlined; BLOB's room.
-fn map(mem, loaded, rooms, level, carrying, listed) {
+// from level 3 the items `lying` in rooms walked, from level 4 in every room, a room not walked
+// that holds a needed piece outlined; BLOB's room; and from level 5 the routes `guided`.
+fn map(mem, loaded, rooms, level, lying, listed, guided) {
     let everything = level >= 6 && loaded.cells.len() == 512;
     let cells = [];
     if everything {
@@ -771,24 +1261,31 @@ fn map(mem, loaded, rooms, level, carrying, listed) {
         }
         markers.push(mark);
     }
-    if level >= 3 {
-        let outlined = [];
-        for item in items(mem, carrying, level >= 4 || core_seen(mem)) {
-            let key = `${item.room}`;
-            if level >= 4 || key in rooms {
-                let away = !everything && !(key in rooms);
-                if item.kind == "piece" && away && !outlined.contains(item.room) {
-                    outlined.push(item.room);
-                    cells.push(#{ x: item.x, y: item.y, seen: false, dashed: true });
-                }
-                item.remove("room");
-                markers.push(item);
+    let outlined = [];
+    for item in lying {
+        let key = `${item.room}`;
+        if level >= 4 || key in rooms {
+            let away = !everything && !(key in rooms);
+            if item.kind == "piece" && away && !outlined.contains(item.room) {
+                outlined.push(item.room);
+                cells.push(#{ x: item.x, y: item.y, seen: false, dashed: true });
             }
+            item.remove("room");
+            item.remove("place");
+            markers.push(item);
         }
     }
+    markers += guided.rings;
     let here = mem.value("room");
     markers.push(#{ kind: "player", x: here % 16, y: here / 16 });
-    #{ width: 16, height: 32, inside: [32, 18], cells: cells, markers: markers, routes: [] }
+    #{
+        width: 16,
+        height: 32,
+        inside: [32, 18],
+        cells: cells,
+        markers: markers,
+        routes: guided.routes,
+    }
 }
 
 // At each sync point: the panel's data, and codes to keep.
@@ -810,18 +1307,30 @@ fn on_frame(mem, loaded, prev, kept, level) {
     } else {
         met
     });
+    let lying = if level >= 3 { items(mem, carrying, level >= 4 || core_seen(mem)) } else { [] };
+    let guided = if level >= 5 {
+        loaded.guide(mem, prev, level, rooms, carrying, lying, listed)
+    } else {
+        #{ routes: [], rings: [], outlined: #{}, route: 0 }
+    };
     #{
         core: if level >= 4 || core_seen(mem) { core(mem, carrying) } else { [] },
         teleports: teleports(mem, kept, level),
-        doors: doors(listed, carrying),
-        map: map(mem, loaded, rooms, level, carrying, listed),
+        doors: doors(listed, carrying, guided.outlined),
+        map: map(mem, loaded, rooms, level, lying, listed, guided),
         kept: keep,
         room: mem.value("room"),
         blocks: decoded(mem, loaded),
+        route: guided.route,
     }
 }
 
-// Tab or the north button: the route to the next of the nearest missing pieces.
+// Tab or the north button: the route to the next of the nearest missing pieces, from the next
+// frame.
 fn next_route(mem, loaded, prev, kept) {
-    prev
+    let at = 0;
+    if type_of(prev) == "map" && "route" in prev && type_of(prev.route) == "i64" {
+        at = prev.route;
+    }
+    #{ route: at + 1 }
 }
