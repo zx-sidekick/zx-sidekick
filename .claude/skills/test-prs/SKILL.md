@@ -45,7 +45,11 @@ work. The maintainer's yes to a hands-on test is what lets you add
    and ask whether it's right. For one with nothing visible at all, ask whether
    to label it on its automated tests, and say what that means: no hands-on
    test, trusting the tests alone.
-5. **"Restart" means stop and launch again**, then ask the same question.
+5. **Do the setup yourself.** When the test needs a file changed while the
+   game runs (a definition edited for a reload), wait until the window is up
+   and in play, make the change, and then ask what the maintainer saw. Don't
+   hand them the edit.
+6. **"Restart" means stop and launch again**, then ask the same question.
 
 ## When it doesn't work
 
