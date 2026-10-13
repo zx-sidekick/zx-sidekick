@@ -10,6 +10,7 @@ use crate::{
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
     picture::{placement, to_rgba, Layout},
+    press::{self, Pressed},
     saves::{self, SavePoint, Saves, Unsaved},
     scores,
 };
@@ -30,8 +31,8 @@ use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
 use sidekick_def::{Package, Role};
 use sidekick_ui::{
     Canvas, EntryCard, Fonts, LibraryPage, Menu as MenuCard, Note, Offer, PadLabels, Panel,
-    PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT, ENTRY_WIDTH,
-    MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, OFFER_HEIGHT, OFFER_WIDTH, QUESTION_WIDTH,
+    PauseNotice, Pin, PromptButton, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT,
+    ENTRY_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, OFFER_HEIGHT, OFFER_WIDTH, QUESTION_WIDTH,
     TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
@@ -60,6 +61,7 @@ const RELOAD_CHECK: Duration = Duration::from_secs(1);
 const MENU_WIDTH_F: f32 = MENU_WIDTH as f32;
 
 /// What came of an event for the guidance menu.
+#[derive(PartialEq, Eq)]
 enum MenuEvent {
     /// Not the menu's: the game has it.
     NotMine,
@@ -118,6 +120,8 @@ struct Library {
     page: LibraryPage,
     /// The scale the page was last drawn at; drawn again when it or the page changes.
     drawn: Option<u32>,
+    /// The game pressed, while its press shows.
+    pressed: Option<Pressed<usize>>,
 }
 
 /// The tape prompt, waiting for a tape.
@@ -128,6 +132,8 @@ struct Prompt {
     drawn: Option<u32>,
     /// What the file dialog chose, or a file dropped on the window.
     chosen: Arc<Mutex<Option<PathBuf>>>,
+    /// The button pressed, while its press shows.
+    pressed: Option<Pressed<PromptButton>>,
 }
 
 /// A game being played, and what keeps its time and sound.
@@ -331,6 +337,9 @@ fn run_loop(events: &mut EventPump) -> Result<(), String> {
             }
         }
         with_app(App::pass)?;
+        if with_app(App::presses_due)? == Flow::Quit {
+            return Ok(());
+        }
     }
 }
 
@@ -395,20 +404,42 @@ impl App {
                     }
                     presses.extend(gamepads.host_key(&event, player.play.mapping()));
                 }
-                match screen.event(&event, &presses, &out.canvas) {
-                    Choice::Stay => {}
-                    Choice::Quit => return Ok(Flow::Quit),
-                    Choice::Play(i) => {
-                        if let Screen::Library(library) = &mut *screen {
-                            let game = library.games.swap_remove(i);
-                            *screen = open_game(game, &mut out.canvas)?;
-                            gamepads.pads.hold_back();
-                        }
-                    }
-                }
+                let choice = screen.event(&event, &presses, &out.canvas);
+                return follow(choice, screen, &mut out.canvas, &mut gamepads.pads);
             }
         }
         Ok(Flow::Go)
+    }
+
+    /// Does what a press does, once it has shown (`press::SHOWN`).
+    ///
+    /// # Errors
+    /// If SDL can't retitle the window for a game chosen, or its tape can't be played.
+    fn presses_due(&mut self) -> Result<Flow, String> {
+        let now = Instant::now();
+        let choice = match &mut self.screen {
+            Screen::Play(player) => {
+                if player.menu_press_due(&mut self.gamepads.pads, now) == MenuEvent::Quit {
+                    return Ok(Flow::Quit);
+                }
+                Choice::Stay
+            }
+            Screen::Prompt(prompt) => {
+                match prompt.take_press(now) {
+                    Some(PromptButton::Locate) => prompt.locate(&self.out.canvas),
+                    Some(PromptButton::Download) => prompt.open_download(),
+                    None => {}
+                }
+                Choice::Stay
+            }
+            Screen::Library(library) => library.press_due(now),
+        };
+        follow(
+            choice,
+            &mut self.screen,
+            &mut self.out.canvas,
+            &mut self.gamepads.pads,
+        )
     }
 
     /// Runs the frames due and draws the screen.
@@ -430,6 +461,27 @@ impl App {
             }
         }
     }
+}
+
+/// Follows what a page's event or press came to: a game chosen opens.
+fn follow(
+    choice: Choice,
+    screen: &mut Screen,
+    canvas: &mut WindowCanvas,
+    pads: &mut Pads,
+) -> Result<Flow, String> {
+    match choice {
+        Choice::Stay => {}
+        Choice::Quit => return Ok(Flow::Quit),
+        Choice::Play(i) => {
+            if let Screen::Library(library) = screen {
+                let game = library.games.swap_remove(i);
+                *screen = open_game(game, canvas)?;
+                pads.hold_back();
+            }
+        }
+    }
+    Ok(Flow::Go)
 }
 
 impl Screen {
@@ -511,7 +563,7 @@ impl Screen {
                 Choice::Stay
             }
             Self::Prompt(prompt) => {
-                if prompt.event(event, canvas) || prompt.navs(navs, canvas) {
+                if prompt.event(event, canvas) || prompt.navs(navs) {
                     Choice::Quit
                 } else {
                     Choice::Stay
@@ -1341,8 +1393,9 @@ impl Player {
             _ => {}
         }
         let mut outcome = Outcome::Stay;
+        let now = Instant::now();
         for input in inputs {
-            outcome = menu.input(input, &mut self.session);
+            outcome = menu.input(input, &mut self.session, now);
             if outcome != Outcome::Stay {
                 break;
             }
@@ -1350,6 +1403,19 @@ impl Player {
         let level = menu.level();
         // The menu may have forgotten the kept lists; no frame runs while it's open, so save
         // now, before an Exit could leave the old ones on disk.
+        self.save_kept();
+        self.menu_outcome(outcome, level, pads)
+    }
+
+    /// Does what a press in the menu does, once it has shown at `now`.
+    fn menu_press_due(&mut self, pads: &mut Pads, now: Instant) -> MenuEvent {
+        let Some(menu) = &mut self.menu else {
+            return MenuEvent::NotMine;
+        };
+        let Some(outcome) = menu.press_due(&mut self.session, now) else {
+            return MenuEvent::Taken;
+        };
+        let level = menu.level();
         self.save_kept();
         self.menu_outcome(outcome, level, pads)
     }
@@ -1586,18 +1652,13 @@ impl Player {
 
 impl Prompt {
     /// Handles an event. Returns true to quit.
-    fn event(&self, event: &Event, canvas: &WindowCanvas) -> bool {
+    fn event(&mut self, event: &Event, canvas: &WindowCanvas) -> bool {
         match event {
             Event::KeyDown {
                 scancode: Some(scancode),
                 repeat: false,
                 ..
-            } => match scancode {
-                Scancode::Escape => return true,
-                Scancode::Return | Scancode::KpEnter => self.locate(canvas),
-                Scancode::W => self.open_download(),
-                _ => {}
-            },
+            } => return self.key(*scancode),
             Event::MouseButtonDown {
                 mouse_btn: MouseButton::Left,
                 x,
@@ -1606,13 +1667,13 @@ impl Prompt {
             } => {
                 if let Some((lx, ly)) = logical_point(canvas, *x, *y) {
                     if inside(self.page.locate_button(), lx, ly) {
-                        self.locate(canvas);
+                        self.press(PromptButton::Locate);
                     } else if self
                         .page
                         .download_button()
                         .is_some_and(|b| inside(b, lx, ly))
                     {
-                        self.open_download();
+                        self.press(PromptButton::Download);
                     }
                 }
             }
@@ -1626,16 +1687,43 @@ impl Prompt {
         false
     }
 
-    /// Pad presses: confirm locates the tape, back quits. Returns true to quit.
-    fn navs(&self, navs: impl Iterator<Item = Nav>, canvas: &WindowCanvas) -> bool {
+    /// A key: Enter presses Locate, W the download button, Esc quits. Returns true to quit.
+    fn key(&mut self, scancode: Scancode) -> bool {
+        match scancode {
+            Scancode::Escape => return true,
+            Scancode::Return | Scancode::KpEnter => self.press(PromptButton::Locate),
+            Scancode::W if self.page.download.is_some() => self.press(PromptButton::Download),
+            _ => {}
+        }
+        false
+    }
+
+    /// Pad presses: confirm presses Locate, back quits. Returns true to quit.
+    fn navs(&mut self, navs: impl Iterator<Item = Nav>) -> bool {
         for nav in navs {
             match nav {
-                Nav::Confirm => self.locate(canvas),
+                Nav::Confirm => self.press(PromptButton::Locate),
                 Nav::Back => return true,
                 Nav::Up | Nav::Down | Nav::Left | Nav::Right => {}
             }
         }
         false
+    }
+
+    /// Presses a button: drawn pressed, it acts once the press has shown.
+    fn press(&mut self, button: PromptButton) {
+        if press::start(&mut self.pressed, button, Instant::now()) {
+            self.page.pressed = Some(button);
+            self.drawn = None;
+        }
+    }
+
+    /// The button whose press has shown at `now`, drawn as it was again.
+    fn take_press(&mut self, now: Instant) -> Option<PromptButton> {
+        let button = press::take_due(&mut self.pressed, now)?;
+        self.page.pressed = None;
+        self.drawn = None;
+        Some(button)
     }
 
     /// A file offered since the last pass, taken as the tape or refused on the page. A tape
@@ -1686,6 +1774,7 @@ impl Prompt {
 }
 
 /// What the library's event means.
+#[derive(Clone, Copy)]
 enum Choice {
     Stay,
     Quit,
@@ -1701,7 +1790,9 @@ impl Library {
                 ..
             } => match scancode {
                 Scancode::Escape => return Choice::Quit,
-                Scancode::Return | Scancode::KpEnter => return Choice::Play(self.page.chosen),
+                Scancode::Return | Scancode::KpEnter => {
+                    self.press(self.page.chosen, Instant::now());
+                }
                 Scancode::Up if self.page.chosen > 0 => self.choose(self.page.chosen - 1),
                 Scancode::Down if self.page.chosen + 1 < count => self.choose(self.page.chosen + 1),
                 _ => {}
@@ -1715,7 +1806,7 @@ impl Library {
                 if let Some(game) =
                     logical_point(canvas, *x, *y).and_then(|(lx, ly)| self.page.game_at(lx, ly))
                 {
-                    return Choice::Play(game);
+                    self.press(game, Instant::now());
                 }
             }
             _ => {}
@@ -1723,7 +1814,7 @@ impl Library {
         Choice::Stay
     }
 
-    /// Pad presses: up and down choose, confirm plays, back quits.
+    /// Pad presses: up and down choose, confirm presses the game chosen, back quits.
     fn navs(&mut self, navs: impl Iterator<Item = Nav>) -> Choice {
         for nav in navs {
             match nav {
@@ -1731,7 +1822,7 @@ impl Library {
                 Nav::Down if self.page.chosen + 1 < self.games.len() => {
                     self.choose(self.page.chosen + 1);
                 }
-                Nav::Confirm => return Choice::Play(self.page.chosen),
+                Nav::Confirm => self.press(self.page.chosen, Instant::now()),
                 Nav::Back => return Choice::Quit,
                 Nav::Up | Nav::Down | Nav::Left | Nav::Right => {}
             }
@@ -1739,9 +1830,31 @@ impl Library {
         Choice::Stay
     }
 
+    /// Chooses a game, unless one pressed is about to play.
     const fn choose(&mut self, game: usize) {
-        self.page.chosen = game;
-        self.drawn = None;
+        if self.pressed.is_none() {
+            self.page.chosen = game;
+            self.drawn = None;
+        }
+    }
+
+    /// Presses a game's card at `now`: chosen and drawn pressed, it plays once the press has
+    /// shown.
+    const fn press(&mut self, game: usize, now: Instant) {
+        if press::start(&mut self.pressed, game, now) {
+            self.page.chosen = game;
+            self.page.pressed = Some(game);
+            self.drawn = None;
+        }
+    }
+
+    /// The game pressed, played once its press has shown at `now`.
+    fn press_due(&mut self, now: Instant) -> Choice {
+        press::take_due(&mut self.pressed, now).map_or(Choice::Stay, |game| {
+            self.page.pressed = None;
+            self.drawn = None;
+            Choice::Play(game)
+        })
     }
 }
 
@@ -1758,6 +1871,7 @@ fn first_screen(start: Start) -> Screen {
             },
             games,
             drawn: None,
+            pressed: None,
         })),
     }
 }
@@ -1781,6 +1895,7 @@ fn prompt_screen(game: Game) -> Screen {
         game,
         drawn: None,
         chosen: Arc::new(Mutex::new(None)),
+        pressed: None,
     }))
 }
 
@@ -2024,5 +2139,106 @@ notice = { text = "Press fire." }
                 "{modifier:?} may begin a way out"
             );
         }
+    }
+
+    fn library(count: usize) -> Library {
+        Library {
+            games: Vec::new(),
+            page: LibraryPage {
+                games: (0..count)
+                    .map(|i| sidekick_ui::LibraryEntry {
+                        title: format!("Game {i}"),
+                        line: String::new(),
+                        ready: true,
+                    })
+                    .collect(),
+                chosen: 0,
+                pressed: None,
+                pad: PadLabels::Letters,
+            },
+            drawn: Some(1),
+            pressed: None,
+        }
+    }
+
+    #[test]
+    fn a_game_pressed_shows_pressed_then_plays() {
+        let mut library = library(3);
+        let t0 = Instant::now();
+        library.press(2, t0);
+        let page = &library.page;
+        assert_eq!((page.chosen, page.pressed), (2, Some(2)));
+        assert_eq!(library.drawn, None, "drawn again, pressed");
+        library.drawn = Some(1);
+        let shy = t0 + press::SHOWN.saturating_sub(Duration::from_millis(1));
+        assert!(matches!(library.press_due(shy), Choice::Stay));
+        library.choose(0);
+        library.press(1, t0);
+        let page = &library.page;
+        assert_eq!(
+            (page.chosen, page.pressed),
+            (2, Some(2)),
+            "nothing else while it shows"
+        );
+        assert!(matches!(
+            library.press_due(t0 + press::SHOWN),
+            Choice::Play(2)
+        ));
+        assert_eq!((library.page.pressed, library.drawn), (None, None));
+    }
+
+    fn tape_prompt(download: &str) -> (tempfile::TempDir, Prompt) {
+        let dir = tempfile::TempDir::new().expect("a folder");
+        let text = format!(
+            "schema = 1\n[game]\nid = \"test\"\ntitle = \"Test\"\nmachine = \"48k\"\n[[media]]\nname = \"the tape\"\n{download}"
+        );
+        std::fs::write(dir.path().join("game.toml"), text).expect("the definition writes");
+        let package = Package::load(dir.path()).expect("the definition loads");
+        let game = Game::new(package, dir.path());
+        let prompt = Prompt {
+            page: game.prompt(),
+            game,
+            drawn: Some(1),
+            chosen: Arc::new(Mutex::new(None)),
+            pressed: None,
+        };
+        (dir, prompt)
+    }
+
+    #[test]
+    fn the_prompt_s_buttons_show_their_press_then_act() {
+        let (_dir, mut prompt) = tape_prompt("download = \"https://example.org/1\"\n");
+        assert!(!prompt.navs(std::iter::once(Nav::Confirm)));
+        assert_eq!(prompt.page.pressed, Some(PromptButton::Locate));
+        assert_eq!(prompt.drawn, None, "drawn again, pressed");
+        prompt.drawn = Some(1);
+        assert_eq!(prompt.take_press(Instant::now()), None, "still showing");
+        let later = Instant::now() + press::SHOWN;
+        assert_eq!(prompt.take_press(later), Some(PromptButton::Locate));
+        assert_eq!((prompt.page.pressed, prompt.drawn), (None, None));
+        assert_eq!(prompt.take_press(later), None, "once");
+
+        let (_dir, mut prompt) = tape_prompt("download = \"https://example.org/1\"\n");
+        prompt.press(PromptButton::Download);
+        prompt.press(PromptButton::Locate);
+        assert_eq!(
+            prompt.take_press(Instant::now() + press::SHOWN),
+            Some(PromptButton::Download),
+            "the first press, alone"
+        );
+    }
+
+    #[test]
+    fn the_prompt_s_keys_press_its_buttons() {
+        let (_dir, mut prompt) = tape_prompt("download = \"https://example.org/1\"\n");
+        assert!(!prompt.key(Scancode::W));
+        assert_eq!(prompt.page.pressed, Some(PromptButton::Download));
+        assert!(prompt.key(Scancode::Escape), "Esc quits at once");
+
+        let (_dir, mut prompt) = tape_prompt("");
+        prompt.key(Scancode::W);
+        assert_eq!(prompt.page.pressed, None, "no download button to press");
+        prompt.key(Scancode::Return);
+        assert_eq!(prompt.page.pressed, Some(PromptButton::Locate));
     }
 }

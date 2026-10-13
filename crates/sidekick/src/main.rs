@@ -16,6 +16,7 @@ mod menu;
 mod pad;
 mod panel;
 mod picture;
+mod press;
 mod saves;
 mod scores;
 mod situations;
