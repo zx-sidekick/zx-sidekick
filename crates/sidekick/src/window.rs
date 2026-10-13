@@ -105,6 +105,32 @@ const KEYBOARD: u32 = u32::MAX;
 /// The tape prompt's size, in its logical pixels.
 const PROMPT: (u32, u32) = (TAPE_PROMPT_WIDTH, TAPE_PROMPT_HEIGHT);
 
+/// Whether a game started with `--paused` is still to be paused once it's in play.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Starting {
+    Running,
+    ToPause,
+}
+
+/// How a game started with `--paused` is paused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PauseBy {
+    /// The pad's Start, which the game reads as its own pause.
+    Start,
+    /// The guidance menu, which holds the game.
+    Menu,
+}
+
+/// The game's own pause when it has one (`own_pause`, a state with role `paused`) and Start
+/// reaches it (`start_mapped`); the menu otherwise.
+const fn pause_by(own_pause: bool, start_mapped: bool) -> PauseBy {
+    if own_pause && start_mapped {
+        PauseBy::Start
+    } else {
+        PauseBy::Menu
+    }
+}
+
 /// What the window opens on.
 pub(crate) enum Start {
     /// A game to play.
@@ -170,6 +196,8 @@ struct Player {
     keep_lists: bool,
     /// Where F9 goes back to (`Playing`).
     save_point: SavePoint,
+    /// Whether the game is still to be paused once it's in play (`--paused`).
+    starting: Starting,
     /// Where the game's definition was read from, when its files last changed, and when they
     /// were last looked at.
     source: Option<PathBuf>,
@@ -757,6 +785,11 @@ impl Player {
             quit_slot: playing.quit_slot,
             keep_lists: playing.keep_lists,
             save_point: playing.save_point,
+            starting: if playing.paused {
+                Starting::ToPause
+            } else {
+                Starting::Running
+            },
             changed: playing.source.as_deref().and_then(games::changed),
             source: playing.source,
             checked: Instant::now(),
@@ -806,6 +839,13 @@ impl Player {
                 break;
             }
             pads.hold_back_parts(&self.play.enter(self.session.state()));
+            if self.starting == Starting::ToPause && self.ready_to_pause() {
+                self.starting = Starting::Running;
+                self.pause_at_start();
+                if self.menu.is_some() {
+                    break;
+                }
+            }
             self.type_word();
             // While the card is open, the pad drives only the card.
             let held: Vec<Part> = if self.entry.is_some() {
@@ -1326,6 +1366,38 @@ impl Player {
     /// Whether the game is in the state with `role`.
     fn in_role(&self, role: Role) -> bool {
         compose::in_role(&self.session, role)
+    }
+
+    /// Whether a game started with `--paused` can be paused now: in play, or for a game with
+    /// no play state, once its tape has loaded.
+    fn ready_to_pause(&self) -> bool {
+        let has_play = self
+            .session
+            .definition()
+            .is_some_and(|d| d.state_for(Role::Play).is_some());
+        if has_play {
+            self.in_role(Role::Play)
+        } else {
+            self.session.machine().tape_loaded()
+        }
+    }
+
+    /// Pauses the game as a player would: the game's own pause, by the pad's Start, when the
+    /// definition names a paused state and Start does something in play; the menu otherwise.
+    fn pause_at_start(&mut self) {
+        let own_pause = self
+            .session
+            .definition()
+            .is_some_and(|d| d.state_for(Role::Paused).is_some());
+        match pause_by(own_pause, self.play.maps(Part::Start)) {
+            PauseBy::Start => {
+                self.play.pressed(Part::Start);
+            }
+            PauseBy::Menu => {
+                let can_load = self.save_point.exists(&self.saves);
+                self.menu = Some(Menu::open(&self.session, self.level, &self.title, can_load));
+            }
+        }
     }
 
     fn paused(&self) -> bool {
@@ -2112,6 +2184,14 @@ fn frames_due(elapsed: Duration, run: u64) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_paused_start_uses_the_game_s_own_pause_when_start_reaches_it() {
+        assert_eq!(pause_by(true, true), PauseBy::Start);
+        assert_eq!(pause_by(true, false), PauseBy::Menu, "Start does nothing");
+        assert_eq!(pause_by(false, true), PauseBy::Menu, "no paused state");
+        assert_eq!(pause_by(false, false), PauseBy::Menu);
+    }
+
     use super::*;
     use sidekick_def::Definition;
 

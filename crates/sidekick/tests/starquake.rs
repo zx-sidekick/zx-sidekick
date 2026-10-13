@@ -615,3 +615,37 @@ fn walking_into_the_core_s_room_marks_it_visited() {
         "the core's room is marked visited"
     );
 }
+
+#[test]
+fn the_pad_s_start_pauses_the_game_in_play() {
+    let Some(mut s) = in_play() else { return };
+    until(&mut s, 50, |_| false);
+    let definition = s.definition().expect("its definition");
+    let Some(sidekick_def::PadTarget::Table(start)) = definition.pad["default"].start.clone()
+    else {
+        panic!("Start taps keys in play");
+    };
+    // The keys it taps, by the names a definition uses.
+    let keys: Vec<Key> = start
+        .tap
+        .iter()
+        .map(|name| match name.as_str() {
+            "SPACE" => Key::Space,
+            "P" => Key::P,
+            other => panic!("a key this test doesn't name: {other}"),
+        })
+        .collect();
+    for &key in &keys {
+        s.machine_mut().key(key, true);
+    }
+    for _ in 0..start.frames.unwrap_or(1) {
+        s.run_frame().expect("a frame");
+    }
+    for &key in &keys {
+        s.machine_mut().key(key, false);
+    }
+    assert!(
+        until(&mut s, 50, |s| s.state() == Some("paused")),
+        "Start's tap pauses the game"
+    );
+}
