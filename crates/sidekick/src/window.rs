@@ -1561,7 +1561,7 @@ impl Player {
         };
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let scale = self.layout(output).scale;
-        let card = menu.card(labels);
+        let card = menu.card_at(labels, Some(Instant::now()));
         let (w, h) = (MENU_WIDTH * scale, card.height() * scale);
         let at = (
             (output.0 - w.min(output.0)) / 2,

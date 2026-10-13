@@ -33,6 +33,9 @@ pub struct SwitchRow {
     pub label: String,
     /// Whether it's on.
     pub on: bool,
+    /// Where its knob is, from 0 at the left (off) to 100 at the right (on); between them while
+    /// it slides.
+    pub knob: u8,
     /// Why it wouldn't go on, when it wouldn't.
     pub refusal: Option<String>,
 }
@@ -422,14 +425,11 @@ impl Menu {
         }
         let label = Style::new(14.0, SWITCH_TEXT).weight(Weight::Medium);
         span(c, fonts, &row.label, (27.0, top), Align::Left, &label);
-        let (fill, ink, word) = if row.on {
-            (colors::ACCENT, colors::PROMPT, "On")
-        } else {
-            (PILL_OFF, colors::TEXT, "Off")
-        };
-        c.rect((447.0, top - 3.0, 44.0, 22.0), 4.0, Some(fill), None);
-        let pill = Style::new(13.0, ink).weight(Weight::Medium);
-        c.text(fonts, word, (469.0, top - 3.0), 22.0, Align::Center, &pill);
+        // A toggle: a track, its knob at the right when on.
+        let track = if row.on { colors::ACCENT } else { PILL_OFF };
+        c.rect((451.0, top - 3.0, 40.0, 22.0), 11.0, Some(track), None);
+        let knob_x = 18.0f32.mul_add(f32::from(row.knob.min(100)) / 100.0, 462.0);
+        c.circle((knob_x, top + 8.0), 8.0, Some(colors::TEXT), None);
         if let Some(refusal) = &row.refusal {
             let red = Style::new(12.0, colors::RED);
             span(c, fonts, refusal, (27.0, top + 22.0), Align::Left, &red);
