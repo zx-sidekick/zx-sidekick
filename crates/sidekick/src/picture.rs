@@ -105,10 +105,13 @@ pub(crate) const fn smallest(picture: (u32, u32), panel: bool) -> (u32, u32) {
 }
 
 /// Where the picture (`picture`, its size in Spectrum pixels) and, with `panel`, the panel go
-/// in a window of `output` device pixels. The panel takes the window's height, its width
-/// following from its design's, but never so wide that the picture falls below twice its
-/// size; the picture takes the largest whole scale that fits what's left, centred there. A
-/// window smaller than the smallest ([`smallest`]) gets the picture alone.
+/// in a window of `output` device pixels. The panel takes the window's full height; its width
+/// follows from its design's at the smallest of three scales: the window's height to the
+/// design's, the one that leaves the picture's side at least as wide as the panel, and the one
+/// that leaves the picture room for twice its size. So it shrinks with the window's width as
+/// well as its height, never below its design size. The picture takes the largest whole scale
+/// that fits what's left, centred there. A window smaller than the smallest ([`smallest`])
+/// gets the picture alone.
 pub(crate) fn layout(output: (u32, u32), picture: (u32, u32), panel: bool) -> Layout {
     let least = smallest(picture, panel);
     if !panel || output.0 < least.0 || output.1 < least.1 {
@@ -120,7 +123,10 @@ pub(crate) fn layout(output: (u32, u32), picture: (u32, u32), panel: bool) -> La
         };
     }
     let tall = (PANEL_WIDTH * output.1 + PANEL_HEIGHT / 2) / PANEL_HEIGHT;
-    let width = tall.min(output.0 - picture.0 * LEAST_PIXEL);
+    let width = tall
+        .min(output.0 / 2)
+        .min(output.0 - picture.0 * LEAST_PIXEL)
+        .max(PANEL_WIDTH);
     let rest = output.0 - width;
     let at = placement((rest, output.1), picture);
     Layout {
@@ -180,6 +186,27 @@ mod tests {
         let tall = layout((1000, 1400), SCREEN_SIZE, true);
         assert_eq!(tall.panel, Some((512, 0, 488, 1400)));
         assert_eq!((tall.picture, tall.pixel), ((0, 508, 512, 384), 2));
+    }
+
+    #[test]
+    fn a_narrower_window_narrows_the_panel_too_never_wider_than_the_picture_s_side() {
+        // Tall enough for a 744-wide panel; half the width is 550.
+        let narrow = layout((1100, 1400), SCREEN_SIZE, true);
+        assert_eq!(narrow.panel, Some((550, 0, 550, 1400)));
+        assert_eq!((narrow.picture, narrow.pixel), ((19, 508, 512, 384), 2));
+        let wider = layout((1500, 1400), SCREEN_SIZE, true);
+        assert_eq!(wider.panel, Some((756, 0, 744, 1400)), "the height's own");
+        assert_eq!(wider.pixel, 2);
+    }
+
+    #[test]
+    fn a_shorter_window_shrinks_both() {
+        let tall = layout((2560, 1440), SCREEN_SIZE, true);
+        assert_eq!(tall.panel, Some((1795, 0, 765, 1440)));
+        assert_eq!(tall.pixel, 7);
+        let short = layout((2560, 800), SCREEN_SIZE, true);
+        assert_eq!(short.panel, Some((2135, 0, 425, 800)));
+        assert_eq!((short.picture, short.pixel), ((555, 16, 1024, 768), 4));
     }
 
     #[test]
