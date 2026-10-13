@@ -398,6 +398,7 @@ column = "left"
 columns = 3
 pictures = "item_pictures"
 source = "script:core"
+empty = "Not seen yet"
 
 [[panel]]
 kind = "chip-list"
