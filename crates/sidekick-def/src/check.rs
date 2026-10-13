@@ -726,6 +726,14 @@ impl Checker<'_> {
                 (false, false) => self.report(format!("{path}.markers"), "only for a map-grid"),
                 _ => {}
             }
+            for kind in widget.places.keys() {
+                if !widget.markers.contains_key(kind) {
+                    self.report(
+                        format!("{path}.places.{kind}"),
+                        format!("no marker kind {kind:?} in markers"),
+                    );
+                }
+            }
             let pictured = widget.markers.values().any(|&s| s == MarkerShape::Picture);
             if pictured && widget.pictures.is_none() {
                 self.report(

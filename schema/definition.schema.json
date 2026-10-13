@@ -766,11 +766,31 @@
         }
       ]
     },
+    "MarkerPlace": {
+      "description": "Where in its cell a map's marker sits.",
+      "oneOf": [
+        {
+          "description": "The middle.",
+          "type": "string",
+          "const": "middle"
+        },
+        {
+          "description": "The top-left corner, small.",
+          "type": "string",
+          "const": "top-left"
+        },
+        {
+          "description": "The top-right corner, small.",
+          "type": "string",
+          "const": "top-right"
+        }
+      ]
+    },
     "MarkerShape": {
       "description": "A shape the map draws a marker as.",
       "oneOf": [
         {
-          "description": "Where the player is: a box in its cell.",
+          "description": "Where the player is: an outline round its cell.",
           "type": "string",
           "const": "player"
         },
@@ -1901,6 +1921,13 @@
             "string",
             "null"
           ]
+        },
+        "places": {
+          "description": "For `map-grid`: where in its cell each kind of marker sits, unless a marker says its\nown place (`at`); in the middle when a kind isn't listed.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MarkerPlace"
+          }
         },
         "source": {
           "description": "`value:<name>`, `persist:<list>` or `script:<result>`.",

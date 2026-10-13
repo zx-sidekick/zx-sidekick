@@ -799,13 +799,30 @@ pub struct Widget {
     /// For `map-grid`: the shape each kind of marker the script uses is drawn as.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub markers: BTreeMap<String, MarkerShape>,
+    /// For `map-grid`: where in its cell each kind of marker sits, unless a marker says its
+    /// own place (`at`); in the middle when a kind isn't listed.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub places: BTreeMap<String, MarkerPlace>,
+}
+
+/// Where in its cell a map's marker sits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarkerPlace {
+    /// The middle.
+    #[default]
+    Middle,
+    /// The top-left corner, small.
+    TopLeft,
+    /// The top-right corner, small.
+    TopRight,
 }
 
 /// A shape the map draws a marker as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MarkerShape {
-    /// Where the player is: a box in its cell.
+    /// Where the player is: an outline round its cell.
     Player,
     /// A diamond.
     Diamond,

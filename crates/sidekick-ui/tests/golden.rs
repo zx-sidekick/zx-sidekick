@@ -5,7 +5,7 @@ use sidekick_ui::{
     pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Inside, Levels,
     LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer,
     PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels,
-    Question, Refusal, Route, RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
+    Place, Question, Refusal, Route, RouteColor, Row, ScoreRow, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -397,30 +397,19 @@ fn stand_in_map(seen: bool) -> MapGrid {
         x,
         y,
         at: None,
+        place: Place::Middle,
         kind: MarkerKind::Picture(Some(stand_in(seed))),
         color: None,
     };
     let mut markers = vec![
-        Marker {
-            x: 8,
-            y: 1,
-            at: None,
-            kind: MarkerKind::Player,
-            color: None,
-        },
+        Marker::new(8, 1, MarkerKind::Player),
         item(0, 1, 11),
         item(2, 5, 14),
         item(6, 7, 12),
         item(12, 14, 15),
     ];
     if seen {
-        markers.push(Marker {
-            x: 1,
-            y: 20,
-            at: None,
-            kind: MarkerKind::Diamond,
-            color: None,
-        });
+        markers.push(Marker::new(1, 20, MarkerKind::Diamond));
     }
     MapGrid {
         width: 16,
@@ -645,13 +634,7 @@ fn a_map_of_some_rooms_walked_has_no_frame() {
                 ..Cell::default()
             })
             .collect(),
-        markers: vec![Marker {
-            x: 8,
-            y: 1,
-            at: None,
-            kind: MarkerKind::Player,
-            color: None,
-        }],
+        markers: vec![Marker::new(8, 1, MarkerKind::Player)],
         routes: Vec::new(),
     };
     let panel = Panel {
@@ -733,27 +716,12 @@ fn the_map_shows_what_is_inside_each_room() {
             to_fetch,
         ],
         markers: vec![
+            Marker::new(9, 0, MarkerKind::Player),
             Marker {
-                x: 9,
-                y: 0,
-                at: None,
-                kind: MarkerKind::Player,
-                color: None,
-            },
-            Marker {
-                x: 9,
-                y: 1,
                 at: Some((23, 10)),
-                kind: MarkerKind::Label("1".to_owned()),
-                color: None,
+                ..Marker::new(9, 1, MarkerKind::Label("1".to_owned()))
             },
-            Marker {
-                x: 11,
-                y: 3,
-                at: None,
-                kind: MarkerKind::Picture(Some(stand_in(5))),
-                color: None,
-            },
+            Marker::new(11, 3, MarkerKind::Picture(Some(stand_in(5)))),
         ],
         routes: Vec::new(),
     };
@@ -769,4 +737,52 @@ fn the_map_shows_what_is_inside_each_room() {
     };
     golden("panel-map-inside.png", &panel.draw(&mut fonts, 1).png());
     golden("panel-map-inside-2x.png", &panel.draw(&mut fonts, 2).png());
+}
+
+#[test]
+fn every_marker_in_a_room_shows() {
+    let mut fonts = Fonts::new();
+    let room = |x, y| Cell {
+        x,
+        y,
+        walls: vec![Edge::North],
+        seen: true,
+        ..Cell::default()
+    };
+    let teleport = Marker {
+        place: Place::TopLeft,
+        ..Marker::new(4, 2, MarkerKind::Diamond)
+    };
+    let picture = |x, y, seed| Marker::new(x, y, MarkerKind::Picture(Some(stand_in(seed))));
+    // BLOB's room holds a teleport and two items; the one beside it, an item and a door.
+    let map = MapGrid {
+        width: 8,
+        height: 4,
+        inside: Some((32, 18)),
+        cells: vec![room(3, 2), room(4, 2), room(5, 2)],
+        markers: vec![
+            teleport,
+            picture(4, 2, 11),
+            picture(4, 2, 14),
+            picture(5, 2, 12),
+            Marker {
+                at: Some((23, 10)),
+                ..Marker::new(5, 2, MarkerKind::Label("2".to_owned()))
+            },
+            Marker::new(4, 2, MarkerKind::Player),
+        ],
+        routes: Vec::new(),
+    };
+    let panel = Panel {
+        level: 4,
+        name: "Everything".to_owned(),
+        description: String::new(),
+        widgets: vec![PanelWidget {
+            column: PanelColumn::Left,
+            title: None,
+            body: PanelBody::Map(map),
+        }],
+    };
+    golden("panel-map-markers.png", &panel.draw(&mut fonts, 1).png());
+    golden("panel-map-markers-2x.png", &panel.draw(&mut fonts, 2).png());
 }
