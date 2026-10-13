@@ -60,6 +60,10 @@ one goes back to `Plan`.
    stand-in for the game's picture, since CI has no tape. Screenshots of a
    game running may be committed (`docs/media/`, apart from `docs/mockups/`,
    whose images never show a game); extracted graphics may not.
+   A screenshot of the window comes from one command, from a crafted situation
+   or a save: `sidekick run assets/Starquake.tap.zip --games games --load
+   games/starquake/situations/stocked-up.toml --frames 60 --level 6
+   --screenshot docs/media/<name>.png`.
 3. **A change to the machine is made in the fork first.** `rustzx-core` and
    `rustzx-z80` come from [zx-sidekick/rustzx](https://github.com/zx-sidekick/rustzx),
    pinned by `rev`. Build against a local checkout with the ignored

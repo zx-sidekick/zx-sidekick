@@ -7,6 +7,7 @@
     reason = "a command line's results and errors are printed"
 )]
 
+mod compose;
 mod entry;
 mod games;
 mod headless;
@@ -98,6 +99,13 @@ enum Command {
         /// How many screen pixels each Spectrum pixel is in the PNG.
         #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=16))]
         scale: u32,
+        /// Play at this guidance level, and write the whole window to the PNG: the picture
+        /// with the panel beside it, as the player sees it.
+        #[arg(long, value_name = "N")]
+        level: Option<u8>,
+        /// The window's size, in screen pixels, with --level.
+        #[arg(long, value_name = "WIDTHxHEIGHT", default_value = "1368x768", value_parser = headless::size)]
+        size: (u32, u32),
     },
     /// Converts a definition from TOML to JSON, or from JSON to TOML.
     Convert {
@@ -131,6 +139,8 @@ fn main() -> ExitCode {
                 load,
                 screenshot,
                 scale,
+                level,
+                size,
             }),
             _,
         ) => {
@@ -141,13 +151,15 @@ fn main() -> ExitCode {
                     if let Some(file) = &load {
                         situations::load(&mut session, &saves, file)?;
                     }
+                    let shot = level.map_or(headless::Shot::Picture { scale }, |level| {
+                        headless::Shot::Window { level, size }
+                    });
                     headless::run(
                         &mut session,
                         frames,
                         &keys,
                         &switches,
-                        screenshot.as_deref(),
-                        scale,
+                        screenshot.as_deref().map(|path| (path, shot)),
                     )?;
                     if values {
                         print!("{}", headless::values(&session));
