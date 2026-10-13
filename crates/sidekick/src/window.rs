@@ -79,23 +79,23 @@ fn cached<'a, T: Clone + PartialEq, K: Copy + PartialEq>(
     kept: &mut Option<(Texture<'a>, T, K)>,
     fonts: &mut Fonts,
     what: &T,
-    scale: K,
+    at: K,
     draw: impl FnOnce(&T, &mut Fonts, K) -> Canvas,
 ) -> Result<(), String> {
     if kept
         .as_ref()
-        .is_some_and(|(_, drawn, s)| *s == scale && drawn == what)
+        .is_some_and(|(_, drawn, s)| *s == at && drawn == what)
     {
         return Ok(());
     }
-    let card = draw(what, fonts, scale);
+    let card = draw(what, fonts, at);
     let (w, h) = card.size();
     let mut texture = new_texture(creator, w, h)?;
     texture
         .update(None::<Rect>, &card.straight_rgba(), w as usize * 4)
         .map_err(|e| e.to_string())?;
     texture.set_blend_mode(BlendMode::Blend);
-    *kept = Some((texture, what.clone(), scale));
+    *kept = Some((texture, what.clone(), at));
     Ok(())
 }
 
@@ -554,9 +554,9 @@ impl Screen {
         Ok(())
     }
 
-    /// Keeps the window no smaller than a game's layout needs: in window points, the device
-    /// pixels of its smallest layout, so a screen of more pixels to a point shows it larger.
-    /// The pages before a game need no least size.
+    /// Keeps the window no smaller than a game's smallest layout, counted in window points: a
+    /// screen of more device pixels to a point lays it out larger. The pages before a game
+    /// have no smallest size.
     fn keep_smallest(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
         let least = match self {
             Self::Play(player) => compose::smallest_for(player.session.definition()),
