@@ -27,7 +27,7 @@ use sdl3::{
     EventPump, GamepadSubsystem,
 };
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
-use sidekick_def::{Definition, Package, Role};
+use sidekick_def::{Package, Role};
 use sidekick_ui::{
     Canvas, EntryCard, Fonts, LibraryPage, Menu as MenuCard, Note, Offer, PadLabels, Panel,
     PauseNotice, Pin, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT, ENTRY_WIDTH,
