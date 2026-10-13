@@ -5,8 +5,8 @@ description: >
   PR", "let's test the PRs", "ask me if it works", "/test-prs". For each PR in
   `Your review`: build it, start it where its change shows, ask through the
   testing tool (AskUserQuestion) whether it works, and on a yes label it
-  `ready to merge` and record the test in the PR. A problem is sorted into this
-  PR's or another ticket's. At the end, ask to merge everything labelled, and
+  `ready to merge` and record the test in the PR. A fault in what the PR built
+  is fixed in the PR; anything unclear is asked. At the end, ask to merge everything labelled, and
   merge with `merge-pr`. Trigger even if the user doesn't say "skill".
 ---
 
@@ -52,13 +52,18 @@ work. The maintainer's yes to a hands-on test is what lets you add
 Find out what the maintainer saw before deciding: ask for the room, the side,
 a screenshot. Then sort it:
 
-- **This PR's**: fix it on the branch (gate, commit, push), rebuild, and ask
-  again.
+- **A fault in what the PR built** is fixed in the PR, never ticketed: a
+  notice cut off, a bar that doesn't show what its switch does, a colour that
+  can't be told apart. Fix it on the branch (gate, commit, push), list it in
+  the PR body, rebuild, and ask again. Look for the same kind of fault in the
+  other PRs under test, and say which you found.
 - **Another ticket's**: what the PR never set out to do (a wall inside a room
   when the PR is about edges, a gap in a switch the PR only imports). Explain
   in one or two sentences, add it to that ticket as a case to get right, and
   ask whether to label this PR anyway.
-- **Something new**: file it in the Backlog with its route, and ask the same.
+- **Unclear which**, or a choice to make (a colour, a wording, how much to
+  do): ask, with the options and a recommendation. Never decide it by filing a
+  ticket.
 - **The test was badly chosen** (a patch whose effect can't be seen alone):
   say so, change the test so the PR's own work shows, and ask again.
 
@@ -71,8 +76,8 @@ where they're written, on the PR's branch, in the same pass.
 - Append to the PR body a `## Checked by hand` section: one or two lines saying
   what @starquake did and saw, and any request it gave rise to, with its
   ticket.
-- A request that isn't a defect ("show it longer", "scale the panel") becomes
-  a Backlog ticket, routed; it doesn't hold the PR.
+- A request beyond what the PR set out to do ("scale the panel") is asked
+  about: in this PR, or a Backlog ticket. Nothing is ticketed without asking.
 
 ## At the end
 
