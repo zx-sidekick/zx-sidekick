@@ -862,3 +862,54 @@ fn blob_s_place_is_found_wherever_he_walks() {
     }
     assert!(rooms.len() > 1, "walked through rooms: {rooms:?}");
 }
+
+/// The character rows of the screen, below the border, where two pictures `width` pixels wide
+/// differ.
+fn rows_changed(before: &[u8], after: &[u8], width: usize) -> BTreeSet<usize> {
+    let top = (before.len() / width - 192) / 2;
+    before
+        .chunks_exact(width)
+        .zip(after.chunks_exact(width))
+        .enumerate()
+        .filter(|(y, (a, b))| a != b && (top..top + 192).contains(y))
+        .map(|(y, _)| (y - top) / 8)
+        .collect()
+}
+
+#[test]
+fn the_code_card_sits_just_under_the_line_the_booth_types_its_code_on() {
+    let Some(mut s) = on_the_joystick(50) else {
+        return;
+    };
+    let situation = situation("booth");
+    for id in &situation.cheats {
+        s.switch(id, true).expect("the switch goes on");
+    }
+    enter_situation(&mut s, &situation);
+    s.machine_mut().kempston(Kempston::Right, true);
+    let entered = until(&mut s, 200, |s| s.state() == Some("booth"));
+    s.machine_mut().kempston(Kempston::Right, false);
+    assert!(entered, "walking right goes into the booth");
+    until(&mut s, 20, |_| false);
+
+    let width = s.machine().picture().width();
+    let before = s.machine().picture().pixels().to_vec();
+    press(&mut s, Key::Q);
+    until(&mut s, 20, |_| false);
+    assert_eq!(s.state(), Some("booth"), "it waits for the next letter");
+    let changed = rows_changed(&before, s.machine().picture().pixels(), width);
+    let [line] = changed.iter().copied().collect::<Vec<_>>()[..] else {
+        panic!("a letter typed changes one row: {changed:?}");
+    };
+
+    let card_row = s
+        .definition()
+        .and_then(|d| d.text_entry.as_ref())
+        .and_then(|t| t.card_row)
+        .expect("the definition places the card");
+    assert_eq!(
+        usize::try_from(card_row).expect("a row"),
+        line + 1,
+        "the card's top is the row just under the code line, row {line}"
+    );
+}

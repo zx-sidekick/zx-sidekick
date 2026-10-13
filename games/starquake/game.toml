@@ -350,7 +350,8 @@ host_key = "Tab"
 state = "booth"
 letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 length = 5
-# card_row = TODO: just under the booth's code line
+# Just under the row the booth types the code on, 19 (docs/re/starquake.md).
+card_row = 20
 title_choose = "Choose a code"
 title_spell = "Spell a code"
 choices = "teleport-codes"

@@ -1,0 +1,6 @@
+# A new game two steps left of a teleport booth (room 40), with creatures that do no harm: walk
+# right into it. Entering the room lines BLOB up 8 pixels lower, at 63.
+room = 40
+blob_x = 144
+blob_y = 71
+cheats = ["no-harm"]
