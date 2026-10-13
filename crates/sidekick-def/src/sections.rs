@@ -455,6 +455,10 @@ pub struct Cheat {
     /// Patches applied while it's on.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patch: Vec<Patch>,
+    /// A routine of the game's called once, at the next sync point in play after it goes on,
+    /// returning to the sync address: one that redraws what `set` changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call: Option<Address>,
     /// Whether a game played with it on is a training game.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub marks_score: bool,

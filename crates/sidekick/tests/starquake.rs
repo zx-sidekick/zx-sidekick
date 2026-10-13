@@ -439,18 +439,20 @@ fn tap_joystick(s: &mut Session, input: Kempston, times: usize) {
     }
 }
 
-/// With `switch` on from the start of play, the game's own bar for `value` stays as the game
-/// first drew it while `act` runs; without it, the bar is drawn shorter.
+/// With `switch` on from the start of play, the game's own bar for `value` stays as drawn once
+/// the switch went on while `act` runs; without it, the bar is drawn shorter.
 fn bar_stays_full(switch: &str, value: &str, act: impl Fn(&mut Session)) {
     // Soon after play begins, before anything has taken from the bars.
     let Some(base) = on_the_joystick(50) else {
         return;
     };
-    let first = status_area(&base);
     let mut off = base.clone();
     let mut on = base;
     on.switch(switch, true)
         .expect("its patches find the game's bytes");
+    until(&mut on, 5, |_| false);
+    until(&mut off, 5, |_| false);
+    let first = status_area(&on);
     act(&mut off);
     act(&mut on);
     // Where the two games' status areas differ is the bar the switch keeps.
@@ -459,7 +461,7 @@ fn bar_stays_full(switch: &str, value: &str, act: impl Fn(&mut Session)) {
     assert!(!bar.is_empty(), "{switch}: without it, the bar goes down");
     assert!(
         bar.iter().all(|&i| with[i] == first[i]),
-        "{switch}: with it, the bar is as the game first drew it"
+        "{switch}: with it, the bar is as drawn when it went on"
     );
     assert_eq!(
         on.reading()[value].number(),
@@ -488,4 +490,24 @@ fn full_energy_keeps_its_bar_full_on_screen_as_time_goes() {
     bar_stays_full("full-energy", "energy", |s| {
         until(s, 800, |_| false);
     });
+}
+
+#[test]
+fn full_platforms_draws_its_bar_full_as_it_goes_on() {
+    // Platforms start at 50 of 127: switched on, the bar is drawn longer at once.
+    let Some(base) = on_the_joystick(50) else {
+        return;
+    };
+    let mut off = base.clone();
+    let mut on = base;
+    on.switch("full-platforms", true)
+        .expect("its patches find the game's bytes");
+    until(&mut off, 5, |_| false);
+    until(&mut on, 5, |_| false);
+    let (with, without) = (status_area(&on), status_area(&off));
+    let bar: Vec<usize> = (0..with.len()).filter(|&i| with[i] != without[i]).collect();
+    assert!(!bar.is_empty(), "the bar is drawn again");
+    let ink = |area: &[u8]| bar.iter().map(|&i| area[i].count_ones()).sum::<u32>();
+    assert!(ink(&with) > ink(&without), "and longer");
+    assert_eq!(on.reading()["platforms"].number(), Some(127));
 }

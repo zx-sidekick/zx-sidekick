@@ -191,6 +191,41 @@ keys = { up = "Q", down = "A", left = "O", right = "P", fire = "FIRE" }"#
 }
 
 #[test]
+fn a_switch_s_call_needs_a_sync_point() {
+    let text = format!(
+        r#"{HEADER}
+[values.energy]
+addr = 0x9000
+type = "u8"
+writable = true
+[[cheats]]
+id = "full"
+label = "Full"
+set = {{ value = "energy", to = 9 }}
+call = 0xD425
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def.check().iter().map(ToString::to_string).collect();
+    assert!(
+        problems.contains(
+            &"cheats[0].call: a routine is called at the sync point, and there's none (run.sync)"
+                .to_owned()
+        ),
+        "{problems:?}"
+    );
+    let synced =
+        Definition::from_toml(&format!("{text}[run]\nsync = 0x8000\n")).expect("it parses");
+    assert!(
+        !synced
+            .check()
+            .iter()
+            .any(|p| p.to_string().contains(".call")),
+        "with one"
+    );
+}
+
+#[test]
 fn a_tap_lasts_at_least_a_frame_and_a_sequence_s_keys_are_keys() {
     let text = format!(
         r#"{HEADER}

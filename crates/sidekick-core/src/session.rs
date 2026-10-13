@@ -102,6 +102,8 @@ pub struct Session {
     milestones: Vec<Milestone>,
     /// What carries over to what comes next.
     next: Next,
+    /// Routines switches turned on asked for, called at the next sync point in play.
+    calls: Vec<u16>,
 }
 
 /// What carries over from one moment of a session to what comes next.
@@ -166,6 +168,7 @@ impl Session {
             progress: Progress::default(),
             milestones: Vec::new(),
             next: Next::default(),
+            calls: Vec::new(),
         }
     }
 
@@ -187,6 +190,7 @@ impl Session {
             match self.machine.run()? {
                 Stop::Sync => {
                     self.take_reading();
+                    self.make_calls();
                     read = true;
                 }
                 Stop::Loaded => {
@@ -511,21 +515,16 @@ impl Session {
         self.script_off.as_deref()
     }
 
-    /// Reads the values for this frame, and lets the switches that are on act on them: only in
-    /// the state with role `play`, when the definition has one (the last state known, so a
-    /// frame that matches none doesn't skip), since outside it a game may use the same memory
-    /// for other things.
+    /// Reads the values for this frame, and lets the switches that are on act on them, in play.
     fn take_reading(&mut self) {
         let now = self.read();
         let previous = std::mem::replace(&mut self.reading, now);
+        if !self.in_play() {
+            return;
+        }
         let Some(definition) = self.definition.take() else {
             return;
         };
-        let has_play = definition.state_for(Role::Play).is_some();
-        if has_play && !definition.is(self.progress.last_known.as_deref(), Role::Play) {
-            self.definition = Some(definition);
-            return;
-        }
         let on: Vec<&Cheat> = definition
             .cheats
             .iter()
@@ -552,6 +551,29 @@ impl Session {
             }
         }
         self.definition = Some(definition);
+    }
+
+    /// Whether the switches may act: in the state with role `play`, when the definition has one
+    /// (the last state known, so a frame that matches none doesn't skip), since outside it a
+    /// game may use the same memory for other things.
+    fn in_play(&self) -> bool {
+        self.definition.as_ref().is_some_and(|d| {
+            d.state_for(Role::Play).is_none()
+                || d.is(self.progress.last_known.as_deref(), Role::Play)
+        })
+    }
+
+    /// Calls the routines switches turned on asked for, at the sync point in play: each once,
+    /// chained so each returns into the next and the last to the sync address.
+    fn make_calls(&mut self) {
+        if self.calls.is_empty() || !self.in_play() {
+            return;
+        }
+        let mut back = self.machine.registers().get_pc();
+        for addr in std::mem::take(&mut self.calls) {
+            self.machine.call(addr, back);
+            back = addr;
+        }
     }
 
     /// Writes a value and keeps this frame's reading in step with it. A write refused (a
@@ -648,6 +670,11 @@ impl Session {
                 self.patch(patch);
             }
             self.switches.insert(id.to_owned());
+            if let Some(addr) = cheat.call {
+                if !self.calls.contains(&addr.0) {
+                    self.calls.push(addr.0);
+                }
+            }
             self.note_use();
         } else {
             for patch in &cheat.patch {
