@@ -514,7 +514,6 @@ fn an_edge_is_open_only_where_blob_fits_against_it() {
     s.run_frame().expect("a frame");
     assert_eq!(s.script_results()["walls"], Fact::Text(String::new()));
 }
-}
 
 #[test]
 fn items_are_marked_by_what_the_game_does_with_them() {
