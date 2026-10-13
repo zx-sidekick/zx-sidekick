@@ -478,7 +478,7 @@ What a script can use:
 | `kept` | The `[persist]` lists |
 | `level` | The guidance level |
 
-A script can't touch files, the network or the clock, and can't `eval`. Each call may take 1,000,000 operations and call 32 deep; strings are at most 4,096 characters, arrays and maps 65,536 entries. A script that goes over a limit, or fails, is turned off for the rest of the session, and its widgets show the reason instead. `mem.write` in `on_frame` is a failure: only actions write.
+A script can't touch files, the network or the clock, and can't `eval`. Each call may take 1,000,000 operations, and `on_load`, which runs once, 20,000,000; calls go 32 deep; strings are at most 4,096 characters, arrays and maps 65,536 entries. A script that goes over a limit, or fails, is turned off for the rest of the session, and its widgets show the reason instead. `mem.write` in `on_frame` is a failure: only actions write.
 
 `sidekick check` compiles the script, reporting a syntax error with its line, and checks that every action's `script` names one of its functions.
 

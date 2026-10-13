@@ -511,3 +511,42 @@ fn a_door_met_keeps_its_number_at_level_6() {
         "then room 30's"
     );
 }
+
+#[test]
+fn an_edge_is_open_only_where_blob_fits_against_it() {
+    let mut s = session();
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    poke_into(&mut s, "room", 0, &[8, 0]);
+    // Open everywhere but the bottom two rows and the left two columns, which block.
+    let mut cells = [0x47u8; 576];
+    for col in 0..32 {
+        cells[16 * 32 + col] = 0x07;
+        cells[17 * 32 + col] = 0x07;
+    }
+    for row in 0..18 {
+        cells[row * 32] = 0x07;
+        cells[row * 32 + 1] = 0x07;
+    }
+    // Two-cell gaps on the bottom edge and the left one, with rock just behind them.
+    cells[17 * 32 + 5] = 0x47;
+    cells[17 * 32 + 6] = 0x47;
+    cells[9 * 32] = 0x47;
+    cells[10 * 32] = 0x47;
+    poke_into(&mut s, "play_area", 0, &cells);
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        s.script_results()["walls"],
+        Fact::Text("SW".to_owned()),
+        "BLOB is two cells deep: a gap with rock behind it is no way out"
+    );
+
+    // Room behind the gaps: now BLOB fits against both edges.
+    cells[16 * 32 + 5] = 0x47;
+    cells[16 * 32 + 6] = 0x47;
+    cells[9 * 32 + 1] = 0x47;
+    cells[10 * 32 + 1] = 0x47;
+    poke_into(&mut s, "play_area", 0, &cells);
+    s.run_frame().expect("a frame");
+    assert_eq!(s.script_results()["walls"], Fact::Text(String::new()));
+}

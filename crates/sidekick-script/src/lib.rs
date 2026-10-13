@@ -10,6 +10,8 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 /// Operations a call may take: enough for a search over a few thousand rooms.
 const MOST_OPERATIONS: u64 = 1_000_000;
+/// Operations `on_load` may take: it runs once, so it can work out a whole game's map.
+const MOST_LOAD_OPERATIONS: u64 = 20_000_000;
 /// How deep calls may go.
 const MOST_CALLS: usize = 32;
 /// The longest string, and the most entries in an array or a map.
@@ -276,6 +278,7 @@ impl Script {
         name: &str,
         view: &View,
         writable: bool,
+        most: u64,
     ) -> Result<(Dynamic, Vec<(String, i64)>), String> {
         if let Some(why) = &self.off {
             return Err(why.clone());
@@ -306,6 +309,7 @@ impl Script {
         args.truncate(self.arity(name).unwrap_or(args.len()));
         let mut scope = Scope::new();
         let options = CallFnOptions::new().eval_ast(false);
+        self.engine.set_max_operations(most);
         let result = self
             .engine
             .call_fn_with_options::<Dynamic>(options, &mut scope, &self.ast, name, args);
@@ -326,7 +330,7 @@ impl Script {
     /// The script failed, or went over a limit; it's off from now on.
     pub fn on_load(&mut self, view: &View) -> Result<(), String> {
         if self.has("on_load") {
-            self.loaded = self.call("on_load", view, false)?.0;
+            self.loaded = self.call("on_load", view, false, MOST_LOAD_OPERATIONS)?.0;
         }
         Ok(())
     }
@@ -339,7 +343,7 @@ impl Script {
         if !self.has("on_frame") {
             return Ok(BTreeMap::new());
         }
-        let (value, _) = self.call("on_frame", view, false)?;
+        let (value, _) = self.call("on_frame", view, false, MOST_OPERATIONS)?;
         self.results(value, "on_frame")
     }
 
@@ -352,7 +356,7 @@ impl Script {
         if !self.has(name) {
             return Err(format!("the script has no function {name}"));
         }
-        let (value, writes) = self.call(name, view, true)?;
+        let (value, writes) = self.call(name, view, true, MOST_OPERATIONS)?;
         Ok((self.results(value, name)?, writes))
     }
 
@@ -463,6 +467,20 @@ mod tests {
         .unwrap();
         script.on_load(&view()).unwrap();
         assert_eq!(script.on_frame(&view()).unwrap()["total"], Fact::Number(4));
+    }
+
+    #[test]
+    fn on_load_may_take_more_steps_than_a_frame() {
+        let count = "let n = 0; while n < 2_000_000 { n += 1; } n";
+        let mut script = Script::compile(&format!(
+            "fn on_load(mem) {{ {count} }}\nfn on_frame(mem) {{ {count} }}"
+        ))
+        .unwrap();
+        script.on_load(&view()).unwrap();
+        assert_eq!(
+            script.on_frame(&view()).unwrap_err(),
+            "on_frame: took too many steps"
+        );
     }
 
     #[test]
