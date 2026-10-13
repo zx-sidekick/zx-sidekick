@@ -62,23 +62,10 @@ fn the_reference_s_first_definition_is_complete() {
 }
 
 #[test]
-fn starquake_s_draft_parses_and_lists_what_is_left_to_find() {
-    let def = Definition::from_toml(&repo("games/starquake/game.toml")).expect("the draft parses");
+fn starquake_s_definition_passes_its_checks() {
+    let def = Definition::from_toml(&repo("games/starquake/game.toml")).expect("it parses");
     let problems: Vec<String> = def.check().iter().map(ToString::to_string).collect();
-    assert!(
-        !problems.iter().any(|p| p.starts_with("media")),
-        "the dump's SHA-1 is recorded"
-    );
-    assert!(
-        problems.iter().any(|p| p == "high_scores.addr: missing"),
-        "{problems:#?}"
-    );
-    assert!(
-        !problems.iter().any(|p| p.contains("no value named")
-            || p.contains("no state named")
-            || p.contains("isn't")),
-        "only what's still to find, no broken references: {problems:#?}"
-    );
+    assert_eq!(problems, Vec::<String>::new());
 }
 
 #[test]
@@ -371,6 +358,70 @@ score = {{ offset = 3, len = 6, type = "text" }}
             "high_scores.name: a name is text",
             "high_scores.score: a score is digits, bcd, u8 or u16",
         ]
+    );
+}
+
+#[test]
+fn a_name_entry_types_into_the_high_score_table_in_a_state_of_its_own() {
+    let with = |table: &str, name_entry: &str| {
+        let text = format!(
+            r#"{HEADER}
+[[states]]
+name = "booth"
+pc = 0x8000
+[[states]]
+name = "name"
+pc = 0x8001
+[text_entry]
+state = "booth"
+letters = "AB"
+length = 5
+[persist.names]
+label = "names"
+file = "names.txt"
+{table}
+[name_entry]
+{name_entry}
+"#
+        );
+        let def = Definition::from_toml(&text).expect("it parses");
+        def.check()
+            .iter()
+            .map(ToString::to_string)
+            .filter(|p| p.starts_with("name_entry"))
+            .collect::<Vec<_>>()
+    };
+    let table = r#"
+[high_scores]
+addr = 0x8000
+count = 8
+stride = 10
+name = { offset = 0, len = 3, type = "text" }
+score = { offset = 3, len = 6, type = "digits" }
+"#;
+    let good = r#"state = "name"
+letters = "AB"
+length = 3
+choices = "names""#;
+    assert_eq!(with(table, good), Vec::<String>::new());
+    assert_eq!(
+        with(
+            table,
+            r#"state = "booth"
+letters = ""
+length = 4
+choices = "codes""#
+        ),
+        [
+            "name_entry.letters: empty",
+            "name_entry.choices: no kept list named \"codes\"",
+            "name_entry.state: text_entry's state: a state has one card",
+            "name_entry.length: longer than high_scores.name",
+        ]
+    );
+    assert_eq!(
+        with("", good),
+        ["name_entry: needs [high_scores] with its name"]
     );
 }
 

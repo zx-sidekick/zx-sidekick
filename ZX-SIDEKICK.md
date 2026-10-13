@@ -115,6 +115,7 @@ The full reference is [`docs/definition-format.md`](docs/definition-format.md). 
 | `[pad]` | how a pad drives the game, per state: the D-pad and stick, buttons by position, Start and Select |
 | `[[actions]]` | named things a button or key can do: keys, joystick bits, a patch for one frame, a script function |
 | `[text_entry]` | typing a word the game asks for with a pad (§12) |
+| `[name_entry]` | the same card for a high score's name (§12, §13) |
 | `[persist.*]` | lists kept between games, such as codes discovered |
 | `[high_scores]` | where the game keeps its table, and how its entries are written |
 | `[guidance]` | the guidance levels, with their names and descriptions |
@@ -230,6 +231,7 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 - **A enters** the word either way. It's then typed on the keys the game reads, one letter down for a frame and released the next (timings from the definition), because games often wait for every key to be let go before reading the next letter.
 - **While the card is open, the pad drives only the card.** The game sees none of it. Otherwise a held A could keep the game waiting for a release and swallow letters.
 - **Keyboard players** never see the card.
+- **A high score's name** gets the same card from `[name_entry]`, in the state where the game asks for it. It offers the names entered before first, from a list the program keeps itself: the name of each entry a game puts in the high-score table (§13).
 
 | Choosing | Spelling |
 |---|---|
@@ -240,6 +242,8 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 ## 13. Scores and saves
 
 **The high-score table**, when a definition describes it (`[high_scores]`), is kept between runs in `high-scores.txt` in the game's data folder, put back into the game's memory when it starts, and read back from it after each game. Each entry carries the highest guidance level its game had.
+- **Only games played here are kept**, so the kept table starts empty. Until one is kept, the game shows its own entries; they stay in its memory and are never kept.
+- **Put back whole and ranked:** each kept entry goes in with everything the game keeps beside its name and score, ranked by score among the game's own entries, which fill the rest. The table is as the last run left it.
 - **A training game** is shown in the table, then left out of it.
 - **A game a save was loaded into** stays in the table, marked "loaded".
 

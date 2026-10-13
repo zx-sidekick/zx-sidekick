@@ -57,6 +57,9 @@ pub struct Definition {
     /// Typing a word the game asks for, with a pad.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_entry: Option<TextEntry>,
+    /// Typing the name for a high score with a pad: `text_entry`'s keys, for a second card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name_entry: Option<TextEntry>,
     /// Lists kept between games.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub persist: BTreeMap<String, Persist>,

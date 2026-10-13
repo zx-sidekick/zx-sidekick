@@ -3,9 +3,21 @@
 
 use crate::keys::key_named;
 use sidekick_core::Key;
-use sidekick_def::TextEntry;
+use sidekick_def::{Definition, TextEntry};
 use sidekick_ui::{EntryCard, EntryMode, PadLabels};
 use std::collections::BTreeMap;
+
+/// The card for the game's `state`: the definition's `[text_entry]`, or its `[name_entry]` for
+/// a high score's name.
+pub(crate) fn section_for<'a>(
+    definition: &'a Definition,
+    state: Option<&str>,
+) -> Option<&'a TextEntry> {
+    [&definition.text_entry, &definition.name_entry]
+        .into_iter()
+        .flatten()
+        .find(|t| state == Some(t.state.as_str()))
+}
 
 /// What the card is asked to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -294,6 +306,48 @@ mod tests {
         );
         e.input(Input::Switch);
         assert_eq!(e.chosen(), Some("CAB"), "back to choosing");
+    }
+
+    #[test]
+    fn the_name_card_is_the_name_state_s_and_offers_names_entered_before_first() {
+        let definition = Definition::from_toml(
+            r#"
+schema = 1
+[game]
+id = "test"
+title = "Test"
+machine = "48k"
+[[media]]
+name = "the tape"
+[text_entry]
+state = "booth"
+letters = "ABC"
+length = 5
+[name_entry]
+state = "name"
+letters = "ABC"
+length = 3
+title_choose = "Choose a name"
+choices = "names"
+"#,
+        )
+        .unwrap();
+        let section = |state| section_for(&definition, Some(state)).map(|t| t.length);
+        assert_eq!(
+            (section("booth"), section("name"), section("play")),
+            (Some(5), Some(3), None)
+        );
+        let names =
+            BTreeMap::from([("names".to_owned(), vec!["ZOE".to_owned(), "SAM".to_owned()])]);
+        let name_entry = definition.name_entry.as_ref().unwrap();
+        let mut e = Entry::open(name_entry, &names, 0);
+        assert_eq!(e.chosen(), Some("ZOE"), "at any guidance level");
+        assert_eq!(e.card(PadLabels::Letters).title_choose, "Choose a name");
+        e.input(Input::Switch);
+        e.input(Input::Up);
+        assert_eq!(word(&e), "AOE", "spelling a new one, from the one chosen");
+        let none = Entry::open(name_entry, &BTreeMap::new(), 0);
+        assert_eq!(none.chosen(), None, "nothing entered yet: spelling");
     }
 
     #[test]

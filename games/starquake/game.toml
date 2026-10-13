@@ -50,6 +50,11 @@ name = "booth"
 pc = [0xCF93, 0xCF9A]
 
 [[states]]
+name = "name"
+# After a high score, the wait for each of the name's three letters (docs/re/starquake.md).
+pc = [0x68DD, 0x68E4]
+
+[[states]]
 name = "door"
 # The card routine's loop, reached once a door's cards are worked out; the main loop waits
 # meanwhile, so the values are read at the frame's end, cards and all (docs/re/starquake.md).
@@ -117,6 +122,14 @@ type = "u8"
 writable = true
 addr = 0xD2CD
 max = 127
+
+[values.score]
+type = "digits"
+len = 6
+zero = 0
+writable = true
+addr = 0xD413
+description = "The score, a digit a byte, the most significant first"
 
 [values.platforms]
 type = "u8"
@@ -372,13 +385,34 @@ file = "doors-met.txt"
 add = "script"
 most = 256
 
+# Typing the name for a high score with a pad.
+
+[name_entry]
+state = "name"
+letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+length = 3
+# Just under the game's three marks for the letters.
+card_row = 18
+title_choose = "Choose a name"
+title_spell = "Spell a name"
+choices = "names"
+# The game makes a sound after each letter before it looks for the next: a key sooner is lost.
+key_down_frames = 2
+key_up_frames = 9
+
+[persist.names]
+label = "high-score names"
+# Each name a game here put in the table, added as the table is read back.
+file = "high-score-names.txt"
+
 [high_scores]
 title = "CORE OF HEROES"
-# addr = TODO: the table
-# count = TODO
-# stride = TODO
-# name = TODO
-# score = TODO
+# Best first. Each entry's last byte is the share of the planet explored, kept with it.
+addr = 0x64FA
+count = 8
+stride = 10
+name = { offset = 0, len = 3, type = "text" }
+score = { offset = 3, len = 6, type = "digits" }
 
 # Guidance: levels 0 to 6, then the panel's widgets.
 

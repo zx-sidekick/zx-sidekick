@@ -600,26 +600,56 @@ impl Checker<'_> {
         }
     }
 
-    fn text_entry(&mut self) {
-        let Some(entry) = &self.def.text_entry else {
+    fn entries(&mut self) {
+        let sections = [
+            ("text_entry", &self.def.text_entry),
+            ("name_entry", &self.def.name_entry),
+        ];
+        for (key, entry) in sections {
+            let Some(entry) = entry else {
+                continue;
+            };
+            if !self.state_exists(&entry.state) {
+                self.report(
+                    format!("{key}.state"),
+                    format!("no state named {:?}", entry.state),
+                );
+            }
+            if entry.letters.is_empty() {
+                self.report(format!("{key}.letters"), "empty");
+            }
+            if entry.length == 0 {
+                self.report(format!("{key}.length"), "at least 1");
+            }
+            if let Some(list) = &entry.choices {
+                if !self.def.persist.contains_key(list) {
+                    self.report(
+                        format!("{key}.choices"),
+                        format!("no kept list named {list:?}"),
+                    );
+                }
+            }
+        }
+        let Some(names) = &self.def.name_entry else {
             return;
         };
-        if !self.state_exists(&entry.state) {
+        if self
+            .def
+            .text_entry
+            .as_ref()
+            .is_some_and(|t| t.state == names.state)
+        {
             self.report(
-                "text_entry.state",
-                format!("no state named {:?}", entry.state),
+                "name_entry.state",
+                "text_entry's state: a state has one card",
             );
         }
-        if entry.letters.is_empty() {
-            self.report("text_entry.letters", "empty");
-        }
-        if entry.length == 0 {
-            self.report("text_entry.length", "at least 1");
-        }
-        if let Some(list) = &entry.choices {
-            if !self.def.persist.contains_key(list) {
-                self.report("text_entry.choices", format!("no kept list named {list:?}"));
+        match self.def.high_scores.as_ref().and_then(|t| t.name.as_ref()) {
+            None => self.report("name_entry", "needs [high_scores] with its name"),
+            Some(name) if name.len.is_some_and(|len| names.length > len) => {
+                self.report("name_entry.length", "longer than high_scores.name");
             }
+            Some(_) => {}
         }
     }
 
@@ -781,7 +811,7 @@ pub(crate) fn check(def: &Definition) -> Vec<Problem> {
     checker.cheats();
     checker.pad();
     checker.actions();
-    checker.text_entry();
+    checker.entries();
     checker.persist();
     checker.high_scores();
     checker.panel();

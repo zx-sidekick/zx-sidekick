@@ -57,15 +57,11 @@ fn a_complete_definition_checks_clean() {
 }
 
 #[test]
-fn starquake_s_draft_lists_what_is_left_to_find() {
-    let draft = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../games/starquake");
-    let run = sidekick(&["check", path(&draft)]);
-    assert_eq!(run.status, 1);
-    assert!(
-        run.stdout.lines().any(|l| l == "high_scores.addr: missing"),
-        "{}",
-        run.stdout
-    );
+fn starquake_s_definition_checks_clean() {
+    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../games/starquake");
+    let run = sidekick(&["check", path(&folder)]);
+    assert_eq!(run.status, 0, "{}{}", run.stdout, run.stderr);
+    assert_eq!(run.stdout, "");
 }
 
 #[test]

@@ -43,6 +43,17 @@ pub struct ScoreEntry {
     pub name: String,
     /// The score.
     pub score: String,
+    /// The whole entry as the game keeps it, all its stride's bytes, so it goes back as it
+    /// was, with whatever else the game keeps beside the name and score. Empty when not known.
+    pub bytes: Vec<u8>,
+}
+
+impl ScoreEntry {
+    /// Whether two entries have the same name and score, whatever else they keep.
+    #[must_use]
+    pub fn same(&self, other: &Self) -> bool {
+        self.name == other.name && self.score == other.score
+    }
 }
 
 /// Why a switch didn't go on.
@@ -286,7 +297,7 @@ impl Session {
     }
 
     /// Adds an entry to a kept list the definition has, unless it's there or empty.
-    fn keep(&mut self, list: &str, entry: &str) {
+    pub fn keep(&mut self, list: &str, entry: &str) {
         let entry = entry.trim();
         let Some(persist) = self.definition.as_ref().and_then(|d| d.persist.get(list)) else {
             return;
@@ -466,12 +477,17 @@ impl Session {
             Read::Number(n) => n.to_string(),
             other => other.to_string(),
         };
+        let stride = table.stride?;
         let rows = (0..table.count?)
             .map(|i| {
-                let at = addr + i * table.stride?;
+                let at = addr + i * stride;
                 Some(ScoreEntry {
                     name: text(value::read_field(&memory, name, at)),
                     score: text(value::read_field(&memory, score, at)),
+                    bytes: (at..at + stride)
+                        .map(|a| u16::try_from(a).map(|a| self.machine.peek(a)))
+                        .collect::<Result<_, _>>()
+                        .ok()?,
                 })
             })
             .collect::<Option<Vec<_>>>()?;
@@ -479,7 +495,8 @@ impl Session {
     }
 
     /// Writes entries into the high-score table, in order: the game then shows them. An entry
-    /// that can't be written in the table's fields is left as the game has it.
+    /// with its bytes goes in whole; one without, in its name and score fields, and is left as
+    /// the game has it when they can't be written so.
     pub fn set_scores(&mut self, entries: &[ScoreEntry]) {
         let Some(table) = self.definition.as_ref().and_then(|d| d.high_scores.clone()) else {
             return;
@@ -495,22 +512,29 @@ impl Session {
         };
         for (i, entry) in (0..count).zip(entries) {
             let at = u32::from(addr.0) + i * stride;
+            if usize::try_from(stride).is_ok_and(|s| s == entry.bytes.len()) {
+                self.write_bytes(at, &entry.bytes);
+                continue;
+            }
             let (Some(name_bytes), Some(score_bytes)) = (
                 value::encode_field(&name, &entry.name),
                 value::encode_field(&score, &entry.score),
             ) else {
                 continue;
             };
-            for (field, bytes) in [(&name, name_bytes), (&score, score_bytes)] {
-                let start = at + field.offset;
-                if start < 0x4000 {
-                    continue;
-                }
-                for (a, byte) in (start..).zip(bytes) {
-                    if let Ok(a) = u16::try_from(a) {
-                        self.machine.write(a, byte);
-                    }
-                }
+            self.write_bytes(at + name.offset, &name_bytes);
+            self.write_bytes(at + score.offset, &score_bytes);
+        }
+    }
+
+    /// Writes bytes from `start`, leaving the ROM alone.
+    fn write_bytes(&mut self, start: u32, bytes: &[u8]) {
+        if start < 0x4000 {
+            return;
+        }
+        for (a, &byte) in (start..).zip(bytes) {
+            if let Ok(a) = u16::try_from(a) {
+                self.machine.write(a, byte);
             }
         }
     }
