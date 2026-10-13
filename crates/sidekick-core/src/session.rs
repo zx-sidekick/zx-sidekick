@@ -5,7 +5,7 @@ use crate::{
     value::{self, Read, WriteError},
     Error, Machine, Stop,
 };
-use sidekick_def::{Amount, Cheat, Definition, Patch, Role, State, Test};
+use sidekick_def::{Amount, Cheat, Definition, Patch, Role, Set, State, Test};
 use sidekick_script::{Fact, Script, View};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -81,6 +81,8 @@ pub struct Session {
     definition: Option<Definition>,
     reading: Reading,
     state: Option<String>,
+    /// Frames run since one last matched a state.
+    unmatched: u32,
     /// Held on the loading screen, until released.
     holding: bool,
     /// The training switches on, by id.
@@ -160,6 +162,7 @@ impl Session {
             definition,
             reading: Reading::new(),
             state: None,
+            unmatched: 0,
             holding: false,
             switches: BTreeSet::new(),
             level: 0,
@@ -246,6 +249,11 @@ impl Session {
     /// kept lists filled.
     fn end_frame(&mut self) {
         self.state = self.decide();
+        self.unmatched = if self.state.is_some() {
+            0
+        } else {
+            self.unmatched.saturating_add(1)
+        };
         self.track_games();
         self.run_script();
         self.keep_from_values();
@@ -558,6 +566,7 @@ impl Session {
     fn take_reading(&mut self) {
         let now = self.read();
         let previous = std::mem::replace(&mut self.reading, now);
+        self.state_writes();
         if !self.in_play() {
             return;
         }
@@ -587,6 +596,32 @@ impl Session {
                         self.write_now(&definition, name, before);
                     }
                 }
+            }
+        }
+        self.definition = Some(definition);
+    }
+
+    /// Writes what the state the game was last known in sets (`[[states]] set`): a choice the
+    /// program makes for the player while the game is there.
+    fn state_writes(&mut self) {
+        let Some(definition) = self.definition.take() else {
+            return;
+        };
+        let state = self.progress.last_known.as_deref();
+        let sets: Vec<Set> = definition
+            .states
+            .iter()
+            .filter(|s| Some(s.name.as_str()) == state)
+            .flat_map(|s| s.set.iter().flatten())
+            .cloned()
+            .collect();
+        for set in sets {
+            let to = match &set.to {
+                Amount::Number(n) => Some(*n),
+                Amount::Max(_) => definition.values.get(&set.value).and_then(|v| v.max),
+            };
+            if let Some(to) = to {
+                self.write_now(&definition, &set.value, to);
             }
         }
         self.definition = Some(definition);
@@ -775,6 +810,7 @@ impl Session {
         self.record = record;
         // The game the save was taken in goes on, not a new one, in the state it was in.
         self.state.clone_from(&progress.last_known);
+        self.unmatched = 0;
         self.progress = progress;
         self.next.loaded = false;
         self.holding = false;
@@ -866,6 +902,13 @@ impl Session {
         self.holding
     }
 
+    /// Whether the loading screen waits for a key: held by the program
+    /// (`[run] hold_loading_screen`), or by the tape's own loader.
+    #[must_use]
+    pub fn on_loading_screen(&self) -> bool {
+        self.holding || self.machine.waits_on_loading_screen()
+    }
+
     /// Lets the game go on from its loading screen.
     pub const fn release(&mut self) {
         self.holding = false;
@@ -903,6 +946,13 @@ impl Session {
     #[must_use]
     pub fn state(&self) -> Option<&str> {
         self.state.as_deref()
+    }
+
+    /// Frames run since one last matched a state: how long ago the game was last seen in the
+    /// state it was last known in.
+    #[must_use]
+    pub const fn frames_unmatched(&self) -> u32 {
+        self.unmatched
     }
 
     /// The first state that matches the last frame.

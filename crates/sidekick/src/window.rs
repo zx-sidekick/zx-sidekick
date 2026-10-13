@@ -5,7 +5,7 @@ use crate::{
     compose,
     entry::{self, Entry, Stroke, Typing},
     games::{self, Game, Playing},
-    keys::{spectrum_key, Spectrum},
+    keys::{self, spectrum_key, Spectrum},
     menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
@@ -289,13 +289,18 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         Start::Prompt(game) => game.title(),
         Start::Library(_) => "Choose a game".to_owned(),
     };
-    let window = video
+    let mut window = video
         .window(&format!("ZX Sidekick — {title}"), 1368, 768)
         .high_pixel_density()
         .resizable()
         .fullscreen()
         .build()
         .map_err(|e| e.to_string())?;
+    // The keyboard is the game's while the window has focus: keys the system would take for its
+    // own shortcuts (Cmd, Alt+Tab) reach the window instead, where the system lets them.
+    if !window.set_keyboard_grab(true) {
+        eprintln!("The keyboard couldn't be grabbed: {}", sdl3::get_error());
+    }
     let canvas = window.into_canvas();
     // The textures live as long as the window, which lives as long as the program.
     let creator = Box::leak(Box::new(canvas.texture_creator()));
@@ -674,8 +679,9 @@ impl Gamepads {
         parts.into_iter().map(|p| (p, maker)).collect()
     }
 
-    /// A key the Spectrum doesn't have that does one of the game's actions, pressed or let go
-    /// like a pad's button. Returns its part when pressed.
+    /// A key the Spectrum doesn't have, pressed or let go like a pad's button: one the
+    /// definition binds to an action, else an arrow (the D-pad) or the right Control or Alt
+    /// (fire). Returns its part when pressed.
     fn host_key(&mut self, event: &Event, mapping: &Mapping) -> Vec<(Part, Maker)> {
         let (scancode, down) = match *event {
             Event::KeyDown {
@@ -691,6 +697,7 @@ impl Gamepads {
         };
         mapping
             .host_key(scancode.name())
+            .or_else(|| keys::pad_part(scancode))
             .and_then(|part| self.pads.button(KEYBOARD, part, down))
             .map(|part| (part, self.last))
             .into_iter()
@@ -1721,18 +1728,22 @@ impl Player {
     /// layout's scale (the notice is laid out on the picture at three logical pixels to the
     /// Spectrum's one), smaller where the window is too small for it.
     fn notice(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
-        if !self.paused() {
-            return Ok(());
-        }
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let (at, scale) = compose::card_over(
-            layout.picture,
-            output,
-            layout,
-            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
-        );
-        let notice = compose::pause_notice(self.session.definition(), labels);
+        let size = (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT);
+        let (notice, (at, scale)) = if self.paused() {
+            (
+                compose::pause_notice(self.session.definition(), labels),
+                compose::card_over(layout.picture, output, layout, size),
+            )
+        } else if let Some(notice) = compose::foot_notice(&self.session, labels) {
+            (
+                notice,
+                compose::card_at_foot(layout.picture, output, layout, size),
+            )
+        } else {
+            return Ok(());
+        };
         cached(
             out.creator,
             &mut out.notice,

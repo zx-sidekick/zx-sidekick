@@ -154,12 +154,12 @@ Most of what a definition says is plain data. A few things are computations no d
   ![The tape prompt refusing a different dump](docs/mockups/starquake/tape-prompt-wrong-dump.png)
 
   The mockup's text says "the graphics, maps and sound are read from your own tape". The emulator's should say the game *runs* from the player's own tape.
-- **The loading screen:** the picture the tape draws as it loads stays up until a key or pad button is pressed, when the definition asks for it (`[run] hold_loading_screen`): fast loading would otherwise show it for a moment. The machine stops the moment the tape's last block has gone in through the ROM's loader, before the loader or the game runs on, and the press doesn't reach it. Games that wait by themselves, as Starquake does, don't ask.
+- **The loading screen:** the picture the tape draws as it loads stays up until a key or pad button is pressed, when the definition asks for it (`[run] hold_loading_screen`): fast loading would otherwise show it for a moment. The machine stops the moment the tape's last block has gone in through the ROM's loader, before the loader or the game runs on, and the press doesn't reach it. Games that wait by themselves, as Starquake does, don't ask. Either way, a card at the picture's foot says that a key, or the pad's Start, goes on: the program knows a loader waits when it sits in the ROM's `PAUSE 0` with tape still to load (a timed `PAUSE` goes on by itself, so it carries no card).
 - **A frame's picture during blocking sound effects:** while an effect holds the game, the screen as it was when the effect started stays up. The emulator gets this right as long as it presents the screen at the moment each frame ends.
 
 ## 9. Controls
 
-**Keyboard:** exactly as the original: every key reaches the game, which reads it as it always did. The program's own keys are ones the Spectrum doesn't have: **Esc** opens the guidance menu, **F5** saves, **F9** loads, **F11** toggles fullscreen. A definition may bind other keys the Spectrum doesn't have to its `[[actions]]` (Starquake's **Tab** switches between routes).
+**Keyboard:** the Spectrum's own keys reach the game as on the original: letters, digits, ENTER, SPACE, Shift as CAPS SHIFT, the left Ctrl and Alt (Option) as SYMBOL SHIFT, Backspace as DELETE. Keys the Spectrum doesn't have play as a pad: the **arrows** are its D-pad and the **right Ctrl, the right Alt (Option) or `/`** its fire button (`/` for a Mac, where other apps may take the right Option tapped twice for a shortcut of their own), so they do whatever the definition maps those to in each state (Starquake: the Kempston joystick and fire; a tape played plainly: the Kempston joystick). The Spectrum's cursor keys are typed its own way, CAPS SHIFT with 5 to 8. While the window has focus it grabs the keyboard, so keys the system would take for its own shortcuts reach the game where the system allows it; a Mac doesn't stop other apps watching keys for theirs. The program's own keys are others the Spectrum doesn't have: **Esc** opens the guidance menu, **F5** saves, **F9** loads, **F11** toggles fullscreen. A definition may bind other keys the Spectrum doesn't have to its `[[actions]]` (Starquake's **Tab** switches between routes).
 
 **Gamepad** (any controller the operating system knows, by USB or Bluetooth, plugged in at any time):
 - **Moving:** the D-pad and left stick move. By default, in play, the pad drives the joystick the definition names (`[run] joystick`: Kempston, Sinclair, cursor keys, or the game's own keys), whichever control method the game's menu chose if the game reads them all.
@@ -173,6 +173,8 @@ Most of what a definition says is plain data. A few things are computations no d
 When a definition names its game's paused state, the picture dims there and a card says how to go on: in the definition's own words for the keyboard (for Starquake, any move or fire continues once the pause key is let go), and A or B on a pad.
 
 ![Paused](docs/mockups/starquake/paused.png)
+
+The title's state may carry a notice too: a card over the foot of the title, which isn't dimmed, saying how the game plays here where its own screen says otherwise. Starquake's title lists its control options, but the program chooses the joystick for the player there (`[[states]] set`), so its card says to ignore the list and play with the arrow keys or a gamepad.
 
 ## 11. Guidance and training
 

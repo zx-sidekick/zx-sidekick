@@ -75,7 +75,7 @@ const DIRECTIONS: &[&str] = &["up", "down", "left", "right", "fire"];
 const ROLES: [Role; 4] = [Role::Title, Role::Play, Role::Paused, Role::GameOver];
 
 /// The pad's parts a notice's hint can show: the face buttons and the directions.
-const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north"];
+const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north", "start"];
 
 /// The program's own keys, which an action can't take.
 const PROGRAM_KEYS: &[&str] = &["Esc", "F5", "F9", "F11"];
@@ -293,8 +293,11 @@ impl Checker<'_> {
 
     fn notice(&mut self, path: &str, state: &crate::State) {
         let Some(notice) = &state.notice else { return };
-        if state.role != Some(Role::Paused) {
-            self.report(path, "only the state with role = \"paused\" has a notice");
+        if !matches!(state.role, Some(Role::Paused | Role::Title)) {
+            self.report(
+                path,
+                "only the states with role = \"paused\" or \"title\" have a notice",
+            );
         }
         for (i, hint) in notice.hints.iter().enumerate() {
             let path = format!("{path}.hints[{i}]");
@@ -320,6 +323,9 @@ impl Checker<'_> {
         let mut roles = BTreeSet::new();
         for (i, state) in self.def.states.iter().enumerate() {
             self.notice(&format!("states[{i}].notice"), state);
+            for set in state.set.iter().flat_map(OneOrMany::iter) {
+                self.need_writable_number(&format!("states[{i}].set"), &set.value);
+            }
             let path = format!("states[{i}]");
             if !seen.insert(&state.name) {
                 self.report(

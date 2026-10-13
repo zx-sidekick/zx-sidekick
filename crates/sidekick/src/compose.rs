@@ -123,39 +123,121 @@ pub(crate) fn in_role(session: &Session, role: Role) -> bool {
         .is_some_and(|d| d.is(session.state(), role))
 }
 
+/// Where a card `logical` pixels large goes at the foot of `on`, and its scale: as
+/// [`card_over`], but resting a margin above the bottom of `on`, so the middle stays clear.
+pub(crate) fn card_at_foot(
+    on: (u32, u32, u32, u32),
+    output: (u32, u32),
+    layout: Layout,
+    logical: (u32, u32),
+) -> ((u32, u32, u32, u32), f32) {
+    let ((x, _, w, h), scale) = card_over(on, output, layout, logical);
+    let foot = (on.1 + on.3).saturating_sub(h + device(MARGIN, scale));
+    (within((x, foot, w, h), output, scale), scale)
+}
+
+/// Whether the state the game was last known in has `role`: steady through frames that match
+/// no state, as a title passed only every few frames does.
+pub(crate) fn last_in_role(session: &Session, role: Role) -> bool {
+    session
+        .definition()
+        .is_some_and(|d| d.is(session.progress().last_known.as_deref(), role))
+}
+
 /// The pause notice a definition words, for a pad marked as `labels` says.
 pub(crate) fn pause_notice(definition: Option<&Definition>, labels: PadLabels) -> PauseNotice {
+    notice_of(definition, Role::Paused, labels).unwrap_or_else(|| PauseNotice {
+        pad: labels,
+        ..PauseNotice::default()
+    })
+}
+
+/// Frames a state seen only now and then still counts as there, for a notice: half a second.
+/// A title passed every few frames keeps its card; one left for a screen that matches no
+/// state loses it.
+const STILL_THERE: u32 = 25;
+
+/// The notice at the picture's foot, the picture not dimmed: on the loading screen, what goes
+/// on; at the title, how the game plays, when the definition words it.
+pub(crate) fn foot_notice(session: &Session, labels: PadLabels) -> Option<PauseNotice> {
+    if session.on_loading_screen() {
+        Some(loading_notice(labels))
+    } else if last_in_role(session, Role::Title) && session.frames_unmatched() < STILL_THERE {
+        notice_of(session.definition(), Role::Title, labels)
+    } else {
+        None
+    }
+}
+
+/// The loading screen's notice: a key goes on loading.
+fn loading_notice(labels: PadLabels) -> PauseNotice {
+    PauseNotice {
+        heading: "Loading screen".to_owned(),
+        text: "The rest of the game loads once you press a key.".to_owned(),
+        hints: vec![NoticeHint {
+            keys: Some("Any key".to_owned()),
+            pad: Some(PadMark::Start),
+            does: "go on".to_owned(),
+        }],
+        pad: labels,
+    }
+}
+
+/// A notice's keys as this computer names them: a Mac has no right Control, and its apps may
+/// take the right Option tapped twice for a shortcut, so the right Ctrl that fires is named as
+/// `/`, which fires too.
+fn host_keys(keys: &str, mac: bool) -> String {
+    if mac {
+        keys.replace("Right Ctrl", "/")
+    } else {
+        keys.to_owned()
+    }
+}
+
+/// The notice of the state with `role`, as the definition words it.
+fn notice_of(
+    definition: Option<&Definition>,
+    role: Role,
+    labels: PadLabels,
+) -> Option<PauseNotice> {
     let notice = definition
         .into_iter()
         .flat_map(|d| &d.states)
-        .find(|s| s.role == Some(Role::Paused))
-        .and_then(|s| s.notice.as_ref());
-    let Some(notice) = notice else {
-        return PauseNotice {
-            pad: labels,
-            ..PauseNotice::default()
-        };
-    };
-    PauseNotice {
+        .find(|s| s.role == Some(role))
+        .and_then(|s| s.notice.as_ref())?;
+    let heading = notice.heading.clone().unwrap_or_else(|| {
+        if role == Role::Title {
+            "How it plays"
+        } else {
+            "Paused"
+        }
+        .to_owned()
+    });
+    Some(PauseNotice {
+        heading,
         text: notice.text.clone(),
         hints: notice
             .hints
             .iter()
             .map(|hint| NoticeHint {
-                keys: hint.keys.clone(),
+                keys: hint
+                    .keys
+                    .as_deref()
+                    .map(|keys| host_keys(keys, cfg!(target_os = "macos"))),
                 pad: hint.pad.as_deref().and_then(|part| match part {
                     "west" => Some(PadMark::Face(Face::West)),
                     "south" => Some(PadMark::Face(Face::South)),
                     "east" => Some(PadMark::Face(Face::East)),
                     "north" => Some(PadMark::Face(Face::North)),
                     "dpad" | "stick" => Some(PadMark::Directions),
+                    "start" => Some(PadMark::Start),
                     _ => None,
                 }),
                 does: hint.does.clone(),
             })
             .collect(),
         pad: labels,
-    }
+    })
 }
 
 /// The window, `size` device pixels large, as the player sees a game at guidance `level` with
@@ -193,6 +275,14 @@ pub(crate) fn window(
         );
         let notice = pause_notice(session.definition(), labels).draw(fonts, scale);
         out.canvas(&notice, at, 255);
+    } else if let Some(notice) = foot_notice(session, labels) {
+        let (at, scale) = card_at_foot(
+            layout.picture,
+            size,
+            layout,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
+        out.canvas(&notice.draw(fonts, scale), at, 255);
     }
     out.rgba
 }
@@ -274,6 +364,28 @@ fn mul(value: u8, by: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_mac_names_the_right_ctrl_as_the_slash() {
+        assert_eq!(host_keys("Right Ctrl", true), "/");
+        assert_eq!(host_keys("Right Ctrl", false), "Right Ctrl");
+        assert_eq!(host_keys("0", true), "0");
+    }
+
+    #[test]
+    fn the_title_s_notice_rests_at_the_picture_s_foot() {
+        let layout = layout((1920, 1080), (256, 192), true);
+        let picture = layout.picture;
+        let ((x, y, w, h), _) = card_at_foot(
+            picture,
+            (1920, 1080),
+            layout,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+        );
+        assert!(y + h < picture.1 + picture.3, "inside the picture's foot");
+        assert!(y > picture.1 + picture.3 / 2, "in its lower half");
+        assert_eq!(x + w / 2, picture.0 + picture.2 / 2, "centred across it");
+    }
+
     use super::*;
     use sidekick_core::{Machine, Model};
     use sidekick_ui::MENU_WIDTH;

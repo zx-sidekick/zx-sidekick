@@ -28,6 +28,10 @@ fn starquake_loads_and_its_game_runs() {
     // The loading screen waits for a key, as on a Spectrum.
     let colors: BTreeSet<u8> = machine.picture().pixels().iter().copied().collect();
     assert!(colors.len() > 2, "the loading screen is up: {colors:?}");
+    assert!(
+        machine.waits_on_loading_screen(),
+        "its loader waits for a key"
+    );
     machine.key(Key::Space, true);
     for _ in 0..5 {
         machine.run_frame().expect("a frame");
@@ -38,6 +42,10 @@ fn starquake_loads_and_its_game_runs() {
         machine.registers().get_pc() >= 0x4000
     });
     assert!(in_game, "after a key, the game's own code runs");
+    assert!(
+        !machine.waits_on_loading_screen(),
+        "the loading screen's notice goes with the key"
+    );
 }
 
 /// Runs frames until `done` holds, at most `most`; returns whether it did.
@@ -260,13 +268,14 @@ fn no_harm_keeps_blob_s_lives_against_deadly_scenery() {
     let Some(mut s) = in_play_on_the_joystick() else {
         return;
     };
+    // Long enough to meet harm whatever the game's seed, which the title's timing decides.
     let mut without = s.clone();
     assert!(
-        lives_lost_walking(&mut without, 1200) > 0,
+        lives_lost_walking(&mut without, 3600) > 0,
         "the walk does meet harm"
     );
     s.switch("no-harm", true).expect("it goes on");
-    assert_eq!(lives_lost_walking(&mut s, 1200), 0, "with the switch, none");
+    assert_eq!(lives_lost_walking(&mut s, 3600), 0, "with the switch, none");
 }
 
 fn repo() -> PathBuf {
@@ -647,5 +656,21 @@ fn the_pad_s_start_pauses_the_game_in_play() {
     assert!(
         until(&mut s, 50, |s| s.state() == Some("paused")),
         "Start's tap pauses the game"
+    );
+}
+
+#[test]
+fn a_game_started_from_the_keyboard_plays_on_the_joystick() {
+    // Started with 0 alone, which picks the keyboard on the original's title.
+    let Some(mut s) = in_play() else { return };
+    until(&mut s, 50, |_| false);
+    let x = |s: &Session| s.reading()["blob_x"].number();
+    let before = x(&s);
+    s.machine_mut().kempston(Kempston::Right, true);
+    until(&mut s, 40, |_| false);
+    s.machine_mut().kempston(Kempston::Right, false);
+    assert!(
+        x(&s) > before,
+        "the joystick moves BLOB: the title chose it"
     );
 }

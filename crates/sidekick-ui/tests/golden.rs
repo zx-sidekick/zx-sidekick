@@ -146,6 +146,7 @@ fn the_library() {
 
 fn paused(pad: PadLabels) -> PauseNotice {
     PauseNotice {
+        heading: "Paused".to_owned(),
         text: "Move or fire to go on.".to_owned(),
         hints: vec![
             NoticeHint {
@@ -176,6 +177,25 @@ fn the_pause_notice() {
     golden(
         "paused-unworded.png",
         &PauseNotice::default().draw(&mut fonts, 1.0).png(),
+    );
+    let title = PauseNotice {
+        heading: "Ignore the list".to_owned(),
+        text: "Play with the arrow keys or a gamepad.".to_owned(),
+        hints: vec![NoticeHint {
+            keys: Some("0".to_owned()),
+            pad: Some(PadMark::Start),
+            does: "start".to_owned(),
+        }],
+        ..paused(PadLabels::Letters)
+    };
+    golden("title-notice.png", &title.draw(&mut fonts, 1.0).png());
+    let shapes = PauseNotice {
+        pad: PadLabels::Shapes,
+        ..title
+    };
+    golden(
+        "title-notice-playstation.png",
+        &shapes.draw(&mut fonts, 1.0).png(),
     );
 }
 

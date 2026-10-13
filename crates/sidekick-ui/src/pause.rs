@@ -25,6 +25,8 @@ pub enum PadMark {
     Face(Face),
     /// The D-pad or the stick, as arrows.
     Directions,
+    /// The Start button, as the pad's maker marks it.
+    Start,
 }
 
 /// One thing to press, and what it does.
@@ -41,6 +43,8 @@ pub struct NoticeHint {
 /// The pause notice.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PauseNotice {
+    /// Its heading: "Paused".
+    pub heading: String,
     /// Its line.
     pub text: String,
     /// What to press.
@@ -53,6 +57,7 @@ impl Default for PauseNotice {
     /// The notice for a game whose definition doesn't word its own.
     fn default() -> Self {
         Self {
+            heading: "Paused".to_owned(),
             text: "Press a key or a button to go on.".to_owned(),
             hints: Vec::new(),
             pad: PadLabels::default(),
@@ -83,7 +88,7 @@ impl PauseNotice {
         let title = Style::new(24.0, colors::TEXT).weight(Weight::Bold);
         c.text(
             fonts,
-            "Paused",
+            &self.heading,
             (27.0, 22.0),
             Fonts::normal_line_height(&title),
             Align::Left,
@@ -117,6 +122,7 @@ impl PauseNotice {
                     // Arrows on the keyboard stand for the D-pad too.
                     PadMark::Directions if keys.is_some() => None,
                     PadMark::Directions => Some(Press::Arrows("← ↑ → ↓")),
+                    PadMark::Start => Some(self.pad.start()),
                 });
                 keys.into_iter().chain(pad).collect()
             })
