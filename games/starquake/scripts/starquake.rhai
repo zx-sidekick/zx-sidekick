@@ -288,12 +288,16 @@ fn door_cards(seed, room) {
     [first, second, third].map(|card| (card & 0x3F) % 5 + 9)
 }
 
-// Every door on the planet, by room, with its cards for this game.
-fn every_door(mem, loaded) {
+// Every door on the planet with its cards for this game: those met first, keeping the numbers
+// they had, then the rest by room.
+fn every_door(mem, loaded, met) {
     let seed = mem.value("seed");
-    let all = [];
+    let all = met;
+    let rooms = met.map(|door| door.room);
     for door in loaded.doors {
-        all.push(#{ room: door.room, cards: door_cards(seed, door.room) });
+        if !rooms.contains(door.room) {
+            all.push(#{ room: door.room, cards: door_cards(seed, door.room) });
+        }
     }
     all
 }
@@ -483,10 +487,11 @@ fn on_frame(mem, loaded, prev, kept, level) {
     if walked != () {
         keep["rooms-walked"] = [walked];
     }
+    let met = doors_met(mem, kept);
     let listed = if level >= 6 && "doors" in loaded {
-        every_door(mem, loaded)
+        every_door(mem, loaded, met)
     } else {
-        doors_met(mem, kept)
+        met
     };
     #{
         core: core(mem, carrying),

@@ -467,3 +467,47 @@ fn no_item_off_the_floor_is_marked() {
     let pictures: Vec<i64> = item_marks(&s).iter().map(|&(p, _, _)| p).collect();
     assert_eq!(pictures, [30, 31]);
 }
+
+#[test]
+fn a_door_met_keeps_its_number_at_level_6() {
+    let mut s = session();
+    blank_planet(&mut s);
+    // Security doors in rooms 30 and 40, as in the level 6 test above.
+    poke_into(&mut s, "tile_types", 1, &[0x05]);
+    poke_into(&mut s, "large_tiles", 12, &[0, 0, 0, 1]);
+    poke_into(&mut s, "rooms", 30 * 12, &[3]);
+    poke_into(&mut s, "rooms", 40 * 12, &[3]);
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    // The door in room 40 met this game.
+    let mut kept = s.kept().clone();
+    kept.insert("doors-met".to_owned(), vec!["4660:40:9-12-13".to_owned()]);
+    s.set_kept(kept);
+    enter(&mut s, "play");
+    s.set_level(2);
+    s.run_frame().expect("a frame");
+    let cards = |door: &Fact| -> Vec<i64> {
+        list(field(door, "cards"))
+            .iter()
+            .map(|card| number(field(card, "picture")))
+            .collect()
+    };
+    let doors = result(&s, "doors");
+    assert_eq!(doors.len(), 1);
+    assert_eq!(field(&doors[0], "label"), &Fact::Number(1));
+
+    s.set_level(6);
+    s.run_frame().expect("a frame");
+    let doors = result(&s, "doors");
+    assert_eq!(doors.len(), 2);
+    assert_eq!(field(&doors[0], "label"), &Fact::Number(1));
+    assert_eq!(
+        cards(&doors[0]),
+        [9, 12, 13],
+        "the door met is still door 1"
+    );
+    assert_eq!(
+        field(&doors[1], "label"),
+        &Fact::Number(2),
+        "then room 30's"
+    );
+}
