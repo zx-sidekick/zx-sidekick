@@ -34,11 +34,13 @@ fn header(kind: u8, name: &[u8; 10], len: u16, one: u16, two: u16) -> Vec<u8> {
 /// A tape of our own: `10 LOAD ""SCREEN$: LOAD ""CODE: CLS: RANDOMIZE USR 32768`,
 /// auto-running; a screen all red paper; and two bytes of code at 32768 that loop on the spot
 /// (`JR $`). The `CLS` after the last block would wipe the screen if the hold came later.
-/// With `pause`, `PAUSE 0` after the screen waits for a key, as many loaders do.
+/// With `pause`, `PAUSE 0` after the screen waits for a key, as many loaders do, then
+/// `PAUSE 100` holds it two seconds more.
 fn tape(pause: bool) -> Vec<u8> {
     let mut line = vec![0xEF, b'"', b'"', 0xAA, b':'];
     if pause {
         line.extend_from_slice(&[0xF2, b'0', 0x0E, 0, 0, 0, 0, 0, b':']);
+        line.extend_from_slice(&[0xF2, b'1', b'0', b'0', 0x0E, 0, 0, 100, 0, 0, b':']);
     }
     line.extend_from_slice(&[0xEF, b'"', b'"', 0xAF, b':', 0xFB, b':', 0xF9, 0xC0]);
     line.extend_from_slice(b"32768");
@@ -156,7 +158,10 @@ fn a_loader_s_own_pause_is_a_loading_screen_waiting_for_a_key() {
     s.machine_mut().key(Key::A, false);
     for _ in 0..LOADING_FRAMES {
         s.run_frame().expect("a frame");
-        assert!(!s.on_loading_screen(), "a key goes on loading");
+        assert!(
+            !s.on_loading_screen(),
+            "a key goes on loading; the timed pause after it isn't a wait"
+        );
     }
     assert_eq!(s.machine().peek(CODE), 0x18, "the code is in");
 }
