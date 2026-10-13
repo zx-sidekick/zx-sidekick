@@ -883,8 +883,9 @@ fn needed(mem) {
 
 // The items lying in rooms, each with its room and kind, by what the game does with its
 // picture (docs/re/starquake.md): a core piece still needed, but not the twin of one BLOB
-// carries; a card, 9 to 13 for doors and 14 and 15 that answer any card; the key, 16; anything
-// else is a core piece a pyramid takes. Packs (17 to 24) act when picked up: nothing to fetch.
+// carries; a card, 9 to 13 for doors, 14 answering any one card and 15 every card; the key, 16;
+// anything else is a core piece a pyramid takes. Packs (17 to 24) are a room's bonus, never in
+// the item table, and act as they're touched: nothing to fetch.
 // Not those off the floor (rows 1 to 5: the game lays an item down at row 6 or more, and a
 // carried one has a row below that), nor those kept in the core's room. Which pieces are needed
 // is only `known` once the core has been seen, below level 4.

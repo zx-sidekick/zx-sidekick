@@ -913,3 +913,275 @@ fn the_code_card_sits_just_under_the_line_the_booth_types_its_code_on() {
         "the card's top is the row just under the code line, row {line}"
     );
 }
+
+/// A Spectrum key by the name a definition gives it: a letter, a digit or `SPACE`.
+fn key_named(name: &str) -> Key {
+    let keys = [
+        ("A", Key::A),
+        ("B", Key::B),
+        ("C", Key::C),
+        ("D", Key::D),
+        ("E", Key::E),
+        ("F", Key::F),
+        ("G", Key::G),
+        ("H", Key::H),
+        ("I", Key::I),
+        ("J", Key::J),
+        ("K", Key::K),
+        ("L", Key::L),
+        ("M", Key::M),
+        ("N", Key::N),
+        ("O", Key::O),
+        ("P", Key::P),
+        ("Q", Key::Q),
+        ("R", Key::R),
+        ("S", Key::S),
+        ("T", Key::T),
+        ("U", Key::U),
+        ("V", Key::V),
+        ("W", Key::W),
+        ("X", Key::X),
+        ("Y", Key::Y),
+        ("Z", Key::Z),
+        ("SPACE", Key::Space),
+    ];
+    let Some(&(_, key)) = keys.iter().find(|(n, _)| *n == name) else {
+        panic!("a key this test doesn't name: {name}");
+    };
+    key
+}
+
+#[test]
+fn a_s_d_f_g_held_together_end_the_game() {
+    let Some(mut s) = in_play() else { return };
+    until(&mut s, 50, |_| false);
+    let end = s
+        .definition()
+        .and_then(|d| d.actions.iter().find(|a| a.id == "end-game"))
+        .cloned()
+        .expect("the end-game action");
+    let keys: Vec<Key> = end.tap.iter().map(|name| key_named(name)).collect();
+    for &key in &keys {
+        s.machine_mut().key(key, true);
+    }
+    let ended = until(&mut s, end.frames.map_or(1, |f| f as usize), |s| {
+        s.state() == Some("game_over")
+    });
+    assert!(ended, "the game is over: {:?}", s.state());
+    assert_eq!(
+        s.reading()["lives"].number(),
+        Some(4),
+        "with lives still left"
+    );
+}
+
+/// The address of a value in the session's definition.
+fn addr(s: &Session, name: &str) -> u16 {
+    s.definition().expect("its definition").values[name]
+        .addr
+        .expect("an address")
+        .0
+}
+
+#[test]
+fn a_new_game_s_core_wants_five_pieces_at_random_and_a_piece_delivered_fills_its_slot() {
+    let Some(mut s) = on_the_joystick(50) else {
+        return;
+    };
+    s.switch("no-harm", true).expect("it goes on");
+    let slots = addr(&s, "core_slots");
+    let slot = |s: &Session, k: u8| s.machine().peek(slots + u16::from(k));
+    assert_eq!(s.reading()["pieces_missing"].number(), Some(9));
+    assert!(
+        (0..9).all(|k| slot(&s, k) & 0x80 != 0),
+        "every piece missing"
+    );
+    let own = (0..9).filter(|&k| slot(&s, k) & 0x7F == k).count();
+    assert_eq!(own, 4, "four slots want their own number's picture");
+    let random: Vec<u8> = (0..9)
+        .map(|k| slot(&s, k) & 0x7F)
+        .filter(|&picture| picture > 8)
+        .collect();
+    assert_eq!(random.len(), 5);
+    assert!(
+        random
+            .iter()
+            .all(|p| (9..=14).contains(p) || (26..=34).contains(p)),
+        "five among the cards, 14 and the pieces from 26: {random:?}"
+    );
+
+    // Carrying the piece the first random slot wants, walking right into the core's room.
+    let wanted = (0..9)
+        .find(|&k| slot(&s, k) & 0x7F > 8)
+        .expect("a random slot");
+    let piece = slot(&s, wanted) & 0x7F;
+    let carried = addr(&s, "carried");
+    enter_room(&mut s, &[("room", 198), ("blob_x", 224), ("blob_y", 39)]);
+    s.machine_mut().write(carried, piece);
+    s.machine_mut().write(carried + 1, 3);
+    s.machine_mut().kempston(Kempston::Right, true);
+    assert!(
+        until(&mut s, 600, |s| s.reading()["pieces_missing"].number()
+            == Some(8)),
+        "the piece is delivered"
+    );
+    s.machine_mut().kempston(Kempston::Right, false);
+    assert_eq!(
+        slot(&s, wanted),
+        wanted,
+        "its slot, no longer missing, holds its own number"
+    );
+    assert_eq!(
+        (s.machine().peek(carried), s.machine().peek(carried + 1)),
+        (0, 0),
+        "and BLOB no longer carries it"
+    );
+}
+
+/// Enters `room`, and puts BLOB on the first of its interactions of `kind`, at the sync point;
+/// returns false if the room has none.
+fn onto(s: &mut Session, room: i64, kind: i64) -> bool {
+    walk_into(s, room);
+    let Read::Table(entries) = &s.reading()["interactions"] else {
+        panic!("the room's interactions");
+    };
+    let Some((x, height)) = entries
+        .iter()
+        .find(|e| e["kind"].number() == Some(kind))
+        .map(|e| (e["x"].number(), e["height"].number()))
+    else {
+        return false;
+    };
+    assert!(
+        (0..200).any(|_| s.run_to_sync().expect("a frame")),
+        "the sync point"
+    );
+    s.write("blob_x", x.expect("x")).expect("writable");
+    s.write("blob_y", height.expect("height"))
+        .expect("writable");
+    true
+}
+
+/// The teleport table's records: each one's code and room.
+fn teleports(s: &Session) -> Vec<(String, i64)> {
+    let Read::Table(records) = &s.reading()["teleports"] else {
+        panic!("the teleport table");
+    };
+    records
+        .iter()
+        .map(|r| {
+            let Read::Text(code) = &r["code"] else {
+                panic!("a code")
+            };
+            (code.clone(), r["room"].number().expect("a room"))
+        })
+        .collect()
+}
+
+#[test]
+fn a_booth_shows_its_own_code_and_another_s_code_sends_blob_there() {
+    let Some(mut s) = on_the_joystick(50) else {
+        return;
+    };
+    s.switch("no-harm", true).expect("it goes on");
+    let records = teleports(&s);
+    let (own, here) = records[0].clone();
+    let (code, there) = records[1].clone();
+    // A booth's place is where BLOB, moving, starts it.
+    assert!(onto(&mut s, here, 13), "room {here} has a booth");
+    s.machine_mut().kempston(Kempston::Right, true);
+    assert!(
+        until(&mut s, 50, |s| s.state() == Some("booth")),
+        "the booth asks for a code"
+    );
+    s.machine_mut().kempston(Kempston::Right, false);
+    assert_eq!(s.reading()["booth_code"], Read::Text(own), "its own code");
+
+    for letter in code.chars() {
+        let key = key_named(&letter.to_string());
+        assert!(until(&mut s, 50, |s| s.state() == Some("booth")));
+        s.machine_mut().key(key, true);
+        until(&mut s, 2, |_| false);
+        s.machine_mut().key(key, false);
+        until(&mut s, 2, |_| false);
+    }
+    assert!(
+        until(&mut s, 200, |s| s.reading()["room"].number() == Some(there)),
+        "{code} goes to room {there}"
+    );
+}
+
+#[test]
+fn the_key_unlocks_a_locked_door_s_post_for_the_rest_of_the_game() {
+    let Some(base) = on_the_joystick(50) else {
+        return;
+    };
+    let locked = |s: &Session| -> Vec<(i64, bool)> {
+        let Read::Table(doors) = &s.reading()["locked_doors"] else {
+            panic!("the locked doors");
+        };
+        doors
+            .iter()
+            .map(|d| {
+                let room = d["room_low"].number().expect("a room")
+                    + 256 * d["room_high"].number().expect("its ninth bit");
+                (room, d["locked"] == Read::Flag(true))
+            })
+            .collect()
+    };
+    let doors = locked(&base);
+    assert!(doors.iter().all(|&(_, l)| l), "a new game locks them all");
+    let room = doors[0].0;
+
+    let at_the_post = |carrying: u8| {
+        let mut s = base.clone();
+        s.switch("no-harm", true).expect("it goes on");
+        assert!(onto(&mut s, room, 11), "room {room} has a post");
+        let carried = addr(&s, "carried");
+        s.machine_mut().write(carried, carrying);
+        s.machine_mut().write(carried + 1, 3);
+        until(&mut s, 10, |_| false);
+        s
+    };
+    let without = at_the_post(15);
+    assert!(locked(&without)[0].1, "still locked without the key");
+    let mut with = at_the_post(16);
+    assert!(!locked(&with)[0].1, "unlocked by the key");
+    walk_into(&mut with, room + 1);
+    walk_into(&mut with, room);
+    assert!(!locked(&with)[0].1, "and it stays unlocked");
+}
+
+#[test]
+fn a_carried_15_answers_every_card_at_a_security_door() {
+    let Some(base) = in_play_on_the_joystick() else {
+        return;
+    };
+    let situation = situation("door");
+    let values: Vec<(&str, i64)> = situation
+        .values
+        .iter()
+        .map(|(name, &number)| (name.as_str(), number))
+        .collect();
+    // Walks left into the door carrying `picture`, and returns where BLOB is once it's done.
+    let through = |picture: u8| {
+        let mut s = base.clone();
+        s.switch("no-harm", true).expect("it goes on");
+        enter_room(&mut s, &values);
+        let carried = addr(&s, "carried");
+        s.machine_mut().write(carried, picture);
+        s.machine_mut().write(carried + 1, 3);
+        s.machine_mut().kempston(Kempston::Left, true);
+        assert!(until(&mut s, 200, |s| s.state() == Some("door")));
+        s.machine_mut().kempston(Kempston::Left, false);
+        assert!(until(&mut s, 600, |s| s.state() == Some("play")));
+        until(&mut s, 100, |_| false);
+        s.reading()["blob_x"].number().expect("x")
+    };
+    let stopped = through(0);
+    assert_eq!(
+        through(15),
+        stopped - 48,
+        "the door moves BLOB 48 pixels on"
+    );
+}
