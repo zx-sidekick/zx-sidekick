@@ -5,6 +5,9 @@
 //! A script has no files, network or clock, and every call is limited in operations, depth and
 //! size. One that goes over a limit, or fails, is turned off: it says why, and stays off.
 
+mod grid;
+
+pub use grid::{Grid, Parts};
 use rhai::{Array, CallFnOptions, Dynamic, Engine, EvalAltResult, Map, Position, Scope, AST};
 use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
@@ -204,6 +207,7 @@ fn engine() -> Engine {
         .set_max_map_size(MOST_ENTRIES)
         .set_max_expr_depths(64, 32);
     engine.disable_symbol("eval");
+    grid::register(&mut engine);
     engine.on_print(|_| {});
     engine.on_debug(|_, _, _| {});
     engine
@@ -480,6 +484,48 @@ mod tests {
         assert_eq!(
             script.on_frame(&view()).unwrap_err(),
             "on_frame: took too many steps"
+        );
+    }
+
+    #[test]
+    fn a_frame_can_work_out_every_room_of_a_planet_with_the_grid() {
+        // 512 rooms of 32 x 18 cells, a wall down the middle of each: places, parts and seams
+        // for them all, well within one frame's steps.
+        let mut script = Script::compile(
+            r"
+            fn on_frame(mem) {
+                let cells = [];
+                for row in 0..18 {
+                    for col in 0..32 {
+                        cells.push(col == 15 || col == 16);
+                    }
+                }
+                let total = 0;
+                let walls = 0;
+                for room in 0..512 {
+                    let g = grid(32, 18, cells);
+                    let parts = g.parts(2, 2);
+                    total += parts.count;
+                    let seam = g.seams(parts, [parts.at(0, 0), parts.at(30, 0)]);
+                    walls += seam.filter(|c| c).len();
+                }
+                #{ parts: total, walls: walls, left: g_at() }
+            }
+            fn g_at() { grid(4, 2, [0, 1, 0, 0, 0, 1, 0, 0]).parts(1, 1).at(1, 0) }
+            ",
+        )
+        .unwrap();
+        let results = script.on_frame(&view()).unwrap();
+        assert_eq!(results["parts"], Fact::Number(1024), "two parts a room");
+        assert_eq!(
+            results["walls"],
+            Fact::Number(512 * 36),
+            "the wall, top to bottom"
+        );
+        assert_eq!(
+            results["left"],
+            Fact::Nothing,
+            "no place on a blocking cell"
         );
     }
 
