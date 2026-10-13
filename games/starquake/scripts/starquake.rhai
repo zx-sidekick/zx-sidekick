@@ -450,17 +450,20 @@ fn needed(mem) {
     pictures
 }
 
-// The items lying in rooms, each with its room and kind: a core piece still needed, or another
-// item colored by what it does (a door's card, the key to the locked doors, anything else).
-// Not those off the floor (rows 1 to 5: the game lays an item down at row 6 or more, and
-// a carried one has a row below that), nor those kept in the core's room.
-fn items(mem) {
+// The items lying in rooms, each with its room and kind, by what the game does with its
+// picture (docs/re/starquake.md): a core piece still needed, but not the twin of one BLOB
+// carries; a card, 9 to 13 for doors and 14 and 15 that answer any card; the key, 16; anything
+// else is a core piece a pyramid takes. Packs (17 to 24) act when picked up: nothing to fetch.
+// Not those off the floor (rows 1 to 5: the game lays an item down at row 6 or more, and a
+// carried one has a row below that), nor those kept in the core's room.
+fn items(mem, carrying) {
     let pieces = needed(mem);
     let lying = [];
     for item in mem.table("items") {
         let picture = item.picture;
         let row = item.second & 0x7F;
-        if picture >= picture_count() || (row >= 1 && row <= 5) {
+        let pack = picture >= 17 && picture <= 24;
+        if picture >= picture_count() || pack || (row >= 1 && row <= 5) {
             continue;
         }
         let room = item.room_low + (item.second >> 7) * 256;
@@ -468,11 +471,11 @@ fn items(mem) {
             continue;
         }
         let mark = #{ kind: "item", x: room % 16, y: room / 16, room: room, picture: picture };
-        if pieces.contains(picture) {
+        if pieces.contains(picture) && !carrying.contains(picture) {
             mark.kind = "piece";
             mark.color = "first";
-        } else if picture >= 9 && picture <= 13 {
-            mark.color = 5;
+        } else if picture >= 9 && picture <= 15 {
+            mark.color = "#A066FF";
         } else if picture == 16 {
             mark.color = 6;
         } else {
@@ -485,7 +488,7 @@ fn items(mem) {
 
 // The map: the rooms walked, or at level 6 every room, with their walls; the teleports and
 // doors in them; from level 3 the items in rooms walked, from level 4 in every room; BLOB's room.
-fn map(mem, loaded, kept, rooms, level) {
+fn map(mem, loaded, kept, rooms, level, carrying) {
     let everything = level >= 6 && loaded.cells.len() == 512;
     let cells = [];
     if everything {
@@ -507,7 +510,7 @@ fn map(mem, loaded, kept, rooms, level) {
         markers.push(#{ kind: "door", x: door.room % 16, y: door.room / 16 });
     }
     if level >= 3 {
-        for item in items(mem) {
+        for item in items(mem, carrying) {
             if level >= 4 || `${item.room}` in rooms {
                 item.remove("room");
                 markers.push(item);
@@ -542,7 +545,7 @@ fn on_frame(mem, loaded, prev, kept, level) {
         core: core(mem, carrying),
         teleports: teleports(mem, kept, level),
         doors: doors(listed, carrying),
-        map: map(mem, loaded, kept, rooms, level),
+        map: map(mem, loaded, kept, rooms, level, carrying),
         kept: keep,
         room: mem.value("room"),
         walls: walls(mem),
