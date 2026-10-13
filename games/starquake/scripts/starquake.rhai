@@ -399,7 +399,7 @@ fn needed(mem) {
 // The items lying in rooms, each with its room and kind: a core piece still needed, or another
 // item colored by what it does (a door's card, the key to the locked doors, anything else).
 // Not those off the floor (rows 1 to 5: the game lays an item down at row 6 or more, and
-// picking one up sets its row to 1), nor those kept in the core's room.
+// a carried one has a row below that), nor those kept in the core's room.
 fn items(mem) {
     let pieces = needed(mem);
     let lying = [];
