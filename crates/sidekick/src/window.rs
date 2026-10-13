@@ -1753,6 +1753,7 @@ fn first_screen(start: Start) -> Screen {
             page: LibraryPage {
                 games: games.iter().map(Game::entry).collect(),
                 chosen: 0,
+                pressed: None,
                 pad: PadLabels::default(),
             },
             games,

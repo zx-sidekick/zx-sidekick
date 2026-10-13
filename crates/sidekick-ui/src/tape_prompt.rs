@@ -28,6 +28,17 @@ pub struct TapePrompt {
     pub refusal: Option<Refusal>,
     /// What the last pad used marks its buttons with, once a pad is plugged in.
     pub pad: Option<PadLabels>,
+    /// The button pressed, drawn pressed while its press shows.
+    pub pressed: Option<PromptButton>,
+}
+
+/// One of the prompt's buttons.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PromptButton {
+    /// "Locate the tape…".
+    Locate,
+    /// The one that opens the download page.
+    Download,
 }
 
 /// Why a file offered as the tape wasn't taken: a heading and a line.
@@ -46,6 +57,8 @@ const ERROR_BG: Color = Color::rgb(0x2A, 0x14, 0x16);
 const ERROR_EDGE: Color = Color::rgb(0x6A, 0x2A, 0x2E);
 const ERROR_TEXT: Color = Color::rgb(0xD9, 0xB4, 0xB6);
 const DROP_BG: Color = Color::rgb(0x10, 0x12, 0x1A);
+/// The Locate button's fill while it's pressed: a step lighter than the accent.
+const LOCATE_PRESSED: Color = Color::rgb(0xB1, 0xCA, 0xFF);
 
 impl TapePrompt {
     /// Where the drop zone starts: lower when a refusal is shown above it.
@@ -165,12 +178,12 @@ impl TapePrompt {
                 dash: Some((6.0, 4.0)),
             }),
         );
-        c.rect(
-            (383.0, y + 36.0, 194.0, 44.0),
-            6.0,
-            Some(colors::ACCENT),
-            None,
-        );
+        let (fill, edge) = if self.pressed == Some(PromptButton::Locate) {
+            (LOCATE_PRESSED, Some(Line::solid(colors::ACCENT, 1.5)))
+        } else {
+            (colors::ACCENT, None)
+        };
+        c.rect((383.0, y + 36.0, 194.0, 44.0), 6.0, Some(fill), edge);
         let button = Style::new(16.0, colors::PROMPT).weight(Weight::SemiBold);
         c.text(
             fonts,
@@ -234,11 +247,16 @@ impl TapePrompt {
             Align::Left,
             &url,
         );
+        let (background, edge) = if self.pressed == Some(PromptButton::Download) {
+            (colors::PRESSED, Line::solid(colors::ACCENT, 1.5))
+        } else {
+            (colors::CARD, Line::solid(colors::EDGE, 1.0))
+        };
         c.rect(
             (616.0, d + 36.0, 224.0, 38.0),
             6.0,
-            Some(colors::CARD),
-            Some(Line::solid(colors::EDGE, 1.0)),
+            Some(background),
+            Some(edge),
         );
         let open = Style::new(15.0, colors::TEXT).weight(Weight::Medium);
         c.text(

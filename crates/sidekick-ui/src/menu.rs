@@ -61,6 +61,8 @@ pub struct Menu {
     pub actions: Vec<String>,
     /// The row chosen.
     pub chosen: Row,
+    /// The row or button pressed, drawn pressed while its press shows.
+    pub pressed: Option<Row>,
     /// An action pressed once, waiting for a second press: its index, and what the second
     /// press does ("end this game").
     pub armed: Option<(usize, String)>,
@@ -248,7 +250,7 @@ impl Menu {
             );
         }
         for (i, (switch, &top)) in self.switches.iter().zip(&layout.switches).enumerate() {
-            self.switch_row(&mut c, fonts, top, switch, self.chosen == Row::Switch(i));
+            self.switch_row(&mut c, fonts, top, switch, self.lit(Row::Switch(i)));
         }
         c.rect((1.0, layout.rule, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
         for (i, (action, &top)) in self.actions.iter().zip(&layout.actions).enumerate() {
@@ -289,19 +291,29 @@ impl Menu {
         c
     }
 
-    fn chosen_box(c: &mut Canvas, (x, y, w, h): (f32, f32, f32, f32)) {
+    /// A row's fill when it's lit: pressed, or chosen.
+    fn lit(&self, row: Row) -> Option<Color> {
+        if self.pressed == Some(row) {
+            Some(colors::PRESSED)
+        } else {
+            (self.chosen == row).then_some(CHOSEN_BG)
+        }
+    }
+
+    fn chosen_box(c: &mut Canvas, (x, y, w, h): (f32, f32, f32, f32), fill: Color) {
         c.rect(
             (x, y, w, h),
             8.0,
-            Some(CHOSEN_BG),
+            Some(fill),
             Some(Line::solid(colors::ACCENT, 1.5)),
         );
     }
 
     fn level_box(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, levels: &Levels) {
-        let chosen = self.chosen == Row::Level;
-        if chosen {
-            Self::chosen_box(c, (12.0, top, 494.0, LEVEL_BOX));
+        let lit = self.lit(Row::Level);
+        let chosen = lit.is_some();
+        if let Some(fill) = lit {
+            Self::chosen_box(c, (12.0, top, 494.0, LEVEL_BOX), fill);
         } else {
             c.rect(
                 (12.0, top, 494.0, LEVEL_BOX),
@@ -398,15 +410,15 @@ impl Menu {
         fonts: &mut Fonts,
         top: f32,
         row: &SwitchRow,
-        chosen: bool,
+        lit: Option<Color>,
     ) {
-        if chosen {
+        if let Some(fill) = lit {
             let height = if row.refusal.is_some() {
                 30.0 + REFUSAL
             } else {
                 30.0
             };
-            Self::chosen_box(c, (12.0, top - 7.0, 494.0, height));
+            Self::chosen_box(c, (12.0, top - 7.0, 494.0, height), fill);
         }
         let label = Style::new(14.0, SWITCH_TEXT).weight(Weight::Medium);
         span(c, fonts, &row.label, (27.0, top), Align::Left, &label);
@@ -430,8 +442,8 @@ impl Menu {
         for (i, (word, keys)) in SAVE_BUTTONS.iter().enumerate() {
             #[allow(clippy::cast_precision_loss, reason = "three buttons")]
             let x = 12.0 + i as f32 * 168.0;
-            if self.chosen == Row::Save(i) {
-                Self::chosen_box(c, (x, top, 160.0, 39.0));
+            if let Some(fill) = self.lit(Row::Save(i)) {
+                Self::chosen_box(c, (x, top, 160.0, 39.0), fill);
             } else {
                 c.rect(
                     (x, top, 160.0, 39.0),
@@ -481,8 +493,8 @@ impl Menu {
     }
 
     fn action_row(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, i: usize, action: &str) {
-        if self.chosen == Row::Action(i) {
-            Self::chosen_box(c, (12.0, top - 9.0, 494.0, 36.0));
+        if let Some(fill) = self.lit(Row::Action(i)) {
+            Self::chosen_box(c, (12.0, top - 9.0, 494.0, 36.0), fill);
         }
         let armed = self.armed.as_ref().filter(|(at, _)| *at == i);
         let (words, color) = armed.map_or_else(

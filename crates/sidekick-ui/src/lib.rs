@@ -45,7 +45,7 @@ pub use pause::{
     WIDTH as PAUSE_NOTICE_WIDTH,
 };
 pub use tape_prompt::{
-    Refusal, TapePrompt, HEIGHT as TAPE_PROMPT_HEIGHT, WIDTH as TAPE_PROMPT_WIDTH,
+    PromptButton, Refusal, TapePrompt, HEIGHT as TAPE_PROMPT_HEIGHT, WIDTH as TAPE_PROMPT_WIDTH,
 };
 pub use text::{Fonts, Style, Weight};
 
@@ -102,6 +102,8 @@ pub mod colors {
     pub const KEY_EDGE: Color = Color::rgb(0x50, 0x54, 0x5E);
     /// The accent: buttons, selections.
     pub const ACCENT: Color = Color::rgb(0x8F, 0xB4, 0xFF);
+    /// A button's or row's fill while it's pressed: a step lighter than a chosen row's.
+    pub const PRESSED: Color = Color::rgb(0x34, 0x41, 0x5A);
     /// An error's red.
     pub const RED: Color = Color::rgb(0xE5, 0x48, 0x4D);
 }

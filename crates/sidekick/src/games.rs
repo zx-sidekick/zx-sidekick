@@ -155,6 +155,7 @@ impl Game {
         credit.push_str(". Not affiliated.");
         TapePrompt {
             pad: None,
+            pressed: None,
             title: game.title.clone(),
             credit,
             tape_file: ending(".tap")

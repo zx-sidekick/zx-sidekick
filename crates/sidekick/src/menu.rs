@@ -343,6 +343,7 @@ impl Menu {
             actions: self.actions.iter().map(|(_, a)| a.clone()).collect(),
             saves: Some(self.can_load),
             chosen: self.chosen,
+            pressed: None,
             armed: self.armed.and_then(|i| {
                 let (action, words) = self.actions.get(i)?;
                 let what = match action {
