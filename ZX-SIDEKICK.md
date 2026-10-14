@@ -191,6 +191,8 @@ Beside the picture, the panel offers optional help, drawn by the program and nev
 | `card-set` | groups of pictures, each dim until something answers it (a door's key cards) |
 | `map-grid` | a grid of places: walls along each edge without an opening, so an opening is a gap; markers for the player, items and features; routes in two colours, and arrows at the picture's edge for the way out |
 
+At level 0 the panel shows the Off level's description, which names what the menu holds (Starquake: "Guidance or training"), followed by the keys that open the menu, drawn by the program: Esc, and the pad's Select as its maker marks it (Back, Create, −) while a pad is plugged in. At every level, the training switches on are listed at the panel's top, by their labels.
+
 A widget takes its data from a value, a table, or what the script returned. The game's font and graphics are always read from the player's tape at run time; definitions never carry them.
 
 **Levels should be honest about what they tell.** As a convention: the lower levels show only what the player could have written down; the upper ones tell what they couldn't have known. The level's description says which.
