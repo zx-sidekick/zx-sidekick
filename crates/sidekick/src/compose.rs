@@ -9,7 +9,7 @@ use crate::{
 use sidekick_core::Session;
 use sidekick_def::{Border, Definition, Role};
 use sidekick_ui::{
-    device, Canvas, Fonts, NoticeHint, PadLabels, PadMark, PauseNotice, PAUSE_NOTICE_HEIGHT,
+    device, Canvas, Fonts, NoticeHint, PadLabels, PauseNotice, PAUSE_NOTICE_HEIGHT,
     PAUSE_NOTICE_WIDTH,
 };
 
@@ -222,14 +222,15 @@ pub(crate) fn foot_notice(session: &Session, labels: PadLabels) -> Option<PauseN
     }
 }
 
-/// The loading screen's notice: Enter, or the pad's Start, goes on loading.
+/// The loading screen's notice: any of a pad's buttons goes on loading, and so does each key
+/// that plays as one. The right Control, the right Alt and `/`, which fire, go on too, unshown.
 fn loading_notice(labels: PadLabels) -> PauseNotice {
     PauseNotice {
         heading: "Loading screen".to_owned(),
-        text: "The rest of the game loads once you go on.".to_owned(),
+        text: "Press any button to load the rest of the game.".to_owned(),
         hints: vec![NoticeHint {
-            keys: Some("Enter".to_owned()),
-            pad: Some(PadMark::Start),
+            keys: Some("Enter / Space / Z / X / C / V".to_owned()),
+            pad: None,
             does: "go on".to_owned(),
         }],
         pad: labels,
@@ -411,6 +412,25 @@ fn mul(value: u8, by: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_loading_card_says_any_button_and_shows_keys_that_go_on() {
+        use sdl3::keyboard::Scancode;
+        let card = loading_notice(PadLabels::default());
+        assert!(card.text.contains("any button"), "{}", card.text);
+        let keys = card.hints[0].keys.as_deref().expect("its keys");
+        for key in keys.split(" / ") {
+            let scancode = match key {
+                "Enter" => Scancode::Return,
+                "Space" => Scancode::Space,
+                letter => Scancode::from_name(letter).expect("a key"),
+            };
+            assert!(
+                crate::keys::pad_key(scancode).is_some_and(crate::pad::Part::goes_on),
+                "{key} goes on"
+            );
+        }
+    }
+
     #[test]
     fn a_mac_names_the_right_ctrl_as_the_slash() {
         assert_eq!(host_keys("Right Ctrl", true), "/");

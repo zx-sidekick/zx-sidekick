@@ -125,10 +125,12 @@ set = {{ value = "lives", to = "max" }}
 [pad.default]
 west = "jump"
 start = {{ keys = ["START"] }}
+any = {{ tap = ["0"] }}
 
 [pad.menu]
 south = "fire"
 select = "fire"
+any = "joystick"
 "#
     );
     let def = Definition::from_toml(&text).expect("it parses");
@@ -141,6 +143,8 @@ select = "fire"
         "pad.default.start: \"START\" isn't a Spectrum key",
         "pad.menu: no state named \"menu\"",
         "pad.menu.select: select always opens the guidance menu",
+        "pad.default.any: any is for a state's own table, not every state's",
+        "pad.menu.any: \"joystick\" isn't a direction, fire, menu, none or an action",
     ] {
         assert!(
             problems.iter().any(|p| p == expected),

@@ -612,10 +612,15 @@ pub struct Pad {
     /// Select (always the guidance menu).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub select: Option<PadTarget>,
+    /// In a state's own table: what every other part does there (Select apart), and every
+    /// other key of the keyboard while it plays as a pad (Esc, the F keys and the modifiers
+    /// apart).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub any: Option<PadTarget>,
 }
 
 impl Pad {
-    /// Each part that's set, by name.
+    /// Each part that's set, by name, and `any`.
     #[must_use]
     pub fn parts(&self) -> Vec<(&'static str, &PadTarget)> {
         [
@@ -631,6 +636,7 @@ impl Pad {
             ("r2", &self.r2),
             ("start", &self.start),
             ("select", &self.select),
+            ("any", &self.any),
         ]
         .into_iter()
         .filter_map(|(name, target)| target.as_ref().map(|t| (name, t)))

@@ -63,7 +63,8 @@ pub(crate) fn spectrum_off_anywhere(definition: Option<&Definition>) -> bool {
 
 /// What the keyboard is in `state`: typing when the definition's `[text_entry]` or
 /// `[name_entry]` asks for text there; the Spectrum's keyboard where it's on
-/// ([`spectrum_on`]); a pad otherwise, the loading screen included, where Enter is Start.
+/// ([`spectrum_on`]); a pad otherwise, the loading screen included, where Enter is Start and
+/// goes on, as every key that plays as a button does.
 pub(crate) fn mode(
     definition: Option<&Definition>,
     state: Option<&str>,
@@ -97,13 +98,80 @@ pub(crate) fn pressed(scancode: Scancode, mode: &KeyboardMode) -> Option<KeyDoes
     }
 }
 
+/// What a key pressed does in `mode`, as [`pressed`] says; and where `any` (the state's
+/// `[pad]` has `any`, and no shortcut is under way), a key that does nothing else while the
+/// keyboard is a pad plays as [`any_key`]'s part.
+pub(crate) fn pressed_or_any(
+    scancode: Scancode,
+    mode: &KeyboardMode,
+    any: bool,
+) -> Option<KeyDoes> {
+    pressed(scancode, mode).or_else(|| {
+        (any && *mode == KeyboardMode::Pad)
+            .then(|| any_key(scancode))
+            .flatten()
+            .map(KeyDoes::Pad)
+    })
+}
+
 /// Everything a key let go may have pressed, in any mode: its Spectrum key, and its pad parts.
 /// Letting go of what wasn't pressed does nothing, so whatever the mode was when it went down,
 /// nothing stays held.
 pub(crate) fn let_go(scancode: Scancode) -> (Option<Spectrum>, Vec<Part>) {
     let mut parts: Vec<Part> = pad_key(scancode).into_iter().collect();
     parts.extend(pad_part(scancode).filter(|p| !parts.contains(p)));
+    parts.extend(any_key(scancode));
     (spectrum_key(scancode), parts)
+}
+
+/// The part a key the pad doesn't have plays as where a state's `[pad]` has `any`, the
+/// keyboard a pad: letters, digits and the rest, but not Esc (the guidance menu), the F keys
+/// (the program's own) or a modifier, which may begin a shortcut.
+pub(crate) fn any_key(scancode: Scancode) -> Option<Part> {
+    use Scancode as S;
+    if pad_key(scancode).is_some()
+        || matches!(
+            scancode,
+            S::Escape
+                | S::F1
+                | S::F2
+                | S::F3
+                | S::F4
+                | S::F5
+                | S::F6
+                | S::F7
+                | S::F8
+                | S::F9
+                | S::F10
+                | S::F11
+                | S::F12
+                | S::F13
+                | S::F14
+                | S::F15
+                | S::F16
+                | S::F17
+                | S::F18
+                | S::F19
+                | S::F20
+                | S::F21
+                | S::F22
+                | S::F23
+                | S::F24
+                | S::LCtrl
+                | S::RCtrl
+                | S::LShift
+                | S::RShift
+                | S::LAlt
+                | S::RAlt
+                | S::LGui
+                | S::RGui
+                | S::CapsLock
+                | S::Mode
+        )
+    {
+        return None;
+    }
+    u16::try_from(scancode.to_i32()).ok().map(Part::Key)
 }
 
 /// The pad part a key plays as when the keyboard is a pad: the arrows and W A S D are the
@@ -560,7 +628,10 @@ mod tests {
         assert_eq!(parts, [Part::DPad(Way::Up)], "once");
         let (key, parts) = let_go(Scancode::Q);
         assert!(matches!(key, Some(Spectrum::Key(Key::Q))));
-        assert!(parts.is_empty());
+        assert!(
+            matches!(parts[..], [Part::Key(_)]),
+            "what a state's `any` made it"
+        );
     }
 
     /// Starquake from its real tape, played from the keyboard as the window plays it: each key
@@ -583,25 +654,45 @@ mod tests {
                 }
                 return;
             }
+            self.enter();
             let mode = mode(self.s.definition(), self.known(), false);
-            match pressed(scancode, &mode) {
+            match pressed_or_any(scancode, &mode, self.play.takes_any_key()) {
                 Some(KeyDoes::Spectrum(Spectrum::Key(key))) => self.s.machine_mut().key(key, true),
-                Some(KeyDoes::Pad(part)) if self.pads.button(0, part, true).is_some() => {
-                    if part == Part::Start && self.s.machine().waits_on_loading_screen() {
-                        self.play.start_on_loading_screen();
-                    } else {
-                        self.play.pressed(part);
-                    }
-                }
+                Some(KeyDoes::Pad(part)) => self.button(0, part, true),
                 _ => {}
+            }
+        }
+
+        /// The state last known, for what's pressed now, as the window takes an event.
+        fn enter(&mut self) {
+            let known = self.s.progress().last_known.clone();
+            self.pads
+                .hold_back_parts(&self.play.enter(known.as_deref()));
+        }
+
+        /// A part of pad `pad` pressed or let go, as the window takes it.
+        fn button(&mut self, pad: u32, part: Part, down: bool) {
+            self.enter();
+            if self.pads.button(pad, part, down).is_some() {
+                let loading = self.s.machine().waits_on_loading_screen();
+                self.play.press(part, loading);
+            }
+        }
+
+        /// The game as it is, played on from here apart from this one.
+        fn fork(&self) -> Self {
+            let mut play = Play::new(Mapping::new(self.s.definition()));
+            play.enter(self.known());
+            Self {
+                s: self.s.clone(),
+                play,
+                pads: Pads::default(),
             }
         }
 
         fn frames(&mut self, n: usize) {
             for _ in 0..n {
-                let known = self.s.progress().last_known.clone();
-                self.pads
-                    .hold_back_parts(&self.play.enter(known.as_deref()));
+                self.enter();
                 let changes = self.play.update(self.pads.held());
                 let machine = self.s.machine_mut();
                 for (input, down) in changes
@@ -644,14 +735,15 @@ mod tests {
         }
     }
 
-    #[test]
+    /// Starquake from its real tape, played as the window plays it; `None`, saying so, without
+    /// the player's tape in `assets/`.
     #[allow(clippy::print_stderr, reason = "a skipped test says why")]
-    fn starquake_plays_from_the_keyboard_as_a_pad_with_the_spectrum_keyboard_off() {
+    fn starquake() -> Option<Played> {
         let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let zip = repo.join("assets/Starquake.tap.zip");
         if !zip.exists() {
             eprintln!("skipped: no {} (the player's own tape)", zip.display());
-            return;
+            return None;
         }
         let tapes = sidekick_def::tapes_in(&zip).expect("the zip holds a tape");
         let package = sidekick_def::Package::load(&repo.join("games/starquake"))
@@ -659,10 +751,187 @@ mod tests {
         let mut machine =
             sidekick_core::Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
         machine.load_tap(&tapes[0].bytes).expect("the tape goes in");
-        let mut k = Played {
+        Some(Played {
             play: Play::new(Mapping::new(Some(&package.definition))),
             s: sidekick_core::Session::new(machine, Some(package.definition)),
             pads: Pads::default(),
+        })
+    }
+
+    /// A stand-in tape's loader waiting for a key, played as the window plays it.
+    fn at_a_loader_s_wait() -> Played {
+        let s = crate::pad::tests::at_a_loader_s_wait();
+        Played {
+            play: Play::new(Mapping::new(s.definition())),
+            s,
+            pads: Pads::default(),
+        }
+    }
+
+    #[test]
+    fn each_key_that_plays_as_a_button_goes_on_from_a_loader_s_wait() {
+        let waiting = at_a_loader_s_wait();
+        assert_eq!(
+            mode(waiting.s.definition(), waiting.known(), false),
+            KeyboardMode::Pad
+        );
+        for key in [
+            Scancode::Return,
+            Scancode::KpEnter,
+            Scancode::Space,
+            Scancode::Z,
+            Scancode::X,
+            Scancode::C,
+            Scancode::V,
+            Scancode::RCtrl,
+            Scancode::RAlt,
+            Scancode::Slash,
+        ] {
+            let mut k = waiting.fork();
+            k.tap(key, 4);
+            let went_on = (0..50).any(|_| {
+                k.frames(1);
+                !k.s.on_loading_screen()
+            });
+            assert!(went_on, "{key:?} goes on");
+        }
+    }
+
+    #[test]
+    fn a_letter_a_digit_or_a_direction_doesn_t_go_on_from_a_loader_s_wait() {
+        let waiting = at_a_loader_s_wait();
+        for key in [
+            Scancode::Q,
+            Scancode::M,
+            Scancode::_1,
+            Scancode::Tab,
+            Scancode::Left,
+            Scancode::W,
+            Scancode::S,
+        ] {
+            let mut k = waiting.fork();
+            k.tap(key, 4);
+            k.frames(50);
+            assert!(k.s.on_loading_screen(), "{key:?} doesn't reach the game");
+        }
+    }
+
+    #[test]
+    fn where_a_state_takes_any_key_every_key_but_esc_the_f_keys_and_the_modifiers_does() {
+        let pad = KeyboardMode::Pad;
+        for key in [
+            Scancode::Q,
+            Scancode::_0,
+            Scancode::Tab,
+            Scancode::Backspace,
+        ] {
+            assert!(pressed_or_any(key, &pad, false).is_none(), "{key:?}");
+            assert!(
+                matches!(
+                    pressed_or_any(key, &pad, true),
+                    Some(KeyDoes::Pad(Part::Key(_)))
+                ),
+                "{key:?}"
+            );
+        }
+        assert_eq!(
+            part(Scancode::Left, &pad),
+            Some(Part::DPad(Way::Left)),
+            "the pad's own keys stay its parts, which `any` maps"
+        );
+        for key in [
+            Scancode::Escape,
+            Scancode::F1,
+            Scancode::F5,
+            Scancode::F9,
+            Scancode::F11,
+            Scancode::F12,
+            Scancode::LShift,
+            Scancode::LCtrl,
+            Scancode::LAlt,
+            Scancode::LGui,
+            Scancode::RGui,
+            Scancode::CapsLock,
+        ] {
+            assert!(pressed_or_any(key, &pad, true).is_none(), "{key:?}");
+        }
+        assert!(
+            matches!(
+                pressed_or_any(Scancode::Q, &KeyboardMode::Spectrum, true),
+                Some(KeyDoes::Spectrum(Spectrum::Key(Key::Q)))
+            ),
+            "the Spectrum's keyboard on, the letters are its"
+        );
+    }
+
+    /// A key tapped, or a pad's part.
+    enum How {
+        Key(Scancode),
+        Button(Part),
+    }
+
+    #[test]
+    fn starquake_s_title_starts_a_game_on_any_key_or_button() {
+        let Some(mut k) = starquake() else {
+            return;
+        };
+        k.frames(400);
+        assert!(k.s.on_loading_screen(), "the loader waits for a key");
+        // West fires a Kempston joystick in play, which the loader's wait doesn't read.
+        k.button(1, Part::West, true);
+        k.frames(4);
+        k.button(1, Part::West, false);
+        assert!(
+            k.until(1500, "title"),
+            "a face button goes on from the loading screen"
+        );
+        k.enter();
+        assert!(k.play.takes_any_key());
+        let mut esc = k.fork();
+        esc.tap(Scancode::Escape, 4);
+        esc.tap(Scancode::F1, 4);
+        assert!(
+            !esc.until(200, "play") && esc.known() == Some("title"),
+            "Esc and the F keys don't start one"
+        );
+
+        for (how, press) in [
+            ("a letter", How::Key(Scancode::Q)),
+            ("a digit", How::Key(Scancode::_5)),
+            ("an arrow", How::Key(Scancode::Left)),
+            ("a face button", How::Button(Part::West)),
+            ("the D-pad", How::Button(Part::DPad(Way::Down))),
+        ] {
+            let mut g = k.fork();
+            match press {
+                How::Key(key) => g.tap(key, 4),
+                How::Button(part) => {
+                    g.button(1, part, true);
+                    g.frames(4);
+                    g.button(1, part, false);
+                }
+            }
+            let mut seen = Vec::new();
+            for _ in 0..300 {
+                g.frames(1);
+                seen.push(g.s.state().map(str::to_owned));
+            }
+            assert!(
+                seen[100..].iter().all(Option::is_none),
+                "{how} starts a game: its story shows"
+            );
+            g.tap(Scancode::M, 4);
+            assert!(
+                g.until(100, "play"),
+                "after {how}, a key goes on from the story"
+            );
+        }
+    }
+
+    #[test]
+    fn starquake_plays_from_the_keyboard_as_a_pad_with_the_spectrum_keyboard_off() {
+        let Some(mut k) = starquake() else {
+            return;
         };
         k.frames(400);
         assert!(k.s.on_loading_screen(), "the loader waits for a key");
@@ -675,7 +944,7 @@ mod tests {
         k.tap(Scancode::Return, 4);
         assert!(
             k.until(1500, "title"),
-            "any key goes on from the loading screen"
+            "Enter goes on from the loading screen"
         );
         // The title is passed only every few frames: Enter starts a game in a frame between.
         let between = (0..200).any(|_| {
@@ -693,7 +962,7 @@ mod tests {
         }
         assert!(
             seen[100..].iter().all(Option::is_none),
-            "Enter, the pad's Start, starts a game: its story shows, untouched, for seconds"
+            "Enter starts a game, as any key does on the title: its story shows, untouched, for seconds"
         );
         k.tap(Scancode::Return, 4);
         assert!(k.until(100, "play"), "Enter goes on from the story");

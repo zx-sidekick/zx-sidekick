@@ -1100,6 +1100,17 @@
       "description": "`[pad.*]`: what each part of a pad does in a state (`default` for all states).",
       "type": "object",
       "properties": {
+        "any": {
+          "description": "In a state's own table: what every other part does there (Select apart), and every\nother key of the keyboard while it plays as a pad (Esc, the F keys and the modifiers\napart).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "dpad": {
           "description": "The D-pad.",
           "anyOf": [

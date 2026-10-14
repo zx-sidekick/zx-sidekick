@@ -84,13 +84,13 @@ role = "title"
 # The menu's loop, passed every few frames once its tune has played.
 pc = 0x5FF4
 # The Kempston joystick chosen for the player whatever the menu's list shows, so the keyboard
-# and a pad drive BLOB: the game reads the choice when a game starts (docs/re/starquake.md). The
-# notice says so over the title's foot, in words that don't need the emulated joystick explained.
+# and a pad drive BLOB: the game reads the choice when a game starts (docs/re/starquake.md). So the
+# list's keys mean nothing here, and any key or button starts a game ([pad.title] any); the notice
+# says so over the title's foot, in words that don't need the emulated joystick explained.
 set = { value = "controls", to = 1 }
-notice = { heading = "Ignore the list", text = "Play with the arrows or WASD, or a gamepad.", hints = [
+notice = { heading = "Ignore the list", text = "Press any key or button to start.", hints = [
   { keys = "← ↑ → ↓", pad = "dpad", does = "move" },
   { keys = "Space", pad = "west", does = "fire" },
-  { keys = "Enter", pad = "start", does = "start" },
 ] }
 
 # Values.
@@ -357,11 +357,12 @@ start = { tap = ["SPACE"], frames = 2 }
 
 [pad.title]
 # The title starts a game on 0; the joystick is chosen by `set` above whatever key picked the
-# controls. The game then shows its story under a tune until a key is pressed; nothing matches
-# a state there, so the title is still the state last known and Start taps 0 again, going on
-# into play (docs/re/starquake.md). Not SPACE, which pauses play. Held for 5 frames, since the
-# title reads its keys every 4.
-start = { tap = ["0"], frames = 5 }
+# controls, so every key and button starts one here, the keyboard's letters and digits too. The
+# game then shows its story under a tune until a key is pressed; nothing matches a state there,
+# so the title is still the state last known and the next press taps 0 again, going on into play
+# (docs/re/starquake.md). Not SPACE, which pauses play. Held for 5 frames, since the title reads
+# its keys every 4.
+any = { tap = ["0"], frames = 5 }
 
 [[actions]]
 id = "end-game"

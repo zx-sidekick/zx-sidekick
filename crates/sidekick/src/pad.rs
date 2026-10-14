@@ -13,8 +13,8 @@ const HALF_TRAVEL: i16 = 16_384;
 /// How many frames a tap lasts when the definition doesn't say.
 pub(crate) const TAP_FRAMES: u32 = 2;
 
-/// How many frames Start's own tap on a loading screen lasts: the ROM's `PAUSE` reads the
-/// keyboard once a frame.
+/// How many frames a button's tap of ENTER on a loading screen lasts: the ROM's `PAUSE` reads
+/// the keyboard once a frame.
 const LOADING_TAP_FRAMES: u32 = 4;
 
 /// A way the D-pad or the stick points.
@@ -46,6 +46,28 @@ pub(crate) enum Part {
     /// A key the Spectrum doesn't have that does one of the game's actions, by its index in
     /// the mapping's.
     HostKey(u16),
+    /// Any other key of the keyboard, by its scancode: it does what a state's `any` does.
+    Key(u16),
+}
+
+impl Part {
+    /// Whether it's a button that goes on from a loading screen waiting for a key: the face
+    /// buttons, the shoulders, the triggers and Start. Not a direction, and not Select, which
+    /// opens the guidance menu.
+    pub(crate) const fn goes_on(self) -> bool {
+        matches!(
+            self,
+            Self::West
+                | Self::South
+                | Self::East
+                | Self::North
+                | Self::L1
+                | Self::R1
+                | Self::L2
+                | Self::R2
+                | Self::Start
+        )
+    }
 }
 
 /// The pad's axes that count as parts: the left stick and the triggers.
@@ -347,6 +369,8 @@ pub(crate) struct Mapping {
     default: Parts,
     /// States with their own `[pad]`.
     states: BTreeMap<String, Parts>,
+    /// What every other key does in the states whose `[pad]` has `any`.
+    any: BTreeMap<String, Does>,
     /// The keys the Spectrum doesn't have that do an action, by SDL's name for them; each is
     /// `Part::HostKey` of its index.
     host_keys: Vec<String>,
@@ -411,14 +435,31 @@ impl Mapping {
             parts
         };
         let default = parts(&targets);
+        let mut any = BTreeMap::new();
         let states = pads
             .into_iter()
             .flatten()
             .filter(|(state, _)| *state != "default")
             .map(|(state, pad)| {
                 let mut targets = targets.clone();
+                if let Some(target) = &pad.any {
+                    for name in ANY_PARTS {
+                        targets.insert(name, target.clone());
+                    }
+                }
                 over(&mut targets, pad);
-                (state.clone(), parts(&targets))
+                let mut parts = parts(&targets);
+                if let Some(target) = &pad.any {
+                    let does = joy.does(target, None);
+                    for (_, host_key) in parts
+                        .iter_mut()
+                        .filter(|(p, _)| matches!(p, Part::HostKey(_)))
+                    {
+                        *host_key = does.clone();
+                    }
+                    any.insert(state.clone(), does);
+                }
+                (state.clone(), parts)
             })
             .collect();
         let actions = joy
@@ -429,6 +470,7 @@ impl Mapping {
         Self {
             default,
             states,
+            any,
             host_keys,
             actions,
         }
@@ -438,6 +480,14 @@ impl Mapping {
         state
             .and_then(|s| self.states.get(s))
             .unwrap_or(&self.default)
+    }
+
+    /// What `part` does in `state`, if anything.
+    fn does(&self, state: Option<&str>, part: Part) -> Option<&Does> {
+        match part {
+            Part::Key(_) => self.any.get(state?),
+            part => self.parts(state).get(&part),
+        }
     }
 
     /// The part a key the Spectrum doesn't have is, when it does an action. `name` is SDL's
@@ -490,6 +540,11 @@ impl Mapping {
             .map(|(_, key)| key.clone())
     }
 }
+
+/// The parts a state's `any` stands for, unless its table names them: all but Select.
+const ANY_PARTS: [&str; 11] = [
+    "dpad", "stick", "west", "south", "east", "north", "l1", "r1", "l2", "r2", "start",
+];
 
 /// The parts a `[pad]` entry names, with the way each points for a direction.
 fn parts_named(name: &str) -> Vec<(Part, Option<Way>)> {
@@ -679,33 +734,39 @@ impl Play {
 
     /// Whether `part` does anything in the game's state now.
     pub(crate) fn maps(&self, part: Part) -> bool {
-        self.mapping
-            .parts(self.state.as_deref())
-            .contains_key(&part)
+        self.mapping.does(self.state.as_deref(), part).is_some()
+    }
+
+    /// Whether every key of the keyboard does something in the game's state now: the
+    /// state's `[pad]` has `any`.
+    pub(crate) fn takes_any_key(&self) -> bool {
+        self.maps(Part::Key(0))
+    }
+
+    /// A part was pressed, `loading` when a loader waits for a key (the ROM's `PAUSE 0`, its
+    /// loading screen up): there a button ([`Part::goes_on`]) taps ENTER, which the ROM's
+    /// `PAUSE` takes, rather than what it does in play (a Kempston joystick's fire, which no
+    /// `PAUSE` reads), so any button goes on from every loading screen, as its card says.
+    /// Elsewhere, [`Self::pressed`].
+    pub(crate) fn press(&mut self, part: Part, loading: bool) -> Option<String> {
+        if loading && part.goes_on() {
+            self.lasting.push(Lasting {
+                inputs: vec![Input::Key(SpectrumKey(Key::Enter))],
+                patches: Vec::new(),
+                wait: 0,
+                left: LOADING_TAP_FRAMES,
+            });
+            return None;
+        }
+        self.pressed(part)
     }
 
     /// A part was pressed: starts its tap, and keeps what it holds going for the frames it
     /// lasts at least. Returns the script function it calls, if it calls one.
     pub(crate) fn pressed(&mut self, part: Part) -> Option<String> {
-        let does = self.mapping.parts(self.state.as_deref()).get(&part)?;
+        let does = self.mapping.does(self.state.as_deref(), part)?;
         Self::start(&mut self.lasting, does);
         does.script.clone()
-    }
-
-    /// Start pressed while a loader waits for a key (the ROM's `PAUSE 0`, its loading screen
-    /// up): what the definition maps Start to there, or with nothing mapped a tap of ENTER, so
-    /// Start goes on from every loading screen, as its card says.
-    pub(crate) fn start_on_loading_screen(&mut self) -> Option<String> {
-        if self.maps(Part::Start) {
-            return self.pressed(Part::Start);
-        }
-        self.lasting.push(Lasting {
-            inputs: vec![Input::Key(SpectrumKey(Key::Enter))],
-            patches: Vec::new(),
-            wait: 0,
-            left: LOADING_TAP_FRAMES,
-        });
-        None
     }
 
     /// Does one of the game's actions, by id, as a press that's let go at once: its taps, and
@@ -761,9 +822,8 @@ impl Play {
         for lasting in self.lasting.iter().filter(|l| l.wait == 0) {
             add(&lasting.inputs, &lasting.patches);
         }
-        let parts = self.mapping.parts(self.state.as_deref());
         for part in held {
-            if let Some(does) = parts.get(&part) {
+            if let Some(does) = self.mapping.does(self.state.as_deref(), part) {
                 add(&does.hold, &does.patches);
             }
         }
@@ -790,7 +850,7 @@ impl Play {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn def(toml: &str) -> Definition {
@@ -1188,9 +1248,10 @@ mod tests {
         tap
     }
 
-    #[test]
-    fn start_goes_on_from_a_loader_s_wait_with_nothing_mapped_to_it() {
-        // `10 PAUSE 0: LOAD ""`, then `10 BORDER 2`: loading that waits for a key halfway.
+    /// A session at a loader's wait for a key, from a stand-in tape, `10 PAUSE 0: LOAD ""`,
+    /// then `10 BORDER 2`: loading that waits for a key halfway, as a loading screen does. Its
+    /// definition maps nothing to Start.
+    pub(crate) fn at_a_loader_s_wait() -> sidekick_core::Session {
         let hidden = |n: u8| [0x0E, 0x00, 0x00, n, 0x00, 0x00];
         let mut first = vec![0xF2, b'0'];
         first.extend_from_slice(&hidden(0));
@@ -1215,22 +1276,68 @@ mod tests {
             frame(&mut s, &mut play, &[]);
         }
         assert!(s.machine().waits_on_loading_screen(), "until one comes");
-        play.start_on_loading_screen();
-        let went_on = (0..50).any(|_| {
-            frame(&mut s, &mut play, &[]);
+        s
+    }
+
+    /// Whether pressing `part` on the loader's wait in `s`, held for a few frames as a press
+    /// is, goes on loading.
+    pub(crate) fn goes_on_loading(mut s: sidekick_core::Session, part: Part) -> bool {
+        let mut play = Play::new(Mapping::new(s.definition()));
+        play.press(part, s.machine().waits_on_loading_screen());
+        (0..50).any(|i| {
+            let held: &[Part] = if i < 6 { &[part] } else { &[] };
+            frame(&mut s, &mut play, held);
             !s.machine().waits_on_loading_screen()
-        });
-        assert!(went_on, "Start taps a key the loader takes");
+        })
     }
 
     #[test]
-    fn start_on_a_loading_screen_does_what_the_definition_maps_it_to() {
+    fn every_button_goes_on_from_a_loader_s_wait_with_nothing_mapped_to_start() {
+        let s = at_a_loader_s_wait();
+        for part in [
+            Part::West,
+            Part::South,
+            Part::East,
+            Part::North,
+            Part::L1,
+            Part::R1,
+            Part::L2,
+            Part::R2,
+            Part::Start,
+        ] {
+            assert!(part.goes_on(), "{part:?}");
+            assert!(
+                goes_on_loading(s.clone(), part),
+                "{part:?} taps a key PAUSE takes"
+            );
+        }
+        for part in [Part::DPad(Way::Left), Part::Stick(Way::Up), Part::Select] {
+            assert!(!part.goes_on(), "{part:?}");
+            assert!(!goes_on_loading(s.clone(), part), "{part:?} doesn't go on");
+        }
+    }
+
+    #[test]
+    fn a_button_on_a_loading_screen_taps_enter_whatever_it_does_in_play() {
         let mut play = Play::new(Mapping::new(Some(&def(r#"
             [pad.default]
             start = { tap = ["SPACE"] }
             "#))));
-        play.start_on_loading_screen();
-        assert_eq!(holds(&mut play, &[]), [key(Key::Space)], "not ENTER");
+        play.press(Part::Start, true);
+        assert_eq!(holds(&mut play, &[]), [key(Key::Enter)]);
+        let mut play = Play::new(Mapping::default());
+        play.press(Part::West, true);
+        assert_eq!(
+            holds(&mut play, &[]),
+            [key(Key::Enter)],
+            "not the Kempston joystick's fire, which no PAUSE reads"
+        );
+        play.press(Part::West, false);
+        assert_eq!(
+            holds(&mut play, &[Part::West]),
+            [Input::Kempston(Direction::Fire), key(Key::Enter)],
+            "elsewhere, what it does in play"
+        );
     }
 
     #[test]

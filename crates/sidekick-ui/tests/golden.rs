@@ -181,7 +181,7 @@ fn the_pause_notice() {
     // As Starquake's definition words it.
     let title = PauseNotice {
         heading: "Ignore the list".to_owned(),
-        text: "Play with the arrows or WASD, or a gamepad.".to_owned(),
+        text: "Press any key or button to start.".to_owned(),
         hints: vec![
             NoticeHint {
                 keys: Some("← ↑ → ↓".to_owned()),
@@ -192,11 +192,6 @@ fn the_pause_notice() {
                 keys: Some("Space".to_owned()),
                 pad: Some(PadMark::Face(Face::West)),
                 does: "fire".to_owned(),
-            },
-            NoticeHint {
-                keys: Some("Enter".to_owned()),
-                pad: Some(PadMark::Start),
-                does: "start".to_owned(),
             },
         ],
         ..paused(PadLabels::Letters)
@@ -210,6 +205,18 @@ fn the_pause_notice() {
         "title-notice-playstation.png",
         &shapes.draw(&mut fonts, 1.0).png(),
     );
+    // As the program words the loading screen's: keys apart by ` / `, each in its badge.
+    let loading = PauseNotice {
+        heading: "Loading screen".to_owned(),
+        text: "Press any button to load the rest of the game.".to_owned(),
+        hints: vec![NoticeHint {
+            keys: Some("Enter / Space / Z / X / C / V".to_owned()),
+            pad: None,
+            does: "go on".to_owned(),
+        }],
+        ..paused(PadLabels::Letters)
+    };
+    golden("loading-notice.png", &loading.draw(&mut fonts, 1.0).png());
 }
 
 fn starquake_menu() -> Menu {
