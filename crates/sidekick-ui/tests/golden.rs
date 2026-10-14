@@ -634,6 +634,7 @@ fn the_text_entry_card() {
         letters: word("TOPAZ"),
         mode: EntryMode::Choosing { at: 1, of: 4 },
         can_choose: true,
+        each_place: false,
         pad: PadLabels::Letters,
     };
     golden("entry-choose.png", &choosing.draw(&mut fonts, 1.0).png());
@@ -651,6 +652,21 @@ fn the_text_entry_card() {
         ..choosing
     };
     golden("entry-spell-blank.png", &blank.draw(&mut fonts, 1.0).png());
+}
+
+#[test]
+fn the_name_card_takes_each_place_and_shows_a_space() {
+    let mut fonts = Fonts::new();
+    let name = EntryCard {
+        title_choose: "Choose a name".to_owned(),
+        title_spell: "Spell a name".to_owned(),
+        letters: vec![Some('J'), Some(' '), None],
+        mode: EntryMode::Spelling { slot: 1 },
+        can_choose: true,
+        each_place: true,
+        pad: PadLabels::Letters,
+    };
+    golden("entry-name-spell.png", &name.draw(&mut fonts, 1.0).png());
 }
 
 #[test]

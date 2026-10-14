@@ -395,7 +395,8 @@ most = 256
 
 [name_entry]
 state = "name"
-letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+# The game takes a space too; the card shows it as an open box and types it on SPACE.
+letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
 length = 3
 # Just under the game's three marks for the letters.
 card_row = 18
@@ -405,8 +406,6 @@ choices = "names"
 # The game makes a sound after each letter before it looks for the next: a key sooner is lost.
 key_down_frames = 2
 key_up_frames = 9
-# A name confirmed short is made up with spaces, which the game takes and shows blank.
-fill = "SPACE"
 
 [persist.names]
 label = "high-score names"

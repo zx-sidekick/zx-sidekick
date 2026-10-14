@@ -47,6 +47,9 @@ pub struct EntryCard {
     pub mode: EntryMode,
     /// Whether there are words to choose from, so spelling can go back to them.
     pub can_choose: bool,
+    /// Whether confirming takes each place in turn, entering the word at the last, as a high
+    /// score's name does; otherwise it enters the word at once.
+    pub each_place: bool,
     /// How the last pad used marks its buttons.
     pub pad: PadLabels,
 }
@@ -116,7 +119,13 @@ impl EntryCard {
                 Some(fill),
                 Some(Line::solid(edge, 1.0)),
             );
-            if let Some(ch) = slot {
+            if *slot == Some(' ') {
+                // An open box, so a space reads as a letter chosen, not a place left empty.
+                let ink = Some(colors::TEXT);
+                c.rect((x + 14.0, 80.0, 20.0, 2.0), 0.0, ink, None);
+                c.rect((x + 14.0, 74.0, 2.0, 8.0), 0.0, ink, None);
+                c.rect((x + 32.0, 74.0, 2.0, 8.0), 0.0, ink, None);
+            } else if let Some(ch) = slot {
                 c.text(
                     fonts,
                     &ch.to_string(),
@@ -164,7 +173,14 @@ impl EntryCard {
                     },
                     Hint {
                         press: &enter,
-                        does: "enter",
+                        does: match self.mode {
+                            EntryMode::Spelling { slot }
+                                if self.each_place && slot + 1 < self.letters.len() =>
+                            {
+                                "next"
+                            }
+                            _ => "enter",
+                        },
                     },
                     Hint {
                         press: &clear,

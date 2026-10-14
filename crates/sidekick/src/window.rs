@@ -1558,14 +1558,15 @@ impl Player {
 
     /// The definition's text entry for the state the game is in: its `[text_entry]`, or its
     /// `[name_entry]` for a high score's name.
-    fn text_entry(&self) -> Option<sidekick_def::TextEntry> {
-        entry::section_for(self.session.definition()?, self.session.state()).cloned()
+    fn text_entry(&self) -> Option<(sidekick_def::TextEntry, entry::Card)> {
+        entry::section_for(self.session.definition()?, self.session.state())
+            .map(|(t, card)| (t.clone(), card))
     }
 
     /// Takes pad presses for the text-entry card: the first one in its state opens it, and
     /// while it's open they're all its. Returns whether it took them.
     fn entry_event(&mut self, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
-        let Some(text_entry) = self.text_entry() else {
+        let Some((text_entry, card)) = self.text_entry() else {
             self.entry = None;
             return false;
         };
@@ -1573,7 +1574,12 @@ impl Player {
             return self.entry.is_some();
         }
         let Some(entry) = &mut self.entry else {
-            self.entry = Some(Entry::open(&text_entry, self.session.kept(), self.level));
+            self.entry = Some(Entry::open(
+                &text_entry,
+                card,
+                self.session.kept(),
+                self.level,
+            ));
             pads.hold_back();
             return true;
         };
@@ -1620,7 +1626,10 @@ impl Player {
             out.entry = None;
             return Ok(());
         };
-        let row = self.text_entry().and_then(|t| t.card_row).unwrap_or(20);
+        let row = self
+            .text_entry()
+            .and_then(|(t, _)| t.card_row)
+            .unwrap_or(20);
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
         // The row's top on the screen, below the border when it's shown.

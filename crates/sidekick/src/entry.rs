@@ -7,16 +7,32 @@ use sidekick_def::{Definition, TextEntry};
 use sidekick_ui::{EntryCard, EntryMode, PadLabels};
 use std::collections::BTreeMap;
 
+/// Which card it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Card {
+    /// `[text_entry]`'s: confirming enters the word at once.
+    Word,
+    /// `[name_entry]`'s, for a high score's name: confirming takes each place in turn, and
+    /// enters the name once every place has a letter.
+    Name,
+}
+
 /// The card for the game's `state`: the definition's `[text_entry]`, or its `[name_entry]` for
 /// a high score's name.
 pub(crate) fn section_for<'a>(
     definition: &'a Definition,
     state: Option<&str>,
-) -> Option<&'a TextEntry> {
-    [&definition.text_entry, &definition.name_entry]
-        .into_iter()
-        .flatten()
-        .find(|t| state == Some(t.state.as_str()))
+) -> Option<(&'a TextEntry, Card)> {
+    [
+        (&definition.text_entry, Card::Word),
+        (&definition.name_entry, Card::Name),
+    ]
+    .into_iter()
+    .find_map(|(t, card)| {
+        t.as_ref()
+            .filter(|t| state == Some(t.state.as_str()))
+            .map(|t| (t, card))
+    })
 }
 
 /// What the card is asked to do.
@@ -43,13 +59,15 @@ pub(crate) struct Entry {
     /// The kept words offered, when the guidance level offers them.
     words: Vec<String>,
     mode: EntryMode,
+    card: Card,
 }
 
 impl Entry {
-    /// The card for a definition's `[text_entry]`, offering the words of its kept list at
-    /// `level` when the definition does.
+    /// The card for a definition's `[text_entry]` or `[name_entry]`, offering the words of
+    /// its kept list at `level` when the definition does.
     pub(crate) fn open(
         text_entry: &TextEntry,
+        card: Card,
         kept: &BTreeMap<String, Vec<String>>,
         level: usize,
     ) -> Self {
@@ -78,6 +96,7 @@ impl Entry {
             slots: vec![None; length],
             mode: EntryMode::Spelling { slot: 0 },
             words,
+            card,
         };
         if !entry.words.is_empty() {
             entry.choose(0);
@@ -85,21 +104,53 @@ impl Entry {
         entry
     }
 
-    /// Chooses the kept word at `at`, filling the slots with it.
+    /// Chooses the kept word at `at`, filling the slots with it, and with spaces past its end
+    /// when a space is one of the letters (a name is kept without its trailing spaces).
     fn choose(&mut self, at: usize) {
         let of = self.words.len();
+        let blank = self.letters.contains(&' ').then_some(' ');
         let mut letters = self.words[at].chars();
         for slot in &mut self.slots {
-            *slot = letters.next();
+            *slot = letters.next().or(blank);
         }
         self.mode = EntryMode::Choosing { at, of };
+    }
+
+    fn word(&self) -> String {
+        self.slots.iter().flatten().collect()
+    }
+
+    /// The name card's confirm: takes the place's letter and goes to the next place, or enters
+    /// the name from the last once every place has one. An empty place takes nothing.
+    fn take(&mut self, slot: usize) -> Option<String> {
+        self.slots.get(slot).copied().flatten()?;
+        let next = if slot + 1 < self.slots.len() {
+            Some(slot + 1)
+        } else {
+            self.slots.iter().position(Option::is_none)
+        };
+        if let Some(slot) = next {
+            self.mode = EntryMode::Spelling { slot };
+            return None;
+        }
+        Some(self.word())
     }
 
     /// Takes an input. Returns the word to type when it's entered.
     pub(crate) fn input(&mut self, input: Input) -> Option<String> {
         match (self.mode, input) {
+            (EntryMode::Spelling { slot }, Input::Confirm) if self.card == Card::Name => {
+                return self.take(slot);
+            }
+            (EntryMode::Choosing { .. }, Input::Confirm) if self.card == Card::Name => {
+                if let Some(slot) = self.slots.iter().position(Option::is_none) {
+                    self.mode = EntryMode::Spelling { slot };
+                    return None;
+                }
+                return Some(self.word());
+            }
             (_, Input::Confirm) => {
-                return Some(self.slots.iter().flatten().collect());
+                return Some(self.word());
             }
             (EntryMode::Choosing { at, of }, Input::Up | Input::Left) => {
                 self.choose((at + of - 1) % of);
@@ -171,6 +222,7 @@ impl Entry {
             letters: self.slots.clone(),
             mode: self.mode,
             can_choose: !self.words.is_empty(),
+            each_place: self.card == Card::Name,
             pad,
         }
     }
@@ -198,19 +250,16 @@ pub(crate) enum Stroke {
 
 impl Typing {
     /// A word to type, with the definition's timings (a frame each when not given). A letter
-    /// that isn't a Spectrum key is left out. A word shorter than the definition's `length` is
-    /// made up to it with its `fill` key, when it gives one.
+    /// that isn't a Spectrum key is left out.
     pub(crate) fn new(word: &str, text_entry: &TextEntry) -> Self {
-        let mut keys: Vec<Key> = word
-            .chars()
-            .filter_map(|c| key_named(&c.to_string()))
-            .collect();
-        if let Some(fill) = text_entry.fill.as_deref().and_then(key_named) {
-            let length = usize::try_from(text_entry.length).unwrap_or(0);
-            keys.resize(keys.len().max(length), fill);
-        }
         Self {
-            keys,
+            keys: word
+                .chars()
+                .filter_map(|c| match c {
+                    ' ' => Some(Key::Space),
+                    c => key_named(&c.to_string()),
+                })
+                .collect(),
             down: text_entry.key_down_frames.unwrap_or(1).max(1),
             up: text_entry.key_up_frames.unwrap_or(1).max(1),
             frame: 0,
@@ -253,7 +302,6 @@ mod tests {
             choices_from_level: Some(1),
             key_down_frames: Some(2),
             key_up_frames: Some(1),
-            fill: None,
         }
     }
 
@@ -270,7 +318,7 @@ mod tests {
 
     #[test]
     fn choosing_goes_round_the_ends() {
-        let mut e = Entry::open(&text_entry(), &kept(&["ABC", "CAB", "BAC"]), 1);
+        let mut e = Entry::open(&text_entry(), Card::Word, &kept(&["ABC", "CAB", "BAC"]), 1);
         assert_eq!(e.chosen(), Some("ABC"));
         e.input(Input::Up);
         assert_eq!(e.chosen(), Some("BAC"), "round from the first to the last");
@@ -282,16 +330,16 @@ mod tests {
 
     #[test]
     fn below_its_level_or_with_nothing_kept_it_opens_on_spelling() {
-        let low = Entry::open(&text_entry(), &kept(&["ABC"]), 0);
+        let low = Entry::open(&text_entry(), Card::Word, &kept(&["ABC"]), 0);
         assert_eq!(low.chosen(), None);
         assert!(!low.card(PadLabels::Letters).can_choose);
-        let none = Entry::open(&text_entry(), &kept(&[]), 3);
+        let none = Entry::open(&text_entry(), Card::Word, &kept(&[]), 3);
         assert_eq!(none.chosen(), None);
     }
 
     #[test]
     fn spelling_steps_letters_moves_and_clears() {
-        let mut e = Entry::open(&text_entry(), &kept(&["CAB"]), 1);
+        let mut e = Entry::open(&text_entry(), Card::Word, &kept(&["CAB"]), 1);
         e.input(Input::Switch);
         e.input(Input::Up);
         assert_eq!(word(&e), "AAB", "C steps up round to A");
@@ -315,10 +363,7 @@ mod tests {
         assert_eq!(e.chosen(), Some("CAB"), "back to choosing");
     }
 
-    #[test]
-    fn the_name_card_is_the_name_state_s_and_offers_names_entered_before_first() {
-        let definition = Definition::from_toml(
-            r#"
+    const NAMED: &str = r#"
 schema = 1
 [game]
 id = "test"
@@ -332,29 +377,78 @@ letters = "ABC"
 length = 5
 [name_entry]
 state = "name"
-letters = "ABC"
+letters = "ABC "
 length = 3
 title_choose = "Choose a name"
 choices = "names"
-"#,
-        )
-        .unwrap();
-        let section = |state| section_for(&definition, Some(state)).map(|t| t.length);
+"#;
+
+    fn names(names: &[&str]) -> BTreeMap<String, Vec<String>> {
+        BTreeMap::from([(
+            "names".to_owned(),
+            names.iter().map(|&n| n.to_owned()).collect(),
+        )])
+    }
+
+    #[test]
+    fn the_name_state_has_the_name_card_offering_names_entered_before() {
+        let definition = Definition::from_toml(NAMED).unwrap();
+        let section = |state| section_for(&definition, Some(state)).map(|(t, c)| (t.length, c));
         assert_eq!(
             (section("booth"), section("name"), section("play")),
-            (Some(5), Some(3), None)
+            (Some((5, Card::Word)), Some((3, Card::Name)), None)
         );
-        let names =
-            BTreeMap::from([("names".to_owned(), vec!["ZOE".to_owned(), "SAM".to_owned()])]);
         let name_entry = definition.name_entry.as_ref().unwrap();
-        let mut e = Entry::open(name_entry, &names, 0);
+        let mut e = Entry::open(name_entry, Card::Name, &names(&["ZOE", "SAM"]), 0);
         assert_eq!(e.chosen(), Some("ZOE"), "at any guidance level");
         assert_eq!(e.card(PadLabels::Letters).title_choose, "Choose a name");
+        assert!(e.card(PadLabels::Letters).each_place);
         e.input(Input::Switch);
         e.input(Input::Up);
         assert_eq!(word(&e), "AOE", "spelling a new one, from the one chosen");
-        let none = Entry::open(name_entry, &BTreeMap::new(), 0);
+        let none = Entry::open(name_entry, Card::Name, &BTreeMap::new(), 0);
         assert_eq!(none.chosen(), None, "nothing entered yet: spelling");
+    }
+
+    #[test]
+    fn on_the_name_card_a_takes_each_place_and_enters_at_the_last() {
+        let definition = Definition::from_toml(NAMED).unwrap();
+        let name_entry = definition.name_entry.as_ref().unwrap();
+        let mut e = Entry::open(name_entry, Card::Name, &BTreeMap::new(), 0);
+        assert_eq!(
+            e.input(Input::Confirm),
+            None,
+            "an empty place takes nothing"
+        );
+        assert_eq!(e.mode, EntryMode::Spelling { slot: 0 });
+        e.input(Input::Up);
+        assert_eq!(e.input(Input::Confirm), None, "A, then the next place");
+        assert_eq!(e.mode, EntryMode::Spelling { slot: 1 });
+        e.input(Input::Down);
+        assert_eq!(word(&e), "A _", "down from empty: the last letter, a space");
+        assert_eq!(e.input(Input::Confirm), None);
+        e.input(Input::Up);
+        e.input(Input::Up);
+        assert_eq!(
+            e.input(Input::Confirm),
+            Some("A B".to_owned()),
+            "entered at the last place, every place filled"
+        );
+        let mut gap = Entry::open(name_entry, Card::Name, &BTreeMap::new(), 0);
+        gap.input(Input::Right);
+        gap.input(Input::Right);
+        gap.input(Input::Up);
+        assert_eq!(gap.input(Input::Confirm), None, "a place still empty");
+        assert_eq!(gap.mode, EntryMode::Spelling { slot: 0 }, "goes to it");
+        let mut chosen = Entry::open(name_entry, Card::Name, &names(&["Z"]), 0);
+        assert_eq!(
+            chosen.input(Input::Confirm),
+            Some("Z  ".to_owned()),
+            "a name kept short is made up with spaces"
+        );
+        let typed = Typing::new("A B", name_entry);
+        let keys: Vec<String> = typed.keys().iter().map(|k| format!("{k:?}")).collect();
+        assert_eq!(keys, ["A", "Space", "B"], "a space is typed on SPACE");
     }
 
     #[test]
@@ -368,22 +462,5 @@ choices = "names"
             })
             .collect();
         assert_eq!(strokes, ["+A", ".", "-A", "+B", ".", "-B"]);
-    }
-
-    #[test]
-    fn a_short_word_is_made_up_to_its_length_with_the_fill_key() {
-        let keys = |fill: Option<&str>| {
-            let text_entry = TextEntry {
-                fill: fill.map(str::to_owned),
-                ..text_entry()
-            };
-            let t = Typing::new("A", &text_entry);
-            t.keys()
-                .iter()
-                .map(|k| format!("{k:?}"))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(keys(Some("SPACE")), ["A", "Space", "Space"]);
-        assert_eq!(keys(None), ["A"], "without one, only what's spelled");
     }
 }

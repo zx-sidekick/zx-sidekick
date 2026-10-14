@@ -352,14 +352,14 @@ key_down_frames = 1
 key_up_frames = 1
 ```
 
-The card opens on the first pad press while the game is in `state`, its top at the character row `card_row` so the game's own echo of the letters, on the row above, stays in sight. Where the window has no room for it under that row, the card is drawn smaller to fit, down to its size beside the smallest picture; past that it sits just above the row instead. It offers the words of the `choices` list from `choices_from_level` up, and otherwise opens on spelling; the west button switches between the two, and the back button clears what's spelled. A word entered is typed on the keys, one letter held for `key_down_frames` and released for `key_up_frames` (a frame each when not given). With `fill`, a key name, a word entered with fewer letters than `length` is made up to it with that key, so a game that waits for every letter gets them all. While the card is open the pad drives only the card; the keyboard never opens it.
+The card opens on the first pad press while the game is in `state`, its top at the character row `card_row` so the game's own echo of the letters, on the row above, stays in sight. Where the window has no room for it under that row, the card is drawn smaller to fit, down to its size beside the smallest picture; past that it sits just above the row instead. It offers the words of the `choices` list from `choices_from_level` up, and otherwise opens on spelling; the west button switches between the two, and the back button clears what's spelled. A word entered is typed on the keys, one letter held for `key_down_frames` and released for `key_up_frames` (a frame each when not given). While the card is open the pad drives only the card; the keyboard never opens it.
 
 ## `[name_entry]`: a high score's name with a pad
 
 ```toml
 [name_entry]
 state = "name"
-letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
 length = 3
 card_row = 18
 title_choose = "Choose a name"
@@ -367,14 +367,13 @@ title_spell = "Spell a name"
 choices = "names"          # a [persist] list, which the program fills
 key_down_frames = 2
 key_up_frames = 9
-fill = "SPACE"             # a name confirmed short is made up with spaces
 
 [persist.names]
 label = "high-score names"
 file = "high-score-names.txt"
 ```
 
-The same card as `[text_entry]`'s, with the same keys, for the name a game asks for after a high score; a definition can have both, in different states. The program adds to the `choices` list itself: the name of each entry a game here puts in the `[high_scores]` table, read back after the game, whether the card or the keyboard typed it. So the card offers the names entered before first, from any guidance level unless `choices_from_level` says otherwise. The table is read back, and the game's entry kept, as soon as the game leaves `state` for another state, rather than when the title comes round, so the score is kept even if a save is loaded first. A game that asks no name (no high score) is read back at the title, as without `[name_entry]`; either way once a game. Frames that match no state don't count as leaving, so give what follows the name a state of its own if the game shows something before its title. `sidekick check` wants `[high_scores]` with its `name`, no longer `length` than the name's `len`, a state other than `[text_entry]`'s, and a `fill` that's a Spectrum key.
+The same card as `[text_entry]`'s, with the same keys, for the name a game asks for after a high score; a definition can have both, in different states. One difference: while spelling, the confirm button takes the letter into its place and moves on to the next, and enters the name only at the last, once every place has a letter, since a game asking a name waits for all of them. A space among the `letters` is shown as an open box (␣) and typed on SPACE; a name chosen from the list that's shorter than `length` (names are kept without trailing spaces) is made up with spaces. The program adds to the `choices` list itself: the name of each entry a game here puts in the `[high_scores]` table, read back after the game, whether the card or the keyboard typed it. So the card offers the names entered before first, from any guidance level unless `choices_from_level` says otherwise. The table is read back, and the game's entry kept, as soon as the game leaves `state` for another state, rather than when the title comes round, so the score is kept even if a save is loaded first. A game that asks no name (no high score) is read back at the title, as without `[name_entry]`; either way once a game. Frames that match no state don't count as leaving, so give what follows the name a state of its own if the game shows something before its title. `sidekick check` wants `[high_scores]` with its `name`, no longer `length` than the name's `len`, and a state other than `[text_entry]`'s.
 
 ## `[persist]`: lists kept between games
 

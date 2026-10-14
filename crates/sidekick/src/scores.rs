@@ -541,12 +541,11 @@ score = { offset = 3, len = 6, type = "digits" }
         );
     }
 
-    /// Types what the card enters on its confirm, at the definition's timings.
-    fn confirm_card(s: &mut Session, card: &mut crate::entry::Entry) {
-        use crate::entry::{Input, Stroke, Typing};
+    /// Types the word the card entered, at the definition's timings.
+    fn type_word(s: &mut Session, word: &str) {
+        use crate::entry::{Stroke, Typing};
         let name_entry = s.definition().unwrap().name_entry.clone().unwrap();
-        let word = card.input(Input::Confirm).expect("confirmed, a word");
-        let mut typing = Typing::new(&word, &name_entry);
+        let mut typing = Typing::new(word, &name_entry);
         while let Some(stroke) = typing.next() {
             match stroke {
                 Stroke::Press(k) => s.machine_mut().key(k, true),
@@ -593,8 +592,9 @@ score = { offset = 3, len = 6, type = "digits" }
         let name_entry = s.definition().unwrap().name_entry.clone().unwrap();
         let list = name_entry.choices.clone().unwrap();
         let names = std::collections::BTreeMap::from([(list.clone(), vec!["ZOE".to_owned()])]);
-        let mut card = crate::entry::Entry::open(&name_entry, &names, 0);
-        confirm_card(&mut s, &mut card);
+        let mut card = crate::entry::Entry::open(&name_entry, crate::entry::Card::Name, &names, 0);
+        let word = card.input(crate::entry::Input::Confirm);
+        type_word(&mut s, &word.expect("the name chosen, entered"));
         until_named(&mut s);
 
         let read = s.scores().unwrap();
@@ -623,8 +623,8 @@ score = { offset = 3, len = 6, type = "digits" }
 
     #[test]
     #[allow(clippy::print_stderr, reason = "a skipped test says why")]
-    fn on_the_tape_a_one_letter_name_confirmed_on_the_card_ends_the_prompt() {
-        use crate::entry::{Entry, Input};
+    fn on_the_tape_a_name_with_a_space_spelled_on_the_card_lands_in_the_table() {
+        use crate::entry::{Card, Entry, Input};
         let Some(mut s) = starquake_at_title() else {
             eprintln!("skipped: no assets/Starquake.tap.zip (the player's own tape)");
             return;
@@ -634,12 +634,23 @@ score = { offset = 3, len = 6, type = "digits" }
         let lowest = value(&s.scores().unwrap().last().unwrap().score);
         to_the_name(&mut s, i64::try_from(lowest).unwrap() + 1);
         let name_entry = s.definition().unwrap().name_entry.clone().unwrap();
-        let mut card = Entry::open(&name_entry, &std::collections::BTreeMap::new(), 0);
-        card.input(Input::Up);
-        confirm_card(&mut s, &mut card);
+        let mut card = Entry::open(
+            &name_entry,
+            Card::Name,
+            &std::collections::BTreeMap::new(),
+            0,
+        );
+        // The first letter, then down to the last (the space), then the first again.
+        let word = [Input::Up, Input::Confirm, Input::Down, Input::Confirm]
+            .into_iter()
+            .chain([Input::Up, Input::Confirm])
+            .find_map(|input| card.input(input))
+            .expect("entered at the last place");
+        let first = name_entry.letters.chars().next().unwrap();
+        assert_eq!(word, format!("{first} {first}"));
+        type_word(&mut s, &word);
         until_named(&mut s);
         let (after, mine) = after_game(&table, s.scores().unwrap(), "no guidance", false);
-        let first = name_entry.letters.chars().next().unwrap().to_string();
-        assert_eq!(after[mine.expect("this game's entry")].entry.name, first);
+        assert_eq!(after[mine.expect("this game's entry")].entry.name, word);
     }
 }
