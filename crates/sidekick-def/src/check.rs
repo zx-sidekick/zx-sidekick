@@ -82,8 +82,8 @@ const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north
 const PROGRAM_KEYS: &[&str] = &["Esc", "F5", "F9", "F11"];
 
 /// The keys that an action can take, by SDL's names for them: none the keyboard plays as a
-/// pad with (the arrows, W A S D, Z X C V, Space, Enter, the right Control and Alt, `/`) or
-/// types on the Spectrum with (letters, digits, the shifts, Backspace).
+/// pad with (the arrows, Space, Enter, and the right Control and Alt and `/` with the Spectrum's
+/// keyboard on) or types on the Spectrum with (letters, digits, the shifts, Backspace).
 const HOST_KEYS: &[&str] = &[
     "Tab", "F1", "F2", "F3", "F4", "F6", "F7", "F8", "F10", "F12", "Insert", "Delete", "Home",
     "End", "PageUp", "PageDown",
@@ -222,6 +222,9 @@ impl Checker<'_> {
             }
             None if !combines => self.report(path, "names no value, and combines no tests"),
             None => {}
+        }
+        if let Some(other) = &test.equals_value {
+            self.need_value(&format!("{path}.equals_value"), other);
         }
         for (i, t) in test.all.iter().enumerate() {
             self.test(&format!("{path}.all[{i}]"), t);
@@ -476,9 +479,42 @@ impl Checker<'_> {
     }
 
     fn pad(&mut self) {
-        for (state, pad) in &self.def.pad {
+        for (state, tables) in &self.def.pad {
             if state != "default" && !self.state_exists(state) {
                 self.report(format!("pad.{state}"), format!("no state named {state:?}"));
+            }
+            let count = tables.iter().count();
+            if state == "default" && count > 1 {
+                self.report("pad.default", "one table: lists are for a state's own");
+            }
+            for (n, pad) in tables.iter().enumerate() {
+                let state = &if count > 1 {
+                    format!("{state}[{n}]")
+                } else {
+                    state.clone()
+                };
+                if pad.when.is_none() && n + 1 < count {
+                    self.report(
+                        format!("pad.{state}"),
+                        "only the last of a state's tables can leave out when: those after it never apply",
+                    );
+                }
+                self.pad_table(state, pad);
+            }
+        }
+    }
+
+    fn pad_table(&mut self, state: &str, pad: &crate::Pad) {
+        {
+            if let Some(when) = &pad.when {
+                if state == "default" {
+                    self.report(
+                        format!("pad.{state}.when"),
+                        "when is for a state's own table, not every state's",
+                    );
+                } else {
+                    self.test(&format!("pad.{state}.when"), when);
+                }
             }
             for (part, target) in pad.parts() {
                 let path = format!("pad.{state}.{part}");
@@ -490,20 +526,36 @@ impl Checker<'_> {
                     self.report(&path, "any is for a state's own table, not every state's");
                     continue;
                 }
+                let directional = matches!(part, "dpad" | "stick" | "arrows");
+                let named_ok = |checker: &Self, name: &str| match name {
+                    "joystick" => directional,
+                    "menu" | "none" => true,
+                    n => DIRECTIONS.contains(&n) || checker.action_exists(n),
+                };
                 match target {
                     PadTarget::Named(name) => {
-                        let ok = match name.as_str() {
-                            "joystick" => matches!(part, "dpad" | "stick"),
-                            "menu" | "none" => true,
-                            n => DIRECTIONS.contains(&n) || self.action_exists(n),
-                        };
-                        if !ok {
+                        if !named_ok(self, name) {
                             self.report(
                                 path,
                                 format!(
                                     "{name:?} isn't a direction, fire, menu, none or an action"
                                 ),
                             );
+                        }
+                    }
+                    PadTarget::Ways(ways) => {
+                        if !directional {
+                            self.report(&path, "ways are for dpad, stick and arrows");
+                        }
+                        for (way, name) in ways.ways() {
+                            if !named_ok(self, name) {
+                                self.report(
+                                    format!("{path}.{way}"),
+                                    format!(
+                                        "{name:?} isn't a direction, fire, menu, none or an action"
+                                    ),
+                                );
+                            }
                         }
                     }
                     PadTarget::Table(table) => {

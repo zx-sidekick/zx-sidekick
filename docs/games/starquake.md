@@ -10,20 +10,22 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 ## Keys and pad
 
-**Keyboard:** a second pad (`[run] keyboard`, left at its default `"pad"`), so it plays on the Kempston joystick too: the arrows or W A S D move, Space fires, Z and X send down and up, V switches level 5's route, and Enter pauses in play (it taps SPACE, the game's own pause key). On the title, any key starts a game, letters and digits too, and any key goes on from the story that follows; the arrows and W A S D do nothing there. The game's own keys don't reach it: its menu's list of control methods and its defined keys are left behind, and so is **A S D F G** together to abandon a game, which the guidance menu's "End this game" does instead. The menu's "Use the Spectrum keyboard" toggle gives the original keys back for the session. **Tab** switches level 5's route between pieces (`[[actions]] next-route`, `host_key = "Tab"`). At a teleport booth and the high score's name, the keyboard types the letters straight into the game.
+**Keyboard:** a second pad (`[run] keyboard`, left at its default `"pad"`), so it plays on the Kempston joystick too, with the cursor keys and Space only (#194): the arrows move, up picks up and down builds as in the original, Space fires, and Enter pauses in play (it taps SPACE, the game's own pause key). No other key plays in play. On the title, any key starts a game, letters and digits too, and any key goes on from the story that follows; the arrows do nothing there. The game's own keys don't reach it: its menu's list of control methods and its defined keys are left behind, and so is **A S D F G** together to abandon a game, which the guidance menu's "End this game" does instead. The menu's "Use the Spectrum keyboard" toggle gives the original keys back for the session. **Tab** switches level 5's route between pieces (`[[actions]] next-route`, `host_key = "Tab"`). At a teleport booth and the high score's name, the keyboard types the letters straight into the game.
 
-**Pad**, in play, on the Kempston joystick (`[run] joystick = "kempston"`), whichever control method the game's menu chose. The keyboard's keys for each button are beside it:
+**Pad**, in play, on the Kempston joystick (`[run] joystick = "kempston"`), whichever control method the game's menu chose. The keyboard's keys for each button are beside it; in brackets, the arrow that does the same, where no key plays the button itself:
 
 | Button | Keys | Does | In the definition |
 |---|---|---|---|
-| D-pad, left stick | Arrows, W A S D | Move | `dpad`, `stick = "joystick"` |
-| West | Space, C, right Ctrl, right Alt, `/` | Fire | `west = "fire"` |
-| South | Z | Down: build a platform, or fly down | `south = "build"` |
-| East | X | Up: pick up or swap an item, or board a hover platform | `east = "pick-up"` |
-| North | V | Switch level 5's route | `north = "next-route"` |
+| D-pad, left stick | Arrows | Move left and right; up boards a hover platform where it waits, and on it, up and down fly it. The arrows' up and down pick up and build on foot | `dpad`, `stick = "joystick"`; `[[pad.play]]` with `when` |
+| West | Space | Fire | `west = "fire"` |
+| South | (↓) | Down: build a platform, or fly down | `south = "build"` |
+| East | (↑) | Up: pick up or swap an item, or board a hover platform | `east = "pick-up"` |
+| North | Tab | Switch level 5's route | `north = "next-route"` |
 | Start | Enter | Pause in play | `[pad.default] start` |
-| Any button | Any key but a direction's, Esc and the F keys | Start a game on the title screen; go on from the story | `[pad.title] any`, with `dpad` and `stick` `"none"` |
+| Any button | Any key but the arrows, Esc and the F keys | Start a game on the title screen; go on from the story | `[pad.title] any`, with `dpad` and `stick` `"none"` |
 | Select | Esc | The guidance menu | always |
+
+**The D-pad on foot (#194).** A D-pad's or stick's up and down pressed by accident on a diagonal would pick up, swap or build. So in play three `[[pad.play]]` tables apply in turn. Riding a hover platform (`blob_mode` 2), the D-pad and stick fly it up and down. On foot where its platform waits (BLOB's x and height those of `hover_pad_x` and `hover_pad_height`, the place kept at `0xD2CA`), up boards it, as east does; there up picks nothing up and swaps nothing, so an item lying there stays; down does nothing. Elsewhere on foot, and carried up a vacuum tube (`blob_mode` 1), where up and down do nothing of their own, the D-pad and stick move left and right only, and east and south pick up and build. The keyboard's arrows keep up and down throughout (`arrows = "joystick"`).
 
 **Up and down.** In the original, *up* both picks up or swaps and boards a hover platform, and *down* both builds and flies down; the game decides which from where BLOB is. The east button sends *up* and the south one *down* (`[[actions]] pick-up` and `build`), each with both of the game's meanings, as the D-pad's up and down do. Splitting them, so that east only picks up and south only builds, was looked at and not taken up (#20).
 
@@ -33,11 +35,11 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 **The loading screen:** the game's loader shows its screen until a key is pressed, and the rest of the tape loads after it; a card at the screen's foot says "Press any key or button to go on." Any button on the pad goes on (it taps ENTER, since the west button's Kempston fire is no key to the loader), and so does any key, letters and digits too; the directions don't.
 
-**The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), and any key or button starts a game (`[pad.title] any`), so a card over the foot of the title says "Ignore the list: press any key or button to start". The arrows, W A S D, the D-pad and the stick do nothing there. Which keys play the game, the How to play screen says when a game starts: move, pick up, build, the teleport booths, fire and pause (`[about]`).
+**The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), and any key or button starts a game (`[pad.title] any`), so a card over the foot of the title says "Ignore the list: press any key or button to start". The arrows, the D-pad and the stick do nothing there. Which keys play the game, the How to play screen says when a game starts: move, pick up, build, the teleport booths, fire and pause (`[about]`).
 
 ## How to play
 
-`[about]` gives the goal (the core's pieces, carried back to it, and that the core shows which it wants only in its own room) and four moves: pick up or swap (east, X on the keyboard), build a platform (south, Z), teleport booths (the arrows) and fire (west, Space). The keys are the keyboard's, as it plays as a pad, except the booths', which name the two arrows that walk into one. The words are our own, not the game's.
+`[about]` gives the goal (the core's pieces, carried back to it, and that the core shows which it wants only in its own room) and six moves: move (the arrows), pick up or swap (east, ↑ on the keyboard), build a platform (south, ↓), teleport booths (the arrows), fire (west, Space) and pause (Start, Enter). The keys are the keyboard's, as it plays as a pad: where no key plays a button, the arrow that does the same (east pushes the joystick up, south down). The booths' name the two arrows that walk into one. The words are our own, not the game's.
 
 ## Guidance levels
 

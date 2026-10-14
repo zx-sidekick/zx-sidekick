@@ -715,7 +715,10 @@ fn the_pad_s_start_pauses_the_game_in_play() {
     let Some(mut s) = in_play() else { return };
     until(&mut s, 50, |_| false);
     let definition = s.definition().expect("its definition");
-    let Some(sidekick_def::PadTarget::Table(start)) = definition.pad["default"].start.clone()
+    let Some(sidekick_def::PadTarget::Table(start)) = definition.pad["default"]
+        .iter()
+        .next()
+        .and_then(|p| p.start.clone())
     else {
         panic!("Start taps keys in play");
     };

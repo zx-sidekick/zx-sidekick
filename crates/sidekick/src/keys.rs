@@ -179,23 +179,18 @@ pub(crate) fn any_key(scancode: Scancode) -> Option<Part> {
     u16::try_from(scancode.to_i32()).ok().map(Part::Key)
 }
 
-/// The pad part a key plays as when the keyboard is a pad: the arrows and W A S D are the
-/// D-pad; Space, the right Control, the right Alt (Option) and `/` the west button; Z, X, C and
-/// V the south, east, west and north buttons, by position; Enter is Start. `/` is for a Mac,
-/// whose apps may take a modifier tapped twice for a shortcut of their own, whatever window has
-/// focus.
+/// The pad part a key plays as when the keyboard is a pad: the arrows (which play as the D-pad
+/// unless `[pad] arrows` says otherwise), Space the west button (fire), Enter Start. No other
+/// key plays (#194); Esc and the F keys are the program's.
 #[must_use]
 pub(crate) const fn pad_key(scancode: Scancode) -> Option<Part> {
     use Scancode as S;
     Some(match scancode {
-        S::Up | S::W => Part::DPad(Way::Up),
-        S::Down | S::S => Part::DPad(Way::Down),
-        S::Left | S::A => Part::DPad(Way::Left),
-        S::Right | S::D => Part::DPad(Way::Right),
-        S::Space | S::RCtrl | S::RAlt | S::Slash | S::C => Part::West,
-        S::Z => Part::South,
-        S::X => Part::East,
-        S::V => Part::North,
+        S::Up => Part::Arrow(Way::Up),
+        S::Down => Part::Arrow(Way::Down),
+        S::Left => Part::Arrow(Way::Left),
+        S::Right => Part::Arrow(Way::Right),
+        S::Space => Part::West,
         S::Return | S::KpEnter => Part::Start,
         _ => return None,
     })
@@ -278,30 +273,27 @@ pub(crate) const fn spectrum_key(scancode: Scancode) -> Option<Spectrum> {
 #[must_use]
 pub(crate) const fn pad_part(scancode: Scancode) -> Option<Part> {
     match scancode {
-        Scancode::Up => Some(Part::DPad(Way::Up)),
-        Scancode::Down => Some(Part::DPad(Way::Down)),
-        Scancode::Left => Some(Part::DPad(Way::Left)),
-        Scancode::Right => Some(Part::DPad(Way::Right)),
+        Scancode::Up => Some(Part::Arrow(Way::Up)),
+        Scancode::Down => Some(Part::Arrow(Way::Down)),
+        Scancode::Left => Some(Part::Arrow(Way::Left)),
+        Scancode::Right => Some(Part::Arrow(Way::Right)),
         Scancode::RCtrl | Scancode::RAlt | Scancode::Slash => Some(Part::West),
         _ => None,
     }
 }
 
 /// How a card names the key that plays `part`: with the keyboard a pad ([`pad_key`]), the arrows,
-/// Space for west, Z, X and V for south, east and north, and Enter for Start; with the Spectrum's
+/// Space for west and Enter for Start; with the Spectrum's
 /// keyboard on (`spectrum`, [`pad_part`]), the arrows and the right Control for fire (a Mac's
 /// cards name `/` instead), and no others.
 pub(crate) const fn key_for(part: Part, spectrum: bool) -> Option<&'static str> {
     match (part, spectrum) {
-        (Part::DPad(Way::Up), _) => Some("↑"),
-        (Part::DPad(Way::Down), _) => Some("↓"),
-        (Part::DPad(Way::Left), _) => Some("←"),
-        (Part::DPad(Way::Right), _) => Some("→"),
+        (Part::Arrow(Way::Up), _) => Some("↑"),
+        (Part::Arrow(Way::Down), _) => Some("↓"),
+        (Part::Arrow(Way::Left), _) => Some("←"),
+        (Part::Arrow(Way::Right), _) => Some("→"),
         (Part::West, true) => Some("Right Ctrl"),
         (Part::West, false) => Some("Space"),
-        (Part::South, false) => Some("Z"),
-        (Part::East, false) => Some("X"),
-        (Part::North, false) => Some("V"),
         (Part::Start, false) => Some("Enter"),
         _ => None,
     }
@@ -399,8 +391,8 @@ mod tests {
 
     #[test]
     fn the_arrows_the_right_ctrl_and_option_and_the_slash_play_as_a_pad() {
-        assert_eq!(pad_part(Scancode::Left), Some(Part::DPad(Way::Left)));
-        assert_eq!(pad_part(Scancode::Up), Some(Part::DPad(Way::Up)));
+        assert_eq!(pad_part(Scancode::Left), Some(Part::Arrow(Way::Left)));
+        assert_eq!(pad_part(Scancode::Up), Some(Part::Arrow(Way::Up)));
         assert_eq!(pad_part(Scancode::RCtrl), Some(Part::West));
         assert_eq!(pad_part(Scancode::RAlt), Some(Part::West));
         assert_eq!(pad_part(Scancode::Slash), Some(Part::West));
@@ -466,30 +458,30 @@ mod tests {
         let pad = mode(Some(&def("")), Some("play"), false);
         assert_eq!(pad, KeyboardMode::Pad);
         for (keys, want) in [
-            (&[Scancode::Up, Scancode::W][..], Part::DPad(Way::Up)),
-            (&[Scancode::Down, Scancode::S], Part::DPad(Way::Down)),
-            (&[Scancode::Left, Scancode::A], Part::DPad(Way::Left)),
-            (&[Scancode::Right, Scancode::D], Part::DPad(Way::Right)),
-            (
-                &[
-                    Scancode::Space,
-                    Scancode::RCtrl,
-                    Scancode::RAlt,
-                    Scancode::Slash,
-                    Scancode::C,
-                ],
-                Part::West,
-            ),
-            (&[Scancode::Z], Part::South),
-            (&[Scancode::X], Part::East),
-            (&[Scancode::V], Part::North),
+            (&[Scancode::Up][..], Part::Arrow(Way::Up)),
+            (&[Scancode::Down], Part::Arrow(Way::Down)),
+            (&[Scancode::Left], Part::Arrow(Way::Left)),
+            (&[Scancode::Right], Part::Arrow(Way::Right)),
+            (&[Scancode::Space], Part::West),
             (&[Scancode::Return, Scancode::KpEnter], Part::Start),
         ] {
             for &key in keys {
                 assert_eq!(part(key, &pad), Some(want), "{key:?}");
             }
         }
+        // Only the cursor keys and Space play (#194).
         for key in [
+            Scancode::W,
+            Scancode::A,
+            Scancode::S,
+            Scancode::D,
+            Scancode::Z,
+            Scancode::X,
+            Scancode::C,
+            Scancode::V,
+            Scancode::RCtrl,
+            Scancode::RAlt,
+            Scancode::Slash,
             Scancode::Q,
             Scancode::_0,
             Scancode::LShift,
@@ -522,7 +514,7 @@ mod tests {
             pressed(Scancode::Backspace, &plain),
             Some(KeyDoes::Spectrum(Spectrum::Compound(CompoundKey::Delete)))
         ));
-        assert_eq!(part(Scancode::Left, &plain), Some(Part::DPad(Way::Left)));
+        assert_eq!(part(Scancode::Left, &plain), Some(Part::Arrow(Way::Left)));
         assert_eq!(part(Scancode::RCtrl, &plain), Some(Part::West));
         assert!(pressed(Scancode::Escape, &plain).is_none());
     }
@@ -625,12 +617,15 @@ mod tests {
 
     #[test]
     fn a_key_let_go_lets_go_of_whatever_it_may_have_pressed() {
-        let (key, parts) = let_go(Scancode::W);
-        assert!(matches!(key, Some(Spectrum::Key(Key::W))));
-        assert_eq!(parts, [Part::DPad(Way::Up)]);
+        let (key, parts) = let_go(Scancode::Space);
+        assert!(matches!(key, Some(Spectrum::Key(Key::Space))));
+        assert_eq!(parts, [Part::West]);
+        let (key, parts) = let_go(Scancode::RCtrl);
+        assert!(key.is_none());
+        assert_eq!(parts, [Part::West], "fire, with the Spectrum's keyboard on");
         let (key, parts) = let_go(Scancode::Up);
         assert!(key.is_none());
-        assert_eq!(parts, [Part::DPad(Way::Up)], "once");
+        assert_eq!(parts, [Part::Arrow(Way::Up)], "once");
         let (key, parts) = let_go(Scancode::Q);
         assert!(matches!(key, Some(Spectrum::Key(Key::Q))));
         assert!(
@@ -672,8 +667,9 @@ mod tests {
         /// The state last known, for what's pressed now, as the window takes an event.
         fn enter(&mut self) {
             let known = self.s.progress().last_known.clone();
+            let s = &self.s;
             self.pads
-                .hold_back_parts(&self.play.enter(known.as_deref()));
+                .hold_back_parts(&self.play.enter(known.as_deref(), &|t| s.holds(t)));
         }
 
         /// A part of pad `pad` pressed or let go, as the window takes it.
@@ -688,7 +684,7 @@ mod tests {
         /// The game as it is, played on from here apart from this one.
         fn fork(&self) -> Self {
             let mut play = Play::new(Mapping::new(self.s.definition()));
-            play.enter(self.known());
+            play.enter(self.known(), &|t| self.s.holds(t));
             Self {
                 s: self.s.clone(),
                 play,
@@ -741,6 +737,162 @@ mod tests {
         }
     }
 
+    /// The first record of a table value, by its field: its address, from the definition.
+    fn field_addr(s: &sidekick_core::Session, table: &str, field: &str) -> u16 {
+        let value = &s.definition().expect("its definition").values[table];
+        value.addr.expect("an address").0
+            + u16::try_from(value.fields[field].offset).expect("a small offset")
+    }
+
+    /// Starquake in play, entered into room `room` with BLOB at (`x`, `height`), the first item
+    /// laid there first when `item`, creatures harmless.
+    fn starquake_in(room: i64, x: i64, height: i64, item: bool) -> Option<Played> {
+        let mut k = starquake()?;
+        crate::situations::start(&mut k.s, &sidekick_def::Situation::default())
+            .expect("a game starts");
+        if item {
+            // The room's low byte, its ninth bit, and y 0: placed on entering the room.
+            let low = u8::try_from(room & 0xFF).expect("a byte");
+            let high = if room >= 256 { 0x80 } else { 0 };
+            let at = field_addr(&k.s, "items", "room_low");
+            k.s.machine_mut().write(at, low);
+            let at = field_addr(&k.s, "items", "second");
+            k.s.machine_mut().write(at, high);
+        }
+        let situation = sidekick_def::Situation::from_toml(&format!(
+            "room = {room}\nblob_x = {x}\nblob_y = {height}\ncheats = [\"no-harm\"]\n"
+        ))
+        .expect("it parses");
+        crate::situations::enter(&mut k.s, &situation).expect("the room");
+        k.frames(30);
+        Some(k)
+    }
+
+    impl Played {
+        fn number(&self, name: &str) -> i64 {
+            self.s.reading()[name].number().expect(name)
+        }
+
+        /// The first carried slot's color: 0 while nothing is carried.
+        fn carried(&self) -> u8 {
+            let at = field_addr(&self.s, "carried", "color");
+            self.s.machine().peek(at)
+        }
+
+        /// Holds a pad's part for `frames`, then lets it go.
+        fn hold(&mut self, part: Part, frames: usize) {
+            self.button(0, part, true);
+            self.frames(frames);
+            self.button(0, part, false);
+            self.frames(10);
+        }
+    }
+
+    #[test]
+    fn on_foot_the_pad_s_up_and_down_do_nothing_but_its_buttons_and_the_arrows_do() {
+        // Room 399's one place for an item, where BLOB meets it from x 200 (docs/re/starquake.md).
+        let Some(k) = starquake_in(399, 200, 135, true) else {
+            return;
+        };
+        assert_eq!(k.number("blob_mode"), 0, "on foot");
+        assert_eq!(k.carried(), 0);
+        for part in [Part::DPad(Way::Up), Part::Stick(Way::Up)] {
+            let mut g = k.fork();
+            g.hold(part, 15);
+            assert_eq!(g.carried(), 0, "{part:?} picks nothing up");
+        }
+        let mut g = k.fork();
+        g.hold(Part::East, 15);
+        assert_ne!(g.carried(), 0, "east picks it up");
+        let mut g = k.fork();
+        g.tap(Scancode::Up, 15);
+        g.frames(10);
+        assert_ne!(g.carried(), 0, "the up arrow picks it up");
+
+        let platforms = k.number("platforms");
+        for part in [Part::DPad(Way::Down), Part::Stick(Way::Down)] {
+            let mut g = k.fork();
+            g.hold(part, 15);
+            assert_eq!(g.number("platforms"), platforms, "{part:?} builds nothing");
+        }
+        let mut g = k.fork();
+        g.hold(Part::South, 15);
+        assert_eq!(g.number("platforms"), platforms - 2, "south builds");
+        let mut g = k.fork();
+        g.tap(Scancode::Down, 15);
+        g.frames(10);
+        assert_eq!(
+            g.number("platforms"),
+            platforms - 2,
+            "the down arrow builds"
+        );
+
+        let mut g = k.fork();
+        let x = g.number("blob_x");
+        g.hold(Part::DPad(Way::Left), 10);
+        assert!(g.number("blob_x") < x, "the D-pad still walks");
+    }
+
+    #[test]
+    fn on_a_hover_platform_the_pad_s_up_and_down_fly_it() {
+        // Room 234's hover pad, where its platform waits (games/starquake/tests/hover-pad.toml).
+        let Some(base) = starquake_in(234, 72, 87, false) else {
+            return;
+        };
+        let mut east = base.fork();
+        east.hold(Part::East, 10);
+        assert_eq!(east.number("blob_mode"), 2, "east boards it");
+        let mut away = base.fork();
+        away.s.write("blob_x", 88).expect("writable");
+        away.frames(10);
+        let height = away.number("blob_y");
+        away.hold(Part::DPad(Way::Up), 15);
+        assert_eq!(
+            away.number("blob_mode"),
+            0,
+            "a step from the pad, the D-pad's up does nothing"
+        );
+        assert_eq!(away.number("blob_y"), height);
+        for (left, up) in [
+            (Part::DPad(Way::Left), Part::DPad(Way::Up)),
+            (Part::Stick(Way::Left), Part::Stick(Way::Up)),
+        ] {
+            let mut g = base.fork();
+            g.s.write("blob_x", 104).expect("writable");
+            g.frames(10);
+            g.button(0, up, true);
+            g.button(0, left, true);
+            g.frames(40);
+            g.button(0, left, false);
+            g.button(0, up, false);
+            assert_eq!(
+                g.number("blob_mode"),
+                2,
+                "{up:?} held while walking onto the pad boards it on arrival"
+            );
+        }
+        let mut k = base.fork();
+        k.hold(Part::DPad(Way::Up), 10);
+        assert_eq!(
+            k.number("blob_mode"),
+            2,
+            "at the pad, the D-pad's up boards it"
+        );
+        let height = k.number("blob_y");
+        let mut g = k.fork();
+        g.hold(Part::DPad(Way::Up), 15);
+        let up = g.number("blob_y");
+        assert!(up > height, "the D-pad's up flies up: {height} to {up}");
+        g.hold(Part::DPad(Way::Down), 10);
+        assert!(g.number("blob_y") < up, "and down flies down");
+        let mut g = k.fork();
+        g.hold(Part::Stick(Way::Up), 15);
+        assert!(g.number("blob_y") > height, "so does the stick");
+        let mut g = k.fork();
+        g.tap(Scancode::Up, 15);
+        assert!(g.number("blob_y") > height, "and the up arrow");
+    }
+
     /// Starquake from its real tape, played as the window plays it; `None`, saying so, without
     /// the player's tape in `assets/`.
     #[allow(clippy::print_stderr, reason = "a skipped test says why")]
@@ -789,14 +941,17 @@ mod tests {
             Scancode::X,
             Scancode::C,
             Scancode::V,
-            Scancode::RCtrl,
-            Scancode::RAlt,
             Scancode::Slash,
             Scancode::Q,
             Scancode::M,
             Scancode::_1,
             Scancode::Tab,
             Scancode::Backspace,
+            // Not directions since #194: only the arrows are.
+            Scancode::W,
+            Scancode::A,
+            Scancode::S,
+            Scancode::D,
         ] {
             let mut k = waiting.fork();
             k.tap(key, 4);
@@ -814,10 +969,9 @@ mod tests {
         for key in [
             Scancode::Left,
             Scancode::Up,
-            Scancode::W,
-            Scancode::A,
-            Scancode::S,
-            Scancode::D,
+            // Modifiers since #194, no longer fire.
+            Scancode::RCtrl,
+            Scancode::RAlt,
             Scancode::Escape,
             Scancode::F1,
             Scancode::LShift,
@@ -849,7 +1003,7 @@ mod tests {
         }
         assert_eq!(
             part(Scancode::Left, &pad),
-            Some(Part::DPad(Way::Left)),
+            Some(Part::Arrow(Way::Left)),
             "the pad's own keys stay its parts"
         );
         for key in [
@@ -920,7 +1074,6 @@ mod tests {
             ("Esc", How::Key(Scancode::Escape)),
             ("an F key", How::Key(Scancode::F1)),
             ("an arrow", How::Key(Scancode::Left)),
-            ("W", How::Key(Scancode::W)),
             ("the D-pad", How::Button(Part::DPad(Way::Down))),
             ("the stick", How::Button(Part::Stick(Way::Right))),
         ] {
@@ -935,6 +1088,7 @@ mod tests {
 
         for (what, how) in [
             ("a letter", How::Key(Scancode::Q)),
+            ("W, no direction since #194", How::Key(Scancode::W)),
             ("a digit", How::Key(Scancode::_5)),
             ("Space", How::Key(Scancode::Space)),
             ("a face button", How::Button(Part::West)),
@@ -1004,10 +1158,15 @@ mod tests {
             left < before,
             "the left arrow moves BLOB left on the joystick"
         );
+        k.key(Scancode::Right, true);
+        k.frames(40);
+        k.key(Scancode::Right, false);
+        let right = k.blob_x();
+        assert!(right > left, "the right arrow moves him right");
         k.key(Scancode::D, true);
         k.frames(40);
         k.key(Scancode::D, false);
-        assert!(k.blob_x() > left, "D moves him right");
+        assert_eq!(k.blob_x(), right, "D doesn't: only the cursor keys play");
 
         // The game's own keys don't reach it: A S D F G together would end the game.
         let together = [
@@ -1052,9 +1211,6 @@ mod tests {
             (Scancode::Up, "↑"),
             (Scancode::Left, "←"),
             (Scancode::Space, "Space"),
-            (Scancode::Z, "Z"),
-            (Scancode::X, "X"),
-            (Scancode::V, "V"),
             (Scancode::Return, "Enter"),
         ] {
             assert_eq!(named(scancode, false), Some(name), "{scancode:?}, as a pad");
@@ -1066,7 +1222,12 @@ mod tests {
                 "{scancode:?}, the Spectrum's on"
             );
         }
-        assert_eq!(key_for(Part::South, true), None, "Z is the Spectrum's then");
+        assert_eq!(
+            key_for(Part::South, false),
+            None,
+            "no key plays a face button but west"
+        );
+        assert_eq!(key_for(Part::South, true), None);
         assert_eq!(key_for(Part::L1, false), None, "no key plays it");
     }
 

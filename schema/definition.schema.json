@@ -84,7 +84,7 @@
       "description": "What a pad does, by state (`default` for every state).",
       "type": "object",
       "additionalProperties": {
-        "$ref": "#/$defs/Pad"
+        "$ref": "#/$defs/OneOrMany4"
       }
     },
     "panel": {
@@ -819,7 +819,7 @@
       "description": "What the computer's keyboard is in play.",
       "oneOf": [
         {
-          "description": "A pad, through `[pad]`: the arrows and WASD its D-pad, Space its west button, Enter its\nStart. No Spectrum key reaches the game.",
+          "description": "A pad, through `[pad]`: the arrows its D-pad, Space its west button, Enter its Start; no\nother key plays, and no Spectrum key reaches the game.",
           "type": "string",
           "const": "pad"
         },
@@ -1096,12 +1096,39 @@
         }
       ]
     },
+    "OneOrMany4": {
+      "description": "One of something, or a list of them.",
+      "anyOf": [
+        {
+          "description": "Just one.",
+          "$ref": "#/$defs/Pad"
+        },
+        {
+          "description": "A list.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Pad"
+          }
+        }
+      ]
+    },
     "Pad": {
       "description": "`[pad.*]`: what each part of a pad does in a state (`default` for all states).",
       "type": "object",
       "properties": {
         "any": {
           "description": "In a state's own table: what every other button does there (not the directions or\nSelect), and every other key of the keyboard while it plays as a pad (not the\ndirections' keys, Esc, the F keys or the modifiers).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PadTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arrows": {
+          "description": "The keyboard's arrows, when not as `dpad` (which they follow otherwise).",
           "anyOf": [
             {
               "$ref": "#/$defs/PadTarget"
@@ -1242,6 +1269,17 @@
               "type": "null"
             }
           ]
+        },
+        "when": {
+          "description": "In a state's own table: it applies only while this test of a value holds; otherwise\nthe state plays as `default` does.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Test"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -1300,8 +1338,47 @@
         {
           "description": "Keys, a tap, or an action.",
           "$ref": "#/$defs/PadTable"
+        },
+        {
+          "description": "For `dpad`, `stick` and `arrows`: some of the ways, each as a name; the ways left out\ndo what they did.",
+          "$ref": "#/$defs/PadWays"
         }
       ]
+    },
+    "PadWays": {
+      "description": "The ways of a D-pad, the stick or the arrows, each `joystick` (its own direction), `up`,\n`down`, `left`, `right`, `fire`, `none` or an action's id.",
+      "type": "object",
+      "properties": {
+        "down": {
+          "description": "Down.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "left": {
+          "description": "Left.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "right": {
+          "description": "Right.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "up": {
+          "description": "Up.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "PanelHint": {
       "description": "`[[hints]]`: a line in the panel, under the level's name, while its conditions hold. Of\nthose that hold at the guidance level, the one with the lowest `priority` shows.",
@@ -1737,6 +1814,13 @@
             "null"
           ],
           "format": "int64"
+        },
+        "equals_value": {
+          "description": "It equals this other value, as read in the same frame.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "in": {
           "description": "It's one of these.",

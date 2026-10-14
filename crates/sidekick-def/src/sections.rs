@@ -116,8 +116,8 @@ pub struct Run {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Keyboard {
-    /// A pad, through `[pad]`: the arrows and WASD its D-pad, Space its west button, Enter its
-    /// Start. No Spectrum key reaches the game.
+    /// A pad, through `[pad]`: the arrows its D-pad, Space its west button, Enter its Start; no
+    /// other key plays, and no Spectrum key reaches the game.
     #[default]
     Pad,
     /// The Spectrum's own keyboard: its keys reach the game, and the arrows are still the D-pad.
@@ -281,6 +281,9 @@ pub struct Test {
     /// It equals this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub equals: Option<i64>,
+    /// It equals this other value, as read in the same frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equals_value: Option<String>,
     /// It doesn't equal this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub not: Option<i64>,
@@ -576,12 +579,19 @@ pub struct Patch {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Pad {
+    /// In a state's own table: it applies only while this test of a value holds; otherwise
+    /// the state plays as `default` does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<Test>,
     /// The D-pad.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dpad: Option<PadTarget>,
     /// The left stick.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stick: Option<PadTarget>,
+    /// The keyboard's arrows, when not as `dpad` (which they follow otherwise).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arrows: Option<PadTarget>,
     /// The left face button.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub west: Option<PadTarget>,
@@ -626,6 +636,7 @@ impl Pad {
         [
             ("dpad", &self.dpad),
             ("stick", &self.stick),
+            ("arrows", &self.arrows),
             ("west", &self.west),
             ("south", &self.south),
             ("east", &self.east),
@@ -652,6 +663,44 @@ pub enum PadTarget {
     Named(String),
     /// Keys, a tap, or an action.
     Table(PadTable),
+    /// For `dpad`, `stick` and `arrows`: some of the ways, each as a name; the ways left out
+    /// do what they did.
+    Ways(PadWays),
+}
+
+/// The ways of a D-pad, the stick or the arrows, each `joystick` (its own direction), `up`,
+/// `down`, `left`, `right`, `fire`, `none` or an action's id.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PadWays {
+    /// Up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub up: Option<String>,
+    /// Down.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub down: Option<String>,
+    /// Left.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left: Option<String>,
+    /// Right.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right: Option<String>,
+}
+
+impl PadWays {
+    /// Each way that's set, by name.
+    #[must_use]
+    pub fn ways(&self) -> Vec<(&'static str, &str)> {
+        [
+            ("up", &self.up),
+            ("down", &self.down),
+            ("left", &self.left),
+            ("right", &self.right),
+        ]
+        .into_iter()
+        .filter_map(|(way, name)| name.as_deref().map(|n| (way, n)))
+        .collect()
+    }
 }
 
 /// Keys, a tap, or an action.

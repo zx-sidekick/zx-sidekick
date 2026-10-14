@@ -1207,6 +1207,14 @@ fn fact(read: &Read) -> Fact {
     }
 }
 
+impl Session {
+    /// Whether a test of the definition's values holds for this frame's reading.
+    #[must_use]
+    pub fn holds(&self, test: &Test) -> bool {
+        holds(test, &self.reading)
+    }
+}
+
 /// Whether a test holds for the values read. A test of a value that isn't a number, or wasn't
 /// read, fails.
 fn holds(test: &Test, reading: &Reading) -> bool {
@@ -1215,6 +1223,10 @@ fn holds(test: &Test, reading: &Reading) -> bool {
     let own = test.value.as_ref().is_none_or(|name| {
         reading.get(name).and_then(Read::number).is_some_and(|n| {
             test.equals.is_none_or(|e| n == e)
+                && test
+                    .equals_value
+                    .as_ref()
+                    .is_none_or(|other| reading.get(other).and_then(Read::number) == Some(n))
                 && test.not.is_none_or(|e| n != e)
                 && (test.one_of.is_empty() || test.one_of.contains(&n))
                 && test.at_least.is_none_or(|e| n >= e)

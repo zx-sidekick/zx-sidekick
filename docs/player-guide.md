@@ -58,9 +58,9 @@ When a game starts, a **How to play** card says what the game is about and how i
 
 ## Keys and pad
 
-**Keyboard.** The keyboard plays as a pad, so a game plays on its joystick from the keyboard too: the **arrow keys** or **W A S D** are the D-pad; **Space** is the west button (fire, by default), and so are the **right Ctrl**, the **right Alt (Option)** and **/**; **Z X C V** are the south, east, west and north buttons, by position; **Enter** is Start. The Spectrum's own keys don't reach the game then. A game that needs them (to type, or for keys a pad can't stand in for) turns the Spectrum keyboard on in its definition, and the guidance menu can turn it on for the session: then letters, digits, Enter, Space, Shift (CAPS SHIFT), the left Ctrl and Alt (SYMBOL SHIFT) and Backspace (DELETE) reach the game as on the original, and the arrows and the right Ctrl, the right Alt and / still play as the pad. When a game asks for text, such as Starquake's teleport codes and a high score's name, the keyboard types the letters straight into it; on a pad, a card spells them.
+**Keyboard.** The keyboard plays as a pad, with the **arrow keys** and **Space** only: the arrows move (in Starquake, up picks up and down builds, as in the original), Space fires, and **Enter** is Start (in Starquake, it pauses). No other key plays a game, except where it asks for letters (a teleport code, your name), which you type; on a pad, a card spells them. A game that needs the Spectrum's own keys turns its keyboard on in its definition, and the guidance menu's **Use the Spectrum keyboard** switch can turn it on for the session: then letters, digits, Enter, Space, Shift (CAPS SHIFT), the left Ctrl and Alt (SYMBOL SHIFT) and Backspace (DELETE) reach the game as on the original, and the arrows and the **right Ctrl**, the **right Alt (Option)** and **/** still play as the pad, the arrows moving and the others firing.
 
-On the loading screen any key or button goes on, letters and digits too, and on Starquake's title any key or button starts a game; the arrows, W A S D, the D-pad and the stick do nothing on either.
+On the loading screen any key or button goes on, letters and digits too, and on Starquake's title any key or button starts a game; the arrows, the D-pad and the stick do nothing on either.
 
 The program's own keys:
 
@@ -75,13 +75,13 @@ The program's own keys:
 
 | Pad | Keyboard | Does |
 |---|---|---|
-| D-pad, left stick | Arrow keys, W A S D | Move |
-| West button | Space, C, right Ctrl, right Alt (Option) or / | Fire |
-| South button | Z | Down: build a platform, or fly down |
-| East button | X | Up: pick up or swap an item, or board a hover platform |
-| North button | V, Tab | At guidance level 5, the next route |
+| D-pad, left stick | Arrow keys | Move left and right; up boards a hover platform where it waits, and on it, up and down fly it. The arrow keys' up and down pick up or board, and build, everywhere |
+| West button | Space | Fire |
+| South button | ↓ | Down: build a platform, or fly down |
+| East button | ↑ | Up: pick up or swap an item, or board a hover platform |
+| North button | Tab | At guidance level 5, the next route |
 | Start | Enter | Pause |
-| Any button but the D-pad and stick | Any key but the arrows and W A S D | On the title, start a game, and go on from the story that follows |
+| Any button but the D-pad and stick | Any key but the arrows | On the title, start a game, and go on from the story that follows |
 | Select | Esc | The guidance menu |
 
 Starquake's own keys (its list of controls, A S D F G together to end a game) don't reach it while the keyboard is a pad; the guidance menu's *End this game* ends one. When the game is paused, a card says how to go on: move or fire.

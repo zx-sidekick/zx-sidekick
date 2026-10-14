@@ -444,7 +444,10 @@ impl App {
                     // A press does what it does in the state last known, even one first seen
                     // in the frame just run.
                     let known = player.session.progress().last_known.as_deref();
-                    gamepads.pads.hold_back_parts(&player.play.enter(known));
+                    let session = &player.session;
+                    gamepads
+                        .pads
+                        .hold_back_parts(&player.play.enter(known, &|t| session.holds(t)));
                     // A key let go lets go of whatever it pressed, whoever takes the event.
                     player.key_up(&event, &mut gamepads.pads);
                     if player.offer_event(&event, &presses, &mut gamepads.pads)
@@ -866,7 +869,8 @@ impl Player {
                 break;
             }
             let known = self.session.progress().last_known.as_deref();
-            pads.hold_back_parts(&self.play.enter(known));
+            let session = &self.session;
+            pads.hold_back_parts(&self.play.enter(known, &|t| session.holds(t)));
             if self.starting == Starting::ToPause && self.ready_to_pause() {
                 self.starting = Starting::Running;
                 self.pause_at_start();
@@ -2700,18 +2704,20 @@ notice = { text = "Press fire." }
             Scancode::X,
             Scancode::C,
             Scancode::V,
-            Scancode::RCtrl,
-            Scancode::RAlt,
             Scancode::Slash,
             Scancode::Q,
             Scancode::_1,
             Scancode::Tab,
+            // Only the arrows are directions (#194).
+            Scancode::W,
         ] {
             assert!(goes_on(&key_down(key), &[]), "{key:?}");
         }
         for key in [
             Scancode::Left,
-            Scancode::W,
+            // Modifiers, no longer fire (#194).
+            Scancode::RCtrl,
+            Scancode::RAlt,
             Scancode::Escape,
             Scancode::F1,
             Scancode::LShift,
@@ -2801,7 +2807,9 @@ notice = { text = "Press fire." }
         let mut pads = Pads::default();
         player
             .play
-            .enter(player.known_state().map(str::to_owned).as_deref());
+            .enter(player.known_state().map(str::to_owned).as_deref(), &|_| {
+                true
+            });
         let presses = player.key_down(&key_down(Scancode::Q), &mut pads, Maker::Other);
         assert!(
             matches!(presses[..], [(Part::Key(_), _)]),

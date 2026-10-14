@@ -109,10 +109,10 @@ One entry per dump the definition supports. A tape that matches none is refused 
 | Key | Meaning |
 |---|---|
 | `sync` | The address at the top of the game's main loop, reached once per frame of play. When given, each frame runs to it, so every readout and write sees the game between two of its own frames. Without it, frames end at the interrupt. |
-| `hold_loading_screen` | `true`: the loading screen stays until any key or button but a direction is pressed, for a game that otherwise starts the moment its tape has loaded. The machine stops the moment the tape's last block has gone in through the ROM's loader, so the screen is as the tape left it and the game hasn't started; the press doesn't reach it. A game that waits by itself doesn't need this, and a tape with a loader of its own (a turbo loader) isn't held. Held, or waiting in the ROM's `PAUSE 0` with tape still to load, the loading screen carries a card at its foot saying "Press any key or button to go on." At a loader's wait, any button and any key taps ENTER, which the ROM's `PAUSE` takes, whatever `[pad]` maps it to in play; not a direction (the D-pad, the stick, the arrows, W A S D), Esc or Select (the guidance menu), an F key or a modifier. |
+| `hold_loading_screen` | `true`: the loading screen stays until any key or button but a direction is pressed, for a game that otherwise starts the moment its tape has loaded. The machine stops the moment the tape's last block has gone in through the ROM's loader, so the screen is as the tape left it and the game hasn't started; the press doesn't reach it. A game that waits by itself doesn't need this, and a tape with a loader of its own (a turbo loader) isn't held. Held, or waiting in the ROM's `PAUSE 0` with tape still to load, the loading screen carries a card at its foot saying "Press any key or button to go on." At a loader's wait, any button and any key taps ENTER, which the ROM's `PAUSE` takes, whatever `[pad]` maps it to in play; not a direction (the D-pad, the stick, the arrows), Esc or Select (the guidance menu), an F key or a modifier. |
 | `joystick` | What the pad's directions drive in play: `"kempston"` (default), `"sinclair1"`, `"sinclair2"`, `"cursor"`, or `"keys"`. |
 | `keys` | With `joystick = "keys"`: the game's own keys, `{ up = "Q", down = "A", left = "O", right = "P", fire = "SPACE" }`. |
-| `keyboard` | What the computer's keyboard is in play. `"pad"` (default): a pad, through the same `[pad]` mapping as a plugged-in one in each state: the arrows and W A S D are its D-pad; Space, the right Ctrl, the right Alt (Option) and `/` its `west` button; Z, X, C and V its `south`, `east`, `west` and `north`, by position; Enter its `start`. No Spectrum key reaches the game, except while a `[text_entry]` or `[name_entry]` asks for text, when the Spectrum's keyboard is on. `"spectrum"`: the Spectrum's own keyboard (letters, digits, ENTER, SPACE, the shifts, DELETE), for a game that needs typing, or keys a pad can't stand in for; the keys the Spectrum doesn't have still play as a pad (the arrows the D-pad; the right Ctrl, the right Alt and `/` its `west`). Where it's a pad, the guidance menu's "Use the Spectrum keyboard" toggle turns the Spectrum's keyboard on for the session; the toggle shows for every game but one with `keyboard = "spectrum"` and no `keyboard_in`. |
+| `keyboard` | What the computer's keyboard is in play. `"pad"` (default): a pad, through the same `[pad]` mapping as a plugged-in one in each state: the arrows are its D-pad, Space its `west` button and Enter its `start`; no other key plays. No Spectrum key reaches the game, except while a `[text_entry]` or `[name_entry]` asks for text, when the Spectrum's keyboard is on. `"spectrum"`: the Spectrum's own keyboard (letters, digits, ENTER, SPACE, the shifts, DELETE), for a game that needs typing, or keys a pad can't stand in for; the keys the Spectrum doesn't have still play as a pad (the arrows the D-pad; the right Ctrl, the right Alt and `/` its `west`). Where it's a pad, the guidance menu's "Use the Spectrum keyboard" toggle turns the Spectrum's keyboard on for the session; the toggle shows for every game but one with `keyboard = "spectrum"` and no `keyboard_in`. |
 | `keyboard_in` | With `keyboard = "spectrum"`: the states it's the Spectrum's keyboard in, `["define-keys"]`; a pad in every other. Left out, it's the Spectrum's throughout. |
 | `border` | `"full"` (default): the picture is the screen with its border. `"none"`: for a game that never draws in the border, the screen alone, so it can be shown larger. The border still shows while the tape loads, with its stripes; it goes once the tape has loaded. |
 
@@ -141,7 +141,7 @@ pc = [0x5F10, 0x5F42]  # any of these
 | `name` | The state's name: yours, meaning nothing to the program by itself. Other sections name it (`[pad.<state>]`, `text_entry.state`, `menu_in`), and a script sees it as `mem.state`. |
 | `role` | What it means to the program, if anything: `title` (the kept high scores go in when it's first reached; coming back to it ends a game), `play` (training switches apply; coming to it from the title, game over or nothing starts a game's record; a crafted situation enters it), `paused` (the picture dims and the pause notice shows) or `game_over` (no game is under way, so nothing is kept on quitting). At most one state has each. `sidekick check` points out a state named after a role without it. |
 | `pc` | One address or a list: matches if the processor executed it during the frame. |
-| `when` | A test of a value: `equals`, `not`, `in = [..]`, `at_least`, `at_most`, or `bits = 0x80` (all set). `all = [..]` and `any = [..]` combine tests. |
+| `when` | A test of a value: `equals`, `equals_value` (another value's name: equal to it as read in the same frame), `not`, `in = [..]`, `at_least`, `at_most`, or `bits = 0x80` (all set). `all = [..]` and `any = [..]` combine tests. |
 | `notice` | For the states with `role = "paused"` or `"title"`. The pause's shows while the game is paused, over the dimmed picture; the title's shows on the title, over the foot of the picture, which isn't dimmed, and goes half a second after the title was last seen: say there how the game plays here where its own screen says otherwise. `heading` replaces the card's own ("Paused", "How it plays"); `text` is its line; `hints` are what to press, each with `keys` (the keyboard's, as shown: `"Alt"`, or arrows such as `"← ↑ → ↓"`; on a Mac, which has no right Control, `Right Ctrl` is shown as `/`, which fires too), `pad` (a pad part by position: `dpad`, `stick`, `west`, `south`, `east`, `north` or `start`, shown as the pad's maker marks it: Start is "Start", "Options" or "+") or both, and `does`; without hints the card is its heading and line alone. Without one, the pause's says "Press a key or a button to go on." |
 | `set` | One or a list of `{ value, to }`, written at each sync point while the game was last known in this state: a choice the program makes for the player, such as Starquake's title picking the joystick. Each value must be `writable`. |
 
@@ -271,7 +271,7 @@ Per state, what each part of a pad does. `[pad.default]` applies in every state;
 
 Parts go by position, whoever made the pad. The stick counts once it's past half its travel, and so do the triggers.
 
-`any`, in a state's own table, is what every button it doesn't name does there, and every other key of the keyboard while it plays as a pad: letters, digits and the rest, but not Esc, the F keys or a modifier, nor a key pressed with Cmd or the Windows key. Not the directions (the D-pad and the stick, and the arrows and W A S D that play them), which do what they do otherwise, nor Select. For a screen where every key goes on, as a title that starts a game on any key does once the program has chosen the game's controls. It isn't for `[pad.default]`. While the Spectrum's keyboard is on, its keys reach the game instead.
+`any`, in a state's own table, is what every button it doesn't name does there, and every other key of the keyboard while it plays as a pad: letters, digits and the rest, but not Esc, the F keys or a modifier, nor a key pressed with Cmd or the Windows key. Not the directions (the D-pad and the stick, and the arrows that play them), which do what they do otherwise, nor Select. For a screen where every key goes on, as a title that starts a game on any key does once the program has chosen the game's controls. It isn't for `[pad.default]`. While the Spectrum's keyboard is on, its keys reach the game instead.
 
 ```toml
 [pad.default]
@@ -292,7 +292,7 @@ stick = "none"
 
 | Part | Names |
 |---|---|
-| Directions | `dpad`, `stick` (left stick) |
+| Directions | `dpad`, `stick` (left stick), `arrows` (the keyboard's, while it plays as a pad) |
 | Face buttons, by position | `west`, `south`, `east`, `north` |
 | Others | `l1`, `r1`, `l2`, `r2`, `start`, `select` |
 | Every button a state's table doesn't name, and every other key | `any` |
@@ -307,6 +307,38 @@ What a part can do:
 - `{ action = "build" }`, or just `"build"`: an `[[actions]]` entry.
 - `"menu"`: the guidance menu. `select` is always `"menu"`, so every game's pad can reach it.
 - `"none"`.
+
+**The keyboard's arrows** do what `dpad` does, way by way, unless a table names `arrows`. So a game can give the pad's D-pad and the keyboard's arrows different meanings: keys don't get pressed by accident on a diagonal, as a D-pad or a stick does.
+
+**A direction's ways** can be set one by one, with a table of `up`, `down`, `left` and `right`, each a name above (`"joystick"` being that way's own direction); the ways left out do what they did:
+
+```toml
+[pad.play]
+dpad = { up = "none", down = "none" }   # left and right still drive the joystick
+```
+
+**`when`**, in a state's own table: it applies only while this test of a value holds (as a `[[states]]` `when`), and the state plays as `[pad.default]` does otherwise. A state can have several tables, `[[pad.<state>]]`, tried in turn: the first whose `when` holds applies, and only the last may leave `when` out. For meanings that depend on more than the state, without states of their own, which would leave play and its switches and saves. A How to play card shows a state's keys by its last table. Starquake's pad flies a hover platform up and down while BLOB rides one, boards it with up where it waits, and moves him left and right only elsewhere on foot, while the keyboard's arrows keep up and down throughout:
+
+```toml
+[[pad.play]]
+when = { value = "blob_mode", equals = 2 }   # riding a hover platform: as [pad.default]
+
+[[pad.play]]
+when = { all = [                              # on foot at the platform's pad
+  { value = "blob_x", equals_value = "hover_pad_x" },
+  { value = "blob_y", equals_value = "hover_pad_height" },
+] }
+dpad = { down = "none" }
+stick = { down = "none" }
+arrows = "joystick"
+
+[[pad.play]]                                  # elsewhere
+dpad = { up = "none", down = "none" }
+stick = { up = "none", down = "none" }
+arrows = "joystick"
+```
+
+A button held when a table changes what it does is held back, as when a state does, except one that did nothing and now does something: that starts at once, so a direction held while walking onto where it means something works on arrival, as a key held on the Spectrum would.
 
 A button held when a state changes what it does is held back from the game until it's let go (`ZX-SIDEKICK.md` §9); one that does the same in both states carries on, so a held direction isn't cut short.
 
@@ -530,7 +562,7 @@ pad = "dpad"
 | `how.pad` | The pad part that makes the move, by position: `west`, `south`, `east`, `north`, `dpad`, `stick` or `start`. Its button shows while a pad is plugged in |
 | `how.keys` | The keyboard's key as shown, when not the one the program works out from `pad`; arrows alone are drawn bare |
 
-Without `keys`, the key shown is the keyboard's for `pad` in the state with role `play`: the arrows for `dpad` or `stick`, and, as the keyboard plays as a pad, its key for the part (Z, X, C or Space, V, Enter). Where the Spectrum's keyboard is on, it's a key that does the same as the part there (the up arrow, for a button mapped to an action that pushes the joystick up), or the right Ctrl for fire. A move with neither shows no key. The screen opens when a game starts: play after the title, a game over, or nothing known yet, so a definition with `[about]` needs a state with role `play`.
+Without `keys`, the key shown is the keyboard's for `pad` in the state with role `play`: the arrows for `dpad` or `stick`; the key that plays the part itself (Space for `west`, Enter for `start`, or the right Ctrl for `west` where the Spectrum's keyboard is on); else a key whose part does the same there (the up arrow, for a button mapped to an action that pushes the joystick up, as Starquake's pick up is). A move with neither shows no key. The screen opens when a game starts: play after the title, a game over, or nothing known yet, so a definition with `[about]` needs a state with role `play`.
 
 ## `[situations]`
 
