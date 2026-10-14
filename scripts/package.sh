@@ -7,9 +7,10 @@
 # The first packs zx-sidekick-<version>-<PLATFORM> into OUT (target/package by default): the
 # binary, games/ with each definition's tests/ left out (they're its author's, not the
 # player's), PLAYER-GUIDE.md and AUTHORS-GUIDE.md (from docs/), README.md, LICENSE,
-# THIRD-PARTY.md, and licenses/ with the embedded font's and RustZX's licences. <version> is
-# PACKAGE_VERSION, or the short commit. A .zip for a PLATFORM starting with windows, a .tar.gz
-# otherwise. PACKAGE_GAMES packs another games folder.
+# THIRD-PARTY.md, and licenses/ with the embedded font's and RustZX's licences and the notices of
+# every crate built into the program and of SDL3 (scripts/notices.sh, which needs cargo-about).
+# <version> is PACKAGE_VERSION, or the short commit. A .zip for a PLATFORM starting with windows,
+# a .tar.gz otherwise. PACKAGE_GAMES packs another games folder.
 #
 # The second packs one definition's folder as <folder name>.zip in OUT, its files at the top and
 # its tests/ left out: the layout docs/definition-format.md gives.
@@ -87,6 +88,7 @@ cp docs/player-guide.md "$stage/PLAYER-GUIDE.md"
 cp docs/definition-format.md "$stage/AUTHORS-GUIDE.md"
 cp crates/sidekick-ui/fonts/LICENSE.txt "$stage/licenses/Inter-LICENSE.txt"
 cp licenses/RustZX-LICENSE.md "$stage/licenses/"
+scripts/notices.sh "$stage/licenses/THIRD-PARTY-NOTICES.txt"
 copy_without_tests "${PACKAGE_GAMES:-games}" "$stage/games"
 refuse_game_files "$stage"
 

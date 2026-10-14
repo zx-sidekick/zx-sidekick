@@ -1,0 +1,53 @@
+# cargo-about's settings for licenses/THIRD-PARTY-NOTICES.txt (scripts/notices.sh).
+
+# The licences a crate may be under. Where a crate offers a choice, the first one here is taken.
+# A crate under none of them fails the release until it is looked at and added.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Zlib",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "CC0-1.0",
+]
+# The platforms the releases are built for (ZX-SIDEKICK.md, "Releases"), so every archive
+# carries the same file and it covers each platform's crates.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+ignore-dev-dependencies = true
+# The workspace's own crates: they're under LICENSE, packed beside the program.
+private = { ignore = true }
+
+# SDL3 is compiled into the program from the source in sdl3-src. Its licence files, rather than
+# the notice at the top of each of its source files: the crate's own, SDL3's, and those of the
+# two parts of SDL3 under a licence of their own, HIDAPI (offered under a choice of three; the
+# BSD one is taken) and yuv2rgb. A checksum that no longer matches stops the release: read the
+# file again and update it.
+[sdl3-src.clarify]
+license = "Zlib AND BSD-3-Clause"
+
+[[sdl3-src.clarify.files]]
+path = "LICENSE.md"
+license = "Zlib"
+checksum = "cb97587ece429a5969d82486867425e4ea36a343d7ff29371117f10ba960020e"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/LICENSE.txt"
+license = "Zlib"
+checksum = "1c040b8271b37e5076359f8fd54240e371114112924d2df81ef87c7d6a1dfdfd"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/hidapi/LICENSE-bsd.txt"
+license = "BSD-3-Clause"
+checksum = "30eb1bef29b46f8ba7ab8b416035dbd93cb034a45481dd97815b944284582cd2"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/yuv2rgb/LICENSE"
+license = "BSD-3-Clause"
+checksum = "f7d74004cc75778cae46c5f0139f244d67c07ef64cf51937e8272352197dcb18"
