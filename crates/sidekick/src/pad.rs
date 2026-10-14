@@ -1,7 +1,7 @@
 //! Game pads: each part by its position, what it does in play from the game's definition, and
 //! what that presses on the Spectrum. No SDL here; the window feeds it.
 
-use crate::keys::key_named;
+use crate::keys::{key_for, key_named};
 use sidekick_core::{Kempston, Key};
 use sidekick_def::{Action, Definition, DirectionKeys, Joystick, Pad, PadTarget, Patch};
 use sidekick_ui::PadLabels;
@@ -325,6 +325,17 @@ struct Does {
     frames: u32,
 }
 
+impl Does {
+    /// Whether it presses, taps and calls the same as `other`, however long for.
+    fn alike(&self, other: &Self) -> bool {
+        self.hold == other.hold
+            && self.tap == other.tap
+            && self.sequence == other.sequence
+            && self.script == other.script
+            && self.patches == other.patches
+    }
+}
+
 /// Each part's `Does`.
 type Parts = BTreeMap<Part, Does>;
 
@@ -434,6 +445,49 @@ impl Mapping {
     pub(crate) fn host_key(&self, name: &str) -> Option<Part> {
         let index = self.host_keys.iter().position(|k| k == name)?;
         Some(Part::HostKey(u16::try_from(index).ok()?))
+    }
+}
+
+impl Mapping {
+    /// The keyboard's keys that do what the pad's part `name` does in `state`, as a card
+    /// shows them, with the Spectrum's keyboard on there or not (`spectrum`): the arrows for the
+    /// D-pad; the key that plays the part itself; else the keys whose parts do the same there
+    /// (the up arrow, for a button that pushes the joystick up), or the key an action takes.
+    pub(crate) fn keyboard_for(
+        &self,
+        state: Option<&str>,
+        name: &str,
+        spectrum: bool,
+    ) -> Option<String> {
+        if matches!(name, "dpad" | "stick") {
+            return Some("← ↑ → ↓".to_owned());
+        }
+        let &[(part, None)] = parts_named(name).as_slice() else {
+            return None;
+        };
+        if let Some(key) = key_for(part, spectrum) {
+            return Some(key.to_owned());
+        }
+        let parts = self.parts(state);
+        let does = parts.get(&part)?;
+        let same = |other: Part| parts.get(&other).is_some_and(|o| o.alike(does));
+        let arrows: Vec<&str> = WAYS
+            .iter()
+            .map(|&w| Part::DPad(w))
+            .filter(|&p| same(p))
+            .filter_map(|p| key_for(p, spectrum))
+            .collect();
+        if !arrows.is_empty() {
+            return Some(arrows.join(" "));
+        }
+        if same(Part::West) {
+            return key_for(Part::West, spectrum).map(str::to_owned);
+        }
+        self.host_keys
+            .iter()
+            .enumerate()
+            .find(|&(i, _)| u16::try_from(i).is_ok_and(|i| same(Part::HostKey(i))))
+            .map(|(_, key)| key.clone())
     }
 }
 
@@ -754,6 +808,68 @@ mod tests {
 
     fn key(k: Key) -> Input {
         Input::Key(SpectrumKey(k))
+    }
+
+    #[test]
+    fn a_card_shows_the_keys_that_do_what_a_part_does() {
+        let mapping = Mapping::new(Some(&def(r#"
+            [run]
+            joystick = "kempston"
+            [pad.default]
+            south = "build"
+            east = "pick-up"
+            north = "next"
+            l1 = { tap = ["SPACE"] }
+            [pad.title]
+            south = "fire"
+            [[actions]]
+            id = "pick-up"
+            label = "Pick up"
+            joystick = ["up"]
+            [[actions]]
+            id = "build"
+            label = "Build"
+            joystick = ["down"]
+            [[actions]]
+            id = "next"
+            label = "Next"
+            script = "next"
+            host_key = "Tab"
+        "#)));
+        let keys = |state, part| mapping.keyboard_for(state, part, true);
+        assert_eq!(
+            keys(None, "east").as_deref(),
+            Some("↑"),
+            "the joystick's up"
+        );
+        assert_eq!(keys(None, "south").as_deref(), Some("↓"));
+        assert_eq!(
+            keys(None, "west").as_deref(),
+            Some("Right Ctrl"),
+            "its own key"
+        );
+        assert_eq!(keys(None, "dpad").as_deref(), Some("← ↑ → ↓"));
+        assert_eq!(
+            keys(None, "north").as_deref(),
+            Some("Tab"),
+            "an action's key"
+        );
+        assert_eq!(keys(None, "l1"), None, "no key does the same");
+        assert_eq!(keys(None, "r2"), None, "it does nothing");
+        assert_eq!(
+            keys(Some("title"), "south").as_deref(),
+            Some("Right Ctrl"),
+            "in a state of its own, what fires"
+        );
+        let pad = |part| mapping.keyboard_for(None, part, false);
+        assert_eq!(
+            pad("east").as_deref(),
+            Some("X"),
+            "the keyboard as a pad: its own key"
+        );
+        assert_eq!(pad("south").as_deref(), Some("Z"));
+        assert_eq!(pad("west").as_deref(), Some("Space"));
+        assert_eq!(pad("north").as_deref(), Some("V"));
     }
 
     /// What `play` holds after one update with `held`.

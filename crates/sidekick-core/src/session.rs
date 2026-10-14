@@ -35,6 +35,8 @@ pub struct Record {
 pub enum Milestone {
     /// The game reached its title for the first time: time to put its kept high scores in.
     FirstTitle,
+    /// A game started: play began after the title, a game over, or nothing known yet.
+    GameStarted,
     /// A game ended and the game has its high scores in: the title came round after it, or
     /// the game left the state that asks a high score's name. Time to read them back.
     GameEnded,
@@ -806,6 +808,7 @@ impl Session {
             };
             self.note_use();
             self.progress.in_game = true;
+            self.milestones.push(Milestone::GameStarted);
         }
         if came_to_title && !self.progress.seen_title {
             self.progress.seen_title = true;

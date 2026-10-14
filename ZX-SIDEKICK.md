@@ -178,6 +178,12 @@ When a definition names its game's paused state, the picture dims there and a ca
 
 The title's state may carry a notice too: a card over the foot of the title, which isn't dimmed, saying how the game plays here where its own screen says otherwise. Starquake's title lists its control options, but the program chooses the joystick for the player there (`[[states]] set`), so its card says to ignore the list and play with the arrows or WASD, or a gamepad, with Space to fire and Enter to start.
 
+### 10.1 How to play
+
+When a game starts, a definition's `[about]` shows as a card over the dimmed, paused game: the goal in a sentence or two, then the main moves, each with its key and, while a pad is plugged in, its button. Enter, Esc or the pad's confirm or back plays on. A "Show next time" toggle on the card (the arrows left and right, or a click) turns its showing at a game's start off, kept per game in its folder (`how-to-play.txt`). The menu's *How to play* row opens the same card any time, its button reading Back, which returns to the menu.
+
+![How to play](crates/sidekick-ui/tests/golden/how-to-play-pad.png)
+
 ## 11. Guidance and training
 
 ### 11.1 The panel

@@ -974,6 +974,37 @@ pub struct Situations {
     pub start: Vec<String>,
 }
 
+/// `[about]`: the How to play screen, shown when a game starts: the game's goal, and how its
+/// main moves are made.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct About {
+    /// What the game is about, in a sentence or two.
+    pub goal: String,
+    /// The main moves, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub how: Vec<HowTo>,
+}
+
+/// `[[about.how]]`: one of the main moves, with what does it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HowTo {
+    /// Its name: "Build a platform".
+    pub name: String,
+    /// One line on it.
+    pub text: String,
+    /// The pad part that does it, by position (`east`, `dpad`…): its button shows while a pad
+    /// is plugged in, and the keyboard's key for it, worked out from the `[pad]` mapping in
+    /// play, always.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pad: Option<String>,
+    /// The keyboard's key as shown, when not the one worked out from `pad`; arrows are shown
+    /// bare (`"← →"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<String>,
+}
+
 /// `[script]`: the definition's script.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

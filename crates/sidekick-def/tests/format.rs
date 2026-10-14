@@ -656,3 +656,39 @@ for_seconds = 0
         ]
     );
 }
+
+#[test]
+fn how_to_play_says_something_and_shows_parts_a_pad_has() {
+    let text = format!(
+        r#"{HEADER}
+[about]
+goal = " "
+
+[[about.how]]
+name = "Jump"
+text = "Up and over."
+pad = "select"
+
+[[about.how]]
+name = ""
+text = "Two\nlines"
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def
+        .check()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|p| p.starts_with("about"))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            "about.goal: says nothing",
+            "about.how[0].pad: \"select\" isn't a part the screen shows: one of dpad, stick, west, south, east, north, start",
+            "about.how[1].name: says nothing",
+            "about.how[1].text: one line",
+            "about: shown when a game starts: it needs a state with role = \"play\"",
+        ]
+    );
+}

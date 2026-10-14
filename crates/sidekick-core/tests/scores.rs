@@ -136,10 +136,12 @@ fn the_first_title_and_each_game_s_end_are_milestones() {
     assert_eq!(s.take_milestones(), [Milestone::FirstTitle]);
     mode(&mut s, 1);
     mode(&mut s, 2);
+    assert_eq!(s.take_milestones(), [Milestone::GameStarted]);
     mode(&mut s, 0);
+    mode(&mut s, 2);
     assert!(
         s.take_milestones().is_empty(),
-        "a frame with no state isn't the title"
+        "a frame with no state is neither the title nor a new game"
     );
     mode(&mut s, 1);
     assert_eq!(s.take_milestones(), [Milestone::GameEnded]);
@@ -147,6 +149,8 @@ fn the_first_title_and_each_game_s_end_are_milestones() {
     mode(&mut s, 0);
     mode(&mut s, 1);
     assert!(s.take_milestones().is_empty(), "no game since");
+    mode(&mut s, 2);
+    assert_eq!(s.take_milestones(), [Milestone::GameStarted], "the next");
 }
 
 /// The same game with its states named otherwise: their meanings come from their roles.
@@ -213,8 +217,8 @@ fn a_state_s_meaning_comes_from_its_role_not_its_name() {
     mode(&mut s, 1);
     assert_eq!(
         s.take_milestones(),
-        [Milestone::GameEnded],
-        "back to the title ends it"
+        [Milestone::GameStarted, Milestone::GameEnded],
+        "role play starts a game; back to the title ends it"
     );
 }
 
@@ -267,8 +271,9 @@ fn a_game_that_asks_a_name_ends_once_the_name_is_in() {
     for m in [2, 2, 3, 3, 0, 0, 3, 3] {
         mode(&mut s, m);
     }
-    assert!(
-        s.take_milestones().is_empty(),
+    assert_eq!(
+        s.take_milestones(),
+        [Milestone::GameStarted],
         "frames between the letters, matching no state, aren't the name's end"
     );
     assert!(s.progress().in_game);
@@ -292,7 +297,7 @@ fn a_game_that_asks_a_name_ends_once_the_name_is_in() {
     }
     assert_eq!(
         s.take_milestones(),
-        [Milestone::GameEnded],
+        [Milestone::GameStarted, Milestone::GameEnded],
         "no name asked: the title ends it, as before"
     );
 }

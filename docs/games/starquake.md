@@ -34,6 +34,10 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 **The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), so a card over the foot of the title says "Ignore the list: play with the arrows or WASD, or a gamepad", with the keys to move (the arrows), fire (Space) and start (Enter).
 
+## How to play
+
+`[about]` gives the goal (the core's pieces, carried back to it, and that the core shows which it wants only in its own room) and four moves: pick up or swap (east, X on the keyboard), build a platform (south, Z), teleport booths (the arrows) and fire (west, Space). The keys are the keyboard's, as it plays as a pad, except the booths', which name the two arrows that walk into one. The words are our own, not the game's.
+
 ## Guidance levels
 
 Each level adds to the ones below it (`[[guidance.levels]]`, with these names and descriptions):

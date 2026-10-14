@@ -3,13 +3,13 @@
 //! places and shades given here; `sidekick run` draws them into one picture.
 
 use crate::{
-    panel,
+    how_to, panel,
     picture::{layout, smallest, to_rgba, Layout, Part, FULL, LEAST_PIXEL, LOGICAL_PIXEL, SCREEN},
 };
 use sidekick_core::Session;
 use sidekick_def::{Border, Definition, Role};
 use sidekick_ui::{
-    device, Canvas, Face, Fonts, NoticeHint, PadLabels, PadMark, PauseNotice, PAUSE_NOTICE_HEIGHT,
+    device, Canvas, Fonts, NoticeHint, PadLabels, PadMark, PauseNotice, PAUSE_NOTICE_HEIGHT,
     PAUSE_NOTICE_WIDTH,
 };
 
@@ -239,7 +239,7 @@ fn loading_notice(labels: PadLabels) -> PauseNotice {
 /// A notice's keys as this computer names them: a Mac has no right Control, and its apps may
 /// take the right Option tapped twice for a shortcut, so the right Ctrl that fires is named as
 /// `/`, which fires too.
-fn host_keys(keys: &str, mac: bool) -> String {
+pub(crate) fn host_keys(keys: &str, mac: bool) -> String {
     if mac {
         keys.replace("Right Ctrl", "/")
     } else {
@@ -277,15 +277,7 @@ fn notice_of(
                     .keys
                     .as_deref()
                     .map(|keys| host_keys(keys, cfg!(target_os = "macos"))),
-                pad: hint.pad.as_deref().and_then(|part| match part {
-                    "west" => Some(PadMark::Face(Face::West)),
-                    "south" => Some(PadMark::Face(Face::South)),
-                    "east" => Some(PadMark::Face(Face::East)),
-                    "north" => Some(PadMark::Face(Face::North)),
-                    "dpad" | "stick" => Some(PadMark::Directions),
-                    "start" => Some(PadMark::Start),
-                    _ => None,
-                }),
+                pad: hint.pad.as_deref().and_then(how_to::mark),
                 does: hint.does.clone(),
             })
             .collect(),

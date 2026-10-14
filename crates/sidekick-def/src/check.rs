@@ -74,7 +74,8 @@ const DIRECTIONS: &[&str] = &["up", "down", "left", "right", "fire"];
 /// Every role a state can have.
 const ROLES: [Role; 4] = [Role::Title, Role::Play, Role::Paused, Role::GameOver];
 
-/// The pad's parts a notice's hint can show: the face buttons and the directions.
+/// The pad's parts a notice's hint, or a How to play entry, can show: the face buttons, the
+/// directions and Start.
 const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north", "start"];
 
 /// The program's own keys, which an action can't take.
@@ -837,6 +838,40 @@ impl Checker<'_> {
         }
     }
 
+    fn about(&mut self) {
+        let Some(about) = &self.def.about else { return };
+        if about.goal.trim().is_empty() {
+            self.report("about.goal", "says nothing");
+        }
+        for (i, how) in about.how.iter().enumerate() {
+            let path = format!("about.how[{i}]");
+            for (key, words) in [("name", &how.name), ("text", &how.text)] {
+                if words.trim().is_empty() {
+                    self.report(format!("{path}.{key}"), "says nothing");
+                } else if words.contains('\n') {
+                    self.report(format!("{path}.{key}"), "one line");
+                }
+            }
+            if let Some(pad) = &how.pad {
+                if !NOTICE_PARTS.contains(&pad.as_str()) {
+                    self.report(
+                        format!("{path}.pad"),
+                        format!(
+                            "{pad:?} isn't a part the screen shows: one of {}",
+                            NOTICE_PARTS.join(", ")
+                        ),
+                    );
+                }
+            }
+        }
+        if self.def.state_for(Role::Play).is_none() {
+            self.report(
+                "about",
+                "shown when a game starts: it needs a state with role = \"play\"",
+            );
+        }
+    }
+
     fn situations(&mut self) {
         if let Some(situations) = &self.def.situations {
             if situations.enter.is_none() {
@@ -873,6 +908,7 @@ pub(crate) fn check(def: &Definition) -> Vec<Problem> {
     checker.high_scores();
     checker.panel();
     checker.hints();
+    checker.about();
     checker.situations();
     checker.problems
 }

@@ -461,11 +461,7 @@ impl Menu {
         }
         let label = Style::new(14.0, SWITCH_TEXT).weight(Weight::Medium);
         span(c, fonts, &row.label, (27.0, top), Align::Left, &label);
-        // A toggle: a track, its knob at the right when on, the track's colour following it.
-        let track = between(PILL_OFF, colors::ACCENT, row.knob);
-        c.rect((451.0, top - 3.0, 40.0, 22.0), 11.0, Some(track), None);
-        let knob_x = 18.0f32.mul_add(f32::from(row.knob.min(100)) / 100.0, 462.0);
-        c.circle((knob_x, top + 8.0), 8.0, Some(colors::TEXT), None);
+        toggle(c, (451.0, top - 3.0), row.knob);
         if let Some(refusal) = &row.refusal {
             let red = Style::new(12.0, colors::RED);
             span(c, fonts, refusal, (27.0, top + 22.0), Align::Left, &red);
@@ -682,6 +678,15 @@ impl Question {
         );
         c
     }
+}
+
+/// A toggle 40 × 22 from its top left: a track, its knob at the right when on (`knob` 100), the
+/// track's colour following it.
+pub(crate) fn toggle(c: &mut Canvas, (x, y): (f32, f32), knob: u8) {
+    let track = between(PILL_OFF, colors::ACCENT, knob);
+    c.rect((x, y, 40.0, 22.0), 11.0, Some(track), None);
+    let knob_x = 18.0f32.mul_add(f32::from(knob.min(100)) / 100.0, x + 11.0);
+    c.circle((knob_x, y + 11.0), 8.0, Some(colors::TEXT), None);
 }
 
 /// The colour `percent` of the way from `from` to `to`, opaque.

@@ -42,12 +42,15 @@ pub(crate) enum Outcome {
     Load,
     /// Closed to choose a save to load.
     OpenSave,
+    /// The How to play screen opens over it; the menu stays open behind.
+    HowTo,
 }
 
 /// One of the actions at the menu's foot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     Back,
+    HowTo,
     Forget,
     /// The definition's action at this index.
     Game(usize),
@@ -126,6 +129,9 @@ impl Menu {
             })
             .collect();
         let mut actions = vec![(Action::Back, "Back to the game".to_owned())];
+        if definition.is_some_and(|d| d.about.is_some()) {
+            actions.push((Action::HowTo, "How to play".to_owned()));
+        }
         if session.kept().values().any(|list| !list.is_empty()) {
             actions.push((
                 Action::Forget,
@@ -325,6 +331,7 @@ impl Menu {
                         Outcome::Stay
                     }
                 }
+                Some(Action::HowTo) => Outcome::HowTo,
                 Some(action @ (Action::Forget | Action::Game(_) | Action::Exit)) => {
                     if self.armed == Some(i) {
                         self.armed = None;
@@ -432,7 +439,7 @@ impl Menu {
                     Action::Forget => {
                         format!("forget {}", words.strip_prefix("Forget ").unwrap_or(words))
                     }
-                    Action::Back => return None,
+                    Action::Back | Action::HowTo => return None,
                 };
                 Some((i, what))
             }),
@@ -716,6 +723,29 @@ menu = "End this game"
         assert!(card.switches.is_empty());
         assert_eq!(card.actions, ["Back to the game", "Exit P"]);
         assert_eq!(card.chosen, Row::Action(0));
+    }
+
+    #[test]
+    fn a_game_with_how_to_play_has_its_row_after_back_to_the_game() {
+        let text = format!(
+            "{DEFINITION}\n[[states]]\nname = \"play\"\nrole = \"play\"\npc = 0x8000\n[about]\ngoal = \"Win.\"\n"
+        );
+        let mut s = session(&text);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
+        assert_eq!(
+            menu.card(PadLabels::Letters).actions,
+            [
+                "Back to the game",
+                "How to play",
+                "End this game",
+                "Exit Test"
+            ]
+        );
+        assert_eq!(
+            press(&mut menu, &mut s, &[Input::Click(Row::Action(1))]),
+            Outcome::HowTo,
+            "one press, nothing to confirm"
+        );
     }
 
     #[test]

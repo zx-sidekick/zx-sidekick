@@ -1,7 +1,7 @@
 //! The real Starquake tape loads and its game starts. Needs the player's tape in `assets/`
 //! (`Starquake.tap.zip` from World of Spectrum); skipped without it, as in CI.
 
-use sidekick_core::{Fact, Kempston, Key, Machine, Model, Read, Script, Session};
+use sidekick_core::{Fact, Kempston, Key, Machine, Milestone, Model, Read, Script, Session};
 use sidekick_def::{tapes_in, Package, Situation};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -96,6 +96,10 @@ fn starquake_s_states_and_values_read_what_the_game_shows() {
         until(&mut s, 200, |s| s.state() == Some("play"))
     });
     assert!(started, "play: {:?}", state(&s));
+    assert!(
+        s.take_milestones().contains(&Milestone::GameStarted),
+        "a game started: How to play shows"
+    );
     assert_eq!(number(&s, "lives"), Some(4));
     assert_eq!(number(&s, "room"), Some(8), "a game starts in room 8");
     assert_eq!(number(&s, "platforms"), Some(50));
@@ -110,6 +114,10 @@ fn starquake_s_states_and_values_read_what_the_game_shows() {
     assert!(
         until(&mut s, 50, |s| s.state() == Some("play")),
         "a move goes on"
+    );
+    assert!(
+        !s.take_milestones().contains(&Milestone::GameStarted),
+        "the same game: How to play doesn't show again"
     );
 
     assert!(
