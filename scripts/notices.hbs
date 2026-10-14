@@ -1,0 +1,27 @@
+Third-party notices for ZX Sidekick
+===================================
+
+The program is built from the Rust crates named below, for Linux, macOS and Windows, and from
+SDL3, compiled into it from the source that the sdl3-src crate carries. Each licence text is given
+once, with the crates under it named above it.
+
+SDL3's licence is the zlib licence used by sdl3-src that opens with Sam Lantinga's copyright. The
+other texts used by sdl3-src are the notices of parts of SDL3 by other authors, as they stand in
+its source, among them HIDAPI's and yuv2rgb's licences.
+
+Every crate is used unmodified. The source of each is at https://crates.io/crates/<name>/<version>,
+except aym, rustzx-core and rustzx-z80, which come from https://github.com/zx-sidekick/rustzx
+(see THIRD-PARTY.md). ZX Sidekick's own source is at https://github.com/zx-sidekick/zx-sidekick.
+{{#each licenses}}
+
+================================================================================
+{{{name}}} ({{{id}}})
+
+Used by:
+{{#each used_by}}
+- {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+--------------------------------------------------------------------------------
+
+{{{text}}}
+{{/each}}

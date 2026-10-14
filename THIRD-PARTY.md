@@ -14,6 +14,10 @@ Amstrad has [given permission](https://groups.google.com/forum/?hl=en#!msg/comp.
 
 The program's own text is set in [Inter](https://rsms.me/inter/) 4.1, by Rasmus Andersson and The Inter Project Authors, under the SIL Open Font License 1.1. Its Regular, Medium, SemiBold and Bold are embedded from `crates/sidekick-ui/fonts/`, with the licence beside them (`LICENSE.txt`), included in each release as `licenses/Inter-LICENSE.txt`.
 
+## The crates and SDL3
+
+The program is built from Rust crates and from [SDL3](https://libsdl.org), under the zlib licence, compiled into it from the source carried by the `sdl3-src` crate. Each release includes `licenses/THIRD-PARTY-NOTICES.txt`, written at release time by `scripts/notices.sh` with [cargo-about](https://github.com/EmbarkStudios/cargo-about): every crate built into the program on each platform, grouped by licence, with each licence's text, and SDL3's licence with the notices of the parts of SDL3 by other authors (HIDAPI, yuv2rgb, the Khronos headers, the Wayland protocols and others), as they stand in its source. Those SDL3 notices are pinned in `about.toml` by `scripts/sdl-notices.sh`, which is run again whenever `sdl3-src` changes; `scripts/check.sh` fails while the pins are out of date. Most crates are under MIT, Apache-2.0, BSD or zlib terms. `option-ext` and `smartstring` are under the Mozilla Public License 2.0, which asks that whoever receives the program can get their source: they're used unmodified, from crates.io, as the notices say.
+
 ## Games
 
 No game is included. Each game runs from the player's own copy. The definitions in `games/` hold facts about the games (checksums, memory addresses and what they mean) in their authors' own words, and nothing of the games themselves. ZX Sidekick is not affiliated with or endorsed by any game's rights holders.

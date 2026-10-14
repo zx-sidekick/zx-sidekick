@@ -1,0 +1,486 @@
+# cargo-about's settings for licenses/THIRD-PARTY-NOTICES.txt (scripts/notices.sh).
+
+# The licences a crate may be under. Where a crate offers a choice, the first one here is taken.
+# A crate under none of them fails the release until it is looked at and added.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Zlib",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "CC0-1.0",
+    "HPND",
+    "SunPro",
+]
+# The platforms the releases are built for (ZX-SIDEKICK.md, "Releases"), so every archive
+# carries the same file and it covers each platform's crates.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+ignore-dev-dependencies = true
+# The workspace's own crates: they're under LICENSE, packed beside the program.
+private = { ignore = true }
+
+# SDL3 is compiled into the program from the source in sdl3-src. Its section, last below, pins
+# the crate's licence, SDL3's, HIDAPI's and yuv2rgb's, and every other notice in the source of a
+# file built for a platform the program ships on, verbatim from `start` through `end`, rather
+# than the zlib notice at the top of each of SDL's own files. scripts/sdl-notices.sh writes it
+# from the source (its header says what it pins and what it leaves out); run it after sdl3-src
+# moves, and read what changed. scripts/check.sh's package step fails while it's out of date,
+# and scripts/notices.sh stops on a checksum that no longer matches. A licence it reports that
+# isn't accepted above has to be added there by hand.
+# Written by scripts/sdl-notices.sh from here to the end: run it rather than editing.
+[sdl3-src.clarify]
+license = "Zlib AND BSD-3-Clause AND MIT AND Apache-2.0 AND SunPro AND HPND"
+
+[[sdl3-src.clarify.files]]
+path = "LICENSE.md"
+license = "Zlib"
+checksum = "cb97587ece429a5969d82486867425e4ea36a343d7ff29371117f10ba960020e"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/LICENSE.txt"
+license = "Zlib"
+checksum = "1c040b8271b37e5076359f8fd54240e371114112924d2df81ef87c7d6a1dfdfd"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/hidapi/LICENSE-bsd.txt"
+license = "BSD-3-Clause"
+checksum = "30eb1bef29b46f8ba7ab8b416035dbd93cb034a45481dd97815b944284582cd2"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/yuv2rgb/LICENSE"
+license = "BSD-3-Clause"
+checksum = "f7d74004cc75778cae46c5f0139f244d67c07ef64cf51937e8272352197dcb18"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/include/SDL3/SDL_egl.h"
+license = "MIT"
+start = "** Copyright (c) 2008-2018 The Khronos Group Inc."
+end = "** MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS."
+checksum = "13b972796f815fc9503e126708d166abf9588eabd200cc9bf46ea11435971343"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/include/SDL3/SDL_egl.h"
+license = "Apache-2.0"
+start = "** Copyright 2007-2020 The Khronos Group Inc."
+end = "** SPDX-License-Identifier: Apache-2.0"
+checksum = "5d98f762a1b4df34e3d9a5878232343e73a152a9d160721ba7c33d2ab93fcdd0"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/include/SDL3/SDL_egl.h"
+license = "Apache-2.0"
+start = "** Copyright 2013-2020 The Khronos Group Inc."
+end = "** Khronos $Git commit SHA1: 6fb1daea15 $ on $Git commit date: 2022-05-25 09:41:13 -0600 $"
+checksum = "c1fb42316bc290171729a40a2e40eb24c931a5ffa90796d64e0f6b5cf4763a84"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/include/SDL3/SDL_hidapi.h"
+license = "BSD-3-Clause"
+start = " * Copyright 2009, Alan Ott, Signal 11 Software."
+end = " * remains intact."
+checksum = "ba05d1bffd32ec4b142eb51fec696d8b2f28162ffb5932d3ac3ea53ff6c10aca"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/include/SDL3/SDL_opengl.h"
+license = "MIT"
+start = " * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved."
+end = " * OTHER DEALINGS IN THE SOFTWARE."
+checksum = "15da253c61e99c6e0276cec8e85469f6323e80a3e92a774c9ce211d705200a85"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/include/SDL3/SDL_opengl_glext.h"
+license = "MIT"
+start = "** Copyright 2013-2020 The Khronos Group Inc."
+end = "**   https://github.com/KhronosGroup/OpenGL-Registry"
+checksum = "16d29dc73762088539c21566244ed94f288b135665e1fdca29139929644d3654"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/include/SDL3/SDL_opengles2_gl2platform.h"
+license = "Apache-2.0"
+start = "** Copyright 2017-2020 The Khronos Group Inc."
+end = "** SPDX-License-Identifier: Apache-2.0"
+checksum = "cff2d475578acd1abadbb8f4b864c47c4bb5044e0e52b2bf4aea9eb4c45c5c77"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/include/SDL3/SDL_vulkan.h"
+license = "Zlib"
+start = "  Copyright (C) 2017, Mark Callow"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "d58e19ba811ea11b466524fa5f9171b15233b1b91ccd6baf312a4983a5aa6c12"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/camera/pipewire/SDL_camera_pipewire.c"
+license = "Zlib"
+start = "  Copyright (C) 2024 Wim Taymans <wtaymans@redhat.com>"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "045ee926f598a8bfc9e3aaf80a4638fdf5ecbc86d21eadf16be26777022fb7c3"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/core/linux/SDL_evdev_capabilities.c"
+license = "Zlib"
+start = "  Copyright (C) 2020 Collabora Ltd."
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "790e2297a07c2a681af431d8840d742c9547e7794789bf9c4e1e78232bcbbb9c"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/events/imKStoUCS.c"
+license = "MIT"
+start = "Copyright (C) 2003-2006,2008 Jamey Sharp, Josh Triplett"
+end = "DEALINGS IN THE SOFTWARE."
+checksum = "28994024276f51fb2b4f62ceabe81dd88045d6eb34dc2e3a807fc847d00153bd"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/filesystem/unix/SDL_sysfilesystem.c"
+license = "MIT"
+start = "  Copyright (c) 2007 Red Hat, Inc."
+end = "  SOFTWARE."
+checksum = "d41571dbc50cf2c66138fa4a5bc1181d8c1f9e1f1b05930bda3c332e567e3713"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/haptic/hidapi/SDL_hidapihaptic.c"
+license = "Zlib"
+start = "  Copyright (C) 2025 Katharine Chui <katharine.chui@gmail.com>"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "ac5233c1ff1baa3575e4dc7224804987554929cf53919b1d31f9d67700c24aa7"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/haptic/hidapi/SDL_hidapihaptic_lg4ff.c"
+license = "Zlib"
+start = "  Copyright (C) 2025 Simon Wood <simon@mungewell.org>"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "84bf516d031f048c587ad29d17b56c9d942d1f23807f9b96e82086587dbb6d18"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/hidapi/hidapi/hidapi.h"
+license = "BSD-3-Clause"
+start = " Copyright 2023, All Rights Reserved."
+end = "        https://github.com/libusb/hidapi ."
+checksum = "dd45b58c9fac14f35f2a4be1bcda564ef5ea90161190650ac3608275131728de"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/hidapi/libusb/hid.c"
+license = "BSD-3-Clause"
+start = " Copyright 2022, All Rights Reserved."
+end = "        https://github.com/libusb/hidapi ."
+checksum = "3171873432ff72c5e92ee02fdeb3c67cac67d960547f5c0bee314ee1362e58a3"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/hidapi/libusb/hidapi_libusb.h"
+license = "BSD-3-Clause"
+start = " Copyright 2021, All Rights Reserved."
+end = "        https://github.com/libusb/hidapi ."
+checksum = "b8777426fcc9aa53fe4054f7943b9ec95d480ab3baed3d168dc75adfcbf604b0"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/joystick/controller_list.h"
+license = "Zlib"
+start = "  Copyright (C) Valve Corporation"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "97b9910f69647794aa0c2bfd96b3b204d2f93511ff6ce5b0eba38b774ef9c655"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/joystick/hidapi/SDL_hidapi_lg4ff.c"
+license = "Zlib"
+start = "  Copyright (C) 2025 Simon Wood <simon@mungewell.org>"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "e5a5cb91d0217976ac9aae163b231f5cac823bf251d9fb8c67cf583ef181b3f9"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/joystick/hidapi/SDL_hidapi_sinput.c"
+license = "Zlib"
+start = "  Copyright (C) 2025 Mitchell Cairns <mitch.cairns@handheldlegend.com>"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "dd035884fd3219626d027b2e2627f54aefe54002ba4f1d9775e3eb5859eaebe2"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/joystick/hidapi/SDL_hidapi_steamdeck.c"
+license = "Zlib"
+start = "  Copyright (C) 2023 Max Maisel <max.maisel@posteo.de>"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "5a95c59ad01b69abd5e209d1c283db0d4813bceaaed71ce58a37d44f9cde7dea"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/joystick/hidapi/SDL_hidapi_zuiki.c"
+license = "Zlib"
+start = "  Copyright (C) 2025 Zuiki Inc."
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "69c1279202145cee57f83d67aaa317a3bb6392afb2d6fbdb2c82290c763919c6"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/joystick/hidapi/steam/controller_constants.h"
+license = "Zlib"
+start = "  Copyright (C) 2021 Valve Corporation"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "790a13f537d2f29ce331c8d33678e949536314315f86d1c9e7feb0ad68daa391"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/joystick/hidapi/steam/controller_structs.h"
+license = "Zlib"
+start = "  Copyright (C) 2020 Valve Corporation"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "cdde001a658a5665016aa8c47b8905288024ee3e74e7229f66b3dadd259c7ac4"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/libm/e_atan2.c"
+license = "SunPro"
+start = " * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved."
+end = " * is preserved."
+checksum = "e5428c2bcca124cae6fe1fcc43cce4796b7ad98ace0da1d6514e29d822cb0388"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/stdlib/SDL_qsort.c"
+license = "Zlib"
+start = "/* Copyright (c) 1998-2021 Gareth McCaughan"
+end = " *    distribution."
+checksum = "fefca5825d479a0e6da943ce206fd2508dc1104c33a320054af687ccd99a2e99"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/SDL_rotate.c"
+license = "Zlib"
+start = "Copyright (C) 2001-2011  Andreas Schiffler"
+end = "Andreas Schiffler -- aschiffler at ferzkopp dot net"
+checksum = "962d0f541539807356668d67fa14e7e3c797aed0b61bdd2f5294938721426f61"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/SDL_surface.c"
+license = "Zlib"
+start = "// This function Copyright 2023 Collabora Ltd., contributed to SDL under the ZLib license"
+end = "// This function Copyright 2023 Collabora Ltd., contributed to SDL under the ZLib license"
+checksum = "2e0e17b08018f7bcc6a5336ced866709a4b5cd405d80e8bd67d0321f4033d694"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/directx/d3d12.h"
+license = "MIT"
+start = " * Copyright (c) Microsoft Corporation"
+end = " * Licensed under the MIT license"
+checksum = "d213010255ebc3abd9823fa545c7a0a8965ca4b7dfb5fd24ce75e0e165f443b3"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/khronos/EGL/egl.h"
+license = "Apache-2.0"
+start = "** Copyright 2013-2020 The Khronos Group Inc."
+end = "** Khronos $Git commit SHA1: f4cc936b88 $ on $Git commit date: 2023-12-16 01:21:49 -0500 $"
+checksum = "25fe82ade277ddfaec6f3027152ab4bbcfe6e8f667c43c3a0fdbb31923749f0d"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/khronos/vk_video/vulkan_video_codec_av1std.h"
+license = "Apache-2.0"
+start = "** Copyright 2015-2024 The Khronos Group Inc."
+end = "** SPDX-License-Identifier: Apache-2.0"
+checksum = "e60f8a08091a6690728b23a64218abb15ecf7140aa3503dd580a61f049f8b550"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/khronos/vulkan/vk_icd.h"
+license = "Apache-2.0"
+start = " * Copyright 2015-2023 The Khronos Group Inc."
+end = " * SPDX-License-Identifier: Apache-2.0"
+checksum = "e7b244a696d9140786f94578d24497f1015d02add30db17d70361d3e7befa076"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/khronos/vulkan/vk_platform.h"
+license = "Apache-2.0"
+start = "** Copyright 2014-2024 The Khronos Group Inc."
+end = "** SPDX-License-Identifier: Apache-2.0"
+checksum = "678e9468728e6b13e48cceec36bbc445c64dd17544dec1dcad89949343caa0e9"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/stb_image.h"
+license = "MIT"
+start = "Copyright (c) 2017 Sean Barrett"
+end = "SOFTWARE."
+checksum = "19d62fad00c5488eb390e0c3534b147553cb48c80abfc4c8273801c9ee95a5ef"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/x11/SDL_x11opengl.c"
+license = "Zlib"
+start = "  Copyright (C) 2021 NVIDIA Corporation"
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "e5e752925f08dcc9f93b7c2e9ff049880e76f6f504a36177af72742ea898993c"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/x11/SDL_x11settings.c"
+license = "Zlib"
+start = "  Copyright 2024 Igalia S.L."
+end = "  3. This notice may not be removed or altered from any source distribution."
+checksum = "3ddb852cc379dd586d8dfbd177771f9efa03a6e0a74e9a344a42951954d93fe8"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/x11/edid-parse.c"
+license = "MIT"
+start = " * Copyright 2007 Red Hat, Inc."
+end = " * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE."
+checksum = "474c9f137602812e924cb8e2ffce13da602e52a1713913d37e6db1cfe8fa6831"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/x11/xsettings-client.c"
+license = "HPND"
+start = " * Copyright © 2001, 2007 Red Hat, Inc."
+end = " * Author:  Owen Taylor, Red Hat, Inc."
+checksum = "500a3c86273f2f27ca00b365cff7c9b53be57e937cb376f086a08f636b3e586d"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/yuv2rgb/yuv_rgb.h"
+license = "BSD-3-Clause"
+start = "// Copyright 2016 Adrien Descamps"
+end = "// Distributed under BSD 3-Clause License"
+checksum = "c3d91c45fa22185dab19ebd139be189921caeb2cdb6623425212e68a33e51fed"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/src/video/yuv2rgb/yuv_rgb_lsx_func.h"
+license = "BSD-3-Clause"
+start = "// Copyright 2016 Adrien Descamps"
+end = "// // Distributed under BSD 3-Clause License"
+checksum = "bdef463e2eca895df725589e07f55ffc7cfa76f23db84dc058b236be47473ed5"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/alpha-modifier-v1.xml"
+license = "MIT"
+start = "    Copyright © 2024 Xaver Hugl"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "44392ec5c4c9b646dd316cb297296efa9efce0edfcdd6d079f1d54ee20bb7ccb"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/color-management-v1.xml"
+license = "MIT"
+start = "    Copyright 2019 Sebastian Wick"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "1c6b04e1aa00ee2a53a945ad887bb04c6a2d56c05ae5ee591f79ef1a8190a166"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/cursor-shape-v1.xml"
+license = "MIT"
+start = "    Copyright 2018 The Chromium Authors"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "7204477b438f7fe4582a2ffc7eeedfd5a211ac9a0589bd2ecc9bdd2fab7ce0cd"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/fractional-scale-v1.xml"
+license = "MIT"
+start = "    Copyright © 2022 Kenny Levinsen"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "e25ffff3b8fafdc5376de9d4df83a5670921c5e4413b684cef86253f84693641"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/frog-color-management-v1.xml"
+license = "MIT"
+start = "    Copyright © 2023 Joshua Ashton for Valve Software"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "7c0b54d4d2368931e81b5c96b009a1628f2e8a1ec81eb6bd74be04dc2369966a"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/idle-inhibit-unstable-v1.xml"
+license = "MIT"
+start = "    Copyright © 2015 Samsung Electronics Co., Ltd"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "f6f2353d786dc4c287e0872bfd666648ebbb52c6ce5e374bee8f303460a6743b"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/input-timestamps-unstable-v1.xml"
+license = "MIT"
+start = "    Copyright © 2017 Collabora, Ltd."
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "489d4a2ccbcf59e67a7925f86ab7e42875aa4a7cdc0fdd15ad480491bd197bab"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/keyboard-shortcuts-inhibit-unstable-v1.xml"
+license = "MIT"
+start = "    Copyright © 2017 Red Hat Inc."
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "73412884ddd5b06a7e7db1b3706bdb95e5d4d3d36fad97348f16fe8d8158c22a"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/pointer-constraints-unstable-v1.xml"
+license = "MIT"
+start = "    Copyright © 2014      Jonas Ådahl"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "368b3c31fe19b7bb376340ed80a28c238f689696529669a1a27ef52c1b30e902"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/pointer-warp-v1.xml"
+license = "MIT"
+start = "    Copyright © 2024 Neal Gompa"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "e0e148fad984cab4d230227d7d42aab3b0db8c8462adde02e0293136c2cc9012"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/primary-selection-unstable-v1.xml"
+license = "MIT"
+start = "    Copyright © 2015, 2016 Red Hat"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "655d9c9050a9d32b1ef39bb2d17fe60e1d55d75cce65935763bcfc78a6047dc0"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/tablet-v2.xml"
+license = "MIT"
+start = "    Copyright 2014 © Stephen \"Lyude\" Chandler Paul"
+end = "    SOFTWARE."
+checksum = "d7ef9a847f6e6a68727c8ae1234f23e6c3e023f06fd6cf3115a22d69134f8a8e"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/text-input-unstable-v3.xml"
+license = "HPND"
+start = "    Copyright © 2012, 2013 Intel Corporation"
+end = "    THIS SOFTWARE."
+checksum = "7733991e6f4570a6a6f32c7c6150fa2002590cb9a6699ec274b2034b358a3c8e"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/viewporter.xml"
+license = "MIT"
+start = "    Copyright © 2013-2016 Collabora, Ltd."
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "077b2b47bb51c5aaae0e90a20c1e1590bbfd1da6881d201df013236c7cfa48f8"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/wayland.xml"
+license = "MIT"
+start = "    Copyright © 2008-2011 Kristian Høgsberg"
+end = "    SOFTWARE."
+checksum = "e1ee27bf8642e51e4b0be949e8d1af90fdef5efd2b921d2cf246a350fb0668d3"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/xdg-activation-v1.xml"
+license = "MIT"
+start = "    Copyright © 2020 Aleix Pol Gonzalez &lt;aleixpol@kde.org&gt;"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "0f80b479ae1ac530c92c39953436cae93dacd58967ce917b74b2916958198409"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/xdg-decoration-unstable-v1.xml"
+license = "MIT"
+start = "    Copyright © 2018 Simon Ser"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "b7cf93a7c50b4f8f617b23f60a009d673c4e9cc2cde0d246436545455981a86d"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/xdg-dialog-v1.xml"
+license = "MIT"
+start = "    Copyright © 2023 Carlos Garnacho"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "d5696e5e069a5ea8bb53a56561bc2205644f1657ce6cad3e7cd4510615a656a2"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/xdg-foreign-unstable-v2.xml"
+license = "MIT"
+start = "    Copyright © 2015-2016 Red Hat Inc."
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "6bcc4602a38f99360e39610e0f726ea961213fba548fecb3896d068208abfef1"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/xdg-shell.xml"
+license = "MIT"
+start = "    Copyright © 2008-2013 Kristian Høgsberg"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "9642804e837b9250e45d332eb83c9e7b722370406a848c386d0a7a6dbea71637"
+
+[[sdl3-src.clarify.files]]
+path = "SDL/wayland-protocols/xdg-toplevel-icon-v1.xml"
+license = "MIT"
+start = "    Copyright © 2023-2024 Matthias Klumpp"
+end = "    DEALINGS IN THE SOFTWARE."
+checksum = "594046f673ab73b73179d07adaeed46c8c90bb849c7ac94f7e6720ffbbf70f06"

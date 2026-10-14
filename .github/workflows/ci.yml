@@ -36,6 +36,10 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      # scripts/notices.sh writes the archives' third-party notices with it.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
       - run: scripts/check.sh guard package notes fmt clippy
 
   # The program built and tested on each platform it ships for, SDL3 built from source into
@@ -69,6 +73,9 @@ jobs:
           key: ${{ matrix.name }}
       - run: cargo test --workspace
       - run: cargo build --release -p sidekick
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
       - run: scripts/package.sh target/release/${{ matrix.binary }} ${{ matrix.name }}
         shell: bash
       - uses: actions/upload-artifact@v7
