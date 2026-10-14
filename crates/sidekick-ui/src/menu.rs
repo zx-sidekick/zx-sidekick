@@ -40,16 +40,6 @@ pub struct SwitchRow {
     pub refusal: Option<String>,
 }
 
-/// The Spectrum keyboard's row: a toggle showing whether it's on, noted while that's the
-/// game's own choice.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KeyboardRow {
-    /// The toggle.
-    pub switch: SwitchRow,
-    /// Whether it's as the game chose, rather than overridden for the session.
-    pub games_choice: bool,
-}
-
 /// A row of the menu that can be chosen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Row {
@@ -72,8 +62,9 @@ pub struct Menu {
     pub levels: Option<Levels>,
     /// The training switches.
     pub switches: Vec<SwitchRow>,
-    /// The Spectrum keyboard's toggle, under the controls' label.
-    pub keyboard: Option<KeyboardRow>,
+    /// The toggle that turns the Spectrum keyboard on for the session, under the controls'
+    /// label: only while the game has it off.
+    pub keyboard: Option<SwitchRow>,
     /// The actions, in order: "Back to the game" first.
     pub actions: Vec<String>,
     /// The row chosen.
@@ -290,7 +281,7 @@ impl Menu {
                 Align::Left,
                 &label,
             );
-            self.keyboard_row(&mut c, fonts, top, keyboard, self.lit(Row::Keyboard));
+            self.switch_row(&mut c, fonts, top, keyboard, self.lit(Row::Keyboard));
         }
         c.rect((1.0, layout.rule, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
         for (i, (action, &top)) in self.actions.iter().zip(&layout.actions).enumerate() {
@@ -466,29 +457,6 @@ impl Menu {
         if let Some(refusal) = &row.refusal {
             let red = Style::new(12.0, colors::RED);
             span(c, fonts, refusal, (27.0, top + 22.0), Align::Left, &red);
-        }
-    }
-
-    /// The keyboard's toggle, and beside it, while it follows the game, a muted note saying so.
-    fn keyboard_row(
-        &self,
-        c: &mut Canvas,
-        fonts: &mut Fonts,
-        top: f32,
-        row: &KeyboardRow,
-        lit: Option<Color>,
-    ) {
-        self.switch_row(c, fonts, top, &row.switch, lit);
-        if row.games_choice {
-            let note = Style::new(12.0, colors::FAINT);
-            span(
-                c,
-                fonts,
-                "game's choice",
-                (439.0, top + 1.0),
-                Align::Right,
-                &note,
-            );
         }
     }
 

@@ -3,10 +3,10 @@
 
 use sidekick_ui::{
     pins, CardRow, Cell, Chip, ClipSlot, Edge, EntryCard, EntryMode, Face, Fonts, HintSlot, HowTo,
-    HowToEntry, HowToTarget, Icon, Inside, KeyboardRow, Levels, LibraryEntry, LibraryPage, Look,
-    MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer, PadLabels, PadMark, Panel,
-    PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Place, PromptButton, Question,
-    Refusal, Route, RouteColor, Row, ScoreRow, Step, StepLine, SwitchRow, TapePrompt, ThisGame,
+    HowToEntry, HowToTarget, Icon, Inside, Levels, LibraryEntry, LibraryPage, Look, MapGrid,
+    Marker, MarkerKind, Menu, Note, NoticeHint, Offer, PadLabels, PadMark, Panel, PanelBody,
+    PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Place, PromptButton, Question, Refusal,
+    Route, RouteColor, Row, ScoreRow, Step, StepLine, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -245,14 +245,11 @@ fn starquake_menu() -> Menu {
         ]
         .map(switch)
         .to_vec(),
-        keyboard: Some(KeyboardRow {
-            switch: SwitchRow {
-                label: "Spectrum keyboard".to_owned(),
-                on: false,
-                knob: 0,
-                refusal: None,
-            },
-            games_choice: true,
+        keyboard: Some(SwitchRow {
+            label: "Use the Spectrum keyboard".to_owned(),
+            on: false,
+            knob: 0,
+            refusal: None,
         }),
         actions: ["Back to the game", "End this game", "Exit Starquake"]
             .map(str::to_owned)
@@ -282,19 +279,11 @@ fn the_guidance_menu() {
     refused.chosen = Row::Switch(4);
     golden("menu-refused.png", &refused.draw(&mut fonts, 1.0).png());
 
-    // A tape played plainly: the Spectrum's keyboard on.
+    // A tape played plainly: the Spectrum's keyboard on, so no toggle.
     let armed = Menu {
         levels: None,
         switches: Vec::new(),
-        keyboard: Some(KeyboardRow {
-            switch: SwitchRow {
-                label: "Spectrum keyboard".to_owned(),
-                on: true,
-                knob: 100,
-                refusal: None,
-            },
-            games_choice: true,
-        }),
+        keyboard: None,
         chosen: Row::Action(1),
         armed: Some((1, "end this game".to_owned())),
         pad: PadLabels::Shapes,
@@ -303,20 +292,17 @@ fn the_guidance_menu() {
     golden("menu-plain-armed.png", &armed.draw(&mut fonts, 1.0).png());
 
     let keyboard = Menu {
-        keyboard: Some(KeyboardRow {
-            switch: SwitchRow {
-                label: "Spectrum keyboard".to_owned(),
-                on: true,
-                knob: 100,
-                refusal: None,
-            },
-            games_choice: false,
+        keyboard: Some(SwitchRow {
+            label: "Use the Spectrum keyboard".to_owned(),
+            on: true,
+            knob: 100,
+            refusal: None,
         }),
         chosen: Row::Keyboard,
         ..starquake_menu()
     };
     golden(
-        "menu-keyboard-overridden.png",
+        "menu-keyboard-on.png",
         &keyboard.draw(&mut fonts, 1.0).png(),
     );
 

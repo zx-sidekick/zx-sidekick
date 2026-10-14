@@ -166,6 +166,10 @@ struct Prompt {
 }
 
 /// A game being played, and what keeps its time and sound.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent settings and flags of the session, not states of one thing"
+)]
 struct Player {
     session: Box<Session>,
     play: Play,
@@ -178,9 +182,9 @@ struct Player {
     /// in the window's device pixels, its scale, and device pixels to a window point.
     menu: Option<Menu>,
     menu_at: Option<(f32, f32, f32, f32)>,
-    /// The Spectrum's keyboard turned on or off in the menu, for this session; `None`, the
-    /// game's choice: the definition decides.
-    keyboard: Option<bool>,
+    /// Whether the Spectrum's keyboard is turned on in the menu, for this session; off, the
+    /// definition decides.
+    keyboard: bool,
     /// The text-entry card while it's open, and a word being typed.
     entry: Option<Entry>,
     typing: Option<Typing>,
@@ -785,7 +789,7 @@ impl Player {
             folder: playing.folder,
             menu: None,
             menu_at: None,
-            keyboard: None,
+            keyboard: false,
             entry: None,
             typing: None,
             table: Vec::new(),
@@ -1674,8 +1678,8 @@ impl Player {
             Outcome::Cancelled => self.close_menu(pads),
             Outcome::Applied => {
                 self.level = level;
-                if let Some(menu) = &self.menu {
-                    self.keyboard = menu.keyboard();
+                if let Some(on) = self.menu.as_ref().and_then(Menu::keyboard) {
+                    self.keyboard = on;
                 }
                 self.close_menu(pads);
             }
@@ -1724,17 +1728,12 @@ impl Player {
     }
 
     /// The menu, opened on the game as it stands: `can_load`, whether the quick slot holds a
-    /// save.
+    /// save. Its Spectrum keyboard toggle shows only where the game has that keyboard off, in
+    /// the state it was last known in.
     fn open_menu(&self, can_load: bool) -> Menu {
-        let game = keys::spectrum_on(self.session.definition(), self.known_state(), None);
-        Menu::open(
-            &self.session,
-            self.level,
-            &self.title,
-            can_load,
-            self.keyboard,
-            game,
-        )
+        let game = keys::spectrum_on(self.session.definition(), self.known_state(), false);
+        let keyboard = (!game).then_some(self.keyboard);
+        Menu::open(&self.session, self.level, &self.title, can_load, keyboard)
     }
 
     /// Takes a key pressed in play: a Spectrum key reaches the game, or the keyboard's pad
@@ -2455,6 +2454,7 @@ mod tests {
 
     use super::*;
     use sidekick_def::Definition;
+    use sidekick_ui::SwitchRow;
 
     #[test]
     fn the_pause_notice_is_the_paused_role_s_whatever_its_name() {
@@ -2525,17 +2525,63 @@ notice = { text = "Press fire." }
         })
     }
 
+    /// A stand-in game: its keyboard a pad, except in its `define` state with `run`'s
+    /// `keyboard_in`; parked in `define` with `in_define`.
+    fn keyboard_game(run: &str, in_define: bool) -> Session {
+        let definition = Definition::from_toml(&format!(
+            r#"
+            schema = 1
+            [game]
+            id = "test"
+            title = "Test"
+            machine = "48k"
+            [[media]]
+            name = "the tape"
+            [[states]]
+            name = "define"
+            pc = 0x8000
+            [run]
+            {run}
+            "#
+        ))
+        .expect("the test definition parses");
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        if in_define {
+            // JR -2: the game waits in its define-keys state.
+            machine.write(0x8000, 0x18);
+            machine.write(0x8001, 0xFE);
+            machine.registers_mut().set_pc(0x8000);
+        }
+        let mut session = Session::new(machine, Some(definition));
+        session.run_frame().expect("a frame");
+        session
+    }
+
+    /// The menu's Spectrum keyboard toggle, opened by Esc and closed again: `None` without one.
+    fn keyboard_row(player: &mut Player) -> Option<SwitchRow> {
+        let mut pads = Pads::default();
+        player.menu_event(&key_down(Scancode::Escape), &[], &mut pads);
+        let row = player
+            .menu
+            .as_ref()
+            .and_then(|m| m.card(PadLabels::Letters).keyboard);
+        player.menu_event(&key_down(Scancode::Escape), &[], &mut pads);
+        row
+    }
+
     #[test]
-    fn the_menu_s_keyboard_toggle_is_kept_by_back_to_the_game_and_dropped_by_esc() {
-        let machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+    fn the_menu_turns_the_spectrum_keyboard_on_for_the_session_with_back_to_the_game() {
         let data = tempfile::TempDir::new().expect("a folder");
-        // Played plainly, the game's choice is the Spectrum keyboard on.
-        let mut player = player(Session::new(machine, None), data.path());
+        let mut player = player(keyboard_game("", false), data.path());
         let mut pads = Pads::default();
         let mut key = |player: &mut Player, scancode| {
             player.menu_event(&key_down(scancode), &[], &mut pads);
         };
-        // Esc opens the menu on Back to the game; up is the keyboard's toggle, Enter flips it.
+        let row = keyboard_row(&mut player).expect("the toggle, the game's keyboard a pad");
+        assert_eq!(row.label, "Use the Spectrum keyboard");
+        assert!(!row.on, "off by default");
+
+        // Esc opens the menu on Back to the game; up is the toggle, Enter flips it.
         for scancode in [
             Scancode::Escape,
             Scancode::Up,
@@ -2545,26 +2591,7 @@ notice = { text = "Press fire." }
             key(&mut player, scancode);
         }
         assert!(player.menu.is_none());
-        assert_eq!(player.keyboard, None, "Esc drops the change");
-
-        for scancode in [Scancode::Escape, Scancode::Up, Scancode::Return] {
-            key(&mut player, scancode);
-        }
-        let row = player
-            .menu
-            .as_ref()
-            .and_then(|m| m.card(PadLabels::Letters).keyboard)
-            .expect("the keyboard's row");
-        assert!(
-            !row.switch.on && !row.games_choice,
-            "off, overriding the game"
-        );
-        for scancode in [Scancode::Down, Scancode::Return] {
-            key(&mut player, scancode);
-        }
-        player.menu_press_due(&mut Pads::default(), Instant::now() + press::SHOWN);
-        assert!(player.menu.is_none(), "Back to the game");
-        assert_eq!(player.keyboard, Some(false), "keeps it for the session");
+        assert!(!player.keyboard, "Esc drops the change");
 
         for scancode in [
             Scancode::Escape,
@@ -2576,10 +2603,38 @@ notice = { text = "Press fire." }
         }
         key(&mut player, Scancode::Return);
         player.menu_press_due(&mut Pads::default(), Instant::now() + press::SHOWN);
-        assert_eq!(
-            player.keyboard, None,
-            "flipped back: the game's choice again"
-        );
+        assert!(player.menu.is_none(), "Back to the game");
+        assert!(player.keyboard, "on for the session");
+        assert!(keyboard_row(&mut player).is_some_and(|row| row.on));
+
+        for scancode in [
+            Scancode::Escape,
+            Scancode::Up,
+            Scancode::Return,
+            Scancode::Down,
+        ] {
+            key(&mut player, scancode);
+        }
+        key(&mut player, Scancode::Return);
+        player.menu_press_due(&mut Pads::default(), Instant::now() + press::SHOWN);
+        assert!(!player.keyboard, "and off again");
+    }
+
+    #[test]
+    fn the_toggle_shows_only_where_the_game_has_the_spectrum_keyboard_off() {
+        let data = tempfile::TempDir::new().expect("a folder");
+        let machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        let mut plain = player(Session::new(machine, None), data.path());
+        assert!(keyboard_row(&mut plain).is_none(), "played plainly");
+        let throughout = r#"keyboard = "spectrum""#;
+        let mut on = player(keyboard_game(throughout, false), data.path());
+        assert!(keyboard_row(&mut on).is_none(), "on throughout");
+        let some = r#"keyboard = "spectrum"
+            keyboard_in = ["define"]"#;
+        let mut define = player(keyboard_game(some, true), data.path());
+        assert!(keyboard_row(&mut define).is_none(), "in a state it's on in");
+        let mut elsewhere = player(keyboard_game(some, false), data.path());
+        assert!(keyboard_row(&mut elsewhere).is_some(), "where it's off");
     }
 
     #[test]

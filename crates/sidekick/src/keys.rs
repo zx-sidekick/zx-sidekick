@@ -30,16 +30,16 @@ pub(crate) enum KeyDoes {
     Pad(Part),
 }
 
-/// Whether the Spectrum's keyboard is on in `state`: as the player chose in the menu
-/// (`chosen`), else as the definition's `[run] keyboard` and `keyboard_in` say. With no
+/// Whether the Spectrum's keyboard is on in `state`: turned on in the menu for the session
+/// (`forced`), or as the definition's `[run] keyboard` and `keyboard_in` say. With no
 /// definition (a tape played plainly) it's on.
 pub(crate) fn spectrum_on(
     definition: Option<&Definition>,
     state: Option<&str>,
-    chosen: Option<bool>,
+    forced: bool,
 ) -> bool {
-    if let Some(on) = chosen {
-        return on;
+    if forced {
+        return true;
     }
     let Some(definition) = definition else {
         return true;
@@ -57,11 +57,11 @@ pub(crate) fn spectrum_on(
 pub(crate) fn mode(
     definition: Option<&Definition>,
     state: Option<&str>,
-    chosen: Option<bool>,
+    forced: bool,
 ) -> KeyboardMode {
     if asks_for_text(definition, state) {
         KeyboardMode::Typing
-    } else if spectrum_on(definition, state, chosen) {
+    } else if spectrum_on(definition, state, forced) {
         KeyboardMode::Spectrum
     } else {
         KeyboardMode::Pad
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn by_default_the_keyboard_plays_as_a_pad_and_no_spectrum_key_reaches_the_game() {
-        let pad = mode(Some(&def("")), Some("play"), None);
+        let pad = mode(Some(&def("")), Some("play"), false);
         assert_eq!(pad, KeyboardMode::Pad);
         for (keys, want) in [
             (&[Scancode::Up, Scancode::W][..], Part::DPad(Way::Up)),
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn played_plainly_the_spectrum_keyboard_is_on_and_the_arrows_are_the_joystick() {
-        let plain = mode(None, None, None);
+        let plain = mode(None, None, false);
         assert_eq!(plain, KeyboardMode::Spectrum);
         assert!(matches!(spectrum(Scancode::Q, &plain), Some(Key::Q)));
         assert!(matches!(spectrum(Scancode::W, &plain), Some(Key::W)));
@@ -449,31 +449,28 @@ mod tests {
         let throughout = def("[run]\nkeyboard = \"spectrum\"");
         for state in [None, Some("define"), Some("play")] {
             assert_eq!(
-                mode(Some(&throughout), state, None),
+                mode(Some(&throughout), state, false),
                 KeyboardMode::Spectrum,
                 "{state:?}"
             );
         }
         let some = def("[run]\nkeyboard = \"spectrum\"\nkeyboard_in = [\"define\"]");
         assert_eq!(
-            mode(Some(&some), Some("define"), None),
+            mode(Some(&some), Some("define"), false),
             KeyboardMode::Spectrum
         );
-        assert_eq!(mode(Some(&some), Some("play"), None), KeyboardMode::Pad);
-        assert_eq!(mode(Some(&some), None, None), KeyboardMode::Pad);
+        assert_eq!(mode(Some(&some), Some("play"), false), KeyboardMode::Pad);
+        assert_eq!(mode(Some(&some), None, false), KeyboardMode::Pad);
     }
 
     #[test]
-    fn the_player_s_choice_outranks_the_definition() {
+    fn the_player_can_turn_the_spectrum_keyboard_on_but_not_off() {
         let pad = def("");
-        assert!(spectrum_on(Some(&pad), Some("play"), Some(true)));
-        assert_eq!(
-            mode(Some(&pad), Some("play"), Some(true)),
-            KeyboardMode::Spectrum
-        );
+        assert!(spectrum_on(Some(&pad), Some("play"), true));
+        assert_eq!(mode(Some(&pad), Some("play"), true), KeyboardMode::Spectrum);
         let on = def("[run]\nkeyboard = \"spectrum\"");
-        assert!(!spectrum_on(Some(&on), Some("play"), Some(false)));
-        assert!(!spectrum_on(None, None, Some(false)), "plain play too");
+        assert!(spectrum_on(Some(&on), Some("play"), false), "the game's on");
+        assert!(spectrum_on(None, None, false), "plain play's on");
     }
 
     const TEXT: &str = r#"
@@ -496,7 +493,7 @@ mod tests {
         );
         assert!(!asks_for_text(Some(&text), Some("play")));
         assert!(!asks_for_text(None, None), "played plainly");
-        for chosen in [None, Some(false), Some(true)] {
+        for chosen in [false, true] {
             for state in ["booth", "name"] {
                 let typing = mode(Some(&text), Some(state), chosen);
                 assert_eq!(typing, KeyboardMode::Typing, "{state} {chosen:?}");
@@ -563,7 +560,7 @@ mod tests {
                 }
                 return;
             }
-            let mode = mode(self.s.definition(), self.known(), None);
+            let mode = mode(self.s.definition(), self.known(), false);
             match pressed(scancode, &mode) {
                 Some(KeyDoes::Spectrum(Spectrum::Key(key))) => self.s.machine_mut().key(key, true),
                 Some(KeyDoes::Pad(part)) if self.pads.button(0, part, true).is_some() => {
@@ -663,7 +660,7 @@ mod tests {
             k.s.state().is_none()
         });
         assert!(between && k.known() == Some("title"), "a frame between");
-        assert_eq!(mode(k.s.definition(), k.known(), None), KeyboardMode::Pad);
+        assert_eq!(mode(k.s.definition(), k.known(), false), KeyboardMode::Pad);
 
         k.tap(Scancode::Return, 4);
         let mut seen = Vec::new();
