@@ -316,6 +316,13 @@ The games' logic is the originals', so there's no rewrite to prove. What needs p
 - **Small handhelds** (for example a Miyoo Mini: Cortex-A7 at about 1.2 GHz, no 3D GPU, 640×480): measure early. An accuracy-first emulator may need a large share of one core there, and the window needs SDL's framebuffer path (SDL3's KMSDRM, or SDL2 where the firmware ships only that). The panel won't fit 640×480 beside the picture and would become an overlay.
 - **A libretro core** is worth considering once the desktop program works. RetroArch then provides the screen, sound, input and save states on most handhelds and consoles, and Rust produces such a core naturally. Definitions would travel with it unchanged.
 
+### Releases
+
+Releases are built for **macOS** (one universal binary, Apple silicon and Intel, macOS 11 and later), **Windows** (x64, with no console window and the C runtime linked in) and **Linux** (x64, built on Ubuntu 22.04 so it runs from glibc 2.35), unsigned: the player's guide says how to open the program the first time on macOS and past SmartScreen on Windows.
+
+- **Each platform's archive** (`scripts/package.sh`): the program, `games/` without any definition's `tests/`, `PLAYER-GUIDE.md` (`docs/player-guide.md`), `AUTHORS-GUIDE.md` (`docs/definition-format.md`), the README, the licence, `THIRD-PARTY.md`, and `licenses/` with Inter's and RustZX's licences. It refuses a tape, snapshot or ROM file. **Each definition** in `games/` also goes on the release alone, as `<id>.zip` without its `tests/`, for a program already installed.
+- **Making one:** the workspace version in `Cargo.toml` is the release's number. Push the tag `v<version>` on a commit of `main`, and `.github/workflows/release.yml` checks the tag matches the version, tests and builds on each platform, packs the archives and the definitions, writes the notes (`scripts/release-notes.sh`: the titles merged since the previous tag, the downloads and the notice), and creates a **draft** release. The maintainer reads the draft, edits the notes if need be, and publishes it. Nothing is published by the workflow. `scripts/release-notes.sh v<version>` previews the notes before the tag is made.
+
 ## 19. Build order
 
 Each step ends green, committed, and on a reviewed pull request.
@@ -334,7 +341,7 @@ Each step ends green, committed, and on a reviewed pull request.
 12. **Saves:** quick slot, Open, saved on quitting, the offer, the loaded mark, crafted situations and `--load`.
 13. **Split pad meanings**, if they hold up.
 14. **The 128K and the AY** in definitions, and a second, simpler reference definition.
-15. **Releases:** archives for each platform, with the player's guide, the authors' guide, `THIRD-PARTY.md` and the font's licence; each definition zipped without its `tests/`. `scripts/package.sh` packs a platform's archive (the binary, `games/` without any `tests/`, the README, licence and third-party notes) and refuses a tape, snapshot or ROM file; CI's build jobs keep its archive as their artifact.
+15. **Releases:** archives for each platform, with the player's guide, the authors' guide, `THIRD-PARTY.md` and the licences; each definition zipped without its `tests/`. `scripts/package.sh` packs a platform's archive and refuses a tape, snapshot or ROM file; CI's build jobs keep its archive as their artifact. A `v*` tag builds all three, macOS as one universal binary, into a draft release with notes from the merged titles (§18, "Releases").
 
 ## Mockups
 

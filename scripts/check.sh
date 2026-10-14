@@ -5,7 +5,7 @@
 #   scripts/check.sh guard fmt ...    only the named steps (CI runs them in two jobs)
 #
 # Steps: guard (no tape, snapshot or ROM file committed; CLAUDE.md), package (the packing
-# script leaves out tests/ and refuses game files), fmt, clippy, test.
+# script leaves out tests/ and refuses game files), notes (the release notes), fmt, clippy, test.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -18,20 +18,37 @@ guard() {
     return 1
   fi
 }
-# Packs a stand-in game folder with a stand-in binary: a definition's tests/ stays out, and a
-# tape in it is refused.
+# Packs a stand-in game folder with a stand-in binary: the archive is named by its version and
+# holds the guides and licences, a definition's tests/ stays out, and a tape in it is refused.
+# Then packs the stand-in definition alone, its files at the zip's top, without its tests/.
 package() {
-  local scratch archive listing
+  local scratch archive listing file
   scratch=$(mktemp -d)
   trap 'rm -rf -- "$scratch"' RETURN
   mkdir -p "$scratch/games/stand-in/tests" "$scratch/out"
   echo 'schema = 1' >"$scratch/games/stand-in/game.toml"
   echo 'lives = 9' >"$scratch/games/stand-in/tests/start.toml"
   echo 'binary' >"$scratch/sidekick"
-  archive=$(PACKAGE_GAMES="$scratch/games" scripts/package.sh "$scratch/sidekick" linux "$scratch/out")
+  archive=$(PACKAGE_GAMES="$scratch/games" PACKAGE_VERSION=9.8.7 \
+    scripts/package.sh "$scratch/sidekick" linux-x64 "$scratch/out")
   listing=$(tar -tzf "$archive")
-  if ! grep -q '/games/stand-in/game.toml$' <<<"$listing" || grep -q '/tests/' <<<"$listing"; then
-    echo "package: the archive should hold the definition and not its tests/:" >&2
+  for file in sidekick games/stand-in/game.toml PLAYER-GUIDE.md AUTHORS-GUIDE.md README.md \
+    LICENSE THIRD-PARTY.md licenses/Inter-LICENSE.txt licenses/RustZX-LICENSE.md; do
+    if ! grep -qx "zx-sidekick-9.8.7-linux-x64/$file" <<<"$listing"; then
+      echo "package: zx-sidekick-9.8.7-linux-x64.tar.gz should hold $file:" >&2
+      echo "$listing" >&2
+      return 1
+    fi
+  done
+  if grep -q '/tests/' <<<"$listing"; then
+    echo "package: the archive should leave out the definition's tests/:" >&2
+    echo "$listing" >&2
+    return 1
+  fi
+  archive=$(scripts/package.sh --definition "$scratch/games/stand-in" "$scratch/out")
+  listing=$(unzip -Z1 "$archive")
+  if [ "$(basename "$archive")" != stand-in.zip ] || [ "$listing" != game.toml ]; then
+    echo "package: $(basename "$archive") should hold game.toml alone, at its top:" >&2
     echo "$listing" >&2
     return 1
   fi
@@ -40,16 +57,55 @@ package() {
     echo "package: a tape in games/ should be refused" >&2
     return 1
   fi
+  if scripts/package.sh --definition "$scratch/games/stand-in" "$scratch/out" 2>/dev/null; then
+    echo "package: a tape in a definition should be refused" >&2
+    return 1
+  fi
 }
+
+# The release notes on a stand-in history: a release lists the titles since the previous tag,
+# counts Dependabot's, names each definition's zip, and carries the notice.
+notes() {
+  local scratch notes
+  scratch=$(mktemp -d)
+  trap 'rm -rf -- "$scratch"' RETURN
+  stand_in() { git -C "$scratch" -c user.name="${AUTHOR:-Maintainer}" -c user.email=m@example.com \
+    -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
+  git init -q "$scratch"
+  mkdir -p "$scratch/games/stand-in"
+  echo 'title = "Stand-in"' >"$scratch/games/stand-in/game.toml"
+  stand_in commit -q --allow-empty -m 'First (#1)'
+  stand_in tag v0.1.0
+  stand_in commit -q --allow-empty -m 'Second (#2)'
+  AUTHOR='dependabot[bot]' stand_in commit -q --allow-empty -m 'Bump a crate (#3)'
+  stand_in tag v0.2.0
+  notes=$(RELEASE_NOTES_REPO="$scratch" scripts/release-notes.sh v0.2.0)
+  if ! grep -qx '## Changes since v0.1.0' <<<"$notes" || ! grep -qx -- '- Second (#2)' <<<"$notes" \
+    || grep -q 'First\|Bump' <<<"$notes" || ! grep -q 'One dependency update' <<<"$notes" \
+    || ! grep -q 'you need your own copy' <<<"$notes" || ! grep -q 'not affiliated' <<<"$notes" \
+    || ! grep -q 'zx-sidekick-0.2.0-windows-x64.zip' <<<"$notes" \
+    || ! grep -q "stand-in.zip\` | Stand-in's definition" <<<"$notes"; then
+    echo "notes: v0.2.0's notes should list #2 alone, count #3 and carry the notice:" >&2
+    echo "$notes" >&2
+    return 1
+  fi
+  notes=$(RELEASE_NOTES_REPO="$scratch" scripts/release-notes.sh v0.3.0)
+  if ! grep -qx '## Changes since v0.2.0' <<<"$notes" || grep -q '^- ' <<<"$notes"; then
+    echo "notes: a tag not made yet should be previewed from HEAD, since the last tag:" >&2
+    echo "$notes" >&2
+    return 1
+  fi
+}
+
 fmt() { cargo fmt --check; }
 clippy() { cargo clippy --all-targets -- -D warnings; }
 test() { cargo test; }
 
 steps=("$@")
-[ ${#steps[@]} -eq 0 ] && steps=(guard package fmt clippy test)
+[ ${#steps[@]} -eq 0 ] && steps=(guard package notes fmt clippy test)
 for step in "${steps[@]}"; do
   case "$step" in
-    guard | package | fmt | clippy | test) echo "== $step"; "$step" ;;
+    guard | package | notes | fmt | clippy | test) echo "== $step"; "$step" ;;
     *) echo "unknown step: $step" >&2; exit 2 ;;
   esac
 done

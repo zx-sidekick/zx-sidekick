@@ -12,6 +12,8 @@ Eighty seconds of ZX Sidekick running Starquake from the player's own tape: the 
 
 ## Building
 
+Archives ready to run on macOS, Windows and Linux go on the [releases page](https://github.com/zx-sidekick/zx-sidekick/releases); the [player's guide](docs/player-guide.md) says how to install and play. To build it yourself:
+
 ```
 scripts/check.sh
 ```

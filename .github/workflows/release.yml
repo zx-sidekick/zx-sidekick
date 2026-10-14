@@ -1,0 +1,142 @@
+name: Release
+
+# A pushed v* tag builds the program for each platform from that commit, packs it with
+# scripts/package.sh, zips each definition in games/ alone, and creates a DRAFT release with
+# notes from scripts/release-notes.sh. The maintainer reads the draft and publishes it by hand
+# (ZX-SIDEKICK.md, "Releases"). Not a required check: it never runs on a pull request.
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The tag names the version the program reports (`sidekick --version`), so a release can't
+  # go out under one number and report another.
+  version:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: The tag matches the workspace version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME, but Cargo.toml's version is $version: tag v$version, or move the version first."
+            exit 1
+          fi
+
+  # CI's build jobs' setup (SDL3 built from source into the program), with Linux on an older
+  # Ubuntu and Windows on the static C runtime, and no cache, so a release is built from nothing
+  # but the tagged commit.
+  build:
+    name: build (${{ matrix.platform }})
+    needs: version
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # An older Ubuntu than CI's, so the binary needs only its glibc (2.35) and runs on
+          # older systems too.
+          - platform: linux-x64
+            os: ubuntu-22.04
+            binary: sidekick
+          - platform: macos-universal
+            os: macos-15
+            binary: sidekick
+          - platform: windows-x64
+            os: windows-2025
+            binary: sidekick.exe
+    env:
+      # Windows: the C runtime linked into the program, so it runs without the Visual C++
+      # redistributable installed. Ignored on the other runners.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - if: runner.os == 'Linux'
+        run: scripts/linux-deps.sh
+      # SDL3, built by CMake, on the same static C runtime (scripts/static-crt.cmake).
+      - if: runner.os == 'Windows'
+        shell: bash
+        run: echo "CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_msvc=$(cygpath -m "$PWD/scripts/static-crt.cmake")" >>"$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - run: cargo test --workspace --locked
+      - if: runner.os != 'macOS'
+        run: cargo build --release --locked -p sidekick
+      # One binary for Apple silicon and Intel: each half built on its own, SDL3 with it (the
+      # cmake crate builds it for the target's architecture), then joined. Apple silicon runs
+      # only signed code: the joined binary is signed again ad hoc, which is no Developer ID
+      # signature, so the player's guide says how to open it.
+      - if: runner.os == 'macOS'
+        env:
+          # The oldest macOS it runs on, for rustc and for CMake building SDL3.
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+        run: |
+          cargo build --release --locked -p sidekick --target aarch64-apple-darwin
+          cargo build --release --locked -p sidekick --target x86_64-apple-darwin
+          lipo -create -output target/release/sidekick \
+            target/aarch64-apple-darwin/release/sidekick target/x86_64-apple-darwin/release/sidekick
+          codesign --force --sign - target/release/sidekick
+          lipo -archs target/release/sidekick | grep -qw arm64
+          lipo -archs target/release/sidekick | grep -qw x86_64
+          target/release/sidekick --version
+      - name: Pack
+        shell: bash
+        run: |
+          PACKAGE_VERSION=${GITHUB_REF_NAME#v} \
+            scripts/package.sh target/release/${{ matrix.binary }} ${{ matrix.platform }} dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: dist/zx-sidekick-*
+          if-no-files-found: error
+          retention-days: 7
+
+  # The only job that writes: it creates the draft, nothing else.
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # The history back to the previous tag, for the notes.
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Zip each definition alone
+        run: |
+          for folder in games/*/; do
+            scripts/package.sh --definition "$folder" dist
+          done
+      - run: scripts/release-notes.sh "$GITHUB_REF_NAME" > notes.md
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -l dist
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "ZX Sidekick ${GITHUB_REF_NAME#v}" --notes-file notes.md dist/*
