@@ -37,7 +37,7 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 ## How to play
 
-`[about]` gives the goal (the core's pieces, carried back to it, and that the core shows which it wants only in its own room) and four moves: pick up or swap (east, X on the keyboard), build a platform (south, Z), teleport booths (the arrows) and fire (west, Space). The keys are the keyboard's, as it plays as a pad, except the booths', which name the two arrows that walk into one. The words are our own, not the game's.
+`[about]` gives the goal (the core's pieces, carried back to it, and that the core shows which it wants only in its own room) and six moves: move (the arrows), pick up or swap (east, ↑ on the keyboard), build a platform (south, ↓), teleport booths (the arrows), fire (west, Space) and pause (Start, Enter). The keys are the keyboard's, as it plays as a pad: where no key plays a button, the arrow that does the same (east pushes the joystick up, south down). The booths' name the two arrows that walk into one. The words are our own, not the game's.
 
 ## Guidance levels
 
