@@ -90,7 +90,7 @@ impl Layout {
 pub(crate) const LOGICAL_PIXEL: u32 = 3;
 
 /// The smallest scale the picture is shown at beside the panel.
-const LEAST_PIXEL: u32 = 2;
+pub(crate) const LEAST_PIXEL: u32 = 2;
 
 /// The smallest window for a picture `picture` Spectrum pixels large: the picture at twice its
 /// size beside the panel at its design size, or, without the panel, the picture alone at
