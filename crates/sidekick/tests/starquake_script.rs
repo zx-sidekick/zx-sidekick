@@ -1432,7 +1432,7 @@ fn a_locked_post_without_the_key_is_hinted_from_level_4() {
     stand(&mut s, 100, (4, 8));
     poke_into(&mut s, "energy", 0, &[127, 50]);
     // Room 100's post, locked.
-    poke_into(&mut s, "locks", 0, &[100, 0x01]);
+    poke_into(&mut s, "locked_doors", 0, &[100, 0x01]);
     enter(&mut s, "play");
     s.run_frame().expect("a frame");
     assert_eq!(conditions(&s), ["post-locked"]);
@@ -1444,7 +1444,7 @@ fn a_locked_post_without_the_key_is_hinted_from_level_4() {
     s.run_frame().expect("a frame");
     assert!(conditions(&s).is_empty(), "the key carried");
     poke_into(&mut s, "carried", 0, &[0, 0]);
-    poke_into(&mut s, "locks", 0, &[100, 0x00]);
+    poke_into(&mut s, "locked_doors", 0, &[100, 0x00]);
     s.run_frame().expect("a frame");
     assert!(conditions(&s).is_empty(), "unlocked");
 }

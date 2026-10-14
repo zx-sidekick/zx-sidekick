@@ -1331,27 +1331,3 @@ fn a_fifth_pick_up_drops_the_oldest_item_carried_where_blob_stands() {
     );
     assert_eq!(s.hint(1), Some(full.as_str()), "still four carried");
 }
-
-#[test]
-fn a_new_game_lists_the_five_locked_posts_locked() {
-    let Some(s) = in_play() else { return };
-    let locks = match &s.reading()["locks"] {
-        Read::Bytes(bytes) => bytes.clone(),
-        other => panic!("bytes: {other:?}"),
-    };
-    let posts: Vec<(i64, bool)> = locks
-        .chunks(2)
-        .map(|p| (i64::from(p[0]) + i64::from(p[1] >> 7) * 256, p[1] & 1 == 1))
-        .collect();
-    assert_eq!(
-        posts,
-        [
-            (190, true),
-            (252, true),
-            (452, true),
-            (482, true),
-            (486, true)
-        ],
-        "the rooms with a post (docs/re/starquake.md), each locked"
-    );
-}

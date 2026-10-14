@@ -220,12 +220,6 @@ addr = 0x58C0
 len = 576
 description = "The play area's attributes, 32 a row, 18 rows: a cell without BRIGHT blocks BLOB"
 
-[values.locks]
-type = "bytes"
-addr = 0x95F0
-len = 10
-description = "The locked doors' posts, two bytes a post: the room's low byte, then its ninth bit in the top bit and bit 0 set while locked"
-
 [values.door_card_count]
 type = "u8"
 addr = 0xD5F6

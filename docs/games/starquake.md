@@ -77,7 +77,7 @@ Eight `[[hints]]`, a line under the level's name while each holds, the lowest pr
 | 1 | Energy is low | in play, `energy` at most 30: about 40 seconds left | 1 up |
 | 2 | Where this door's cards lie on the map | in play or at the door, the script's `door-cards-on-map`: BLOB in a security door's room, its cards not all answered by what he carries, and an item that would answer one lying on the planet (some wait in the core's room, off the map) | 4 up |
 | 3 | This door wants the cards under DOORS | the `door` state, and the script's `door-cards-missing`: its cards not all answered | 1 up |
-| 4 | This post opens only for the key | in play, the script's `post-locked`: BLOB in a room with a post still locked (`locks`), the key not carried | 4 up |
+| 4 | This post opens only for the key | in play, the script's `post-locked`: BLOB in a room with a post still locked (`locked_doors`), the key not carried | 4 up |
 | 5 | Platforms are low | in play, `platforms` at most 10: five left | 1 up |
 | 6 | How a booth is used | the `booth` state | 1 up |
 | 7 | Hands are full | in play, the script's `hands-full`: four items carried | 1 up |
@@ -99,7 +99,7 @@ Each of these is a fact to find (below) and then a `[values]` entry:
 - the teleport table: each teleport's room and code;
 - each security door's room and the three cards it asks for;
 - the item table: each item's room, position, colour and graphic, and whether it's carried;
-- the locked doors' posts, each with its room and whether it's still locked (`locks`), for the post's hint;
+- the locked doors' posts, each with its room and whether it's still locked (`locked_doors`), for the post's hint;
 - the core's nine slots: the graphic each wants, and which are filled;
 - the inventory;
 - lives, and the three bars (energy, bridging platforms, laser);

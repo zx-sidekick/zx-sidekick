@@ -1342,18 +1342,18 @@ fn card_lying(mem, missing) {
     false
 }
 
-// Whether the locked door's post in `room` is still locked: its entry in the game's table of
-// locked doors, a room a pair of bytes, has bit 0 of its second byte set (docs/re/starquake.md).
+// A table field read as a flag, whether it comes as one or as a number.
+fn set(field) {
+    if type_of(field) == "bool" { field } else { field != 0 }
+}
+
+// Whether the locked door's post in `room` is still locked, by the game's table of locked
+// doors (docs/re/starquake.md).
 fn post_locked(mem, room) {
-    let locks = mem.value("locks");
-    if locks == () {
-        return false;
-    }
-    for k in 0..locks.len() / 2 {
-        let low = locks[2 * k];
-        let high = locks[2 * k + 1];
-        if low + (high >> 7) * 256 == room {
-            return (high & 1) != 0;
+    for door in mem.table("locked_doors") {
+        let ninth = if set(door.room_high) { 256 } else { 0 };
+        if door.room_low + ninth == room {
+            return set(door.locked);
         }
     }
     false
