@@ -107,6 +107,11 @@ writable = true
 addr = 0xDD1E
 description = "BLOB's height, in pixels up from the screen's bottom"
 
+[values.blob_mode]
+type = "u8"
+addr = 0xDD22
+description = "How BLOB moves: 0 on foot, 1 carried up a vacuum tube, 2 on a hover platform"
+
 [values.lives]
 type = "u8"
 writable = true
@@ -324,19 +329,49 @@ menu_in = ["play"]
 tap = ["A", "S", "D", "F", "G"]
 frames = 5
 
+# Up and down each mean two things in the game (docs/re/starquake.md): up picks up or swaps,
+# and boards a hover platform or flies it up; down builds, and flies a platform down. Each of
+# these sends the direction with a patch, for the frames it's held, that leaves it one meaning.
+
 [[actions]]
 id = "pick-up"
 label = "Pick up or swap"
 joystick = ["up"]
-# patch_for_frame = TODO: skip boarding the hover platform, so up only picks up
+# The last way moved isn't recorded, so a hover pad doesn't see up and BLOB doesn't board, even
+# once it's let go; and a hover platform doesn't rise.
+patch_for_frame = [
+  { addr = 0xC61B, bytes = "00 00 00", expect = "32 24 DD" },
+  { addr = 0xC98B, bytes = "18", expect = "28" },
+]
 note = "Up, meaning only pick up or swap."
 
 [[actions]]
 id = "build"
 label = "Build a platform"
 joystick = ["down"]
-# patch_for_frame = TODO: skip flying down, so down only builds
+# The last way moved isn't recorded, so a hover pad doesn't see down and BLOB doesn't land on
+# it; and a hover platform doesn't sink.
+patch_for_frame = [
+  { addr = 0xC61B, bytes = "00 00 00", expect = "32 24 DD" },
+  { addr = 0xC991, bytes = "18", expect = "28" },
+]
 note = "Down, meaning only build."
+
+[[actions]]
+id = "fly-up"
+label = "Board or fly up"
+joystick = ["up"]
+# Up alone is never taken as a fresh press, so nothing is picked up or swapped.
+patch_for_frame = [{ addr = 0xCB6C, bytes = "FF", expect = "08" }]
+note = "Up, meaning only board a hover platform or fly it up."
+
+[[actions]]
+id = "fly-down"
+label = "Fly down"
+joystick = ["down"]
+# Down alone never builds.
+patch_for_frame = [{ addr = 0xC7A3, bytes = "FF", expect = "04" }]
+note = "Down, meaning only fly a hover platform down or land it."
 
 [[actions]]
 id = "next-route"

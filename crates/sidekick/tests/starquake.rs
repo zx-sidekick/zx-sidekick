@@ -862,3 +862,250 @@ fn blob_s_place_is_found_wherever_he_walks() {
     }
     assert!(rooms.len() > 1, "walked through rooms: {rooms:?}");
 }
+
+/// The patches of the definition's action `id`.
+fn patches_of(s: &Session, id: &str) -> Vec<sidekick_def::Patch> {
+    let definition = s.definition().expect("its definition");
+    let action = definition.actions.iter().find(|a| a.id == id);
+    action.expect("the action").patch_for_frame.clone()
+}
+
+/// Runs `frames` frames holding only `held` on the joystick, with the patches of `action`, if
+/// any, applied before each frame and undone after it, as a pad's action does.
+fn hold(s: &mut Session, held: &[Kempston], action: Option<&str>, frames: usize) {
+    let patches = action.map(|id| patches_of(s, id)).unwrap_or_default();
+    let all = [
+        Kempston::Up,
+        Kempston::Down,
+        Kempston::Left,
+        Kempston::Right,
+        Kempston::Fire,
+    ];
+    for direction in all {
+        s.machine_mut().kempston(direction, false);
+    }
+    for &direction in held {
+        s.machine_mut().kempston(direction, true);
+    }
+    for _ in 0..frames {
+        for patch in &patches {
+            assert!(s.patch(patch), "{patch:?} finds the game's bytes");
+        }
+        s.run_frame().expect("a frame");
+        for patch in &patches {
+            assert!(s.unpatch(patch), "{patch:?} comes off");
+        }
+    }
+}
+
+fn number(s: &Session, name: &str) -> i64 {
+    s.reading()[name].number().expect(name)
+}
+
+/// Starquake in play with BLOB on the hover pad in room 234, or beside it at `x`; `None`
+/// without the tape.
+fn by_the_hover_pad(x: i64) -> Option<Session> {
+    let mut s = on_the_joystick(50)?;
+    let pad = situation("hover-pad");
+    for cheat in &pad.cheats {
+        s.switch(cheat, true).expect("it goes on");
+    }
+    let mut values = pad.values.clone();
+    values.insert("blob_x".to_owned(), x);
+    enter_situation(&mut s, &Situation { values, ..pad });
+    until(&mut s, 10, |_| false);
+    Some(s)
+}
+
+const ON_FOOT: i64 = 0;
+const ON_A_PLATFORM: i64 = 2;
+
+#[test]
+fn up_on_a_hover_pad_boards_unless_it_means_only_picking_up() {
+    let Some(base) = by_the_hover_pad(72) else {
+        return;
+    };
+    let mut plain = base.clone();
+    hold(&mut plain, &[Kempston::Up], None, 5);
+    assert_eq!(
+        number(&plain, "blob_mode"),
+        ON_A_PLATFORM,
+        "the joystick boards"
+    );
+
+    let mut fly = base.clone();
+    hold(&mut fly, &[Kempston::Up], Some("fly-up"), 5);
+    assert_eq!(number(&fly, "blob_mode"), ON_A_PLATFORM, "fly-up boards");
+
+    let mut pick = base;
+    let height = number(&pick, "blob_y");
+    hold(&mut pick, &[Kempston::Up], Some("pick-up"), 30);
+    assert_eq!(number(&pick, "blob_mode"), ON_FOOT, "pick-up doesn't");
+    hold(&mut pick, &[], None, 30);
+    assert_eq!(number(&pick, "blob_mode"), ON_FOOT, "not even once let go");
+    assert_eq!(number(&pick, "blob_y"), height);
+}
+
+/// Four items carried, as the game keeps them: a picture, then a color, a slot.
+const FOUR_CARRIED: [u8; 8] = [3, 5, 4, 6, 5, 7, 6, 2];
+
+fn carried(s: &Session) -> Vec<u8> {
+    let at = s.definition().expect("its definition").values["carried"]
+        .addr
+        .expect("an address")
+        .0;
+    (at..at + 8).map(|a| s.machine().peek(a)).collect()
+}
+
+#[test]
+fn up_carrying_four_swaps_unless_it_means_only_flying() {
+    let Some(mut base) = by_the_hover_pad(88) else {
+        return;
+    };
+    let at = base.definition().expect("its definition").values["carried"]
+        .addr
+        .expect("an address")
+        .0;
+    for (k, &byte) in (0..).zip(&FOUR_CARRIED) {
+        base.machine_mut().write(at + k, byte);
+    }
+    let swapped = [0, 0, 3, 5, 4, 6, 5, 7];
+
+    let mut plain = base.clone();
+    hold(&mut plain, &[Kempston::Up], None, 5);
+    hold(&mut plain, &[], None, 5);
+    assert_eq!(
+        carried(&plain),
+        swapped,
+        "the joystick swaps, the last laid down"
+    );
+
+    let mut pick = base.clone();
+    hold(&mut pick, &[Kempston::Up], Some("pick-up"), 5);
+    hold(&mut pick, &[], None, 5);
+    assert_eq!(carried(&pick), swapped, "pick-up swaps");
+
+    let mut fly = base;
+    hold(&mut fly, &[Kempston::Up], Some("fly-up"), 5);
+    hold(&mut fly, &[], None, 5);
+    assert_eq!(carried(&fly), FOUR_CARRIED, "fly-up doesn't");
+    assert_eq!(number(&fly, "blob_mode"), ON_FOOT);
+}
+
+#[test]
+fn up_on_an_item_picks_it_up_unless_it_means_only_flying() {
+    let Some(mut s) = on_the_joystick(50) else {
+        return;
+    };
+    s.switch("no-harm", true).expect("it goes on");
+    let items = s.definition().expect("its definition").values["items"]
+        .addr
+        .expect("an address")
+        .0;
+    let record = |s: &Session, k: u16| -> [u8; 4] {
+        let at = items + 4 * k;
+        [0, 1, 2, 3].map(|i| s.machine().peek(at + i))
+    };
+    // An item lying in a room, not one the core's room keeps (docs/re/starquake.md): its room is
+    // its low byte, with the second byte's top bit as the ninth.
+    let (k, room) = (0..45)
+        .map(|k| {
+            let [_, second, low, _] = record(&s, k);
+            (k, i64::from(low) | (i64::from(second >> 7) << 8))
+        })
+        .find(|&(_, room)| room != 199)
+        .expect("an item in a room");
+    walk_into(&mut s, room);
+    let [first, second, ..] = record(&s, k);
+    let (column, row) = (i64::from(first & 0x1F), i64::from(second & 0x7F));
+    assert!(row >= 6, "entering the room lays it down: {row}");
+    // BLOB stands on it with his top left on its cell.
+    enter_room(
+        &mut s,
+        &[
+            ("room", room),
+            ("blob_x", column * 8),
+            ("blob_y", (17 - (row - 6)) * 8 + 7),
+        ],
+    );
+    assert!(until(&mut s, 50, |s| s.state() != Some("play")));
+    assert!(until(&mut s, 200, |s| s.state() == Some("play")));
+    until(&mut s, 10, |_| false);
+    let lying = record(&s, k);
+    assert_eq!(lying[1] & 0x7F, second & 0x7F, "still lying there");
+
+    let picked_up = |s: &Session| (1..=5).contains(&(record(s, k)[1] & 0x7F));
+    let mut plain = s.clone();
+    hold(&mut plain, &[Kempston::Up], None, 10);
+    assert!(picked_up(&plain), "the joystick picks it up");
+
+    let mut pick = s.clone();
+    hold(&mut pick, &[Kempston::Up], Some("pick-up"), 10);
+    assert!(picked_up(&pick), "pick-up picks it up");
+
+    let mut fly = s;
+    hold(&mut fly, &[Kempston::Up], Some("fly-up"), 10);
+    hold(&mut fly, &[], None, 10);
+    assert_eq!(record(&fly, k), lying, "fly-up leaves it");
+}
+
+#[test]
+fn down_on_foot_builds_unless_it_means_only_flying() {
+    let Some(base) = by_the_hover_pad(88) else {
+        return;
+    };
+    let platforms = number(&base, "platforms");
+
+    let mut plain = base.clone();
+    hold(&mut plain, &[Kempston::Down], None, 10);
+    assert_eq!(
+        number(&plain, "platforms"),
+        platforms - 2,
+        "the joystick builds"
+    );
+
+    let mut build = base.clone();
+    hold(&mut build, &[Kempston::Down], Some("build"), 10);
+    assert_eq!(number(&build, "platforms"), platforms - 2, "build builds");
+
+    let mut fly = base;
+    let height = number(&fly, "blob_y");
+    hold(&mut fly, &[Kempston::Down], Some("fly-down"), 10);
+    hold(&mut fly, &[], None, 10);
+    assert_eq!(number(&fly, "platforms"), platforms, "fly-down doesn't");
+    assert_eq!(number(&fly, "blob_y"), height);
+}
+
+#[test]
+fn on_a_hover_platform_up_and_down_fly_unless_they_mean_only_picking_up_or_building() {
+    let Some(mut base) = by_the_hover_pad(72) else {
+        return;
+    };
+    hold(&mut base, &[Kempston::Up], Some("fly-up"), 8);
+    hold(&mut base, &[], None, 5);
+    assert_eq!(number(&base, "blob_mode"), ON_A_PLATFORM);
+    let height = number(&base, "blob_y");
+
+    let mut up = base.clone();
+    hold(&mut up, &[Kempston::Up], Some("fly-up"), 5);
+    assert!(number(&up, "blob_y") > height, "fly-up rises");
+
+    let mut pick = base.clone();
+    hold(&mut pick, &[Kempston::Up], Some("pick-up"), 5);
+    assert_eq!(number(&pick, "blob_y"), height, "pick-up doesn't");
+
+    let mut down = base.clone();
+    hold(&mut down, &[Kempston::Down], Some("fly-down"), 5);
+    assert!(number(&down, "blob_y") < height, "fly-down sinks");
+
+    // Back down on the pad, down lands him.
+    hold(&mut down, &[Kempston::Down], Some("fly-down"), 30);
+    assert_eq!(number(&down, "blob_mode"), ON_FOOT, "fly-down lands");
+
+    let mut build = base;
+    let platforms = number(&build, "platforms");
+    hold(&mut build, &[Kempston::Down], Some("build"), 30);
+    assert_eq!(number(&build, "blob_y"), height, "build doesn't sink");
+    assert_eq!(number(&build, "blob_mode"), ON_A_PLATFORM, "nor land");
+    assert_eq!(number(&build, "platforms"), platforms, "nor build up there");
+}
