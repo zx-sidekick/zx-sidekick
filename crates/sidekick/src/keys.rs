@@ -3,7 +3,7 @@
 //! it on; and the letters a game asks for, typed straight into it.
 
 use crate::entry;
-use crate::pad::{Part, SpectrumKey, Way};
+use crate::pad::{Part, Way};
 use sdl3::keyboard::Scancode;
 use sidekick_core::{CompoundKey, Key};
 use sidekick_def::{Definition, Keyboard};
@@ -16,9 +16,9 @@ pub(crate) enum KeyboardMode {
     /// The Spectrum's own keyboard ([`spectrum_key`]); the keys it doesn't have are a pad's
     /// ([`pad_part`]).
     Spectrum,
-    /// The game asks for text: the Spectrum's keys that type these letters reach it (all its
-    /// keys with `None`), and nothing plays as a pad.
-    Typing(Option<String>),
+    /// The game asks for text: every Spectrum key reaches it, ENTER and DELETE included, and
+    /// nothing plays as a pad.
+    Typing,
 }
 
 /// What a key pressed does.
@@ -59,11 +59,9 @@ pub(crate) fn mode(
     state: Option<&str>,
     chosen: Option<bool>,
 ) -> KeyboardMode {
-    let on = spectrum_on(definition, state, chosen);
-    if let Some((text_entry, _)) = definition.and_then(|d| entry::section_for(d, state)) {
-        return KeyboardMode::Typing((!on).then(|| text_entry.letters.clone()));
-    }
-    if on {
+    if asks_for_text(definition, state) {
+        KeyboardMode::Typing
+    } else if spectrum_on(definition, state, chosen) {
         KeyboardMode::Spectrum
     } else {
         KeyboardMode::Pad
@@ -85,17 +83,7 @@ pub(crate) fn pressed(scancode: Scancode, mode: &KeyboardMode) -> Option<KeyDoes
         KeyboardMode::Spectrum => pad_part(scancode)
             .map(KeyDoes::Pad)
             .or_else(|| spectrum_key(scancode).map(KeyDoes::Spectrum)),
-        KeyboardMode::Typing(None) => spectrum_key(scancode).map(KeyDoes::Spectrum),
-        KeyboardMode::Typing(Some(letters)) => {
-            let Some(Spectrum::Key(key)) = spectrum_key(scancode) else {
-                return None;
-            };
-            let typed = letters
-                .chars()
-                .filter_map(key_typing)
-                .any(|k| SpectrumKey(k) == SpectrumKey(key));
-            typed.then_some(KeyDoes::Spectrum(Spectrum::Key(key)))
-        }
+        KeyboardMode::Typing => spectrum_key(scancode).map(KeyDoes::Spectrum),
     }
 }
 
@@ -480,44 +468,46 @@ mod tests {
     "#;
 
     #[test]
-    fn asked_for_text_the_keyboard_types_the_letters_it_takes_and_plays_no_pad() {
+    fn asked_for_text_the_spectrum_keyboard_is_on_and_nothing_plays_as_a_pad() {
         let text = def(TEXT);
-        let booth = mode(Some(&text), Some("booth"), None);
-        assert_eq!(booth, KeyboardMode::Typing(Some("ABC".to_owned())));
-        assert!(matches!(spectrum(Scancode::A, &booth), Some(Key::A)));
-        assert!(matches!(spectrum(Scancode::C, &booth), Some(Key::C)));
-        for key in [
-            Scancode::D,
-            Scancode::_0,
-            Scancode::Space,
-            Scancode::Return,
-            Scancode::Left,
-            Scancode::RCtrl,
-            Scancode::LShift,
-        ] {
-            assert!(pressed(key, &booth).is_none(), "{key:?}");
-        }
         assert!(
             asks_for_text(Some(&text), Some("booth")),
             "the joystick waits"
         );
         assert!(!asks_for_text(Some(&text), Some("play")));
         assert!(!asks_for_text(None, None), "played plainly");
-        let name = mode(Some(&text), Some("name"), None);
-        assert!(matches!(spectrum(Scancode::_0, &name), Some(Key::N0)));
-        assert!(matches!(spectrum(Scancode::Space, &name), Some(Key::Space)));
-
-        let typing = mode(Some(&text), Some("booth"), Some(true));
-        assert_eq!(
-            typing,
-            KeyboardMode::Typing(None),
-            "every key, the keyboard on"
-        );
-        assert!(matches!(
-            spectrum(Scancode::Return, &typing),
-            Some(Key::Enter)
-        ));
-        assert!(pressed(Scancode::Left, &typing).is_none(), "still no pad");
+        for chosen in [None, Some(false), Some(true)] {
+            for state in ["booth", "name"] {
+                let typing = mode(Some(&text), Some(state), chosen);
+                assert_eq!(typing, KeyboardMode::Typing, "{state} {chosen:?}");
+                assert!(matches!(spectrum(Scancode::A, &typing), Some(Key::A)));
+                assert!(
+                    matches!(spectrum(Scancode::D, &typing), Some(Key::D)),
+                    "any letter"
+                );
+                assert!(matches!(spectrum(Scancode::_0, &typing), Some(Key::N0)));
+                assert!(matches!(
+                    spectrum(Scancode::Space, &typing),
+                    Some(Key::Space)
+                ));
+                assert!(matches!(
+                    spectrum(Scancode::Return, &typing),
+                    Some(Key::Enter)
+                ));
+                assert!(matches!(
+                    pressed(Scancode::Backspace, &typing),
+                    Some(KeyDoes::Spectrum(Spectrum::Compound(CompoundKey::Delete)))
+                ));
+                for key in [
+                    Scancode::Left,
+                    Scancode::RCtrl,
+                    Scancode::Slash,
+                    Scancode::Escape,
+                ] {
+                    assert!(pressed(key, &typing).is_none(), "no pad: {key:?}");
+                }
+            }
+        }
     }
 
     #[test]

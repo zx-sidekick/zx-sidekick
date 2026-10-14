@@ -1603,7 +1603,7 @@ impl Player {
         }
         let mode = keys::mode(self.session.definition(), self.known_state(), self.keyboard);
         let action = match mode {
-            KeyboardMode::Typing(_) => None,
+            KeyboardMode::Typing => None,
             _ => self.play.mapping().host_key(scancode.name()),
         };
         match action
@@ -1612,7 +1612,7 @@ impl Player {
         {
             Some(KeyDoes::Spectrum(key)) => {
                 press(self.session.machine_mut(), key, true);
-                if matches!(mode, KeyboardMode::Typing(_)) && self.entry.take().is_some() {
+                if matches!(mode, KeyboardMode::Typing) && self.entry.take().is_some() {
                     pads.hold_back();
                 }
                 Vec::new()
