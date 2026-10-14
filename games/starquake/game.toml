@@ -561,6 +561,8 @@ text = "Hands full: a new pick-up drops your oldest item"
 priority = 7
 state = "play"
 script = "hands-full"
+# Four are carried much of a game: shown a while once the fourth is picked up.
+for_seconds = 10
 
 [[hints]]
 text = "The core shows what it wants only in its room"

@@ -1461,7 +1461,31 @@ fn four_items_carried_are_hinted() {
     poke_into(&mut s, "carried", 6, &[29, 3]);
     s.run_frame().expect("a frame");
     assert_eq!(conditions(&s), ["hands-full"]);
-    assert_eq!(s.hint(1), Some(hint_on(&s, "hands-full").as_str()));
+    let full = hint_on(&s, "hands-full");
+    let seconds = definition(&s)
+        .hints
+        .iter()
+        .find(|h| h.text == full)
+        .and_then(|h| h.for_seconds)
+        .expect("shown a while");
+    let frames_shown = |s: &mut Session, frames: u32| {
+        (0..frames)
+            .filter(|_| {
+                s.run_frame().expect("a frame");
+                s.hint(1) == Some(full.as_str())
+            })
+            .count()
+    };
+    // The frame above was its first; the rest of its time, then nothing while four stay.
+    let rest = usize::try_from(seconds * 50 - 1).expect("a few frames");
+    assert_eq!(frames_shown(&mut s, seconds * 50 + 100), rest);
+    enter(&mut s, "paused");
+    enter(&mut s, "play");
+    assert_eq!(frames_shown(&mut s, 50), 0, "a pause doesn't bring it back");
+    poke_into(&mut s, "carried", 6, &[0, 0]);
+    s.run_frame().expect("a frame");
+    poke_into(&mut s, "carried", 6, &[29, 3]);
+    assert_eq!(frames_shown(&mut s, 50), 50, "a fourth picked up anew");
 }
 
 #[test]

@@ -1329,5 +1329,9 @@ fn a_fifth_pick_up_drops_the_oldest_item_carried_where_blob_stands() {
         r["second"].number().expect("a byte") & 0x7F >= 6,
         "laid down"
     );
-    assert_eq!(s.hint(1), Some(full.as_str()), "still four carried");
+    assert_eq!(
+        s.script_results()["hints"],
+        Fact::List(vec![Fact::Text("hands-full".to_owned())]),
+        "still four carried"
+    );
 }
