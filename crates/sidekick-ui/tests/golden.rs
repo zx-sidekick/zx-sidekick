@@ -178,14 +178,27 @@ fn the_pause_notice() {
         "paused-unworded.png",
         &PauseNotice::default().draw(&mut fonts, 1.0).png(),
     );
+    // As Starquake's definition words it.
     let title = PauseNotice {
         heading: "Ignore the list".to_owned(),
-        text: "Play with the arrow keys or a gamepad.".to_owned(),
-        hints: vec![NoticeHint {
-            keys: Some("0".to_owned()),
-            pad: Some(PadMark::Start),
-            does: "start".to_owned(),
-        }],
+        text: "Play with the arrows or WASD, or a gamepad.".to_owned(),
+        hints: vec![
+            NoticeHint {
+                keys: Some("← ↑ → ↓".to_owned()),
+                pad: Some(PadMark::Directions),
+                does: "move".to_owned(),
+            },
+            NoticeHint {
+                keys: Some("Space".to_owned()),
+                pad: Some(PadMark::Face(Face::West)),
+                does: "fire".to_owned(),
+            },
+            NoticeHint {
+                keys: Some("Enter".to_owned()),
+                pad: Some(PadMark::Start),
+                does: "start".to_owned(),
+            },
+        ],
         ..paused(PadLabels::Letters)
     };
     golden("title-notice.png", &title.draw(&mut fonts, 1.0).png());
@@ -232,6 +245,7 @@ fn starquake_menu() -> Menu {
         ]
         .map(switch)
         .to_vec(),
+        keyboard: Some(switch("Spectrum keyboard")),
         actions: ["Back to the game", "End this game", "Exit Starquake"]
             .map(str::to_owned)
             .to_vec(),
@@ -260,9 +274,16 @@ fn the_guidance_menu() {
     refused.chosen = Row::Switch(4);
     golden("menu-refused.png", &refused.draw(&mut fonts, 1.0).png());
 
+    // A tape played plainly: the Spectrum's keyboard on.
     let armed = Menu {
         levels: None,
         switches: Vec::new(),
+        keyboard: Some(SwitchRow {
+            label: "Spectrum keyboard".to_owned(),
+            on: true,
+            knob: 100,
+            refusal: None,
+        }),
         chosen: Row::Action(1),
         armed: Some((1, "end this game".to_owned())),
         pad: PadLabels::Shapes,
@@ -299,12 +320,13 @@ fn a_click_finds_the_menu_s_row() {
     assert_eq!(menu.row_at(100.0, 150.0), Some(Row::Level));
     assert_eq!(menu.row_at(100.0, 285.0), Some(Row::Switch(0)));
     assert_eq!(menu.row_at(100.0, 420.0), Some(Row::Switch(4)));
-    assert_eq!(menu.row_at(100.0, 478.0), Some(Row::Action(0)));
-    assert_eq!(menu.row_at(100.0, 524.0), Some(Row::Save(0)));
-    assert_eq!(menu.row_at(450.0, 524.0), Some(Row::Save(2)));
-    assert_eq!(menu.row_at(100.0, 610.0), Some(Row::Action(2)));
-    assert_eq!(menu.row_at(5.0, 478.0), None);
-    assert_eq!(menu.row_at(100.0, 451.0), None, "the rule between");
+    assert_eq!(menu.row_at(100.0, 480.0), Some(Row::Keyboard));
+    assert_eq!(menu.row_at(100.0, 538.0), Some(Row::Action(0)));
+    assert_eq!(menu.row_at(100.0, 584.0), Some(Row::Save(0)));
+    assert_eq!(menu.row_at(450.0, 584.0), Some(Row::Save(2)));
+    assert_eq!(menu.row_at(100.0, 670.0), Some(Row::Action(2)));
+    assert_eq!(menu.row_at(5.0, 538.0), None);
+    assert_eq!(menu.row_at(100.0, 511.0), None, "the rule between");
 }
 
 #[test]

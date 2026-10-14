@@ -1,7 +1,7 @@
 //! The text-entry card's state, and the typing of a word on the game's keys over frames. No
 //! SDL here; the window feeds it and draws it.
 
-use crate::keys::key_named;
+use crate::keys::key_typing;
 use sidekick_core::Key;
 use sidekick_def::{Definition, TextEntry};
 use sidekick_ui::{EntryCard, EntryMode, PadLabels};
@@ -257,13 +257,7 @@ impl Typing {
     /// that isn't a Spectrum key is left out.
     pub(crate) fn new(word: &str, text_entry: &TextEntry) -> Self {
         Self {
-            keys: word
-                .chars()
-                .filter_map(|c| match c {
-                    ' ' => Some(Key::Space),
-                    c => key_named(&c.to_string()),
-                })
-                .collect(),
+            keys: word.chars().filter_map(key_typing).collect(),
             down: text_entry.key_down_frames.unwrap_or(1).max(1),
             up: text_entry.key_up_frames.unwrap_or(1).max(1),
             frame: 0,

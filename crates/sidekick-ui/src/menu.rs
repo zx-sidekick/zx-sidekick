@@ -47,6 +47,8 @@ pub enum Row {
     Level,
     /// A training switch, by index.
     Switch(usize),
+    /// The Spectrum keyboard's switch.
+    Keyboard,
     /// An action (Back to the game, End this game, Exit), by index.
     Action(usize),
     /// One of the saves row's buttons: 0 Save, 1 Load, 2 Open a save….
@@ -60,6 +62,8 @@ pub struct Menu {
     pub levels: Option<Levels>,
     /// The training switches.
     pub switches: Vec<SwitchRow>,
+    /// The Spectrum keyboard's switch, under the controls' label.
+    pub keyboard: Option<SwitchRow>,
     /// The actions, in order: "Back to the game" first.
     pub actions: Vec<String>,
     /// The row chosen.
@@ -90,6 +94,8 @@ struct Layout {
     training: Option<f32>,
     /// Each switch row's text top.
     switches: Vec<f32>,
+    /// The controls' label's top, and the keyboard's switch row's text top.
+    controls: Option<(f32, f32)>,
     /// The rule above the actions.
     rule: f32,
     /// The saves row's top.
@@ -138,6 +144,15 @@ impl Menu {
                 }
             }
         }
+        let controls = self.keyboard.as_ref().map(|keyboard| {
+            let label = y;
+            let row = label + TO_SWITCHES;
+            y = row + SWITCH_STEP;
+            if keyboard.refusal.is_some() {
+                y += REFUSAL;
+            }
+            (label, row)
+        });
         let rule = y + 1.0;
         let room = if self.saves.is_some() {
             SAVES_ROOM
@@ -161,6 +176,7 @@ impl Menu {
             level,
             training,
             switches,
+            controls,
             rule,
             saves,
             actions,
@@ -205,6 +221,9 @@ impl Menu {
             }
         }
         let within = |top: f32| (top - 9.0..top + 25.0).contains(&y);
+        if layout.controls.is_some_and(|(_, top)| within(top)) {
+            return Some(Row::Keyboard);
+        }
         let switch = layout.switches.iter().position(|&top| within(top));
         let action = layout.actions.iter().position(|&top| within(top));
         switch.map(Row::Switch).or_else(|| action.map(Row::Action))
@@ -239,10 +258,10 @@ impl Menu {
         if let (Some(top), Some(levels)) = (layout.level, &self.levels) {
             self.level_box(&mut c, fonts, top, levels);
         }
+        let label = Style::new(11.0, colors::LABEL)
+            .weight(Weight::Medium)
+            .tracking(0.12);
         if let Some(top) = layout.training {
-            let label = Style::new(11.0, colors::LABEL)
-                .weight(Weight::Medium)
-                .tracking(0.12);
             text(
                 &mut c,
                 fonts,
@@ -254,6 +273,17 @@ impl Menu {
         }
         for (i, (switch, &top)) in self.switches.iter().zip(&layout.switches).enumerate() {
             self.switch_row(&mut c, fonts, top, switch, self.lit(Row::Switch(i)));
+        }
+        if let (Some((label_top, top)), Some(keyboard)) = (layout.controls, &self.keyboard) {
+            text(
+                &mut c,
+                fonts,
+                "CONTROLS",
+                (27.0, label_top),
+                Align::Left,
+                &label,
+            );
+            self.switch_row(&mut c, fonts, top, keyboard, self.lit(Row::Keyboard));
         }
         c.rect((1.0, layout.rule, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
         for (i, (action, &top)) in self.actions.iter().zip(&layout.actions).enumerate() {

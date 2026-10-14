@@ -40,8 +40,8 @@ role = "paused"
 pc = [0xC5AF, 0xC5B5]
 # In the original, any move or fire goes on once the pause key is let go (docs/games/starquake.md).
 notice = { text = "Move or fire to go on.", hints = [
-  { pad = "dpad", does = "move" },
-  { pad = "west", does = "fire" },
+  { keys = "← ↑ → ↓", pad = "dpad", does = "move" },
+  { keys = "Space", pad = "west", does = "fire" },
 ] }
 
 [[states]]
@@ -83,14 +83,14 @@ name = "title"
 role = "title"
 # The menu's loop, passed every few frames once its tune has played.
 pc = 0x5FF4
-# The Kempston joystick chosen for the player whatever the menu's list shows, so the arrows and
-# a pad drive BLOB: the game reads the choice when a game starts (docs/re/starquake.md). The
+# The Kempston joystick chosen for the player whatever the menu's list shows, so the keyboard
+# and a pad drive BLOB: the game reads the choice when a game starts (docs/re/starquake.md). The
 # notice says so over the title's foot, in words that don't need the emulated joystick explained.
 set = { value = "controls", to = 1 }
-notice = { heading = "Ignore the list", text = "Play with the arrow keys or a gamepad.", hints = [
+notice = { heading = "Ignore the list", text = "Play with the arrows or WASD, or a gamepad.", hints = [
   { keys = "← ↑ → ↓", pad = "dpad", does = "move" },
-  { keys = "Right Ctrl", pad = "west", does = "fire" },
-  { keys = "0", pad = "start", does = "start" },
+  { keys = "Space", pad = "west", does = "fire" },
+  { keys = "Enter", pad = "start", does = "start" },
 ] }
 
 # Values.
@@ -343,6 +343,9 @@ note = "Stops zappers, creatures and deadly scenery taking a life, and creatures
 
 # The pad.
 
+# The keyboard plays as this pad too ([run] keyboard, the default): the arrows and WASD the
+# D-pad, Space west, Z X C V south, east, west and north, Enter Start. So Enter pauses in play.
+
 [pad.default]
 dpad = "joystick"
 stick = "joystick"
@@ -353,8 +356,8 @@ north = "next-route"
 start = { tap = ["SPACE"], frames = 2 }
 
 [pad.title]
-# The title takes its controls from 1 to 5 and starts on 0: Start chooses the Kempston joystick,
-# then starts, so the pad drives BLOB from the first move. After 0 the game plays a tune until
+# The title takes its controls from 1 to 5 and starts on 0: Start (Enter on the keyboard)
+# chooses the Kempston joystick, then starts, so the pad drives BLOB from the first move. After 0 the game plays a tune until
 # a key is pressed, so 0 comes again once it has begun (docs/re/starquake.md).
 start = { sequence = ["1", "0", "0"], frames = 30 }
 
