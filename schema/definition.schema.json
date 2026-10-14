@@ -51,6 +51,17 @@
         "$ref": "#/$defs/Media"
       }
     },
+    "name_entry": {
+      "description": "Typing the name for a high score with a pad: `text_entry`'s keys, for a second card.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TextEntry"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "pad": {
       "description": "What a pad does, by state (`default` for every state).",
       "type": "object",
@@ -1570,7 +1581,7 @@
       "additionalProperties": false
     },
     "TextEntry": {
-      "description": "`[text_entry]`: typing a word the game asks for, with a pad.",
+      "description": "`[text_entry]` and `[name_entry]`: typing a word the game asks for, with a pad.",
       "type": "object",
       "properties": {
         "card_row": {

@@ -684,7 +684,7 @@ pub struct Action {
     pub note: Option<String>,
 }
 
-/// `[text_entry]`: typing a word the game asks for, with a pad.
+/// `[text_entry]` and `[name_entry]`: typing a word the game asks for, with a pad.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TextEntry {

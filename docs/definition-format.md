@@ -354,6 +354,27 @@ key_up_frames = 1
 
 The card opens on the first pad press while the game is in `state`, its top at the character row `card_row` so the game's own echo of the letters, on the row above, stays in sight. Where the window has no room for it under that row, the card is drawn smaller to fit, down to its size beside the smallest picture; past that it sits just above the row instead. It offers the words of the `choices` list from `choices_from_level` up, and otherwise opens on spelling; the west button switches between the two, and the back button clears what's spelled. A word entered is typed on the keys, one letter held for `key_down_frames` and released for `key_up_frames` (a frame each when not given). While the card is open the pad drives only the card; the keyboard never opens it.
 
+## `[name_entry]`: a high score's name with a pad
+
+```toml
+[name_entry]
+state = "name"
+letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
+length = 3
+card_row = 18
+title_choose = "Choose a name"
+title_spell = "Spell a name"
+choices = "names"          # a [persist] list, which the program fills
+key_down_frames = 2
+key_up_frames = 9
+
+[persist.names]
+label = "high-score names"
+file = "high-score-names.txt"
+```
+
+The same card as `[text_entry]`'s, with the same keys, for the name a game asks for after a high score; a definition can have both, in different states. One difference: while spelling, the confirm button takes the letter into its place and moves on to the next, and enters the name only at the last, once every place has a letter, since a game asking a name waits for all of them. A space among the `letters` is shown as an open box (␣) and typed on SPACE; a name chosen from the list that's shorter than `length` (names are kept without trailing spaces) is made up with spaces. The program adds to the `choices` list itself: the name of each entry a game here puts in the `[high_scores]` table, read back after the game, whether the card or the keyboard typed it. So the card offers the names entered before first, the most recent first (a name entered again moves to the list's end), from any guidance level unless `choices_from_level` says otherwise. The table is read back, and the game's entry kept, as soon as the game leaves `state` for another state, rather than when the title comes round, so the score is kept even if a save is loaded first. A game that asks no name (no high score) is read back at the title, as without `[name_entry]`; either way once a game. Frames that match no state don't count as leaving, so give what follows the name a state of its own if the game shows something before its title. `sidekick check` wants `[high_scores]` with its `name`, no longer `length` than the name's `len`, and a state other than `[text_entry]`'s.
+
 ## `[persist]`: lists kept between games
 
 ```toml
@@ -377,7 +398,7 @@ name  = { offset = 0, len = 3, type = "text" }
 score = { offset = 3, len = 6, type = "digits" }
 ```
 
-The kept table (`high-scores.txt` in the game's data folder) is written into memory the first time the game reaches its title, and read back when the title comes round after a game, by when the game has put in the new score and its name. An entry that wasn't there before is this game's, marked with how it was played: its highest guidance level, or "no guidance"; one from a training game is shown for the rest of the session but not kept. Entries no game here made are marked "from the tape". After a game, until the next starts, the panel shows what it was played with and the table under `title`.
+The kept table (`high-scores.txt` in the game's data folder) holds only the entries of games played here, so it starts empty: until one is kept, the game shows its own entries, which stay in its memory and are never kept. It is written into memory the first time the game reaches its title (and after a save is loaded): each kept entry whole, every one of its `stride` bytes as the game last had them, ranked by score among the game's own entries in memory, an equal score below the game's, so the table is as the last run left it. It is read back when the title comes round after a game, by when the game has put in the new score and its name, or as soon as the game leaves its `[name_entry]` state. An entry that wasn't there before is this game's, marked with how it was played: its highest guidance level, or "no guidance"; one from a training game is shown for the rest of the session but not kept. The game's own are marked "from the tape". After a game, until the next starts, the panel shows what it was played with and the table under `title`.
 
 `name` is `text` (in its `charset`); `score` is `digits`, `bcd`, `u8` or `u16`.
 

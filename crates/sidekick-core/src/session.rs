@@ -32,7 +32,8 @@ pub struct Record {
 pub enum Milestone {
     /// The game reached its title for the first time: time to put its kept high scores in.
     FirstTitle,
-    /// The title came round after a game: time to read the high scores back.
+    /// A game ended and the game has its high scores in: the title came round after it, or
+    /// the game left the state that asks a high score's name. Time to read them back.
     GameEnded,
 }
 
@@ -43,6 +44,17 @@ pub struct ScoreEntry {
     pub name: String,
     /// The score.
     pub score: String,
+    /// The whole entry as the game keeps it, all its stride's bytes, so it goes back as it
+    /// was, with whatever else the game keeps beside the name and score. Empty when not known.
+    pub bytes: Vec<u8>,
+}
+
+impl ScoreEntry {
+    /// Whether two entries have the same name and score, whatever else they keep.
+    #[must_use]
+    pub fn same(&self, other: &Self) -> bool {
+        self.name == other.name && self.score == other.score
+    }
 }
 
 /// Why a switch didn't go on.
@@ -124,7 +136,8 @@ pub struct Progress {
     pub last_known: Option<String>,
     /// Whether the title has been seen.
     pub seen_title: bool,
-    /// Whether a game has been played since the title was last.
+    /// Whether a game is under way: from its start until it ends, at the title or once the
+    /// game has its high score's name.
     pub in_game: bool,
 }
 
@@ -286,7 +299,17 @@ impl Session {
     }
 
     /// Adds an entry to a kept list the definition has, unless it's there or empty.
-    fn keep(&mut self, list: &str, entry: &str) {
+    pub fn keep(&mut self, list: &str, entry: &str) {
+        self.add_kept(list, entry, false);
+    }
+
+    /// Adds an entry to a kept list the definition has, as its newest: one already there
+    /// moves to the end. An empty one isn't kept.
+    pub fn keep_latest(&mut self, list: &str, entry: &str) {
+        self.add_kept(list, entry, true);
+    }
+
+    fn add_kept(&mut self, list: &str, entry: &str, latest: bool) {
         let entry = entry.trim();
         let Some(persist) = self.definition.as_ref().and_then(|d| d.persist.get(list)) else {
             return;
@@ -299,13 +322,20 @@ impl Session {
             .and_then(|m| usize::try_from(m).ok())
             .unwrap_or(usize::MAX);
         let entries = self.kept.entry(list.to_owned()).or_default();
-        if !entries.iter().any(|e| e == entry) {
-            entries.push(entry.to_owned());
-            // The oldest go first, past the list's most.
-            let over = entries.len().saturating_sub(most);
-            entries.drain(..over);
-            self.kept_changed.insert(list.to_owned());
+        match entries.iter().position(|e| e == entry) {
+            None => {
+                entries.push(entry.to_owned());
+                // The oldest go first, past the list's most.
+                let over = entries.len().saturating_sub(most);
+                entries.drain(..over);
+            }
+            Some(at) if latest && at + 1 < entries.len() => {
+                let moved = entries.remove(at);
+                entries.push(moved);
+            }
+            Some(_) => return,
         }
+        self.kept_changed.insert(list.to_owned());
     }
 
     /// Adds what the game shows to the lists that keep a value in a state.
@@ -466,12 +496,17 @@ impl Session {
             Read::Number(n) => n.to_string(),
             other => other.to_string(),
         };
+        let stride = table.stride?;
         let rows = (0..table.count?)
             .map(|i| {
-                let at = addr + i * table.stride?;
+                let at = addr + i * stride;
                 Some(ScoreEntry {
                     name: text(value::read_field(&memory, name, at)),
                     score: text(value::read_field(&memory, score, at)),
+                    bytes: (at..at + stride)
+                        .map(|a| u16::try_from(a).map(|a| self.machine.peek(a)))
+                        .collect::<Result<_, _>>()
+                        .ok()?,
                 })
             })
             .collect::<Option<Vec<_>>>()?;
@@ -479,7 +514,8 @@ impl Session {
     }
 
     /// Writes entries into the high-score table, in order: the game then shows them. An entry
-    /// that can't be written in the table's fields is left as the game has it.
+    /// with its bytes goes in whole; one without, in its name and score fields, and is left as
+    /// the game has it when they can't be written so.
     pub fn set_scores(&mut self, entries: &[ScoreEntry]) {
         let Some(table) = self.definition.as_ref().and_then(|d| d.high_scores.clone()) else {
             return;
@@ -495,22 +531,29 @@ impl Session {
         };
         for (i, entry) in (0..count).zip(entries) {
             let at = u32::from(addr.0) + i * stride;
+            if usize::try_from(stride).is_ok_and(|s| s == entry.bytes.len()) {
+                self.write_bytes(at, &entry.bytes);
+                continue;
+            }
             let (Some(name_bytes), Some(score_bytes)) = (
                 value::encode_field(&name, &entry.name),
                 value::encode_field(&score, &entry.score),
             ) else {
                 continue;
             };
-            for (field, bytes) in [(&name, name_bytes), (&score, score_bytes)] {
-                let start = at + field.offset;
-                if start < 0x4000 {
-                    continue;
-                }
-                for (a, byte) in (start..).zip(bytes) {
-                    if let Ok(a) = u16::try_from(a) {
-                        self.machine.write(a, byte);
-                    }
-                }
+            self.write_bytes(at + name.offset, &name_bytes);
+            self.write_bytes(at + score.offset, &score_bytes);
+        }
+    }
+
+    /// Writes bytes from `start`, leaving the ROM alone.
+    fn write_bytes(&mut self, start: u32, bytes: &[u8]) {
+        if start < 0x4000 {
+            return;
+        }
+        for (a, &byte) in (start..).zip(bytes) {
+            if let Ok(a) = u16::try_from(a) {
+                self.machine.write(a, byte);
             }
         }
     }
@@ -670,7 +713,7 @@ impl Session {
         let Some(state) = self.state.clone() else {
             return;
         };
-        let (starts, came_to_title) = {
+        let (starts, came_to_title, named) = {
             let Some(definition) = &self.definition else {
                 return;
             };
@@ -679,9 +722,15 @@ impl Session {
             let from_start = after.is_none()
                 || definition.is(after, Role::Title)
                 || definition.is(after, Role::GameOver);
+            // The game has put the new entry in once it leaves the state that asks its name.
+            let named = definition
+                .name_entry
+                .as_ref()
+                .is_some_and(|n| after == Some(n.state.as_str()) && now != after);
             (
                 definition.is(now, Role::Play) && from_start,
                 definition.is(now, Role::Title) && !definition.is(after, Role::Title),
+                named,
             )
         };
         if starts {
@@ -692,14 +741,12 @@ impl Session {
             self.note_use();
             self.progress.in_game = true;
         }
-        if came_to_title {
-            if !self.progress.seen_title {
-                self.progress.seen_title = true;
-                self.milestones.push(Milestone::FirstTitle);
-            }
-            if std::mem::take(&mut self.progress.in_game) {
-                self.milestones.push(Milestone::GameEnded);
-            }
+        if came_to_title && !self.progress.seen_title {
+            self.progress.seen_title = true;
+            self.milestones.push(Milestone::FirstTitle);
+        }
+        if (came_to_title || named) && std::mem::take(&mut self.progress.in_game) {
+            self.milestones.push(Milestone::GameEnded);
         }
         self.progress.last_known = Some(state);
     }

@@ -1004,12 +1004,7 @@ impl Player {
     /// Puts the kept high scores into the game.
     fn put_scores_in(&mut self) {
         let kept = self.folder.as_deref().map(scores::load).unwrap_or_default();
-        let entries: Vec<_> = kept.iter().map(|k| k.entry.clone()).collect();
-        self.session.set_scores(&entries);
-        // What the game has now: the kept entries, and any of its own they didn't cover
-        // (fewer kept than it holds), which are the tape's.
-        let now = self.session.scores().unwrap_or_default();
-        self.table = scores::after_game(&kept, now, "from the tape", false).0;
+        self.table = scores::put_in(&mut self.session, &kept);
     }
 
     /// F5 saves to the quick slot and F9 goes back to the save point, wherever the game is.
@@ -1328,6 +1323,7 @@ impl Player {
         let mark = scores::mark(&record, level_name.as_deref());
         let training = !record.switches.is_empty();
         let (table, mine) = scores::after_game(&self.table, read, &mark, training);
+        scores::keep_name(&mut self.session, &table, mine);
         if let Some(folder) = &self.folder {
             if let Err(e) = scores::save(folder, &table) {
                 eprintln!(
@@ -1560,16 +1556,17 @@ impl Player {
         MenuEvent::Taken
     }
 
-    /// The definition's text entry, when the game is in its state.
-    fn text_entry(&self) -> Option<sidekick_def::TextEntry> {
-        let text_entry = self.session.definition()?.text_entry.as_ref()?;
-        (self.session.state() == Some(text_entry.state.as_str())).then(|| text_entry.clone())
+    /// The definition's text entry for the state the game is in: its `[text_entry]`, or its
+    /// `[name_entry]` for a high score's name.
+    fn text_entry(&self) -> Option<(sidekick_def::TextEntry, entry::Card)> {
+        entry::section_for(self.session.definition()?, self.session.state())
+            .map(|(t, card)| (t.clone(), card))
     }
 
     /// Takes pad presses for the text-entry card: the first one in its state opens it, and
     /// while it's open they're all its. Returns whether it took them.
     fn entry_event(&mut self, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
-        let Some(text_entry) = self.text_entry() else {
+        let Some((text_entry, card)) = self.text_entry() else {
             self.entry = None;
             return false;
         };
@@ -1577,7 +1574,12 @@ impl Player {
             return self.entry.is_some();
         }
         let Some(entry) = &mut self.entry else {
-            self.entry = Some(Entry::open(&text_entry, self.session.kept(), self.level));
+            self.entry = Some(Entry::open(
+                &text_entry,
+                card,
+                self.session.kept(),
+                self.level,
+            ));
             pads.hold_back();
             return true;
         };
@@ -1624,7 +1626,10 @@ impl Player {
             out.entry = None;
             return Ok(());
         };
-        let row = self.text_entry().and_then(|t| t.card_row).unwrap_or(20);
+        let row = self
+            .text_entry()
+            .and_then(|(t, _)| t.card_row)
+            .unwrap_or(20);
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
         // The row's top on the screen, below the border when it's shown.

@@ -55,7 +55,24 @@ fn entry(name: &str, score: &str) -> ScoreEntry {
     ScoreEntry {
         name: name.to_owned(),
         score: score.to_owned(),
+        bytes: Vec::new(),
     }
+}
+
+/// The table's names and scores, as read now.
+fn names_and_scores(s: &Session) -> Vec<(String, String)> {
+    s.scores()
+        .expect("a table")
+        .into_iter()
+        .map(|e| (e.name, e.score))
+        .collect()
+}
+
+fn pairs(entries: &[(&str, &str)]) -> Vec<(String, String)> {
+    entries
+        .iter()
+        .map(|&(n, s)| (n.to_owned(), s.to_owned()))
+        .collect()
 }
 
 #[test]
@@ -78,19 +95,36 @@ fn the_table_is_written_and_read_in_its_fields() {
         "a short name padded with its space"
     );
     assert_eq!(
-        s.scores().expect("a table"),
-        [
-            entry("ANN", "12500"),
-            entry("BO", "900"),
-            entry("CAT", "50")
-        ]
+        names_and_scores(&s),
+        pairs(&[("ANN", "12500"), ("BO", "900"), ("CAT", "50")])
     );
     s.set_scores(&[entry("aaa", "1"), entry("DAN", "9999999")]);
     assert_eq!(
-        s.scores().expect("a table")[..2],
-        [entry("ANN", "12500"), entry("BO", "900")],
+        names_and_scores(&s)[..2],
+        pairs(&[("ANN", "12500"), ("BO", "900")]),
         "an entry with a name outside the charset, or a score too long, is left whole"
     );
+}
+
+#[test]
+fn an_entry_read_with_its_bytes_goes_back_whole() {
+    let mut s = session();
+    s.set_scores(&[entry("ANN", "12500"), entry("BO", "900")]);
+    // Something the game keeps beside the name and score, in the entry's last byte.
+    s.machine_mut().write(0x8008 + 9, 0x77);
+    let read = s.scores().expect("a table");
+    assert_eq!(read[1].bytes.len(), 9, "the stride's bytes");
+    assert_eq!(read[1].bytes[0], 3, "B, in its charset");
+    let mut fresh = session();
+    fresh.set_scores(&[read[1].clone(), read[0].clone()]);
+    let bytes: Vec<u8> = (0x8000..0x8012).map(|a| fresh.machine().peek(a)).collect();
+    assert_eq!(bytes[..9], read[1].bytes, "BO first, whole");
+    assert_eq!(bytes[9..], read[0].bytes, "then ANN, whole");
+    assert!(
+        read[0].same(&entry("ANN", "12500")),
+        "the same name and score"
+    );
+    assert!(!read[0].same(&entry("ANN", "12501")));
 }
 
 #[test]
@@ -181,5 +215,84 @@ fn a_state_s_meaning_comes_from_its_role_not_its_name() {
         s.take_milestones(),
         [Milestone::GameEnded],
         "back to the title ends it"
+    );
+}
+
+/// A game that asks a high score's name, then shows its table for a frame.
+const NAMED: &str = r#"
+schema = 1
+[game]
+id = "test"
+title = "Test"
+machine = "48k"
+[[media]]
+name = "the tape"
+
+[values.mode]
+addr = 0x8100
+type = "u8"
+
+[[states]]
+name = "title"
+role = "title"
+when = { value = "mode", equals = 1 }
+[[states]]
+name = "play"
+role = "play"
+when = { value = "mode", equals = 2 }
+[[states]]
+name = "name"
+when = { value = "mode", equals = 3 }
+[[states]]
+name = "scores"
+when = { value = "mode", equals = 4 }
+
+[name_entry]
+state = "name"
+letters = "ABC"
+length = 3
+"#;
+
+#[test]
+fn a_game_that_asks_a_name_ends_once_the_name_is_in() {
+    let definition = Definition::from_toml(NAMED).expect("the test definition parses");
+    let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+    for _ in 0..BOOT_FRAMES {
+        machine.run_frame().expect("a frame");
+    }
+    let mut s = Session::new(machine, Some(definition));
+    mode(&mut s, 1);
+    mode(&mut s, 1);
+    assert_eq!(s.take_milestones(), [Milestone::FirstTitle]);
+    for m in [2, 2, 3, 3, 0, 0, 3, 3] {
+        mode(&mut s, m);
+    }
+    assert!(
+        s.take_milestones().is_empty(),
+        "frames between the letters, matching no state, aren't the name's end"
+    );
+    assert!(s.progress().in_game);
+    mode(&mut s, 4);
+    mode(&mut s, 4);
+    assert_eq!(
+        s.take_milestones(),
+        [Milestone::GameEnded],
+        "the name is in"
+    );
+    assert!(!s.progress().in_game, "so quitting now keeps nothing");
+    mode(&mut s, 0);
+    mode(&mut s, 1);
+    mode(&mut s, 1);
+    assert!(
+        s.take_milestones().is_empty(),
+        "the title doesn't end it twice"
+    );
+    for m in [2, 2, 4, 4, 1, 1] {
+        mode(&mut s, m);
+    }
+    assert_eq!(
+        s.take_milestones(),
+        [Milestone::GameEnded],
+        "no name asked: the title ends it, as before"
     );
 }

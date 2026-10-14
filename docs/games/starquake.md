@@ -99,7 +99,13 @@ The card opens on the codes seen from guidance level 1 (`choices_from_level = 1`
 
 ## The high-score table
 
-The game's **CORE OF HEROES** is described by `[high_scores]`: kept in `high-scores.txt`, written into memory when the game starts, read back after each game. Each entry carries the highest guidance level its game had; training games are shown, then left out; loaded games are marked "loaded".
+The game's **CORE OF HEROES** holds eight entries, best first: a three-letter name, a six-digit score, and the share of the planet explored in that game. `[high_scores]` describes it (`docs/re/starquake.md`).
+
+- **Kept between runs** in `high-scores.txt`: the entries of games played here, and no others. The kept table starts empty; until a game here gets in, the game shows its own entries, as it always has. They stay in its memory and are never kept.
+- **Put back when the game starts:** each kept entry goes in whole, its share explored too, ranked by score among the game's own, which fill the rest. The table looks as it did when the last run ended.
+- **Read back after each game**, as soon as the name is in: the game then starts showing the table (the `scores` state), so a save loaded before the title doesn't lose the score. A new entry is this game's, marked with the highest guidance level it had; training games are shown, then left out; loaded games are marked "loaded".
+
+**The name.** After a high score the game asks for three letters (the `name` state). The keyboard types them as on a Spectrum. On a pad, the first press opens the booth's card under the game's three marks for the letters (`[name_entry]`, `card_row = 18`), with the titles "Choose a name" and "Spell a name". It offers the names entered before first, the most recent first; the west button switches to spelling a new one, from A to Z, 0 to 9 and a space, shown as an open box (␣). While spelling, A takes the letter into its place and moves on, and enters the name at the third, so the game always gets all three. The game makes a sound after each letter before it looks for the next, so each is typed down for 2 frames and let go for 9. Every name a game here puts in the table is kept in `high-score-names.txt` (`[persist.names]`), whether the card or the keyboard typed it; the menu's *Forget the kept lists* clears them with the other lists.
 
 ## Facts to find
 
