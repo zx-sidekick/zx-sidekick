@@ -861,6 +861,10 @@ pub struct PanelHint {
     /// Holds only while the script names this condition in the `hints` it returns.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
+    /// Shows for this many seconds of holding, then not again until its condition (its
+    /// `when` and `script`, or its `state` when it gives neither) has stopped holding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub for_seconds: Option<u32>,
 }
 
 /// Where in its cell a map's marker sits.

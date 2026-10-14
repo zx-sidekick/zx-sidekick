@@ -1216,6 +1216,15 @@
       "description": "`[[hints]]`: a line in the panel, under the level's name, while its conditions hold. Of\nthose that hold at the guidance level, the one with the lowest `priority` shows.",
       "type": "object",
       "properties": {
+        "for_seconds": {
+          "description": "Shows for this many seconds of holding, then not again until its condition (its\n`when` and `script`, or its `state` when it gives neither) has stopped holding.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
         "from_level": {
           "description": "The guidance level from which it shows: 1 or more.",
           "type": "integer",

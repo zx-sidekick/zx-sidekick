@@ -592,6 +592,12 @@ text = """Two
 lines"""
 priority = 7
 state = "play"
+
+[[hints]]
+text = "For no time"
+priority = 8
+state = "play"
+for_seconds = 0
 "#
     );
     let def = Definition::from_toml(&text).expect("it parses");
@@ -614,6 +620,7 @@ state = "play"
             "hints[4]: needs state, when or script",
             "hints[5].script: the definition has no [script]",
             "hints[6].text: one line",
+            "hints[7].for_seconds: at least 1",
         ]
     );
 }

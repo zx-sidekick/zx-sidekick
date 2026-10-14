@@ -5,12 +5,15 @@ use crate::{
     value::{self, Read, WriteError},
     Error, Machine, Stop,
 };
-use sidekick_def::{Amount, Cheat, Definition, Patch, Role, Set, State, Test};
+use sidekick_def::{Amount, Cheat, Definition, PanelHint, Patch, Role, Set, State, Test};
 use sidekick_script::{Fact, Script, View};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
 };
+
+/// The Spectrum's frames a second: a hint's `for_seconds` is counted in frames.
+const FRAMES_A_SECOND: u32 = 50;
 
 /// Every named value, as read at one moment.
 pub type Reading = BTreeMap<String, Read>;
@@ -118,6 +121,8 @@ pub struct Session {
     next: Next,
     /// Routines switches turned on asked for, called at the next sync point in play.
     calls: Vec<u16>,
+    /// Frames each of the definition's hints has held since its condition last began to.
+    hints_held: Vec<u32>,
 }
 
 /// What carries over from one moment of a session to what comes next.
@@ -190,6 +195,7 @@ impl Session {
             milestones: Vec::new(),
             next: Next::default(),
             calls: Vec::new(),
+            hints_held: Vec::new(),
         }
     }
 
@@ -270,6 +276,66 @@ impl Session {
         self.track_games();
         self.run_script();
         self.keep_from_values();
+        self.time_hints();
+    }
+
+    /// Counts the frames each hint holds, back to 0 once its condition stops holding, for the
+    /// hints shown only `for_seconds`.
+    fn time_hints(&mut self) {
+        let held: Vec<u32> = self
+            .definition
+            .iter()
+            .flat_map(|d| d.hints.iter())
+            .enumerate()
+            .map(|(i, h)| {
+                let before = self.hints_held.get(i).copied().unwrap_or(0);
+                if !self.condition_holds(h) {
+                    0
+                } else if self.hint_holds(h) {
+                    before.saturating_add(1)
+                } else {
+                    before
+                }
+            })
+            .collect();
+        self.hints_held = held;
+    }
+
+    /// The state a hint is tested in: a frame that matched no state counts as the state last
+    /// matched.
+    fn hint_state(&self) -> Option<&str> {
+        self.state().or(self.progress.last_known.as_deref())
+    }
+
+    /// Whether a hint's `state`, `when` and `script` all hold this frame.
+    fn hint_holds(&self, hint: &PanelHint) -> bool {
+        let state = self.hint_state();
+        hint.state
+            .as_ref()
+            .is_none_or(|states| states.iter().any(|s| Some(s.as_str()) == state))
+            && self.condition_holds(hint)
+    }
+
+    /// Whether a hint's condition holds this frame: its `when` and `script`, or its `state`
+    /// when it gives neither.
+    fn condition_holds(&self, hint: &PanelHint) -> bool {
+        if hint.when.is_none() && hint.script.is_none() {
+            let state = self.hint_state();
+            return hint
+                .state
+                .as_ref()
+                .is_none_or(|states| states.iter().any(|s| Some(s.as_str()) == state));
+        }
+        let named = match (&self.script_off, self.results.get("hints")) {
+            (None, Some(Fact::List(names))) => names.as_slice(),
+            _ => &[],
+        };
+        hint.when.as_ref().is_none_or(|t| holds(t, &self.reading))
+            && hint.script.as_ref().is_none_or(|condition| {
+                named
+                    .iter()
+                    .any(|n| matches!(n, Fact::Text(t) if t == condition))
+            })
     }
 
     /// Gives the session its kept lists, as the program last saved them.
@@ -997,38 +1063,29 @@ impl Session {
 
     /// The hint to show at guidance level `level`: of the definition's hints that hold, the one
     /// with the lowest priority, the first listed of equals. None at level 0, which is no
-    /// guidance. A frame that matched no state counts as the state last matched.
+    /// guidance. A frame that matched no state counts as the state last matched; a hint shown
+    /// `for_seconds` is left out once it has held that long, until its condition holds anew.
     #[must_use]
     pub fn hint(&self, level: u8) -> Option<&str> {
         if level == 0 {
             return None;
         }
         let level = u32::from(level);
-        let state = self.state().or(self.progress.last_known.as_deref());
-        let named = match (&self.script_off, self.results.get("hints")) {
-            (None, Some(Fact::List(names))) => names.as_slice(),
-            _ => &[],
-        };
         self.definition
             .as_ref()?
             .hints
             .iter()
-            .filter(|h| h.from_level <= level && h.to_level.is_none_or(|to| level <= to))
-            .filter(|h| {
-                h.state
-                    .as_ref()
-                    .is_none_or(|states| states.iter().any(|s| Some(s.as_str()) == state))
-            })
-            .filter(|h| h.when.as_ref().is_none_or(|t| holds(t, &self.reading)))
-            .filter(|h| {
-                h.script.as_ref().is_none_or(|condition| {
-                    named
-                        .iter()
-                        .any(|n| matches!(n, Fact::Text(t) if t == condition))
+            .enumerate()
+            .filter(|(_, h)| h.from_level <= level && h.to_level.is_none_or(|to| level <= to))
+            .filter(|(i, h)| {
+                h.for_seconds.is_none_or(|seconds| {
+                    self.hints_held.get(*i).copied().unwrap_or(0)
+                        <= seconds.saturating_mul(FRAMES_A_SECOND)
                 })
             })
-            .min_by_key(|h| h.priority)
-            .map(|h| h.text.as_str())
+            .filter(|(_, h)| self.hint_holds(h))
+            .min_by_key(|(_, h)| h.priority)
+            .map(|(_, h)| h.text.as_str())
     }
 
     /// Frames run since one last matched a state: how long ago the game was last seen in the

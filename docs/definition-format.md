@@ -464,7 +464,7 @@ A cell's inside is drawn when the map gives `inside = [w, h]`: each cell is divi
 
 ## `[[hints]]`: a line in the panel
 
-A hint is one short line in the panel, under the level's name, shown while its conditions hold: energy running low, a door met without its cards. It's there to be ignored as easily as read, and nothing dismisses it: it goes when its conditions stop holding.
+A hint is one short line in the panel, under the level's name, shown while its conditions hold: energy running low, a door met without its cards. It's there to be ignored as easily as read, and nothing dismisses it: it goes when its conditions stop holding, or, for one shown `for_seconds`, once that time is up.
 
 ```toml
 [[hints]]
@@ -489,6 +489,7 @@ script = "core-not-seen"
 | `state` | A state, or a list of states, it holds in. A frame that matches no state counts as the state last matched, so a state whose address isn't passed every frame doesn't make the hint blink |
 | `when` | A test of a value, as a `[[states]]` `when` |
 | `script` | A condition only the script can work out: the hint holds while the script's `on_frame` names it in the list it returns under `hints` |
+| `for_seconds` | Shows for this many seconds of holding (the Spectrum's 50 frames a second), then not again until its condition has stopped holding and holds anew. Its condition is its `when` and `script`, or its `state` when it gives neither: a state left for a while (paused, say) doesn't start it over. At least 1 |
 
 A hint holds when every one of `state`, `when` and `script` it gives holds; it needs at least one. One hint shows at a time. A game with hints keeps a fixed slot for the line at every level from 1 up, empty while none holds, so the widgets below it don't move as hints come and go.
 

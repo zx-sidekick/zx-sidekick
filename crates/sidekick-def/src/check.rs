@@ -822,6 +822,9 @@ impl Checker<'_> {
             if hint.script.is_some() && self.def.script.is_none() {
                 self.report(format!("{path}.script"), "the definition has no [script]");
             }
+            if hint.for_seconds == Some(0) {
+                self.report(format!("{path}.for_seconds"), "at least 1");
+            }
             if hint.state.is_none() && hint.when.is_none() && hint.script.is_none() {
                 self.report(&path, "needs state, when or script");
             }

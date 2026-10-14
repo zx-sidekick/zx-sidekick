@@ -70,6 +70,13 @@ state = ["door"]
 text = "Lost"
 priority = 3
 script = "lost"
+
+[[hints]]
+text = "Full"
+priority = 4
+for_seconds = 2
+state = "play"
+when = { value = "energy", equals = 200 }
 "#;
 
 fn session(script: &str) -> Session {
@@ -157,4 +164,24 @@ fn a_stopped_script_names_nothing() {
     frame(&mut s, 99, 2);
     assert!(s.script_off().is_some());
     assert_eq!(s.hint(1), None);
+}
+
+#[test]
+fn a_hint_for_some_seconds_shows_that_long_then_again_only_once_it_holds_anew() {
+    let mut s = session(NO_SCRIPT);
+    let shown = |s: &mut Session, energy, mode, frames: usize| {
+        (0..frames)
+            .map(|_| {
+                frame(s, energy, mode);
+                s.hint(1) == Some("Full")
+            })
+            .filter(|&on| on)
+            .count()
+    };
+    assert_eq!(shown(&mut s, 200, 2, 300), 100, "two seconds of frames");
+    assert_eq!(shown(&mut s, 200, 0, 50), 0, "no state between: still held");
+    assert_eq!(shown(&mut s, 200, 1, 50), 0, "another state: not its own");
+    assert_eq!(shown(&mut s, 200, 2, 50), 0, "the condition never stopped");
+    assert_eq!(shown(&mut s, 199, 2, 1), 0, "it stops holding");
+    assert_eq!(shown(&mut s, 200, 2, 300), 100, "holds anew: shows again");
 }
