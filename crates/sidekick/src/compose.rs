@@ -8,10 +8,7 @@ use crate::{
 };
 use sidekick_core::Session;
 use sidekick_def::{Border, Definition, Role};
-use sidekick_ui::{
-    device, Canvas, Fonts, NoticeHint, PadLabels, PauseNotice, PAUSE_NOTICE_HEIGHT,
-    PAUSE_NOTICE_WIDTH,
-};
+use sidekick_ui::{device, Canvas, Fonts, NoticeHint, PadLabels, PauseNotice, PAUSE_NOTICE_WIDTH};
 
 /// How bright the picture is, out of 255, under the pause notice or the guidance menu.
 pub(crate) const DIMMED: u8 = 140;
@@ -311,20 +308,20 @@ pub(crate) fn window(
         }
     }
     if paused {
+        let notice = pause_notice(session.definition(), labels);
         let (at, scale) = card_over(
             layout.picture,
             size,
             layout,
-            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+            (PAUSE_NOTICE_WIDTH, notice.height()),
         );
-        let notice = pause_notice(session.definition(), labels).draw(fonts, scale);
-        out.canvas(&notice, at, 255);
+        out.canvas(&notice.draw(fonts, scale), at, 255);
     } else if let Some(notice) = foot_notice(session, labels) {
         let (at, scale) = card_at_foot(
             layout.picture,
             size,
             layout,
-            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT),
+            (PAUSE_NOTICE_WIDTH, notice.height()),
         );
         out.canvas(&notice.draw(fonts, scale), at, 255);
     }
@@ -499,11 +496,42 @@ mod tests {
         assert!(y + h < picture.1 + picture.3, "inside the picture's foot");
         assert!(y > picture.1 + picture.3 / 2, "in its lower half");
         assert_eq!(x + w / 2, picture.0 + picture.2 / 2, "centred across it");
+        let ((_, plain_y, _, plain_h), _) = card_at_foot(
+            picture,
+            (1920, 1080),
+            layout,
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_PLAIN_HEIGHT),
+        );
+        assert!(plain_h < h, "a card without hints is shorter");
+        assert_eq!(
+            plain_y + plain_h,
+            y + h,
+            "and rests the same margin above the foot"
+        );
+    }
+
+    #[test]
+    fn a_card_without_hints_fits_its_words() {
+        let plain = loading_notice(PadLabels::default());
+        assert_eq!(plain.height(), PAUSE_NOTICE_PLAIN_HEIGHT);
+        assert!(plain.height() < PAUSE_NOTICE_HEIGHT);
+        let mut fonts = Fonts::new();
+        assert_eq!(
+            plain.draw(&mut fonts, 1.0).size(),
+            (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_PLAIN_HEIGHT)
+        );
+        assert_eq!(
+            pause_notice(None, PadLabels::default()).height(),
+            PAUSE_NOTICE_PLAIN_HEIGHT,
+            "the pause notice unworded, centred over the picture"
+        );
     }
 
     use super::*;
     use sidekick_core::{Machine, Model};
-    use sidekick_ui::{ENTRY_HEIGHT, ENTRY_WIDTH, MENU_WIDTH};
+    use sidekick_ui::{
+        ENTRY_HEIGHT, ENTRY_WIDTH, MENU_WIDTH, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_PLAIN_HEIGHT,
+    };
     use std::path::PathBuf;
 
     /// Where the stand-in game sits while paused: a loop the processor is parked in.

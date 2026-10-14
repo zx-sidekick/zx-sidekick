@@ -34,8 +34,8 @@ use sidekick_ui::{
     device, Canvas, EntryCard, Fonts, HowTo, HowToTarget, LibraryPage, Menu as MenuCard, Note,
     Offer, PadLabels, Panel, PauseNotice, Pin, PromptButton, Question, Refusal, Row, TapePrompt,
     ThisGame, ENTRY_HEIGHT, ENTRY_WIDTH, HOW_TO_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT,
-    OFFER_HEIGHT, OFFER_WIDTH, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH,
-    TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    OFFER_HEIGHT, OFFER_WIDTH, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT,
+    TAPE_PROMPT_WIDTH,
 };
 use std::{
     cell::RefCell,
@@ -1969,17 +1969,15 @@ impl Player {
     fn notice(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let size = (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT);
         let (notice, (at, scale)) = if self.paused() {
-            (
-                compose::pause_notice(self.session.definition(), labels),
-                compose::card_over(layout.picture, output, layout, size),
-            )
+            let notice = compose::pause_notice(self.session.definition(), labels);
+            let size = (PAUSE_NOTICE_WIDTH, notice.height());
+            let place = compose::card_over(layout.picture, output, layout, size);
+            (notice, place)
         } else if let Some(notice) = compose::foot_notice(&self.session, labels) {
-            (
-                notice,
-                compose::card_at_foot(layout.picture, output, layout, size),
-            )
+            let size = (PAUSE_NOTICE_WIDTH, notice.height());
+            let place = compose::card_at_foot(layout.picture, output, layout, size);
+            (notice, place)
         } else {
             return Ok(());
         };

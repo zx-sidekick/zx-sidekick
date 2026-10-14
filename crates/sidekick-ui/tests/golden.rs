@@ -174,10 +174,9 @@ fn the_pause_notice() {
         "paused-playstation.png",
         &paused(PadLabels::Shapes).draw(&mut fonts, 1.0).png(),
     );
-    golden(
-        "paused-unworded.png",
-        &PauseNotice::default().draw(&mut fonts, 1.0).png(),
-    );
+    let unworded = PauseNotice::default().draw(&mut fonts, 1.0);
+    assert_eq!(unworded.size(), (438, 107), "no hints: its words alone");
+    golden("paused-unworded.png", &unworded.png());
     // As Starquake's definition words it.
     let title = PauseNotice {
         heading: "Ignore the list".to_owned(),
