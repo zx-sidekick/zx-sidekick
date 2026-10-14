@@ -59,6 +59,10 @@ jobs:
           - platform: windows-x64
             os: windows-2025
             binary: sidekick.exe
+    env:
+      # Windows: the C runtime linked into the program (SDL3 too, through the cmake crate), so it
+      # runs without the Visual C++ redistributable installed. Ignored on the other runners.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - uses: actions/checkout@v7
         with:

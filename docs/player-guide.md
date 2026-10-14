@@ -35,7 +35,7 @@ Double-clicking it opens a Terminal window beside the game, which shows any mess
 
 ### Opening it the first time on Windows
 
-The program isn't signed, so SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**. A console window opens beside the game and shows any messages; closing it closes the program.
+The program isn't signed, so SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**.
 
 ### Linux
 
@@ -154,3 +154,5 @@ Anyone can write a definition for another game: `AUTHORS-GUIDE.md` (in the sourc
 ## The command line
 
 `sidekick` starts the only game installed, or a list to choose from when there are several. `sidekick GAME-ID` starts that game, `sidekick TAPE` plays a tape, `--games DIR` adds a folder of definitions, and `--load FILE` starts from a save. `sidekick --help` lists the rest.
+
+On Windows the program opens no console window, so the command line's output (`--help`, `sidekick check` and the like) shows only when it's sent to a pipe or a file. In PowerShell: `.\sidekick.exe --help | Out-Host`, or `.\sidekick.exe --help > help.txt`. The same goes for a message saying why it couldn't start.

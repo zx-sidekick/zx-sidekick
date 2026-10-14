@@ -6,6 +6,9 @@
     clippy::print_stderr,
     reason = "a command line's results and errors are printed"
 )]
+// A release on Windows opens no console window beside the game. Its command line's output then
+// shows only when sent to a file or a pipe (docs/player-guide.md).
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod compose;
 mod entry;
