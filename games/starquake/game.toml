@@ -371,13 +371,13 @@ frames = 5
 id = "pick-up"
 label = "Pick up or swap"
 joystick = ["up"]
-note = "Up, meaning only pick up or swap."
+note = "Up: pick up or swap, or board a hover platform."
 
 [[actions]]
 id = "build"
 label = "Build a platform"
 joystick = ["down"]
-note = "Down, meaning only build."
+note = "Down: build a platform, or fly down."
 
 [[actions]]
 id = "next-route"

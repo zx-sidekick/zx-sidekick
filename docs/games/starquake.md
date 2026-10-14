@@ -18,13 +18,13 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 |---|---|---|
 | D-pad, left stick | Move | `dpad`, `stick = "joystick"` |
 | West | Fire | `west = "fire"` |
-| South | Build a platform | `south = "build"` |
-| East | Pick up or swap an item | `east = "pick-up"` |
+| South | Down: build a platform, or fly down | `south = "build"` |
+| East | Up: pick up or swap an item, or board a hover platform | `east = "pick-up"` |
 | North | Switch level 5's route | `north = "next-route"` |
 | Start | Pause in play; start a game on the title screen | `[pad.default] start`, `[pad.title] start` |
 | Select | The guidance menu | always |
 
-**Split meanings.** In the original, *up* both picks up and boards the hover platform, and *down* both builds and flies down. The pad separates them: the D-pad's up and down board and fly; the east button only picks up, and the south one only builds. The game decides in its own code what *up* means at that moment, so `pick-up` and `build` are `[[actions]]` with a `patch_for_frame` at the point where it reads the direction for each purpose, or a write that suppresses one meaning for that frame. Find the decision points first (below). If it proves fragile, ship without the split.
+**Up and down.** In the original, *up* both picks up or swaps and boards a hover platform, and *down* both builds and flies down; the game decides which from where BLOB is. The east button sends *up* and the south one *down* (`[[actions]] pick-up` and `build`), each with both of the game's meanings, as the D-pad's up and down do. Splitting them, so that east only picks up and south only builds, was looked at and not taken up (#20).
 
 **The pause notice:** in the original, any move or fire continues once the pause key is let go. On a pad, A or B dismisses it.
 
