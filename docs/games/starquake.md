@@ -75,8 +75,8 @@ Eight `[[hints]]`, a line under the level's name while each holds, the lowest pr
 | Priority | Says, in short | Holds while | Levels |
 |:-:|---|---|:-:|
 | 1 | Energy is low | in play, `energy` at most 30: about 40 seconds left | 1 up |
-| 2 | Where this door's cards lie on the map | the script's `door-cards-missing`: BLOB in a security door's room, its cards not all answered by what he carries | 4 up |
-| 3 | This door wants the cards under DOORS | the `door` state, and `door-cards-missing` | 1 up |
+| 2 | Where this door's cards lie on the map | the script's `door-cards-on-map`: BLOB in a security door's room, its cards not all answered by what he carries, and an item that would answer one lying on the planet (some wait in the core's room, off the map) | 4 up |
+| 3 | This door wants the cards under DOORS | the `door` state, and the script's `door-cards-missing`: its cards not all answered | 1 up |
 | 4 | This post opens only for the key | the script's `post-locked`: BLOB in a room with a post still locked (`locks`), the key not carried | 4 up |
 | 5 | Platforms are low | in play, `platforms` at most 10: five left | 1 up |
 | 6 | How a booth is used | the `booth` state | 1 up |
@@ -84,6 +84,8 @@ Eight `[[hints]]`, a line under the level's name while each holds, the lowest pr
 | 8 | The core shows what it wants only in its room | the script's `core-not-seen`: 20 rooms walked without the core's room among them | 1 to 3; from 4 the core shows anyway |
 
 The door's routine isn't passed every frame, so a frame between counts as the state last matched, and the door's hint stays up while the door runs.
+
+A screenshot of the program running the game at level 4, beside a door: [the hint](../media/starquake-hint.png).
 
 What players have written, read for this: Wikipedia's article on the game; the reviews in Crash #22, Sinclair User #44, Computer Gamer #9 and Amstrad Action (as everygamegoing.com reprints them); C64-Wiki; PixelatedArcade; the Spectrum Computing review index and user reviews; three Spectrum Computing forum threads; and two retrospectives, on A Most Agreeable Pastime and Affectionate Discourse.
 

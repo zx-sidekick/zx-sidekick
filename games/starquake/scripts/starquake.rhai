@@ -1319,11 +1319,27 @@ fn map(mem, loaded, rooms, level, lying, listed, guided) {
 }
 
 // At each sync point: the panel's data, and codes to keep.
-// Whether the cards BLOB carries leave any of a door's cards unanswered: each card answers
-// itself, and each of pictures 14 and 15 answers any one card (docs/re/starquake.md).
+// The door's cards the cards BLOB carries leave unanswered: each card answers itself, and each
+// of pictures 14 and 15 answers any one card (docs/re/starquake.md). Empty when all are.
 fn cards_missing(cards, carrying) {
     let wild = carrying.filter(|p| p == 14 || p == 15).len();
-    cards.filter(|card| !carrying.contains(card)).len() > wild
+    let missing = cards.filter(|card| !carrying.contains(card));
+    if missing.len() > wild { missing } else { [] }
+}
+
+// Whether an item that would answer one of `missing` lies on the planet, where the map shows
+// it: that card, or one that answers any card; not carried, nor kept in the core's room.
+fn card_lying(mem, missing) {
+    for item in mem.table("items") {
+        let picture = item.picture;
+        let row = item.second & 0x7F;
+        let room = item.room_low + (item.second >> 7) * 256;
+        let answers = missing.contains(picture) || picture == 14 || picture == 15;
+        if answers && !(row >= 1 && row <= 5) && room != core_room() {
+            return true;
+        }
+    }
+    false
 }
 
 // Whether the locked door's post in `room` is still locked: its entry in the game's table of
@@ -1349,14 +1365,19 @@ fn rooms_before_core_hint() {
 }
 
 // The definition's `[[hints]]` script conditions that hold now (docs/games/starquake.md): BLOB
-// in a security door's room without its cards, at a locked door's post without the key, with
-// four items carried, or a good way into the planet without having seen the core.
+// in a security door's room without its cards, and whether one that would answer lies on the
+// map; at a locked door's post without the key; with four items carried; or a good way into the
+// planet without having seen the core.
 fn hint_conditions(mem, loaded, carrying, rooms) {
     let holding = [];
     let room = mem.value("room");
     if room != () && "doors" in loaded && loaded.doors.some(|d| d.room == room) {
-        if cards_missing(door_cards(mem.value("seed"), room), carrying) {
+        let missing = cards_missing(door_cards(mem.value("seed"), room), carrying);
+        if missing.len() > 0 {
             holding.push("door-cards-missing");
+            if card_lying(mem, missing) {
+                holding.push("door-cards-on-map");
+            }
         }
     }
     if room != () && "graph" in loaded && loaded.graph.posts.contains(room) {

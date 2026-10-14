@@ -532,7 +532,8 @@ when = { value = "energy", at_most = 30 }
 text = "This door's cards are among the violet items on the map"
 priority = 2
 from_level = 4
-script = "door-cards-missing"
+# Only while a card that would answer lies on the planet: some wait in the core's room.
+script = "door-cards-on-map"
 
 [[hints]]
 text = "This door wants the three cards under DOORS"

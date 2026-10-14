@@ -1389,22 +1389,29 @@ fn a_door_s_cards_not_carried_are_hinted_at_the_door_and_on_the_map_from_level_4
     at_a_door(&mut s);
     enter(&mut s, "play");
     s.run_frame().expect("a frame");
-    assert_eq!(conditions(&s), ["door-cards-missing"]);
-    let (where_, which) = (hint_on(&s, "door-cards-missing"), {
-        let hints = &definition(&s).hints;
-        hints
-            .iter()
-            .filter(|h| h.script.as_deref() == Some("door-cards-missing"))
-            .find(|h| h.state.is_some())
-            .map(|h| h.text.clone())
-            .expect("the door's own hint")
-    });
-    assert_ne!(where_, which);
+    assert_eq!(
+        conditions(&s),
+        ["door-cards-missing"],
+        "none lying anywhere"
+    );
+    let where_ = hint_on(&s, "door-cards-on-map");
+    let which = hint_on(&s, "door-cards-missing");
     assert_eq!(s.hint(1), None, "in play, before the door is met");
-    assert_eq!(s.hint(4), Some(where_.as_str()), "where they lie");
+    assert_eq!(s.hint(4), None, "no card to point to on the map");
     enter(&mut s, "door");
     assert_eq!(s.hint(1), Some(which.as_str()), "the door met");
+    assert_eq!(s.hint(4), Some(which.as_str()));
+
+    // A 13 lying in room 120, where the map shows it.
+    lay(&mut s, 0, 120, 13, None);
+    s.run_frame().expect("a frame");
+    assert_eq!(conditions(&s), ["door-cards-missing", "door-cards-on-map"]);
+    assert_eq!(s.hint(1), Some(which.as_str()));
     assert_eq!(s.hint(4), Some(where_.as_str()), "from level 4, where");
+    // Kept in the core's room, it's off the map.
+    lay(&mut s, 0, 199, 13, None);
+    s.run_frame().expect("a frame");
+    assert_eq!(conditions(&s), ["door-cards-missing"]);
 
     // 12 carried, and two cards that answer any card for the two 13s.
     poke_into(&mut s, "carried", 0, &[12, 3, 14, 3, 15, 3]);
