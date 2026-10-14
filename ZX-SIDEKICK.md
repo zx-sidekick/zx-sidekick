@@ -120,6 +120,7 @@ The full reference is [`docs/definition-format.md`](docs/definition-format.md). 
 | `[high_scores]` | where the game keeps its table, and how its entries are written |
 | `[guidance]` | the guidance levels, with their names and descriptions |
 | `[[panel]]` | the panel's widgets: what each shows, from which level, and from which value or script result |
+| `[[hints]]` | lines the panel shows while a condition holds, each from its own level, the most important first |
 | `[situations]` | how a crafted situation enters play (§13) |
 | `[script]` | the script and the functions it provides |
 
@@ -194,6 +195,10 @@ Beside the picture, the panel offers optional help, drawn by the program and nev
 At level 0 the panel shows the Off level's description, which names what the menu holds (Starquake: "Guidance or training"), followed by the keys that open the menu, drawn by the program: Esc, and the pad's Select as its maker marks it (Back, Create, −) while a pad is plugged in. At every level, the training switches on are listed at the panel's top, by their labels.
 
 A widget takes its data from a value, a table, or what the script returned. The game's font and graphics are always read from the player's tape at run time; definitions never carry them.
+
+**Hints.** A definition may add **hints**: one short line each, in its own words, shown in the panel under the level's name while its condition holds (a value, a state, or something only the script can work out), on a band tinted with the accent so it reads at a glance and is as easy to ignore. One shows at a time, the most important first, and it goes when its condition stops holding; nothing dismisses it. Each hint has its own levels: what the player could work out themselves from level 1, what they couldn't have known from 4, and one a higher level makes needless can stop there. A game with hints keeps the line's slot from level 1 even while none holds, so the widgets don't move as hints come and go; level 0 shows none. `sidekick check` refuses a hint too wide for the line.
+
+![The hint line, at level 4](docs/mockups/2026-10-14-hint-level4-door.png)
 
 **Levels should be honest about what they tell.** As a convention: the lower levels show only what the player could have written down; the upper ones tell what they couldn't have known. The level's description says which.
 
@@ -359,6 +364,8 @@ All the files in `docs/mockups/starquake/`, at the window's size of 1368×768. T
 | `saved-note.png` | The notice after F5 |
 | `offer.png` | The offer to continue the game saved on quitting |
 | `game-over.png` | The record and the kept high-score table beside the game over |
+
+The hint line is drawn in `docs/mockups/2026-10-14-hint-*.png`: at level 1, at level 4, with the slot empty, and with the longest of Starquake's hints.
 
 Still to be drawn: the library screen, and the menu for a game without a definition (§14).
 
