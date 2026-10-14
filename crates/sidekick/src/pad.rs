@@ -2,7 +2,7 @@
 //! what that presses on the Spectrum. No SDL here; the window feeds it.
 
 use crate::keys::key_named;
-use sidekick_core::{Kempston, Key};
+use sidekick_core::{Error, Kempston, Key, Machine, Session};
 use sidekick_def::{Action, Definition, DirectionKeys, Joystick, Pad, PadTarget, Patch};
 use sidekick_ui::PadLabels;
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,6 +23,18 @@ pub(crate) enum Way {
 }
 
 const WAYS: [Way; 4] = [Way::Up, Way::Down, Way::Left, Way::Right];
+
+impl Way {
+    /// Its name in a definition.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Up => "up",
+            Self::Down => "down",
+            Self::Left => "left",
+            Self::Right => "right",
+        }
+    }
+}
 
 /// A part of a pad, by its position.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -493,6 +505,9 @@ impl Joy<'_> {
                 // `menu` comes with the guidance menu (#14).
                 self.named_action(name)
             }
+            PadTarget::Ways(ways) => way.map_or_else(Does::default, |w| {
+                self.does(&PadTarget::Named(ways.way(w.name()).to_owned()), Some(w))
+            }),
             PadTarget::Table(table) => {
                 let mut does = Does {
                     hold: keys(&table.keys),
@@ -715,6 +730,39 @@ impl Play {
     }
 }
 
+/// Presses and lets go on the Spectrum what `changes` says.
+fn send(machine: &mut Machine, changes: Changes) {
+    let inputs = changes
+        .release
+        .into_iter()
+        .map(|i| (i, false))
+        .chain(changes.press.into_iter().map(|i| (i, true)));
+    for (input, pressed) in inputs {
+        match input {
+            Input::Kempston(direction) => machine.kempston(direction.kempston(), pressed),
+            Input::Key(key) => machine.key(key.0, pressed),
+        }
+    }
+}
+
+/// Runs a frame of `session` with `changes`: what they press and let go reaches the Spectrum,
+/// and their patches are applied for the frame and undone after it, so between frames, where
+/// games are saved and loaded, the game's code is its own. A patch whose bytes aren't there is
+/// left out.
+///
+/// # Errors
+/// If the machine fails.
+pub(crate) fn run_frame(session: &mut Session, mut changes: Changes) -> Result<(), Error> {
+    let patches = std::mem::take(&mut changes.patches);
+    send(session.machine_mut(), changes);
+    let applied: Vec<Patch> = patches.into_iter().filter(|p| session.patch(p)).collect();
+    let ran = session.run_frame();
+    for patch in &applied {
+        session.unpatch(patch);
+    }
+    ran
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -931,26 +979,10 @@ mod tests {
         );
     }
 
-    /// Presses and lets go on the Spectrum what `play` changed, as the window does.
-    fn send(machine: &mut sidekick_core::Machine, changes: Changes) {
-        let inputs = changes
-            .release
-            .into_iter()
-            .map(|i| (i, false))
-            .chain(changes.press.into_iter().map(|i| (i, true)));
-        for (input, pressed) in inputs {
-            match input {
-                Input::Kempston(direction) => machine.kempston(direction.kempston(), pressed),
-                Input::Key(key) => machine.key(key.0, pressed),
-            }
-        }
-    }
-
-    /// Runs a frame of `s` with what `play` holds for `held`.
-    fn frame(s: &mut sidekick_core::Session, play: &mut Play, held: &[Part]) {
+    /// Runs a frame of `s` with what `play` holds for `held`, as the window does.
+    fn frame(s: &mut Session, play: &mut Play, held: &[Part]) {
         let changes = play.update(held.iter().copied());
-        send(s.machine_mut(), changes);
-        s.run_frame().expect("a frame");
+        run_frame(s, changes).expect("a frame");
         play.frame_ran();
         play.enter(s.state());
     }
@@ -968,10 +1000,9 @@ mod tests {
         let package = sidekick_def::Package::load(&repo.join("games/starquake"))
             .expect("Starquake's definition");
         let mut play = Play::new(Mapping::new(Some(&package.definition)));
-        let mut machine =
-            sidekick_core::Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
         machine.load_tap(&tapes[0].bytes).expect("the tape goes in");
-        let mut s = sidekick_core::Session::new(machine, Some(package.definition));
+        let mut s = Session::new(machine, Some(package.definition));
         for _ in 0..400 {
             frame(&mut s, &mut play, &[]);
         }
@@ -996,7 +1027,7 @@ mod tests {
         for _ in 0..100 {
             frame(&mut s, &mut play, &[]);
         }
-        let x = |s: &sidekick_core::Session| s.reading()["blob_x"].number().expect("BLOB's x");
+        let x = |s: &Session| s.reading()["blob_x"].number().expect("BLOB's x");
         let before = x(&s);
         for _ in 0..40 {
             frame(&mut s, &mut play, &[Part::DPad(Way::Left)]);
@@ -1251,5 +1282,263 @@ mod tests {
             [key(Key::Space)],
             "only Tab's jump"
         );
+    }
+
+    #[test]
+    fn a_way_of_the_d_pad_or_the_stick_can_do_an_action_of_its_own() {
+        let mapping = Mapping::new(Some(&def(r#"
+            [[actions]]
+            id = "fly-up"
+            joystick = ["up"]
+            patch_for_frame = [{ addr = 0x6C10, bytes = "18", expect = "20" }]
+
+            [pad.default]
+            dpad = { up = "fly-up", down = "none" }
+            stick = { left = "fire" }
+            east = { up = "fly-up" }
+            "#)));
+        let mut play = Play::new(mapping);
+        let up = Input::Kempston(Direction::Up);
+        assert_eq!(
+            holds_and_patches(&mut play, &[Part::DPad(Way::Up)]),
+            (vec![up], 1),
+            "its action, patch and all"
+        );
+        assert!(
+            holds(&mut play, &[Part::DPad(Way::Down)]).is_empty(),
+            "none"
+        );
+        assert_eq!(
+            holds_and_patches(&mut play, &[Part::DPad(Way::Left)]),
+            (vec![Input::Kempston(Direction::Left)], 0),
+            "a way left out drives the joystick"
+        );
+        assert_eq!(
+            holds(&mut play, &[Part::Stick(Way::Left)]),
+            [Input::Kempston(Direction::Fire)]
+        );
+        assert_eq!(
+            holds_and_patches(&mut play, &[Part::Stick(Way::Up)]),
+            (vec![up], 0)
+        );
+        assert!(
+            holds(&mut play, &[Part::East]).is_empty(),
+            "a button has no ways"
+        );
+    }
+
+    /// A 48K started up, the processor held in a loop that copies the byte at `0x9000` to
+    /// `0x9001` over and over, with `0x12` at `0x9000`.
+    fn copying() -> Session {
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        for _ in 0..100 {
+            machine.run_frame().expect("a frame");
+        }
+        // LD A,(0x9000); LD (0x9001),A; JR back to the start.
+        let program = [0x3A, 0x00, 0x90, 0x32, 0x01, 0x90, 0x18, 0xF8];
+        for (at, &byte) in (0x8000..).zip(&program) {
+            machine.write(at, byte);
+        }
+        machine.write(0x9000, 0x12);
+        machine.registers_mut().set_pc(0x8000);
+        Session::new(machine, None)
+    }
+
+    fn patch(bytes: &str, expect: &str) -> Patch {
+        let toml = format!("addr = 0x9000\nbytes = \"{bytes}\"\nexpect = \"{expect}\"");
+        toml::from_str(&toml).expect("a patch")
+    }
+
+    #[test]
+    fn a_frame_s_patches_are_there_for_the_frame_and_gone_after_it() {
+        let mut s = copying();
+        let patched = Changes {
+            patches: vec![patch("AB", "12")],
+            ..Changes::default()
+        };
+        run_frame(&mut s, patched).expect("a frame");
+        assert_eq!(s.machine().peek(0x9001), 0xAB, "the game read the patch");
+        assert_eq!(s.machine().peek(0x9000), 0x12, "and its own byte is back");
+
+        let saved = s.machine_mut().save_szx().expect("it saves");
+        let mut loaded = copying();
+        loaded.machine_mut().load_szx(&saved).expect("it loads");
+        assert_eq!(
+            loaded.machine().peek(0x9000),
+            0x12,
+            "a save holds its own byte"
+        );
+
+        run_frame(&mut s, Changes::default()).expect("a frame");
+        assert_eq!(
+            s.machine().peek(0x9001),
+            0x12,
+            "let go, the game reads its own"
+        );
+
+        let elsewhere = Changes {
+            patches: vec![patch("AB", "34")],
+            ..Changes::default()
+        };
+        run_frame(&mut s, elsewhere).expect("a frame");
+        assert_eq!(
+            (s.machine().peek(0x9000), s.machine().peek(0x9001)),
+            (0x12, 0x12),
+            "a patch whose bytes aren't there is left out"
+        );
+    }
+
+    /// Starquake's definition, from `games/starquake`.
+    fn starquake() -> Definition {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        sidekick_def::Package::load(&repo.join("games/starquake"))
+            .expect("Starquake's definition")
+            .definition
+    }
+
+    #[test]
+    fn starquake_s_pad_gives_up_and_down_one_meaning_each() {
+        let def = starquake();
+        let patches = |id: &str| -> Vec<Patch> {
+            let action = def.actions.iter().find(|a| a.id == id).expect(id);
+            assert!(!action.patch_for_frame.is_empty(), "{id} patches");
+            action.patch_for_frame.clone()
+        };
+        let mut play = Play::new(Mapping::new(Some(&def)));
+        let up = Input::Kempston(Direction::Up);
+        let down = Input::Kempston(Direction::Down);
+        // The keyboard's arrows are the D-pad.
+        for (part, input, id) in [
+            (Part::DPad(Way::Up), up, "fly-up"),
+            (Part::Stick(Way::Up), up, "fly-up"),
+            (Part::East, up, "pick-up"),
+            (Part::DPad(Way::Down), down, "fly-down"),
+            (Part::Stick(Way::Down), down, "fly-down"),
+            (Part::South, down, "build"),
+        ] {
+            let changes = play.update(std::iter::once(part));
+            assert_eq!(changes.press, [input], "{part:?}");
+            assert_eq!(changes.patches, patches(id), "{part:?}");
+        }
+        for (part, direction) in [
+            (Part::DPad(Way::Left), Direction::Left),
+            (Part::Stick(Way::Right), Direction::Right),
+        ] {
+            let changes = play.update(std::iter::once(part));
+            assert_eq!(changes.press, [Input::Kempston(direction)]);
+            assert!(changes.patches.is_empty(), "{part:?} only moves");
+        }
+    }
+
+    /// Enters `room` in Starquake's play with BLOB at (`x`, `y`), as a crafted situation does,
+    /// and runs until play goes on there.
+    fn enter_room(s: &mut Session, play: &mut Play, room: i64, x: i64, y: i64) {
+        let def = s.definition().expect("its definition");
+        let sync = def.run.as_ref().and_then(|r| r.sync).expect("a sync").0;
+        let enter = def
+            .situations
+            .as_ref()
+            .and_then(|st| st.enter)
+            .expect("an entry")
+            .0;
+        assert!((0..200).any(|_| s.run_to_sync().expect("a frame")));
+        for (name, number) in [("room", room), ("blob_x", x), ("blob_y", y)] {
+            s.write(name, number).expect("writable");
+        }
+        s.machine_mut().call(enter, sync);
+        let left = (0..50).any(|_| {
+            frame(s, play, &[]);
+            s.state() != Some("play")
+        });
+        let back = (0..200).any(|_| {
+            frame(s, play, &[]);
+            s.state() == Some("play")
+        });
+        assert!(left && back, "play goes on in room {room}");
+        for _ in 0..10 {
+            frame(s, play, &[]);
+        }
+    }
+
+    /// Starquake in play from the player's tape, on the joystick, played by pad; `None` without
+    /// the tape.
+    #[allow(clippy::print_stderr, reason = "a skipped test says why")]
+    fn starquake_by_pad() -> Option<(Session, Play)> {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let zip = repo.join("assets/Starquake.tap.zip");
+        if !zip.exists() {
+            eprintln!("skipped: no {} (the player's own tape)", zip.display());
+            return None;
+        }
+        let tapes = sidekick_def::tapes_in(&zip).expect("the zip holds a tape");
+        let def = starquake();
+        let mut play = Play::new(Mapping::new(Some(&def)));
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        machine.load_tap(&tapes[0].bytes).expect("the tape goes in");
+        let mut s = Session::new(machine, Some(def));
+        for _ in 0..400 {
+            frame(&mut s, &mut play, &[]);
+        }
+        s.machine_mut().key(Key::Space, true);
+        for _ in 0..4 {
+            frame(&mut s, &mut play, &[]);
+        }
+        s.machine_mut().key(Key::Space, false);
+        assert!((0..1500).any(|_| {
+            frame(&mut s, &mut play, &[]);
+            s.state() == Some("title")
+        }));
+        play.pressed(Part::Start);
+        assert!((0..500).any(|_| {
+            frame(&mut s, &mut play, &[]);
+            s.state() == Some("play")
+        }));
+        s.switch("no-harm", true).expect("it goes on");
+        Some((s, play))
+    }
+
+    /// Runs `frames` frames of `s` holding `part`, pressed at the first.
+    fn hold(s: &mut Session, play: &mut Play, part: Part, frames: usize) {
+        play.pressed(part);
+        for _ in 0..frames {
+            frame(s, play, &[part]);
+        }
+        for _ in 0..10 {
+            frame(s, play, &[]);
+        }
+    }
+
+    #[test]
+    fn on_starquake_the_d_pad_boards_and_flies_east_picks_up_and_south_builds() {
+        let Some((mut s, mut play)) = starquake_by_pad() else {
+            return;
+        };
+        let number = |s: &Session, name: &str| s.reading()[name].number().expect(name);
+        let on_a_platform = |s: &Session| number(s, "blob_mode") == 2;
+        // Room 234's hover pad, and the floor beside it (games/starquake/tests/hover-pad.toml).
+        enter_room(&mut s, &mut play, 234, 72, 87);
+        let on_the_pad = s.clone();
+
+        hold(&mut s, &mut play, Part::East, 30);
+        assert!(!on_a_platform(&s), "east doesn't board");
+        hold(&mut s, &mut play, Part::DPad(Way::Up), 5);
+        assert!(on_a_platform(&s), "the D-pad's up boards");
+        let height = number(&s, "blob_y");
+        hold(&mut s, &mut play, Part::South, 10);
+        assert_eq!(number(&s, "blob_y"), height, "south doesn't fly down");
+        hold(&mut s, &mut play, Part::DPad(Way::Down), 5);
+        assert!(number(&s, "blob_y") < height, "the D-pad's down does");
+
+        let (mut s, mut play) = (on_the_pad, Play::new(play.mapping().clone()));
+        enter_room(&mut s, &mut play, 234, 88, 87);
+        let platforms = number(&s, "platforms");
+        hold(&mut s, &mut play, Part::DPad(Way::Down), 10);
+        assert_eq!(
+            number(&s, "platforms"),
+            platforms,
+            "the D-pad's down doesn't build"
+        );
+        hold(&mut s, &mut play, Part::South, 10);
+        assert_eq!(number(&s, "platforms"), platforms - 2, "south builds");
     }
 }

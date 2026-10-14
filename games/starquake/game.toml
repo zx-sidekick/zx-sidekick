@@ -306,8 +306,9 @@ note = "Stops zappers, creatures and deadly scenery taking a life, and creatures
 # The pad.
 
 [pad.default]
-dpad = "joystick"
-stick = "joystick"
+# Up and down on the D-pad and stick only board and fly; east picks up and south builds.
+dpad = { up = "fly-up", down = "fly-down" }
+stick = { up = "fly-up", down = "fly-down" }
 west = "fire"
 south = "build"
 east = "pick-up"

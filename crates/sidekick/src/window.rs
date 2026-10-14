@@ -7,7 +7,7 @@ use crate::{
     games::{self, Game, Playing},
     keys::{self, spectrum_key, Spectrum},
     menu::{self, Menu, Outcome},
-    pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
+    pad::{self, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
     picture::{placement, to_rgba, Layout, FULL, LOGICAL_PIXEL, SCREEN},
     press::{self, Pressed},
@@ -860,18 +860,8 @@ impl Player {
             } else {
                 pads.held().collect()
             };
-            let mut changes = self.play.update(held.into_iter());
-            let patches = std::mem::take(&mut changes.patches);
-            send(self.session.machine_mut(), changes);
-            let applied: Vec<_> = patches
-                .into_iter()
-                .filter(|p| self.session.patch(p))
-                .collect();
-            let ran = self.session.run_frame();
-            for patch in &applied {
-                self.session.unpatch(patch);
-            }
-            ran.map_err(|e| e.to_string())?;
+            let changes = self.play.update(held.into_iter());
+            pad::run_frame(&mut self.session, changes).map_err(|e| e.to_string())?;
             if self.save_point == SavePoint::Starting {
                 match saves::to_bytes(&mut self.session, &self.saves) {
                     Ok(bytes) => self.save_point = SavePoint::Held(bytes),
@@ -2150,20 +2140,6 @@ fn is_fullscreen_toggle(scancode: Scancode, keymod: Mod) -> bool {
 }
 
 /// Presses and lets go on the Spectrum what a pad changed.
-fn send(machine: &mut Machine, changes: Changes) {
-    let inputs = changes
-        .release
-        .into_iter()
-        .map(|i| (i, false))
-        .chain(changes.press.into_iter().map(|i| (i, true)));
-    for (input, pressed) in inputs {
-        match input {
-            Input::Kempston(direction) => machine.kempston(direction.kempston(), pressed),
-            Input::Key(key) => machine.key(key.0, pressed),
-        }
-    }
-}
-
 fn press(machine: &mut Machine, scancode: Scancode, pressed: bool) {
     match spectrum_key(scancode) {
         Some(Spectrum::Key(key)) => machine.key(key, pressed),

@@ -16,15 +16,15 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 | Button | Does | In the definition |
 |---|---|---|
-| D-pad, left stick | Move | `dpad`, `stick = "joystick"` |
+| D-pad, left stick | Move; up boards a hover platform and flies it up, down flies it down and lands it, and neither picks up or builds | `dpad`, `stick = { up = "fly-up", down = "fly-down" }` |
 | West | Fire | `west = "fire"` |
-| South | Build a platform | `south = "build"` |
-| East | Pick up or swap an item | `east = "pick-up"` |
+| South | Build a platform, and nothing else down does | `south = "build"` |
+| East | Pick up or swap an item, and nothing else up does | `east = "pick-up"` |
 | North | Switch level 5's route | `north = "next-route"` |
 | Start | Pause in play; start a game on the title screen | `[pad.default] start`, `[pad.title] start` |
 | Select | The guidance menu | always |
 
-**Split meanings.** In the original, *up* both picks up and boards the hover platform, and *down* both builds and flies down. The pad separates them: the D-pad's up and down board and fly; the east button only picks up, and the south one only builds. The game decides in its own code what *up* means at that moment, so `pick-up` and `build` are `[[actions]]` with a `patch_for_frame` at the point where it reads the direction for each purpose, or a write that suppresses one meaning for that frame. Find the decision points first (below). If it proves fragile, ship without the split.
+**Split meanings.** In the original, *up* both picks up or swaps an item and boards a hover platform (on one, it flies up), and *down* both builds and, on a platform, flies down and lands. The pad separates them: the D-pad's and the stick's up and down only board and fly, and so do the arrow keys, which are the D-pad; the east button only picks up or swaps, and the south one only builds. Each sends the joystick's up or down with a `patch_for_frame` that leaves it one meaning, written before each frame it's held and put back after it (`docs/re/starquake.md`, "Splitting up and down"): `fly-up` keeps up from counting as a fresh press, so nothing is picked up or swapped; `pick-up` keeps the game from noting up as the last way moved, which a hover pad boards on, and keeps a platform from rising; `fly-down` keeps down from building; `build` keeps the last way moved too, and keeps a platform from sinking. The game reads the joystick and decides on it within one frame, so this holds for every press. Up on the D-pad and east held together do neither, and so do down and south. No keys are added: the keyboard plays as the original.
 
 **The pause notice:** in the original, any move or fire continues once the pause key is let go. On a pad, A or B dismisses it.
 

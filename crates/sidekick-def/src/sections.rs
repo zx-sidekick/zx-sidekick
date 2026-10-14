@@ -617,6 +617,56 @@ pub enum PadTarget {
     Named(String),
     /// Keys, a tap, or an action.
     Table(PadTable),
+    /// For the D-pad or the stick: what each way does.
+    Ways(PadWays),
+}
+
+/// What each way of the D-pad or the stick does, by name: `joystick` (that way on the joystick),
+/// a direction, `fire`, `none`, or an action's id. A way left out drives the joystick that way.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PadWays {
+    /// Up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub up: Option<String>,
+    /// Down.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub down: Option<String>,
+    /// Left.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left: Option<String>,
+    /// Right.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right: Option<String>,
+}
+
+impl PadWays {
+    /// What `way` (`up`, `down`, `left` or `right`) does: `joystick` when left out.
+    #[must_use]
+    pub fn way(&self, way: &str) -> &str {
+        let named = match way {
+            "up" => &self.up,
+            "down" => &self.down,
+            "left" => &self.left,
+            "right" => &self.right,
+            _ => &None,
+        };
+        named.as_deref().unwrap_or("joystick")
+    }
+
+    /// Each way that's given, by name.
+    #[must_use]
+    pub fn given(&self) -> Vec<(&'static str, &str)> {
+        [
+            ("up", &self.up),
+            ("down", &self.down),
+            ("left", &self.left),
+            ("right", &self.right),
+        ]
+        .into_iter()
+        .filter_map(|(way, name)| name.as_deref().map(|n| (way, n)))
+        .collect()
+    }
 }
 
 /// Keys, a tap, or an action.

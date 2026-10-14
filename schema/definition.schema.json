@@ -1191,8 +1191,47 @@
         {
           "description": "Keys, a tap, or an action.",
           "$ref": "#/$defs/PadTable"
+        },
+        {
+          "description": "For the D-pad or the stick: what each way does.",
+          "$ref": "#/$defs/PadWays"
         }
       ]
+    },
+    "PadWays": {
+      "description": "What each way of the D-pad or the stick does, by name: `joystick` (that way on the joystick),\na direction, `fire`, `none`, or an action's id. A way left out drives the joystick that way.",
+      "type": "object",
+      "properties": {
+        "down": {
+          "description": "Down.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "left": {
+          "description": "Left.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "right": {
+          "description": "Right.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "up": {
+          "description": "Up.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "Patch": {
       "description": "Bytes written over the game's, checked first.",

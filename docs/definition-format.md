@@ -290,6 +290,7 @@ south = { keys = ["2"] }
 What a part can do:
 
 - `"joystick"` (directions only): the joystick named in `[run]`.
+- `{ up = "fly-up", down = "fly-down" }` (directions only): what each way does, by name: `"joystick"` (that way on the joystick), a direction, `"fire"`, `"none"` or an action. A way left out drives the joystick that way. The keyboard's arrows are the D-pad, so they follow it.
 - `"up"`, `"down"`, `"left"`, `"right"`, `"fire"`: one joystick direction or fire.
 - `{ keys = ["SYMBOL SHIFT", "A"] }`: those keys, held as long as the button is.
 - `{ tap = ["P"], frames = 2 }`: those keys for a fixed number of frames, however long the button is held. `frames` is 2 when not given.
@@ -330,11 +331,11 @@ host_key = "Tab"
 | `id`, `label` | Its name, and its text where shown. |
 | `menu`, `menu_in` | A row in the guidance menu, in `menu`'s words, offered in the states `menu_in` names (every state when left out). Like Exit, it wants a second press, and then the menu closes and the action is done. |
 | `keys`, `tap`, `sequence`, `frames`, `joystick` | What reaches the game, as in `[pad]`. |
-| `patch_for_frame` | Patches applied for the frames the action lasts, then undone; `expect` as in `[[cheats]]`. This is how a pad splits a direction's two meanings. |
+| `patch_for_frame` | Patches applied for the frames the action lasts, then undone; `expect` as in `[[cheats]]`. This is how a pad splits a direction's two meanings: one action sends the direction with a patch that skips one meaning, another with a patch that skips the other, and the D-pad's way does one (`dpad = { up = "fly-up" }`) while a button does the other. |
 | `script` | A function of the script to call (see Scripts). |
 | `host_key` | A key the Spectrum doesn't have that also does this, as a pad button would: `Tab`, `F1` to `F12`, `Insert`, `Delete`, `Home`, `End`, `PageUp` or `PageDown`. Esc, F5, F9 and F11 are the program's own. |
 
-An action lasts while its button (or key) is held, and at least `frames` frames from the press when it gives `frames`: its `keys` and `joystick` are held, and its `patch_for_frame` applied before each of those frames and undone after. A patch whose `expect` bytes aren't there that frame is skipped, so it never lands on code that isn't the game's; the rest of the action still happens. A `script` does nothing until scripts arrive.
+An action lasts while its button (or key) is held, and at least `frames` frames from the press when it gives `frames`: its `keys` and `joystick` are held, and its `patch_for_frame` applied before each of those frames and undone after. Each patch is written just before a frame and the game's bytes put back just after it, so a game saved, loaded or let go between frames never holds it. That's enough where the game reads the direction and acts on it within one frame; find that out on the real tape first. A patch whose `expect` bytes aren't there that frame is skipped, so it never lands on code that isn't the game's; the rest of the action still happens. Two actions held together apply both sets of patches. A `script` does nothing until scripts arrive.
 
 ## `[text_entry]`: typing a word with a pad
 

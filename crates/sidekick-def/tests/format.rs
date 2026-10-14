@@ -268,6 +268,45 @@ south = {{ sequence = ["1", "NOPE"], frames = 5 }}
 }
 
 #[test]
+fn the_d_pad_s_and_the_stick_s_ways_each_name_what_they_do() {
+    let text = format!(
+        r#"{HEADER}
+[[actions]]
+id = "fly-up"
+joystick = ["up"]
+
+[pad.default]
+dpad = {{ up = "fly-up", down = "none", left = "joystick", right = "fire" }}
+stick = {{ up = "jump", down = "menu" }}
+east = {{ up = "fly-up" }}
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let mut problems: Vec<String> = def
+        .check()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|p| p.starts_with("pad."))
+        .collect();
+    problems.sort();
+    assert_eq!(
+        problems,
+        [
+            "pad.default.east: only the D-pad and the stick have ways",
+            "pad.default.stick.down: \"menu\" isn't joystick, a direction, fire, none or an action",
+            "pad.default.stick.up: \"jump\" isn't joystick, a direction, fire, none or an action",
+        ]
+    );
+    assert!(
+        Definition::from_toml(&format!(
+            "{HEADER}\n[pad.default]\ndpad = {{ upp = \"up\" }}\n"
+        ))
+        .is_err(),
+        "a way that isn't one"
+    );
+}
+
+#[test]
 fn an_action_s_host_key_is_one_the_spectrum_lacks() {
     let problems = |key: &str| -> Vec<String> {
         let text = format!(

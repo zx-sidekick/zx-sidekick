@@ -495,6 +495,23 @@ impl Checker<'_> {
                             );
                         }
                     }
+                    PadTarget::Ways(ways) => {
+                        if !matches!(part, "dpad" | "stick") {
+                            self.report(&path, "only the D-pad and the stick have ways");
+                        }
+                        for (way, name) in ways.given() {
+                            let ok = name == "joystick"
+                                || name == "none"
+                                || DIRECTIONS.contains(&name)
+                                || self.action_exists(name);
+                            if !ok {
+                                self.report(
+                                    format!("{path}.{way}"),
+                                    format!("{name:?} isn't joystick, a direction, fire, none or an action"),
+                                );
+                            }
+                        }
+                    }
                     PadTarget::Table(table) => {
                         self.keys(&path, &table.keys);
                         self.keys(&path, &table.tap);
