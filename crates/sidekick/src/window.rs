@@ -1728,11 +1728,10 @@ impl Player {
     }
 
     /// The menu, opened on the game as it stands: `can_load`, whether the quick slot holds a
-    /// save. Its Spectrum keyboard toggle shows only where the game has that keyboard off, in
-    /// the state it was last known in.
+    /// save. Its Spectrum keyboard toggle shows for a game that has that keyboard off anywhere.
     fn open_menu(&self, can_load: bool) -> Menu {
-        let game = keys::spectrum_on(self.session.definition(), self.known_state(), false);
-        let keyboard = (!game).then_some(self.keyboard);
+        let toggle = keys::spectrum_off_anywhere(self.session.definition());
+        let keyboard = toggle.then_some(self.keyboard);
         Menu::open(&self.session, self.level, &self.title, can_load, keyboard)
     }
 
@@ -2621,7 +2620,7 @@ notice = { text = "Press fire." }
     }
 
     #[test]
-    fn the_toggle_shows_only_where_the_game_has_the_spectrum_keyboard_off() {
+    fn the_toggle_shows_for_a_game_with_the_spectrum_keyboard_off_anywhere() {
         let data = tempfile::TempDir::new().expect("a folder");
         let machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
         let mut plain = player(Session::new(machine, None), data.path());
@@ -2632,7 +2631,10 @@ notice = { text = "Press fire." }
         let some = r#"keyboard = "spectrum"
             keyboard_in = ["define"]"#;
         let mut define = player(keyboard_game(some, true), data.path());
-        assert!(keyboard_row(&mut define).is_none(), "in a state it's on in");
+        assert!(
+            keyboard_row(&mut define).is_some(),
+            "in a state it's on in too, the game having it off elsewhere"
+        );
         let mut elsewhere = player(keyboard_game(some, false), data.path());
         assert!(keyboard_row(&mut elsewhere).is_some(), "where it's off");
     }

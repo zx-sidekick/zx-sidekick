@@ -51,6 +51,16 @@ pub(crate) fn spectrum_on(
     })
 }
 
+/// Whether the definition has the Spectrum's keyboard off in any state: everywhere but in plain
+/// play and with `keyboard = "spectrum"` throughout, so the menu's toggle can turn it on.
+pub(crate) fn spectrum_off_anywhere(definition: Option<&Definition>) -> bool {
+    definition.is_some_and(|d| {
+        d.run
+            .as_ref()
+            .is_none_or(|run| run.keyboard == Keyboard::Pad || !run.keyboard_in.is_empty())
+    })
+}
+
 /// What the keyboard is in `state`: typing when the definition's `[text_entry]` or
 /// `[name_entry]` asks for text there; the Spectrum's keyboard where it's on
 /// ([`spectrum_on`]); a pad otherwise, the loading screen included, where Enter is Start.
@@ -461,6 +471,19 @@ mod tests {
         );
         assert_eq!(mode(Some(&some), Some("play"), false), KeyboardMode::Pad);
         assert_eq!(mode(Some(&some), None, false), KeyboardMode::Pad);
+    }
+
+    #[test]
+    fn the_menu_s_toggle_is_for_a_game_with_the_spectrum_keyboard_off_anywhere() {
+        assert!(spectrum_off_anywhere(Some(&def(""))), "a pad by default");
+        assert!(spectrum_off_anywhere(Some(&def("[run]\nsync = 0x8000"))));
+        assert!(!spectrum_off_anywhere(Some(&def(
+            "[run]\nkeyboard = \"spectrum\""
+        ))));
+        assert!(spectrum_off_anywhere(Some(&def(
+            "[run]\nkeyboard = \"spectrum\"\nkeyboard_in = [\"define\"]"
+        ))));
+        assert!(!spectrum_off_anywhere(None), "played plainly");
     }
 
     #[test]
