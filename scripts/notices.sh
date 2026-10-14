@@ -5,9 +5,10 @@
 #
 #   scripts/notices.sh FILE
 set -euo pipefail
-cd "$(dirname "$0")/.."
 
 file=${1:?the file to write}
+file="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
+cd "$(dirname "$0")/.."
 if ! command -v cargo-about >/dev/null; then
   echo "notices: cargo-about writes the notices; install it with: cargo install --locked cargo-about" >&2
   exit 1
