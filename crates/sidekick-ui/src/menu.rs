@@ -40,13 +40,14 @@ pub struct SwitchRow {
     pub refusal: Option<String>,
 }
 
-/// A row choosing one of a few settings, stepped through with left and right.
+/// The Spectrum keyboard's row: a toggle showing whether it's on, noted while that's the
+/// game's own choice.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ChoiceRow {
-    /// Its label.
-    pub label: String,
-    /// The setting chosen, as shown: "Game's choice (off)", "On".
-    pub value: String,
+pub struct KeyboardRow {
+    /// The toggle.
+    pub switch: SwitchRow,
+    /// Whether it's as the game chose, rather than overridden for the session.
+    pub games_choice: bool,
 }
 
 /// A row of the menu that can be chosen.
@@ -56,7 +57,7 @@ pub enum Row {
     Level,
     /// A training switch, by index.
     Switch(usize),
-    /// The Spectrum keyboard's setting.
+    /// The Spectrum keyboard's toggle.
     Keyboard,
     /// An action (Back to the game, End this game, Exit), by index.
     Action(usize),
@@ -71,8 +72,8 @@ pub struct Menu {
     pub levels: Option<Levels>,
     /// The training switches.
     pub switches: Vec<SwitchRow>,
-    /// The Spectrum keyboard's setting, under the controls' label.
-    pub keyboard: Option<ChoiceRow>,
+    /// The Spectrum keyboard's toggle, under the controls' label.
+    pub keyboard: Option<KeyboardRow>,
     /// The actions, in order: "Back to the game" first.
     pub actions: Vec<String>,
     /// The row chosen.
@@ -289,7 +290,7 @@ impl Menu {
                 Align::Left,
                 &label,
             );
-            Self::choice_row(&mut c, fonts, top, keyboard, self.lit(Row::Keyboard));
+            self.keyboard_row(&mut c, fonts, top, keyboard, self.lit(Row::Keyboard));
         }
         c.rect((1.0, layout.rule, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
         for (i, (action, &top)) in self.actions.iter().zip(&layout.actions).enumerate() {
@@ -468,31 +469,27 @@ impl Menu {
         }
     }
 
-    /// A choice: its label at the left, the setting at the right between arrows that light up
-    /// while it's chosen, as the level box's do.
-    fn choice_row(
+    /// The keyboard's toggle, and beside it, while it follows the game, a muted note saying so.
+    fn keyboard_row(
+        &self,
         c: &mut Canvas,
         fonts: &mut Fonts,
         top: f32,
-        row: &ChoiceRow,
+        row: &KeyboardRow,
         lit: Option<Color>,
     ) {
-        if let Some(fill) = lit {
-            Self::chosen_box(c, (12.0, top - 7.0, 494.0, 30.0), fill);
+        self.switch_row(c, fonts, top, &row.switch, lit);
+        if row.games_choice {
+            let note = Style::new(12.0, colors::FAINT);
+            span(
+                c,
+                fonts,
+                "game's choice",
+                (439.0, top + 1.0),
+                Align::Right,
+                &note,
+            );
         }
-        let label = Style::new(14.0, SWITCH_TEXT).weight(Weight::Medium);
-        span(c, fonts, &row.label, (27.0, top), Align::Left, &label);
-        let arrows = if lit.is_some() {
-            colors::ACCENT
-        } else {
-            colors::FAINT
-        };
-        let (y0, y1) = (top + 3.0, top + 13.0);
-        let middle = f32::midpoint(y0, y1);
-        c.polygon(&[(306.0, y0), (306.0, y1), (298.0, middle)], arrows);
-        c.polygon(&[(483.0, y0), (483.0, y1), (491.0, middle)], arrows);
-        let value = Style::new(14.0, colors::TEXT).weight(Weight::Medium);
-        span(c, fonts, &row.value, (394.5, top), Align::Center, &value);
     }
 
     fn saves_row(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, can_load: bool) {

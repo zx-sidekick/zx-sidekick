@@ -5,7 +5,7 @@
 use crate::press::{self, Pressed};
 use sidekick_core::{Record, Session, SwitchError};
 use sidekick_def::Definition;
-use sidekick_ui::{ChoiceRow, Levels, Menu as Card, PadLabels, Question, Row, SwitchRow};
+use sidekick_ui::{KeyboardRow, Levels, Menu as Card, PadLabels, Question, Row, SwitchRow};
 use std::time::Instant;
 
 /// What the menu is asked to do.
@@ -75,9 +75,8 @@ pub(crate) struct Menu {
     levels: Vec<(String, String)>,
     level: usize,
     switches: Vec<Switch>,
-    /// The Spectrum keyboard's setting for the session: `None` the game's own choice, which is
-    /// `game_keyboard` here.
-    keyboard: Option<bool>,
+    /// The Spectrum keyboard's toggle, showing what's in effect, and the game's own choice.
+    keyboard: Switch,
     game_keyboard: bool,
     actions: Vec<(Action, String)>,
     chosen: Row,
@@ -97,7 +96,7 @@ impl Menu {
     /// The menu for the game being played, as its settings stand: `level` is the guidance
     /// level in use; `can_load`, whether the quick slot holds a save; `keyboard`, the Spectrum
     /// keyboard's setting for the session (`None`, the game's choice), and `game_keyboard` the
-    /// game's choice here.
+    /// game's choice here, which the toggle shows until it's overridden.
     pub(crate) fn open(
         session: &Session,
         level: usize,
@@ -155,7 +154,14 @@ impl Menu {
             level: level.min(levels.len().saturating_sub(1)),
             levels,
             switches,
-            keyboard,
+            keyboard: Switch {
+                id: String::new(),
+                label: "Spectrum keyboard".to_owned(),
+                marks_score: false,
+                on: keyboard.unwrap_or(game_keyboard),
+                refusal: None,
+                flipped: None,
+            },
             game_keyboard,
             actions,
             chosen,
@@ -185,9 +191,13 @@ impl Menu {
     /// [`Self::press_due`], or for the next input, which never waits behind it. A switch flips
     /// at once, its knob sliding across: the slide is its press.
     pub(crate) fn input(&mut self, input: Input, session: &mut Session, now: Instant) -> Outcome {
-        let before: Vec<bool> = self.switches.iter().map(|s| s.on).collect();
+        let before: Vec<bool> = self.switches().map(|s| s.on).collect();
         let outcome = self.take(input, session, now);
-        for (switch, was) in self.switches.iter_mut().zip(before) {
+        let switches = self
+            .switches
+            .iter_mut()
+            .chain(std::iter::once(&mut self.keyboard));
+        for (switch, was) in switches.zip(before) {
             if switch.on != was {
                 switch.flipped = Some(now);
             }
@@ -292,13 +302,8 @@ impl Menu {
                 }
                 switch.on = on;
             }
-            // Round the three, either way: the game's choice, on, off.
             Row::Keyboard => {
-                self.keyboard = match (self.keyboard, up) {
-                    (None, true) | (Some(false), false) => Some(true),
-                    (Some(true), true) | (None, false) => Some(false),
-                    (Some(false), true) | (Some(true), false) => None,
-                };
+                self.keyboard.on = if wrap { !self.keyboard.on } else { up };
             }
             Row::Save(i) => {
                 self.chosen = Row::Save(if up {
@@ -399,9 +404,19 @@ impl Menu {
         self.level
     }
 
-    /// The Spectrum keyboard's setting chosen: on, off, or `None`, the game's choice.
+    /// The training switches, then the keyboard's.
+    fn switches(&self) -> impl Iterator<Item = &Switch> {
+        self.switches.iter().chain(std::iter::once(&self.keyboard))
+    }
+
+    /// The Spectrum keyboard's setting for the session: `None` while the toggle matches the
+    /// game's own choice, so flipping it back returns to that; on or off where it overrides.
     pub(crate) const fn keyboard(&self) -> Option<bool> {
-        self.keyboard
+        if self.keyboard.on == self.game_keyboard {
+            None
+        } else {
+            Some(self.keyboard.on)
+        }
     }
 
     /// The card, as it stands, for a pad marked as `pad` says, its switches' knobs at rest.
@@ -417,15 +432,9 @@ impl Menu {
                 level: self.level,
             }),
             switches: self.switches.iter().map(|s| switch_row(s, now)).collect(),
-            keyboard: Some(ChoiceRow {
-                label: "Spectrum keyboard".to_owned(),
-                value: match self.keyboard {
-                    None if self.game_keyboard => "Game's choice (on)",
-                    None => "Game's choice (off)",
-                    Some(true) => "On",
-                    Some(false) => "Off",
-                }
-                .to_owned(),
+            keyboard: Some(KeyboardRow {
+                switch: switch_row(&self.keyboard, now),
+                games_choice: self.keyboard.on == self.game_keyboard,
             }),
             actions: self.actions.iter().map(|(_, a)| a.clone()).collect(),
             saves: Some(self.can_load),
@@ -640,16 +649,16 @@ menu = "End this game"
     }
 
     #[test]
-    fn the_spectrum_keyboard_is_the_game_s_choice_on_or_off_until_applied() {
+    fn the_spectrum_keyboard_s_toggle_overrides_the_game_s_choice_until_flipped_back() {
         let mut s = session(DEFINITION);
-        let value = |menu: &Menu| {
+        let row = |menu: &Menu| {
             let card = menu.card(PadLabels::Letters);
             let row = card.keyboard.expect("the keyboard's row");
-            assert_eq!(row.label, "Spectrum keyboard");
-            row.value
+            assert_eq!(row.switch.label, "Spectrum keyboard");
+            (row.switch.on, row.games_choice)
         };
         let mut menu = Menu::open(&s, 0, "Test", false, None, false);
-        assert_eq!(value(&menu), "Game's choice (off)");
+        assert_eq!(row(&menu), (false, true), "off, as the game chose");
         assert_eq!(menu.keyboard(), None);
         press(&mut menu, &mut s, &[Input::Down; 4]);
         assert_eq!(
@@ -657,34 +666,17 @@ menu = "End this game"
             Row::Keyboard,
             "past the level and the three switches"
         );
-        let mut seen = Vec::new();
-        for _ in 0..3 {
-            act(&mut menu, &mut s, Input::Right);
-            seen.push((value(&menu), menu.keyboard()));
-        }
-        assert_eq!(
-            seen,
-            [
-                ("On".to_owned(), Some(true)),
-                ("Off".to_owned(), Some(false)),
-                ("Game's choice (off)".to_owned(), None),
-            ],
-            "right goes round the three"
-        );
-        act(&mut menu, &mut s, Input::Left);
-        assert_eq!(
-            menu.keyboard(),
-            Some(false),
-            "left goes round the other way"
-        );
         act(&mut menu, &mut s, Input::Confirm);
-        assert_eq!(
-            menu.keyboard(),
-            None,
-            "Enter steps on, back to the game's choice"
-        );
+        assert_eq!(row(&menu), (true, false), "on, overriding the game");
+        assert_eq!(menu.keyboard(), Some(true));
+        act(&mut menu, &mut s, Input::Left);
+        assert_eq!(row(&menu), (false, true), "flipped back: the game's choice");
+        assert_eq!(menu.keyboard(), None);
+        act(&mut menu, &mut s, Input::Right);
+        assert_eq!(menu.keyboard(), Some(true), "right turns it on");
         act(&mut menu, &mut s, Input::Click(Row::Keyboard));
-        assert_eq!(menu.keyboard(), Some(true), "a click steps on");
+        assert_eq!(menu.keyboard(), None, "a click flips it");
+        act(&mut menu, &mut s, Input::Click(Row::Keyboard));
         assert!(
             menu.card(PadLabels::Letters).switches.iter().all(|s| !s.on),
             "no training switch with it"
@@ -696,10 +688,20 @@ menu = "End this game"
         assert_eq!(menu.keyboard(), Some(true), "for the window to keep");
         assert!(s.record().switches.is_empty(), "not a training switch");
 
-        let chosen = Menu::open(&s, 0, "Test", false, Some(false), true);
-        assert_eq!(value(&chosen), "Off", "as chosen before");
-        let game = Menu::open(&s, 0, "Test", false, None, true);
-        assert_eq!(value(&game), "Game's choice (on)");
+        let mut kept = Menu::open(&s, 0, "Test", false, Some(true), false);
+        assert_eq!(row(&kept), (true, false), "as overridden before");
+        kept.input(Input::Click(Row::Keyboard), &mut s, Instant::now());
+        assert_eq!(kept.keyboard(), None, "flipped back to the game's choice");
+        let on = Menu::open(&s, 0, "Test", false, None, true);
+        assert_eq!(row(&on), (true, true), "on, as the game chose");
+        let mut esc = Menu::open(&s, 0, "Test", false, None, true);
+        esc.input(Input::Click(Row::Keyboard), &mut s, Instant::now());
+        assert_eq!(esc.keyboard(), Some(false));
+        assert_eq!(
+            act(&mut esc, &mut s, Input::Back),
+            Outcome::Cancelled,
+            "Esc leaves it for the window to drop"
+        );
     }
 
     #[test]

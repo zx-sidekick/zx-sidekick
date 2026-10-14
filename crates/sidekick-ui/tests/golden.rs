@@ -2,9 +2,9 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    pins, CardRow, Cell, Chip, ChoiceRow, ClipSlot, Edge, EntryCard, EntryMode, Face, Fonts,
-    HintSlot, HowTo, HowToEntry, HowToTarget, Icon, Inside, Levels, LibraryEntry, LibraryPage,
-    Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer, PadLabels, PadMark, Panel,
+    pins, CardRow, Cell, Chip, ClipSlot, Edge, EntryCard, EntryMode, Face, Fonts, HintSlot, HowTo,
+    HowToEntry, HowToTarget, Icon, Inside, KeyboardRow, Levels, LibraryEntry, LibraryPage, Look,
+    MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer, PadLabels, PadMark, Panel,
     PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Place, PromptButton, Question,
     Refusal, Route, RouteColor, Row, ScoreRow, Step, StepLine, SwitchRow, TapePrompt, ThisGame,
 };
@@ -245,9 +245,14 @@ fn starquake_menu() -> Menu {
         ]
         .map(switch)
         .to_vec(),
-        keyboard: Some(ChoiceRow {
-            label: "Spectrum keyboard".to_owned(),
-            value: "Game's choice (off)".to_owned(),
+        keyboard: Some(KeyboardRow {
+            switch: SwitchRow {
+                label: "Spectrum keyboard".to_owned(),
+                on: false,
+                knob: 0,
+                refusal: None,
+            },
+            games_choice: true,
         }),
         actions: ["Back to the game", "End this game", "Exit Starquake"]
             .map(str::to_owned)
@@ -281,9 +286,14 @@ fn the_guidance_menu() {
     let armed = Menu {
         levels: None,
         switches: Vec::new(),
-        keyboard: Some(ChoiceRow {
-            label: "Spectrum keyboard".to_owned(),
-            value: "Game's choice (on)".to_owned(),
+        keyboard: Some(KeyboardRow {
+            switch: SwitchRow {
+                label: "Spectrum keyboard".to_owned(),
+                on: true,
+                knob: 100,
+                refusal: None,
+            },
+            games_choice: true,
         }),
         chosen: Row::Action(1),
         armed: Some((1, "end this game".to_owned())),
@@ -293,15 +303,20 @@ fn the_guidance_menu() {
     golden("menu-plain-armed.png", &armed.draw(&mut fonts, 1.0).png());
 
     let keyboard = Menu {
-        keyboard: Some(ChoiceRow {
-            label: "Spectrum keyboard".to_owned(),
-            value: "On".to_owned(),
+        keyboard: Some(KeyboardRow {
+            switch: SwitchRow {
+                label: "Spectrum keyboard".to_owned(),
+                on: true,
+                knob: 100,
+                refusal: None,
+            },
+            games_choice: false,
         }),
         chosen: Row::Keyboard,
         ..starquake_menu()
     };
     golden(
-        "menu-keyboard-chosen.png",
+        "menu-keyboard-overridden.png",
         &keyboard.draw(&mut fonts, 1.0).png(),
     );
 

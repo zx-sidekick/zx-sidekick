@@ -2509,6 +2509,79 @@ notice = { text = "Press fire." }
         }
     }
 
+    /// A game being played in a window, its saves in `data`.
+    fn player(session: Session, data: &Path) -> Player {
+        Player::new(Playing {
+            mapping: Mapping::new(session.definition()),
+            session,
+            title: "Test".to_owned(),
+            folder: None,
+            saves: Saves::of_tape("test.tap", "ABC123", data),
+            quit_slot: false,
+            keep_lists: false,
+            save_point: SavePoint::Quick,
+            paused: false,
+            source: None,
+        })
+    }
+
+    #[test]
+    fn the_menu_s_keyboard_toggle_is_kept_by_back_to_the_game_and_dropped_by_esc() {
+        let machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        let data = tempfile::TempDir::new().expect("a folder");
+        // Played plainly, the game's choice is the Spectrum keyboard on.
+        let mut player = player(Session::new(machine, None), data.path());
+        let mut pads = Pads::default();
+        let mut key = |player: &mut Player, scancode| {
+            player.menu_event(&key_down(scancode), &[], &mut pads);
+        };
+        // Esc opens the menu on Back to the game; up is the keyboard's toggle, Enter flips it.
+        for scancode in [
+            Scancode::Escape,
+            Scancode::Up,
+            Scancode::Return,
+            Scancode::Escape,
+        ] {
+            key(&mut player, scancode);
+        }
+        assert!(player.menu.is_none());
+        assert_eq!(player.keyboard, None, "Esc drops the change");
+
+        for scancode in [Scancode::Escape, Scancode::Up, Scancode::Return] {
+            key(&mut player, scancode);
+        }
+        let row = player
+            .menu
+            .as_ref()
+            .and_then(|m| m.card(PadLabels::Letters).keyboard)
+            .expect("the keyboard's row");
+        assert!(
+            !row.switch.on && !row.games_choice,
+            "off, overriding the game"
+        );
+        for scancode in [Scancode::Down, Scancode::Return] {
+            key(&mut player, scancode);
+        }
+        player.menu_press_due(&mut Pads::default(), Instant::now() + press::SHOWN);
+        assert!(player.menu.is_none(), "Back to the game");
+        assert_eq!(player.keyboard, Some(false), "keeps it for the session");
+
+        for scancode in [
+            Scancode::Escape,
+            Scancode::Up,
+            Scancode::Return,
+            Scancode::Down,
+        ] {
+            key(&mut player, scancode);
+        }
+        key(&mut player, Scancode::Return);
+        player.menu_press_due(&mut Pads::default(), Instant::now() + press::SHOWN);
+        assert_eq!(
+            player.keyboard, None,
+            "flipped back: the game's choice again"
+        );
+    }
+
     #[test]
     fn esc_closes_an_open_text_card_and_opens_the_menu_without_one() {
         let definition = Definition::from_toml(
@@ -2539,18 +2612,7 @@ notice = { text = "Press fire." }
         session.run_frame().expect("a frame");
         assert_eq!(session.state(), Some("booth"));
         let data = tempfile::TempDir::new().expect("a folder");
-        let mut player = Player::new(Playing {
-            mapping: Mapping::new(session.definition()),
-            session,
-            title: "Test".to_owned(),
-            folder: None,
-            saves: Saves::of_tape("test.tap", "ABC123", data.path()),
-            quit_slot: false,
-            keep_lists: false,
-            save_point: SavePoint::Quick,
-            paused: false,
-            source: None,
-        });
+        let mut player = player(session, data.path());
         let mut pads = Pads::default();
         assert!(player.entry_event(&[(Part::South, Maker::Other)], &mut pads));
         assert!(player.entry.is_some(), "a pad press opens the card");
