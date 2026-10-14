@@ -952,7 +952,7 @@ mod tests {
         send(s.machine_mut(), changes);
         s.run_frame().expect("a frame");
         play.frame_ran();
-        play.enter(s.state());
+        play.enter(s.progress().last_known.as_deref());
     }
 
     #[test]
@@ -988,11 +988,21 @@ mod tests {
         assert!(titled, "the title");
 
         play.pressed(Part::Start);
-        let playing = (0..500).any(|_| {
+        let mut seen = Vec::new();
+        for _ in 0..300 {
+            frame(&mut s, &mut play, &[]);
+            seen.push(s.state().map(str::to_owned));
+        }
+        assert!(
+            seen[100..].iter().all(Option::is_none),
+            "Start on the title starts a game: its story shows until a press"
+        );
+        play.pressed(Part::Start);
+        let playing = (0..100).any(|_| {
             frame(&mut s, &mut play, &[]);
             s.state() == Some("play")
         });
-        assert!(playing, "Start on the title starts a game");
+        assert!(playing, "Start goes on from the story into play");
         for _ in 0..100 {
             frame(&mut s, &mut play, &[]);
         }
@@ -1005,6 +1015,11 @@ mod tests {
             x(&s),
             before,
             "the pad moves BLOB: the game is on the joystick"
+        );
+        assert_ne!(
+            s.state(),
+            Some("paused"),
+            "the story's Start didn't pause it"
         );
     }
 

@@ -667,11 +667,22 @@ mod tests {
         );
 
         k.tap(Scancode::Return, 4);
+        let mut seen = Vec::new();
+        for _ in 0..300 {
+            k.frames(1);
+            seen.push(k.s.state().map(str::to_owned));
+        }
         assert!(
-            k.until(500, "play"),
-            "Enter, the pad's Start, starts a game"
+            seen[100..].iter().all(Option::is_none),
+            "Enter, the pad's Start, starts a game: its story shows, untouched, for seconds"
         );
-        k.frames(100);
+        k.tap(Scancode::Return, 4);
+        assert!(k.until(100, "play"), "Enter goes on from the story");
+        let paused = (0..300).any(|_| {
+            k.frames(1);
+            k.s.state() == Some("paused")
+        });
+        assert!(!paused, "and doesn't pause the game it starts");
         let before = k.blob_x();
         k.key(Scancode::Left, true);
         k.frames(40);
