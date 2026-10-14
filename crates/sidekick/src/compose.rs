@@ -295,12 +295,14 @@ fn notice_of(
 
 /// The window, `size` device pixels large, as the player sees a game at guidance `level` with
 /// no menu or card open: the picture at the largest whole scale, the panel and its pins, and
-/// the pause notice while the game is paused. RGBA, row by row.
+/// the pause notice while the game is paused, with `labels` on its hints and the keys of the
+/// pad plugged in, `pad`, on the panel. RGBA, row by row.
 pub(crate) fn window(
     session: &Session,
     level: usize,
     size: (u32, u32),
     labels: PadLabels,
+    pad: Option<PadLabels>,
     fonts: &mut Fonts,
 ) -> Vec<u8> {
     let mut out = Frame::new(size);
@@ -311,7 +313,7 @@ pub(crate) fn window(
     let mut rgba = Vec::new();
     to_rgba(session.machine().picture(), &mut rgba);
     out.picture(&rgba, part, layout, shade);
-    if let (Some(at), Some(panel)) = (layout.panel, panel::of(session, level, None)) {
+    if let (Some(at), Some(panel)) = (layout.panel, panel::of(session, level, None, pad)) {
         out.canvas(&panel.draw(fonts, (at.2, at.3)), at, 255);
         let pins = panel::pins(&panel);
         if !pins.is_empty() {
@@ -623,7 +625,7 @@ mod tests {
     #[test]
     fn the_window_is_the_picture_with_the_panel_beside_it() {
         let s = session();
-        let rgba = window(&s, 1, SIZE, PadLabels::Letters, &mut Fonts::new());
+        let rgba = window(&s, 1, SIZE, PadLabels::Letters, None, &mut Fonts::new());
         let layout = layout_for(&s, SIZE);
         assert_eq!(
             shown(&s),
@@ -649,7 +651,7 @@ mod tests {
         let layout = layout_for(&s, WIDE);
         assert_eq!(layout.pixel, 5);
         assert_eq!(layout.panel, Some((1346, 0, 574, 1080)));
-        let rgba = window(&s, 1, WIDE, PadLabels::Letters, &mut Fonts::new());
+        let rgba = window(&s, 1, WIDE, PadLabels::Letters, None, &mut Fonts::new());
         let (left, top, width, height) = layout.picture;
         assert_eq!(
             pixel(&rgba, WIDE.0, (left + width / 2, top + height / 2)),
@@ -738,9 +740,9 @@ mod tests {
     #[test]
     fn paused_the_picture_dims_under_the_notice() {
         let mut s = session();
-        let playing = window(&s, 1, SIZE, PadLabels::Letters, &mut Fonts::new());
+        let playing = window(&s, 1, SIZE, PadLabels::Letters, None, &mut Fonts::new());
         pause(&mut s);
-        let paused = window(&s, 1, SIZE, PadLabels::Letters, &mut Fonts::new());
+        let paused = window(&s, 1, SIZE, PadLabels::Letters, None, &mut Fonts::new());
         let (x, y, _, _) = layout_for(&s, SIZE).picture;
         let corner = (x + 4, y + 4);
         assert_eq!(

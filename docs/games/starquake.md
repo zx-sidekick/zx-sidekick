@@ -38,7 +38,7 @@ Each level adds to the ones below it (`[[guidance.levels]]`, with these names an
 
 | Level | Name | Adds |
 |:-:|---|---|
-| 0 | Off | Nothing: "No guidance. Press Esc or Select to choose a level." |
+| 0 | Off | Nothing: "Guidance or training", followed by the keys that open the menu. |
 | 1 | Codes and the core | **TELEPORTS:** the codes of the teleports entered, in the game's own letters. **DOORS:** each security door's three key code cards, drawn in the game's own graphics, each dim until what BLOB carries answers it as the door would: a 15 answers all three, a 14 the first card that no card of its own picture answers, and each carried card one card. **CORE:** the core's nine slots in the game's own pictures, once BLOB has been in the core's room, where the game shows them ("Not seen yet" before); pieces delivered are bright, those missing are dim, and a piece being carried is outlined. |
 | 2 | The map you have walked | A map of the rooms visited: walls drawn along each edge without an opening, so an opening is a gap, and inside a room the walls that keep apart two ways through it. Teleports are diamonds, BLOB's room is marked, and a door is drawn dotted, with its number. |
 | 3 | What you have seen | The items lying in rooms walked through, in the game's own pictures, coloured by what they do: once the core has been seen, the core pieces still needed in the first colour (pink), unless BLOB carries one with the same picture; cards violet (a door's, or one that answers any card); the key yellow; any other core piece, which a pyramid takes, white. Packs aren't marked: they're a room's bonus rather than items, and act as BLOB touches them. |
@@ -79,7 +79,7 @@ Each of these is a fact to find (below) and then a `[values]` entry:
 
 ## Training switches
 
-Five `[[cheats]]`:
+Five `[[cheats]]`. Those on are listed at the panel's top, under TRAINING, at every guidance level:
 
 | Switch | How |
 |---|---|

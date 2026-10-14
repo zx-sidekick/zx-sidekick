@@ -249,7 +249,7 @@ note = "Skips the call that takes energy when an enemy touches the player."
 
 | Key | Meaning |
 |---|---|
-| `id`, `label` | Its name, and its text in the menu. |
+| `id`, `label` | Its name, and its text in the menu and, while it's on, in the panel. |
 | `set` | One or a list of `{ value, to }`: `to` is a number or `"max"`. Written each frame while the switch is on, right after the values are read (at the sync point, or the frame's end without one), so the game sees it at the start of its next frame. When a state has role `play`, only in that state: elsewhere a game may use the same memory for other things. |
 | `hold` | One or a list of value names that may not go down while the switch is on: one that went down since the last frame is put back, at the same moment as `set`. |
 | `patch` | A list of `{ addr, bytes, expect }`. Applied when the switch goes on, and the original bytes put back when it goes off. If memory doesn't hold every patch's `expect` when the switch goes on, it stays off and none of them is applied, with a notice: the dump or the moment is not what the definition expects. |
@@ -409,12 +409,14 @@ Levels, in order from 0 (no help):
 ```toml
 [[guidance.levels]]
 name = "Off"
-description = "No guidance. Press Esc or Select to choose a level."
+description = "Guidance or training"
 
 [[guidance.levels]]
 name = "Codes and the core"
 description = "The codes you've seen, and the core's pieces."
 ```
+
+Level 0's `description` names what the menu holds, in a few words: the panel shows them in its middle, followed by the keys that open the menu, which the program draws (Esc, and the pad's Select while a pad is plugged in). Above level 0, a level's `description` is shown in the panel's middle while none of its widgets is. At every level, the panel lists the training switches on at its top, by their `label`s.
 
 Widgets, drawn in the panel in the order listed, each from its `from_level` up. `column` puts a widget in the `left` column or the `right` one (right-aligned), which stack down side by side, or across the panel's `full` width (the default), below everything in the columns above it:
 

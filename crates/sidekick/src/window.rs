@@ -560,7 +560,8 @@ impl Screen {
         out.canvas.clear();
         match self {
             Self::Play(player) => {
-                player.frame(out, &mut gamepads.pads)?;
+                let plugged = gamepads.plugged();
+                player.frame(out, &mut gamepads.pads, plugged)?;
                 if player.menu.is_some() {
                     player.draw_menu(out, gamepads.last.labels())?;
                 } else {
@@ -704,6 +705,11 @@ impl Gamepads {
             .collect()
     }
 
+    /// How the last pad used marks its buttons, while a pad is plugged in.
+    fn plugged(&self) -> Option<PadLabels> {
+        (!self.open.is_empty()).then(|| self.last.labels())
+    }
+
     /// Shows the last pad's buttons on the pages: always on the library, on the tape prompt
     /// once a pad is plugged in.
     fn label(&self, screen: &mut Screen) {
@@ -714,7 +720,7 @@ impl Gamepads {
                 library.drawn = None;
             }
             Screen::Prompt(prompt) => {
-                let pad = (!self.open.is_empty()).then_some(labels);
+                let pad = self.plugged();
                 if prompt.page.pad != pad {
                     prompt.page.pad = pad;
                     prompt.drawn = None;
@@ -828,8 +834,14 @@ impl Player {
         true
     }
 
-    /// Runs the frames that are due, queues their sound, and draws the latest picture.
-    fn frame(&mut self, out: &mut Output, pads: &mut Pads) -> Result<(), String> {
+    /// Runs the frames that are due, queues their sound, and draws the latest picture, and the
+    /// panel with the keys of the pad `plugged` in, if one is.
+    fn frame(
+        &mut self,
+        out: &mut Output,
+        pads: &mut Pads,
+        plugged: Option<PadLabels>,
+    ) -> Result<(), String> {
         let due = out.sound.as_ref().map_or_else(
             || frames_due(self.started.elapsed(), self.frames_run),
             |stream| {
@@ -917,11 +929,16 @@ impl Player {
         out.canvas
             .copy(&out.picture, frect(part), frect(layout.picture))
             .map_err(|e| e.to_string())?;
-        self.draw_panel(out, layout)
+        self.draw_panel(out, layout, plugged)
     }
 
     /// Draws the panel beside the picture, and the pins it puts over the picture.
-    fn draw_panel(&self, out: &mut Output, layout: Layout) -> Result<(), String> {
+    fn draw_panel(
+        &self,
+        out: &mut Output,
+        layout: Layout,
+        plugged: Option<PadLabels>,
+    ) -> Result<(), String> {
         if let (Some(at), Some(page)) = (layout.panel, &self.this_game) {
             cached(
                 out.creator,
@@ -940,7 +957,7 @@ impl Player {
         }
         if let Some(at) = layout.panel {
             let chosen = self.entry.as_ref().and_then(Entry::chosen);
-            let panel = panel::of(&self.session, self.level, chosen);
+            let panel = panel::of(&self.session, self.level, chosen, plugged);
             if let Some(panel) = panel {
                 cached(
                     out.creator,
