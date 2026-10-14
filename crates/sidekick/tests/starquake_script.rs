@@ -1306,3 +1306,173 @@ fn routes_and_the_core_s_route_are_shown_together() {
     assert_eq!(colors, ["first", "second"], "level 6 too");
     assert_eq!(shown[0].label, "Item 1/1");
 }
+
+/// The text of the definition's hint on the script's condition `condition`.
+fn hint_on(s: &Session, condition: &str) -> String {
+    definition(s)
+        .hints
+        .iter()
+        .find(|h| h.script.as_deref() == Some(condition))
+        .map(|h| h.text.clone())
+        .expect("a hint on that condition")
+}
+
+/// The text of the definition's hint testing the value `value`.
+fn hint_testing(s: &Session, value: &str) -> String {
+    definition(s)
+        .hints
+        .iter()
+        .find(|h| h.when.as_ref().and_then(|t| t.value.as_deref()) == Some(value))
+        .map(|h| h.text.clone())
+        .expect("a hint on that value")
+}
+
+/// The script's hint conditions that hold.
+fn conditions(s: &Session) -> Vec<String> {
+    result(s, "hints").iter().map(text).collect()
+}
+
+#[test]
+fn energy_and_platforms_running_low_are_hinted_from_level_1_in_play() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "energy", 0, &[127, 50]);
+    enter(&mut s, "play");
+    assert_eq!(s.hint(1), None, "plenty of both");
+    poke_into(&mut s, "platforms", 0, &[10]);
+    s.run_frame().expect("a frame");
+    assert_eq!(s.hint(1), Some(hint_testing(&s, "platforms").as_str()));
+    poke_into(&mut s, "energy", 0, &[30]);
+    s.run_frame().expect("a frame");
+    assert_eq!(
+        s.hint(1),
+        Some(hint_testing(&s, "energy").as_str()),
+        "energy first"
+    );
+    assert_eq!(s.hint(0), None, "never with guidance off");
+}
+
+#[test]
+fn a_booth_hints_how_it_is_used() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "energy", 0, &[127, 50]);
+    enter(&mut s, "booth");
+    let booth = definition(&s)
+        .hints
+        .iter()
+        .find(|h| {
+            h.state
+                .as_ref()
+                .is_some_and(|st| st.iter().any(|n| n == "booth"))
+        })
+        .map(|h| h.text.clone())
+        .expect("a booth hint");
+    assert_eq!(s.hint(1), Some(booth.as_str()));
+}
+
+/// A blank planet with a security door in room 176, BLOB in that room, in a game whose door
+/// there wants cards 12, 13 and 13.
+fn at_a_door(s: &mut Session) {
+    blank_planet(s);
+    poke_into(s, "tile_types", 1, &[0x05]);
+    poke_into(s, "large_tiles", 12, &[0, 0, 0, 1]);
+    poke_into(s, "rooms", 176 * 12, &[3]);
+    poke_into(s, "seed", 0, &[0xF5, 0x07]);
+    poke_into(s, "energy", 0, &[127, 50]);
+    stand(s, 176, (4, 8));
+}
+
+#[test]
+fn a_door_s_cards_not_carried_are_hinted_at_the_door_and_on_the_map_from_level_4() {
+    let mut s = session();
+    at_a_door(&mut s);
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert_eq!(conditions(&s), ["door-cards-missing"]);
+    let (where_, which) = (hint_on(&s, "door-cards-missing"), {
+        let hints = &definition(&s).hints;
+        hints
+            .iter()
+            .filter(|h| h.script.as_deref() == Some("door-cards-missing"))
+            .find(|h| h.state.is_some())
+            .map(|h| h.text.clone())
+            .expect("the door's own hint")
+    });
+    assert_ne!(where_, which);
+    assert_eq!(s.hint(1), None, "in play, before the door is met");
+    assert_eq!(s.hint(4), Some(where_.as_str()), "where they lie");
+    enter(&mut s, "door");
+    assert_eq!(s.hint(1), Some(which.as_str()), "the door met");
+    assert_eq!(s.hint(4), Some(where_.as_str()), "from level 4, where");
+
+    // 12 carried, and two cards that answer any card for the two 13s.
+    poke_into(&mut s, "carried", 0, &[12, 3, 14, 3, 15, 3]);
+    s.run_frame().expect("a frame");
+    assert!(conditions(&s).is_empty(), "every card answered");
+    poke_into(&mut s, "carried", 0, &[12, 3, 14, 3, 0, 0]);
+    s.run_frame().expect("a frame");
+    assert_eq!(conditions(&s), ["door-cards-missing"], "one 13 short");
+}
+
+#[test]
+fn a_locked_post_without_the_key_is_hinted_from_level_4() {
+    let mut s = session();
+    routed_planet(&mut s);
+    let mut painter = Painter::new();
+    painter.paint(&mut s, 100, |x, _| x == 17);
+    painter.mark(&mut s, 100, POST, (16, 8));
+    stand(&mut s, 100, (4, 8));
+    poke_into(&mut s, "energy", 0, &[127, 50]);
+    // Room 100's post, locked.
+    poke_into(&mut s, "locks", 0, &[100, 0x01]);
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert_eq!(conditions(&s), ["post-locked"]);
+    let post = hint_on(&s, "post-locked");
+    assert_eq!(s.hint(3), None);
+    assert_eq!(s.hint(4), Some(post.as_str()));
+
+    poke_into(&mut s, "carried", 0, &[16, 3]);
+    s.run_frame().expect("a frame");
+    assert!(conditions(&s).is_empty(), "the key carried");
+    poke_into(&mut s, "carried", 0, &[0, 0]);
+    poke_into(&mut s, "locks", 0, &[100, 0x00]);
+    s.run_frame().expect("a frame");
+    assert!(conditions(&s).is_empty(), "unlocked");
+}
+
+#[test]
+fn four_items_carried_are_hinted() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "energy", 0, &[127, 50]);
+    poke_into(&mut s, "carried", 0, &[26, 3, 27, 3, 28, 3, 0, 0]);
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert!(conditions(&s).is_empty(), "three");
+    poke_into(&mut s, "carried", 6, &[29, 3]);
+    s.run_frame().expect("a frame");
+    assert_eq!(conditions(&s), ["hands-full"]);
+    assert_eq!(s.hint(1), Some(hint_on(&s, "hands-full").as_str()));
+}
+
+#[test]
+fn the_core_unseen_after_twenty_rooms_is_hinted_up_to_level_3() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "energy", 0, &[127, 50]);
+    visit(&mut s, &(0..19).collect::<Vec<_>>());
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    assert!(conditions(&s).is_empty(), "nineteen rooms");
+    visit(&mut s, &(0..20).collect::<Vec<_>>());
+    s.run_frame().expect("a frame");
+    assert_eq!(conditions(&s), ["core-not-seen"]);
+    let core = hint_on(&s, "core-not-seen");
+    assert_eq!(s.hint(3), Some(core.as_str()));
+    assert_eq!(s.hint(4), None, "from level 4 the core shows anyway");
+    visit(&mut s, &[0, 1, 2, 199]);
+    s.run_frame().expect("a frame");
+    assert!(conditions(&s).is_empty(), "the core seen");
+}

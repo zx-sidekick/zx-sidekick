@@ -1187,3 +1187,171 @@ fn a_carried_15_answers_every_card_at_a_security_door() {
         "the door moves BLOB 48 pixels on"
     );
 }
+
+/// The text of the definition's hint testing `value`, or on the script's `condition`.
+fn hint_text(s: &Session, pick: impl Fn(&sidekick_def::PanelHint) -> bool) -> String {
+    s.definition()
+        .expect("its definition")
+        .hints
+        .iter()
+        .find(|h| pick(h))
+        .map(|h| h.text.clone())
+        .expect("the hint")
+}
+
+#[test]
+fn energy_running_low_in_play_brings_its_hint() {
+    let Some(mut s) = in_play_on_the_joystick() else {
+        return;
+    };
+    with_script(&mut s, 1);
+    let energy = hint_text(&s, |h| {
+        h.when.as_ref().and_then(|t| t.value.as_deref()) == Some("energy")
+    });
+    until(&mut s, 2, |_| false);
+    assert_eq!(s.hint(1), None, "a new game, energy full");
+    s.write("energy", 30).expect("writable");
+    until(&mut s, 2, |_| false);
+    assert_eq!(s.hint(1), Some(energy.as_str()));
+}
+
+#[test]
+fn a_door_met_without_its_cards_keeps_its_hint_up_while_the_door_runs() {
+    let Some(mut s) = in_play_on_the_joystick() else {
+        return;
+    };
+    with_script(&mut s, 1);
+    let door = hint_text(&s, |h| {
+        h.script.as_deref() == Some("door-cards-missing") && h.state.is_some()
+    });
+    let situation = situation("door");
+    let values: Vec<(&str, i64)> = situation
+        .values
+        .iter()
+        .map(|(name, &number)| (name.as_str(), number))
+        .collect();
+    enter_room(&mut s, &values);
+    s.machine_mut().kempston(Kempston::Left, true);
+    assert!(
+        until(&mut s, 200, |s| s.state() == Some("door")),
+        "walking left meets the door"
+    );
+    s.machine_mut().kempston(Kempston::Left, false);
+    // The door's routine isn't passed every frame: the hint stays up between, until play.
+    let mut frames = 0;
+    while s.state() != Some("play") && frames < 400 {
+        assert_eq!(s.hint(1), Some(door.as_str()), "frame {frames}");
+        s.run_frame().expect("a frame");
+        frames += 1;
+    }
+    assert!(frames > 50, "the door ran a while: {frames}");
+    assert_eq!(s.state(), Some("play"));
+    assert_ne!(s.hint(1), Some(door.as_str()), "gone with the door");
+}
+
+/// Picks up item record `k` where it lies: enters its room, so the game lays it down, then
+/// stands BLOB on it and presses up.
+fn pick_up(s: &mut Session, k: usize) {
+    let record = |s: &Session| match &s.reading()["items"] {
+        Read::Table(records) => records[k].clone(),
+        other => panic!("a table: {other:?}"),
+    };
+    let byte =
+        |r: &std::collections::BTreeMap<String, Read>, f: &str| r[f].number().expect("a number");
+    let r = record(s);
+    let room = byte(&r, "room_low") + (byte(&r, "second") >> 7) * 256;
+    walk_into(s, room);
+    let r = record(s);
+    let (x, row) = (byte(&r, "first") & 0x1F, byte(&r, "second") & 0x7F);
+    assert!(row >= 6, "laid down: {row}");
+    enter_room(
+        s,
+        &[
+            ("room", room),
+            ("blob_x", x * 8),
+            ("blob_y", 8 * (24 - row) - 1),
+        ],
+    );
+    assert!(until(s, 50, |s| s.state() != Some("play")));
+    assert!(until(s, 200, |s| s.state() == Some("play")));
+    s.machine_mut().kempston(Kempston::Up, true);
+    until(s, 3, |_| false);
+    s.machine_mut().kempston(Kempston::Up, false);
+    until(s, 40, |_| false);
+}
+
+#[test]
+fn a_fifth_pick_up_drops_the_oldest_item_carried_where_blob_stands() {
+    let Some(mut s) = on_the_joystick(300) else {
+        return;
+    };
+    with_script(&mut s, 1);
+    // Five records with pictures that are neither packs nor cards, each in a room of its own
+    // until picked up (docs/re/starquake.md, "The items").
+    let records = match &s.reading()["items"] {
+        Read::Table(records) => records.clone(),
+        other => panic!("a table: {other:?}"),
+    };
+    let ks: Vec<usize> = records
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| {
+            let picture = r["picture"].number().expect("a picture");
+            let room = r["room_low"].number().expect("a room")
+                + (r["second"].number().expect("a byte") >> 7) * 256;
+            (0..=8).contains(&picture) && room != 199
+        })
+        .map(|(k, _)| k)
+        .take(5)
+        .collect();
+    assert_eq!(ks.len(), 5, "five items to pick up");
+    let full = hint_text(&s, |h| h.script.as_deref() == Some("hands-full"));
+    for &k in &ks[..4] {
+        pick_up(&mut s, k);
+    }
+    assert_eq!(s.hint(1), Some(full.as_str()), "four carried");
+    let first = &ks[0];
+    let fifth_room = |s: &Session| s.reading()["room"].number().expect("a room");
+    pick_up(&mut s, ks[4]);
+    let records = match &s.reading()["items"] {
+        Read::Table(records) => records.clone(),
+        other => panic!("a table: {other:?}"),
+    };
+    let r = &records[*first];
+    let room = r["room_low"].number().expect("a room")
+        + (r["second"].number().expect("a byte") >> 7) * 256;
+    assert_eq!(
+        room,
+        fifth_room(&s),
+        "the first item picked up, dropped here"
+    );
+    assert!(
+        r["second"].number().expect("a byte") & 0x7F >= 6,
+        "laid down"
+    );
+    assert_eq!(s.hint(1), Some(full.as_str()), "still four carried");
+}
+
+#[test]
+fn a_new_game_lists_the_five_locked_posts_locked() {
+    let Some(s) = in_play() else { return };
+    let locks = match &s.reading()["locks"] {
+        Read::Bytes(bytes) => bytes.clone(),
+        other => panic!("bytes: {other:?}"),
+    };
+    let posts: Vec<(i64, bool)> = locks
+        .chunks(2)
+        .map(|p| (i64::from(p[0]) + i64::from(p[1] >> 7) * 256, p[1] & 1 == 1))
+        .collect();
+    assert_eq!(
+        posts,
+        [
+            (190, true),
+            (252, true),
+            (452, true),
+            (482, true),
+            (486, true)
+        ],
+        "the rooms with a post (docs/re/starquake.md), each locked"
+    );
+}

@@ -220,6 +220,12 @@ addr = 0x58C0
 len = 576
 description = "The play area's attributes, 32 a row, 18 rows: a cell without BRIGHT blocks BLOB"
 
+[values.locks]
+type = "bytes"
+addr = 0x95F0
+len = 10
+description = "The locked doors' posts, two bytes a post: the room's low byte, then its ninth bit in the top bit and bit 0 set while locked"
+
 [values.door_card_count]
 type = "u8"
 addr = 0xD5F6
@@ -511,6 +517,57 @@ source = "script:map"
 # The kinds of marker the script puts on the map, and the shape each is drawn as.
 markers = { player = "player", teleport = "diamond", door = "label", piece = "picture", item = "picture", target = "ring" }
 places = { teleport = "top-left" }
+
+# Hints: a line in the panel while each holds, the lowest priority first. In our own words,
+# from what players have found hard (docs/games/starquake.md, "Hints").
+
+[[hints]]
+text = "Energy low: avoid creatures, pick up supplies"
+priority = 1
+state = "play"
+# About 40 seconds left at the rate time takes it (docs/re/starquake.md).
+when = { value = "energy", at_most = 30 }
+
+[[hints]]
+text = "This door's cards are among the violet items on the map"
+priority = 2
+from_level = 4
+script = "door-cards-missing"
+
+[[hints]]
+text = "This door wants the three cards under DOORS"
+priority = 3
+state = "door"
+script = "door-cards-missing"
+
+[[hints]]
+text = "This post opens only for the key"
+priority = 4
+from_level = 4
+script = "post-locked"
+
+[[hints]]
+text = "Platforms low: mind pits you can't climb out of"
+priority = 5
+state = "play"
+# Five platforms left, at 2 each.
+when = { value = "platforms", at_most = 10 }
+
+[[hints]]
+text = "Type another booth's code to go there"
+priority = 6
+state = "booth"
+
+[[hints]]
+text = "Hands full: a new pick-up drops your oldest item"
+priority = 7
+script = "hands-full"
+
+[[hints]]
+text = "The core shows what it wants only in its room"
+priority = 8
+to_level = 3
+script = "core-not-seen"
 
 [situations]
 # The routine that starts play in the current room (docs/re/starquake.md).

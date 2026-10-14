@@ -1319,6 +1319,60 @@ fn map(mem, loaded, rooms, level, lying, listed, guided) {
 }
 
 // At each sync point: the panel's data, and codes to keep.
+// Whether the cards BLOB carries leave any of a door's cards unanswered: each card answers
+// itself, and each of pictures 14 and 15 answers any one card (docs/re/starquake.md).
+fn cards_missing(cards, carrying) {
+    let wild = carrying.filter(|p| p == 14 || p == 15).len();
+    cards.filter(|card| !carrying.contains(card)).len() > wild
+}
+
+// Whether the locked door's post in `room` is still locked: its entry in the game's table of
+// locked doors, a room a pair of bytes, has bit 0 of its second byte set (docs/re/starquake.md).
+fn post_locked(mem, room) {
+    let locks = mem.value("locks");
+    if locks == () {
+        return false;
+    }
+    for k in 0..locks.len() / 2 {
+        let low = locks[2 * k];
+        let high = locks[2 * k + 1];
+        if low + (high >> 7) * 256 == room {
+            return (high & 1) != 0;
+        }
+    }
+    false
+}
+
+// How many rooms walked before the hint that the core shows what it wants only in its room.
+fn rooms_before_core_hint() {
+    20
+}
+
+// The definition's `[[hints]]` script conditions that hold now (docs/games/starquake.md): BLOB
+// in a security door's room without its cards, at a locked door's post without the key, with
+// four items carried, or a good way into the planet without having seen the core.
+fn hint_conditions(mem, loaded, carrying, rooms) {
+    let holding = [];
+    let room = mem.value("room");
+    if room != () && "doors" in loaded && loaded.doors.some(|d| d.room == room) {
+        if cards_missing(door_cards(mem.value("seed"), room), carrying) {
+            holding.push("door-cards-missing");
+        }
+    }
+    if room != () && "graph" in loaded && loaded.graph.posts.contains(room) {
+        if !carrying.contains(16) && post_locked(mem, room) {
+            holding.push("post-locked");
+        }
+    }
+    if carrying.len() == 4 {
+        holding.push("hands-full");
+    }
+    if !core_seen(mem) && rooms.len() >= rooms_before_core_hint() {
+        holding.push("core-not-seen");
+    }
+    holding
+}
+
 fn on_frame(mem, loaded, prev, kept, level) {
     let carrying = carried(mem);
     let keep = #{};
@@ -1352,6 +1406,7 @@ fn on_frame(mem, loaded, prev, kept, level) {
         room: mem.value("room"),
         blocks: decoded(mem, loaded),
         route: guided.route,
+        hints: hint_conditions(mem, loaded, carrying, rooms),
     }
 }
 
