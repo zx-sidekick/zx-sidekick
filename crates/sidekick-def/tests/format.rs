@@ -742,3 +742,63 @@ when = {{ value = "nowhere", equals = 1 }}
         ]
     );
 }
+
+#[test]
+fn a_clip_shows_a_part_of_the_screen_for_its_input_and_enters_as_a_situation_does() {
+    let text = format!(
+        r#"{HEADER}
+[[states]]
+name = "play"
+role = "play"
+pc = 0x8000
+
+[about]
+goal = "Win."
+
+[[about.clips]]
+does = "jump"
+situation = "clips/jump.toml"
+area = [0, 0, 96, 72]
+frames = 50
+input = [{{ frames = 20, hold = ["right"] }}, {{ frames = 10, hold = ["east"] }}]
+
+[[about.clips]]
+does = " "
+pad = "select"
+situation = "../elsewhere.toml"
+area = [200, 150, 96, 72]
+frames = 10
+input = [{{ frames = 20, hold = ["fire"], until = {{ value = "nowhere", equals = 1 }} }}]
+
+[[about.clips]]
+does = "third"
+situation = "c.toml"
+area = [0, 0, 100, 72]
+frames = 1
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def
+        .check()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|p| p.starts_with("about"))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            "about.clips: the card has room for 2",
+            "about.clips[0]: a clip enters its situation as --load does: it needs [situations] enter and [run] sync",
+            "about.clips[1].does: says nothing",
+            "about.clips[1].pad: \"select\" isn't a part the screen shows: one of dpad, stick, west, south, east, north, start, up, down, left, right",
+            "about.clips[1].situation: a file in the definition's folder",
+            "about.clips[1].area: inside the screen's 256 × 192",
+            "about.clips[1].frames: at least 1, and the input's 20 at most",
+            "about.clips[1].input[0].until.value: no value named \"nowhere\"",
+            "about.clips[1].input[0].hold: \"fire\": one of up, down, left, right, west, south, east, north",
+            "about.clips[1]: a clip enters its situation as --load does: it needs [situations] enter and [run] sync",
+            "about.clips[2].area: 4 by 3, as the card's place for it",
+            "about.clips[2]: a clip enters its situation as --load does: it needs [situations] enter and [run] sync",
+        ]
+    );
+}

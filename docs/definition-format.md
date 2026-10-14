@@ -562,6 +562,35 @@ pad = "dpad"
 | `how.pad` | The pad part that makes the move, by position: `west`, `south`, `east`, `north`, `dpad`, `stick` or `start`. Its button shows while a pad is plugged in |
 | `how.keys` | The keyboard's key as shown, when not the one the program works out from `pad`; arrows alone are drawn bare |
 
+### Clips
+
+Up to two clips show moves being made, side by side above the goal: the game itself, a small copy of the one the player started, entered into a crafted situation and played by scripted input, in a loop. The buttons a clip shows are drawn under it, lit while its input holds them.
+
+```toml
+[about]
+goal = "Rebuild the planet's core."
+
+[[about.clips]]
+does = "build a platform"
+pad = "south"
+situation = "clips/build.toml"
+area = [96, 96, 96, 72]
+frames = 100
+input = [{ frames = 25 }, { frames = 15, hold = ["south"] }]
+```
+
+| Key | Meaning |
+|---|---|
+| `does` | What it shows, under it |
+| `pad`, `keys` | What's shown pressed, as a move's, or one of the D-pad's ways (`up`, `down`, `left`, `right`, shown as its arrow): the part's button while a pad is plugged in, its key always. Lit while the input holds the part, or a part that does the same there and then (by the clip's state and `[pad]` table): Starquake's pick-up clip holds `east`, and shows it with `keys = "↑"`, the key that does the same |
+| `situation` | A crafted situation (`[situations]`'s format), in the definition's folder outside `tests/`, so it's packed for players. It's entered as `--load` enters one, from the game the player first started this run, at the moment it started: nothing of the game is stored. The loop starts after the game's first frame in the room, so the room and the player's figure are drawn from its first picture |
+| `area` | The part of the screen shown: x, y, width and height in the screen's pixels (256 × 192), 4 by 3; drawn at the card's 288 × 216 |
+| `frames` | The loop's length, in frames (50 a second); then the clip starts again from its situation |
+| `input` | Steps in turn from the loop's start, each `frames` long, holding the pad's parts in `hold`: the D-pad's `up`, `down`, `left`, `right`, and `west`, `south`, `east`, `north`. They do what the pad does in that state; nothing is held after the last |
+| `input.until` | Ends a step early, once this test of a value (as a `[[states]]` `when`) holds after a frame: `{ value = "blob_x", at_most = 200 }` walks until he's there, however fast the game runs. Its `frames` are then the most |
+
+A clip needs `[situations] enter` and `[run] sync`. Until a game has started, its place on the card says so. `sidekick check` reads each clip's situation and checks it as `--load` would.
+
 Without `keys`, the key shown is the keyboard's for `pad` in the state with role `play`: the arrows for `dpad` or `stick`; the key that plays the part itself (Space for `west`, Enter for `start`, or the right Ctrl for `west` where the Spectrum's keyboard is on); else a key whose part does the same there (the up arrow, for a button mapped to an action that pushes the joystick up, as Starquake's pick up is). A move with neither shows no key. The screen opens when a game starts: play after the title, a game over, or nothing known yet, so a definition with `[about]` needs a state with role `play`.
 
 ## `[situations]`

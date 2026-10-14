@@ -3,7 +3,7 @@
 
 use crate::{
     colors,
-    hints::{hints_from, hints_on_accent, row_width, Hint, PadLabels, Press, GAP},
+    hints::{hints_from, hints_lit, hints_on_accent, row_width, Hint, PadLabels, Press, GAP},
     menu::toggle,
     pause::{presses, PadMark},
     Align, Canvas, Color, Fonts, Line, Style, Weight,
@@ -17,6 +17,7 @@ const SIDE: f32 = 27.0;
 /// A clip's place: a crop of the game's picture at its own scale, 96 × 72 Spectrum pixels.
 const CLIP: (f32, f32) = (288.0, 216.0);
 const CLIP_GAP: f32 = 18.0;
+const CLIPS_TOP: f32 = 68.0;
 const GOAL_LINE: f32 = 22.0;
 const ENTRY_STEP: f32 = 44.0;
 const BUTTON_HEIGHT: f32 = 40.0;
@@ -52,6 +53,11 @@ pub struct ClipSlot {
     pub pad: Option<PadMark>,
     /// What it does.
     pub does: String,
+    /// Whether the game runs in it: its picture is drawn over the place, which is left dark.
+    /// Until then the place is marked, saying the game shows there once a game is under way.
+    pub running: bool,
+    /// Whether what it shows pressed is held now: drawn pressed, its words lit.
+    pub lit: bool,
 }
 
 /// What a click on the card lands on.
@@ -230,7 +236,7 @@ impl HowTo {
 
         for (i, clip) in self.clips.iter().enumerate() {
             let x = SIDE + i as f32 * (CLIP.0 + CLIP_GAP);
-            self.clip_slot(&mut c, fonts, (x, 68.0), clip);
+            self.clip_slot(&mut c, fonts, (x, CLIPS_TOP), clip);
         }
 
         c.paragraph(
@@ -306,26 +312,40 @@ impl HowTo {
         c
     }
 
-    /// A clip's place, marked, with what it shows pressed under it.
+    /// Where clip `i`'s picture goes on the card, in logical pixels: x, y, width, height.
+    #[must_use]
+    pub fn clip_place(&self, i: usize) -> Option<(f32, f32, f32, f32)> {
+        (i < self.clips.len()).then(|| {
+            let x = SIDE + i as f32 * (CLIP.0 + CLIP_GAP);
+            (x, CLIPS_TOP, CLIP.0, CLIP.1)
+        })
+    }
+
+    /// A clip's place, dark while the game runs in it and marked until then, with what it
+    /// shows pressed under it.
     fn clip_slot(&self, c: &mut Canvas, fonts: &mut Fonts, (x, y): (f32, f32), clip: &ClipSlot) {
-        c.rect(
-            (x, y, CLIP.0, CLIP.1),
-            6.0,
-            None,
-            Some(Line {
-                color: colors::EDGE,
-                width: 1.0,
-                dash: Some((6.0, 4.0)),
-            }),
-        );
-        c.text(
-            fonts,
-            "The game runs here",
-            (x + CLIP.0 / 2.0, y + CLIP.1 / 2.0 - 9.0),
-            18.0,
-            Align::Center,
-            &CLIP_MARK,
-        );
+        if clip.running {
+            c.rect((x, y, CLIP.0, CLIP.1), 0.0, Some(Color::rgb(0, 0, 0)), None);
+        } else {
+            c.rect(
+                (x, y, CLIP.0, CLIP.1),
+                6.0,
+                None,
+                Some(Line {
+                    color: colors::EDGE,
+                    width: 1.0,
+                    dash: Some((6.0, 4.0)),
+                }),
+            );
+            c.text(
+                fonts,
+                "Shown once a game is under way",
+                (x + CLIP.0 / 2.0, y + CLIP.1 / 2.0 - 9.0),
+                18.0,
+                Align::Center,
+                &CLIP_MARK,
+            );
+        }
         let press = presses(clip.keys.as_deref(), clip.pad, self.pad);
         let hint = [Hint {
             press: &press,
@@ -333,7 +353,12 @@ impl HowTo {
         }];
         let width = row_width(fonts, &hint);
         let under = y + CLIP.1 + 12.0;
-        hints_from(c, fonts, (x + (CLIP.0 - width) / 2.0, under), &hint);
+        let at = (x + (CLIP.0 - width) / 2.0, under);
+        if clip.lit {
+            hints_lit(c, fonts, at, &hint);
+        } else {
+            hints_from(c, fonts, at, &hint);
+        }
     }
 }
 

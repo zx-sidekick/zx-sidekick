@@ -2,9 +2,9 @@
 //! next time" off (kept in the game's folder), and from the menu's row. No SDL here; the window
 //! feeds it and draws its card.
 
-use crate::{compose::host_keys, keys, pad::Mapping};
+use crate::{clips::Clips, compose::host_keys, keys, pad::Mapping};
 use sidekick_def::{Definition, Role};
-use sidekick_ui::{Face, Fonts, HowTo, HowToEntry, PadLabels, PadMark};
+use sidekick_ui::{ClipSlot, Face, Fonts, HowTo, HowToEntry, PadLabels, PadMark};
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -118,6 +118,7 @@ impl HowToPlay {
         title: &str,
         pad: Option<PadLabels>,
         keyboard: bool,
+        clips: &Clips,
     ) -> Option<HowTo> {
         let from_menu = self.open?;
         let definition = definition?;
@@ -125,6 +126,14 @@ impl HowToPlay {
         let play = definition.state_for(Role::Play);
         let spectrum = keys::spectrum_on(Some(definition), play, keyboard);
         let mac = cfg!(target_os = "macos");
+        let keys = |keys: &Option<String>, part: &Option<String>| {
+            keys.clone()
+                .or_else(|| {
+                    part.as_deref()
+                        .and_then(|p| mapping.keyboard_for(play, p, spectrum))
+                })
+                .map(|keys| host_keys(&keys, mac))
+        };
         Some(HowTo {
             title: title.to_owned(),
             goal: about.goal.clone(),
@@ -132,21 +141,24 @@ impl HowToPlay {
                 .how
                 .iter()
                 .map(|how| HowToEntry {
-                    keys: how
-                        .keys
-                        .clone()
-                        .or_else(|| {
-                            how.pad
-                                .as_deref()
-                                .and_then(|part| mapping.keyboard_for(play, part, spectrum))
-                        })
-                        .map(|keys| host_keys(&keys, mac)),
+                    keys: keys(&how.keys, &how.pad),
                     pad: how.pad.as_deref().and_then(mark),
                     name: how.name.clone(),
                     text: how.text.clone(),
                 })
                 .collect(),
-            clips: Vec::new(),
+            clips: about
+                .clips
+                .iter()
+                .enumerate()
+                .map(|(i, clip)| ClipSlot {
+                    keys: keys(&clip.keys, &clip.pad),
+                    pad: clip.pad.as_deref().and_then(mark),
+                    does: clip.does.clone(),
+                    running: clips.running(i),
+                    lit: clips.lit(i),
+                })
+                .collect(),
             show_next: self.show_next,
             from_menu,
             pad,
@@ -167,6 +179,7 @@ pub(crate) fn too_wide(definition: &Definition, fonts: &mut Fonts) -> Vec<usize>
             &definition.game.title,
             Some(PadLabels::Letters),
             false,
+            &Clips::default(),
         )
         .map(|card| card.too_wide(fonts))
         .unwrap_or_default()
@@ -179,7 +192,7 @@ pub(crate) fn mark(part: &str) -> Option<PadMark> {
         "south" => PadMark::Face(Face::South),
         "east" => PadMark::Face(Face::East),
         "north" => PadMark::Face(Face::North),
-        "dpad" | "stick" => PadMark::Directions,
+        "dpad" | "stick" | "up" | "down" | "left" | "right" => PadMark::Directions,
         "start" => PadMark::Start,
         _ => return None,
     })
@@ -327,7 +340,7 @@ mod tests {
         let mut screen = HowToPlay::new(None, true);
         assert!(
             screen
-                .card(Some(&def), &mapping, "Test", None, false)
+                .card(Some(&def), &mapping, "Test", None, false, &Clips::default())
                 .is_none(),
             "closed"
         );
@@ -339,6 +352,7 @@ mod tests {
                 "Test",
                 Some(PadLabels::Letters),
                 false,
+                &Clips::default(),
             )
             .expect("open");
         assert_eq!(card.goal, "Find the pieces.");
@@ -348,7 +362,7 @@ mod tests {
             "the keyboard as a pad: the arrow that does what east does"
         );
         let spectrum = screen
-            .card(Some(&def), &mapping, "Test", None, true)
+            .card(Some(&def), &mapping, "Test", None, true, &Clips::default())
             .expect("open");
         assert_eq!(
             spectrum.entries[0].keys.as_deref(),
@@ -364,7 +378,7 @@ mod tests {
         screen.input(Input::Close);
         screen.open_from_menu();
         let card = screen
-            .card(Some(&def), &mapping, "Test", None, false)
+            .card(Some(&def), &mapping, "Test", None, false, &Clips::default())
             .expect("open");
         assert!(card.from_menu, "its button reads Back");
         assert_eq!(card.pad, None, "keys alone without a pad");

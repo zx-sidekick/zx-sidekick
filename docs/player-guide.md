@@ -54,7 +54,7 @@ The game starts fullscreen. **F11** switches between fullscreen and a window; on
 
 On Starquake's title the program has already chosen the joystick for you, so ignore the game's list of controls: press any key or button to begin (not the arrows or the D-pad), and play with the arrow keys or a gamepad.
 
-When a game starts, a **How to play** card says what the game is about and how its main moves are made, with the keys (and a pad's buttons, while one is plugged in) for each. Enter, Esc or A plays on. Turn **Show next time** off (left or right, or a click) to skip it at the start of later games; the menu's *How to play* row shows it any time.
+When a game starts, a **How to play** card shows the main moves being made, in small copies of your game, and says what the game is about and how its main moves are made, with the keys (and a pad's buttons, while one is plugged in) for each. Enter, Esc or A plays on. Turn **Show next time** off (left or right, or a click) to skip it at the start of later games; the menu's *How to play* row shows it any time.
 
 ## Keys and pad
 

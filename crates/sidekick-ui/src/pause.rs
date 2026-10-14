@@ -67,13 +67,15 @@ impl Default for PauseNotice {
     }
 }
 
-/// Whether keys are only arrows (and spaces), drawn bare rather than in a badge.
+/// Whether keys are arrows (and spaces), two or more, drawn bare rather than in a badge: the
+/// ways to move. A single arrow names one key, which goes in a badge as any key does.
 fn arrows(keys: &str) -> bool {
-    keys.chars()
-        .all(|c| matches!(c, '←' | '↑' | '→' | '↓' | ' '))
+    let is_arrow = |c| matches!(c, '←' | '↑' | '→' | '↓');
+    keys.chars().all(|c| is_arrow(c) || c == ' ')
+        && keys.chars().filter(|&c| is_arrow(c)).count() > 1
 }
 
-/// What a hint shows to press: the keys (bare when only arrows), then the pad's part as the
+/// What a hint shows to press: the keys (bare when they're arrows to move), then the pad's part as the
 /// pad plugged in, `pad`, marks it; no pad part without a pad. Arrows on the keyboard stand for
 /// the D-pad too.
 pub(crate) fn presses(
@@ -168,5 +170,30 @@ impl PauseNotice {
             .collect();
         hints_from(&mut c, fonts, (27.0, 124.0), &list);
         c
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arrows_to_move_go_bare_and_one_arrow_naming_a_key_in_a_badge() {
+        assert!(matches!(
+            presses(Some("← ↑ → ↓"), None, None)[..],
+            [Press::Arrows(_)]
+        ));
+        assert!(matches!(
+            presses(Some("← →"), None, None)[..],
+            [Press::Arrows(_)]
+        ));
+        assert!(matches!(
+            presses(Some("↑"), None, None)[..],
+            [Press::Key("↑")]
+        ));
+        assert!(matches!(
+            presses(Some("Space"), None, None)[..],
+            [Press::Key("Space")]
+        ));
     }
 }

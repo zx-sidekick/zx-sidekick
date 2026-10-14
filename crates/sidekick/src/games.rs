@@ -1,12 +1,14 @@
 //! Games: where their definitions and tapes are, and which tape a game takes.
 
 use crate::{
+    clips::Clips,
     pad::Mapping,
     saves::{SavePoint, Saves},
 };
 use sidekick_core::{Machine, Model, Script, Session};
 use sidekick_def::{
-    tapes_in, Definition, Library, LoadError, Machine as Spectrum, Package, Tape, TapeFormat,
+    tapes_in, Definition, Library, LoadError, Machine as Spectrum, Package, Situation, Tape,
+    TapeFormat,
 };
 use sidekick_ui::{Refusal, TapePrompt};
 use std::{
@@ -299,6 +301,8 @@ pub(crate) struct Playing {
     /// Where the game's definition was read from, to read again when it changes; none for a
     /// tape played plainly.
     pub(crate) source: Option<PathBuf>,
+    /// How to play's clips, with their situations read from the definition's folder.
+    pub(crate) clips: Clips,
 }
 
 impl Game {
@@ -318,6 +322,7 @@ impl Game {
             save_point: SavePoint::Quick,
             paused: false,
             source: Some(self.package.path.clone()),
+            clips: clips(&self.package),
         })
     }
 }
@@ -346,6 +351,26 @@ pub(crate) fn changed(path: &Path) -> Option<SystemTime> {
         newest = newest.max(stamp);
     }
     newest
+}
+
+/// A package's How to play clips, each with its crafted situation read from the package, or why
+/// it couldn't be.
+pub(crate) fn clips(package: &Package) -> Clips {
+    let definition = &package.definition;
+    let situations = definition
+        .about
+        .iter()
+        .flat_map(|a| &a.clips)
+        .map(|clip| {
+            let file = &clip.situation;
+            package
+                .read(file)
+                .map_err(|e| format!("{file}: {e}"))
+                .and_then(|b| String::from_utf8(b).map_err(|_| format!("{file}: not text (UTF-8)")))
+                .and_then(|text| Situation::from_toml(&text).map_err(|e| format!("{file}: {e}")))
+        })
+        .collect();
+    Clips::new(Some(definition), situations)
 }
 
 /// A package's script, compiled, or why it couldn't be; `None` without one.

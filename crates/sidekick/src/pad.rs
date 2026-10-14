@@ -2,7 +2,7 @@
 //! what that presses on the Spectrum. No SDL here; the window feeds it.
 
 use crate::keys::{key_for, key_named};
-use sidekick_core::{Kempston, Key};
+use sidekick_core::{Kempston, Key, Machine};
 use sidekick_def::{Action, Definition, DirectionKeys, Joystick, Pad, PadTarget, Patch, Test};
 use sidekick_ui::PadLabels;
 use std::collections::{BTreeMap, BTreeSet};
@@ -535,8 +535,16 @@ impl Mapping {
         name: &str,
         spectrum: bool,
     ) -> Option<String> {
-        if matches!(name, "dpad" | "stick") {
-            return Some("← ↑ → ↓".to_owned());
+        let way = match name {
+            "dpad" | "stick" => return Some("← ↑ → ↓".to_owned()),
+            "up" => Some(Way::Up),
+            "down" => Some(Way::Down),
+            "left" => Some(Way::Left),
+            "right" => Some(Way::Right),
+            _ => None,
+        };
+        if let Some(way) = way {
+            return key_for(Part::Arrow(way), spectrum).map(str::to_owned);
         }
         let &[(part, None)] = parts_named(name).as_slice() else {
             return None;
@@ -617,6 +625,17 @@ impl Targets {
 const ANY_PARTS: [&str; 9] = [
     "west", "south", "east", "north", "l1", "r1", "l2", "r2", "start",
 ];
+
+impl Play {
+    /// Whether parts `a` and `b` press, tap and call the same in the state and table now.
+    pub(crate) fn alike(&self, a: Part, b: Part) -> bool {
+        let parts = self.mapping.parts(self.state.as_deref(), self.case);
+        parts
+            .get(&a)
+            .zip(parts.get(&b))
+            .is_some_and(|(a, b)| a.alike(b))
+    }
+}
 
 /// The parts a `[pad]` entry names, with the way each points for a direction.
 fn parts_named(name: &str) -> Vec<(Part, Option<Way>)> {
@@ -758,6 +777,21 @@ fn keys(names: &[String]) -> Vec<Input> {
         .filter_map(|n| key_named(n))
         .map(|k| Input::Key(SpectrumKey(k)))
         .collect()
+}
+
+/// Presses and lets go on the Spectrum what `changes` says.
+pub(crate) fn send(machine: &mut Machine, changes: Changes) {
+    let inputs = changes
+        .release
+        .into_iter()
+        .map(|i| (i, false))
+        .chain(changes.press.into_iter().map(|i| (i, true)));
+    for (input, pressed) in inputs {
+        match input {
+            Input::Kempston(direction) => machine.kempston(direction.kempston(), pressed),
+            Input::Key(key) => machine.key(key.0, pressed),
+        }
+    }
 }
 
 /// Something going on for a number of frames from a press, however long it's held, after
@@ -1016,6 +1050,12 @@ pub(crate) mod tests {
             "its own key"
         );
         assert_eq!(keys(None, "dpad").as_deref(), Some("← ↑ → ↓"));
+        assert_eq!(
+            keys(None, "up").as_deref(),
+            Some("↑"),
+            "one of the D-pad's ways"
+        );
+        assert_eq!(keys(None, "down").as_deref(), Some("↓"));
         assert_eq!(
             keys(None, "north").as_deref(),
             Some("Tab"),
@@ -1363,21 +1403,6 @@ pub(crate) mod tests {
         );
     }
 
-    /// Presses and lets go on the Spectrum what `play` changed, as the window does.
-    fn send(machine: &mut sidekick_core::Machine, changes: Changes) {
-        let inputs = changes
-            .release
-            .into_iter()
-            .map(|i| (i, false))
-            .chain(changes.press.into_iter().map(|i| (i, true)));
-        for (input, pressed) in inputs {
-            match input {
-                Input::Kempston(direction) => machine.kempston(direction.kempston(), pressed),
-                Input::Key(key) => machine.key(key.0, pressed),
-            }
-        }
-    }
-
     /// Runs a frame of `s` with what `play` holds for `held`.
     fn frame(s: &mut sidekick_core::Session, play: &mut Play, held: &[Part]) {
         let changes = play.update(held.iter().copied());
@@ -1400,8 +1425,7 @@ pub(crate) mod tests {
         let package = sidekick_def::Package::load(&repo.join("games/starquake"))
             .expect("Starquake's definition");
         let mut play = Play::new(Mapping::new(Some(&package.definition)));
-        let mut machine =
-            sidekick_core::Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
         machine.load_tap(&tapes[0].bytes).expect("the tape goes in");
         let mut s = sidekick_core::Session::new(machine, Some(package.definition));
         for _ in 0..400 {
@@ -1497,8 +1521,7 @@ pub(crate) mod tests {
         let mut tap = program(&first);
         tap.extend(program(&second));
 
-        let mut machine =
-            sidekick_core::Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
         machine.load_tap(&tap).expect("the tape goes in");
         let mut s = sidekick_core::Session::new(machine, Some(def("")));
         let mut play = Play::new(Mapping::new(s.definition()));
