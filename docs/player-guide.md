@@ -50,9 +50,9 @@ With one game installed, the program starts it. Without its tape, it asks for it
 
 The tape is kept in the data folder, so it's found the next time.
 
-The game starts fullscreen. **F11** switches between fullscreen and a window; on a Mac, **Control-Command-F** does. The tape loads quickly; on the loading screen a card says to press any button on a pad, or Enter, Space, Z, X, C or V, to go on.
+The game starts fullscreen. **F11** switches between fullscreen and a window; on a Mac, **Control-Command-F** does. The tape loads quickly; on the loading screen a card says to press any key or button to go on.
 
-On Starquake's title the program has already chosen the joystick for you, so ignore the game's list of controls: press any key or button to begin, and play with the arrow keys or a gamepad.
+On Starquake's title the program has already chosen the joystick for you, so ignore the game's list of controls: press any key or button to begin (not the arrows or the D-pad), and play with the arrow keys or a gamepad.
 
 When a game starts, a **How to play** card says what the game is about and how its main moves are made, with the keys (and a pad's buttons, while one is plugged in) for each. Enter, Esc or A plays on. Turn **Show next time** off (left or right, or a click) to skip it at the start of later games; the menu's *How to play* row shows it any time.
 
@@ -60,7 +60,7 @@ When a game starts, a **How to play** card says what the game is about and how i
 
 **Keyboard.** The keyboard plays as a pad, so a game plays on its joystick from the keyboard too: the **arrow keys** or **W A S D** are the D-pad; **Space** is the west button (fire, by default), and so are the **right Ctrl**, the **right Alt (Option)** and **/**; **Z X C V** are the south, east, west and north buttons, by position; **Enter** is Start. The Spectrum's own keys don't reach the game then. A game that needs them (to type, or for keys a pad can't stand in for) turns the Spectrum keyboard on in its definition, and the guidance menu can turn it on for the session: then letters, digits, Enter, Space, Shift (CAPS SHIFT), the left Ctrl and Alt (SYMBOL SHIFT) and Backspace (DELETE) reach the game as on the original, and the arrows and the right Ctrl, the right Alt and / still play as the pad. When a game asks for text, such as Starquake's teleport codes and a high score's name, the keyboard types the letters straight into it; on a pad, a card spells them.
 
-On the loading screen any pad button goes on, and so do the keys that play as one (Enter, Space, Z X C V); letters, digits and the arrows don't. On Starquake's title any key or button starts a game.
+On the loading screen any key or button goes on, letters and digits too, and on Starquake's title any key or button starts a game; the arrows, W A S D, the D-pad and the stick do nothing on either.
 
 The program's own keys:
 
@@ -81,7 +81,7 @@ The program's own keys:
 | East button | X | Up: pick up or swap an item, or board a hover platform |
 | North button | V, Tab | At guidance level 5, the next route |
 | Start | Enter | Pause |
-| Any button | Any key | On the title, start a game, and go on from the story that follows |
+| Any button but the D-pad and stick | Any key but the arrows and W A S D | On the title, start a game, and go on from the story that follows |
 | Select | Esc | The guidance menu |
 
 Starquake's own keys (its list of controls, A S D F G together to end a game) don't reach it while the keyboard is a pad; the guidance menu's *End this game* ends one. When the game is paused, a card says how to go on: move or fire.
