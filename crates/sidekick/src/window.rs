@@ -34,8 +34,8 @@ use sidekick_ui::{
     device, Canvas, EntryCard, Fonts, HowTo, HowToTarget, LibraryPage, Menu as MenuCard, Note,
     Offer, PadLabels, Panel, PauseNotice, Pin, PromptButton, Question, Refusal, Row, TapePrompt,
     ThisGame, ENTRY_HEIGHT, ENTRY_WIDTH, HOW_TO_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT,
-    OFFER_HEIGHT, OFFER_WIDTH, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH,
-    TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    OFFER_HEIGHT, OFFER_WIDTH, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT,
+    TAPE_PROMPT_WIDTH,
 };
 use std::{
     cell::RefCell,
@@ -441,6 +441,10 @@ impl App {
             event => {
                 let mut presses = gamepads.event(&event);
                 if let Screen::Play(player) = &mut *screen {
+                    // A press does what it does in the state last known, even one first seen
+                    // in the frame just run.
+                    let known = player.session.progress().last_known.as_deref();
+                    gamepads.pads.hold_back_parts(&player.play.enter(known));
                     // A key let go lets go of whatever it pressed, whoever takes the event.
                     player.key_up(&event, &mut gamepads.pads);
                     if player.offer_event(&event, &presses, &mut gamepads.pads)
@@ -632,14 +636,8 @@ impl Screen {
         match self {
             Self::Play(player) => {
                 for &(part, _) in presses {
-                    let function = if part == Part::Start
-                        && player.session.machine().waits_on_loading_screen()
-                    {
-                        player.play.start_on_loading_screen()
-                    } else {
-                        player.play.pressed(part)
-                    };
-                    if let Some(function) = function {
+                    let loading = player.session.machine().waits_on_loading_screen();
+                    if let Some(function) = player.play.press(part, loading) {
                         // A failure turns the script off, which the panel shows.
                         let _ = player.session.script_action(&function);
                     }
@@ -824,9 +822,9 @@ impl Player {
         player
     }
 
-    /// Whether the game is held on its loading screen, taking the event. Enter, the pad's
-    /// Start or a click lets it go, as its card says, and doesn't reach the game; its time
-    /// starts again from then.
+    /// Whether the game is held on its loading screen, taking the event. Any key or button but
+    /// a direction ([`goes_on`]), or a click, lets it go, as its card says, and doesn't reach the
+    /// game; its time starts again from then.
     fn held(&mut self, event: &Event, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
         if !self.session.holding() {
             return false;
@@ -1737,11 +1735,14 @@ impl Player {
 
     /// Takes a key pressed in play: a Spectrum key reaches the game, or the keyboard's pad
     /// presses a part, as the keyboard is now ([`keys::mode`]); a key bound to one of the
-    /// game's actions does it, except while the game asks for text. Returns the parts pressed
-    /// that count. A letter typed while the text card is open closes it: the keyboard has it.
+    /// game's actions does it, except while the game asks for text. Where the state's `[pad]`
+    /// has `any`, or a loader waits for a key, the keyboard a pad, every other key presses
+    /// that ([`keys::any_key`]), unless Cmd or the Windows key is held for a shortcut. Returns the parts pressed that count. A
+    /// letter typed while the text card is open closes it: the keyboard has it.
     fn key_down(&mut self, event: &Event, pads: &mut Pads, maker: Maker) -> Vec<(Part, Maker)> {
         let Event::KeyDown {
             scancode: Some(scancode),
+            keymod,
             repeat: false,
             ..
         } = *event
@@ -1756,9 +1757,11 @@ impl Player {
             KeyboardMode::Typing => None,
             _ => self.play.mapping().host_key(scancode.name()),
         };
+        let loading = self.session.machine().waits_on_loading_screen();
+        let any = (self.play.takes_any_key() || loading) && !shortcut(keymod);
         match action
             .map(KeyDoes::Pad)
-            .or_else(|| keys::pressed(scancode, &mode))
+            .or_else(|| keys::pressed_or_any(scancode, &mode, any))
         {
             Some(KeyDoes::Spectrum(key)) => {
                 press(self.session.machine_mut(), key, true);
@@ -1966,17 +1969,15 @@ impl Player {
     fn notice(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let size = (PAUSE_NOTICE_WIDTH, PAUSE_NOTICE_HEIGHT);
         let (notice, (at, scale)) = if self.paused() {
-            (
-                compose::pause_notice(self.session.definition(), labels),
-                compose::card_over(layout.picture, output, layout, size),
-            )
+            let notice = compose::pause_notice(self.session.definition(), labels);
+            let size = (PAUSE_NOTICE_WIDTH, notice.height());
+            let place = compose::card_over(layout.picture, output, layout, size);
+            (notice, place)
         } else if let Some(notice) = compose::foot_notice(&self.session, labels) {
-            (
-                notice,
-                compose::card_at_foot(layout.picture, output, layout, size),
-            )
+            let size = (PAUSE_NOTICE_WIDTH, notice.height());
+            let place = compose::card_at_foot(layout.picture, output, layout, size);
+            (notice, place)
         } else {
             return Ok(());
         };
@@ -2327,17 +2328,26 @@ fn inside((x, y, w, h): (f32, f32, f32, f32), px: f32, py: f32) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
 }
 
-/// Whether an event goes on from a held loading screen: Enter (the keyboard's Start), the
-/// pad's Start, or a click.
+/// Whether a key goes with Cmd or the Windows key held: a shortcut, not a press.
+const fn shortcut(keymod: Mod) -> bool {
+    keymod.intersects(Mod::LGUIMOD.union(Mod::RGUIMOD))
+}
+
+/// Whether an event goes on from a held loading screen: any of a pad's buttons
+/// ([`Part::goes_on`]), any key but a direction's, Esc, the F keys and the modifiers
+/// ([`keys::key_goes_on`]), or a click.
 fn goes_on(event: &Event, presses: &[(Part, Maker)]) -> bool {
-    matches!(
-        event,
+    let key = match *event {
         Event::KeyDown {
-            scancode: Some(Scancode::Return | Scancode::KpEnter),
+            scancode: Some(scancode),
+            keymod,
             repeat: false,
             ..
-        } | Event::MouseButtonDown { .. }
-    ) || presses.iter().any(|&(part, _)| part == Part::Start)
+        } => keys::key_goes_on(scancode, shortcut(keymod)),
+        Event::MouseButtonDown { .. } => true,
+        _ => false,
+    };
+    key || presses.iter().any(|&(part, _)| part.goes_on())
 }
 
 /// What a key does on the How to play screen: the arrows left and right turn "Show next time"
@@ -2681,22 +2691,130 @@ notice = { text = "Press fire." }
     }
 
     #[test]
-    fn a_held_loading_screen_goes_on_with_enter_or_start_as_its_card_says() {
-        assert!(goes_on(&key_down(Scancode::Return), &[]));
-        assert!(goes_on(&key_down(Scancode::KpEnter), &[]));
+    fn a_held_loading_screen_goes_on_with_any_key_or_button_but_a_direction() {
+        for key in [
+            Scancode::Return,
+            Scancode::KpEnter,
+            Scancode::Space,
+            Scancode::Z,
+            Scancode::X,
+            Scancode::C,
+            Scancode::V,
+            Scancode::RCtrl,
+            Scancode::RAlt,
+            Scancode::Slash,
+            Scancode::Q,
+            Scancode::_1,
+            Scancode::Tab,
+        ] {
+            assert!(goes_on(&key_down(key), &[]), "{key:?}");
+        }
+        for key in [
+            Scancode::Left,
+            Scancode::W,
+            Scancode::Escape,
+            Scancode::F1,
+            Scancode::LShift,
+        ] {
+            assert!(!goes_on(&key_down(key), &[]), "{key:?} does nothing");
+        }
+        let cmd_q = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: None,
+            scancode: Some(Scancode::Q),
+            keymod: Mod::LGUIMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        assert!(!goes_on(&cmd_q, &[]), "a shortcut does nothing");
+        let nothing = Event::KeyUp {
+            timestamp: 0,
+            window_id: 0,
+            keycode: None,
+            scancode: Some(Scancode::Q),
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        for part in [
+            Part::West,
+            Part::South,
+            Part::East,
+            Part::North,
+            Part::L1,
+            Part::R1,
+            Part::L2,
+            Part::R2,
+            Part::Start,
+        ] {
+            assert!(goes_on(&nothing, &[(part, Maker::Other)]), "{part:?}");
+        }
+        for part in [Part::DPad(Way::Up), Part::Stick(Way::Left), Part::Select] {
+            assert!(!goes_on(&nothing, &[(part, Maker::Other)]), "{part:?}");
+        }
+    }
+
+    #[test]
+    fn where_the_title_takes_any_key_esc_still_opens_the_menu_and_a_letter_presses() {
+        let definition = Definition::from_toml(
+            r#"
+            schema = 1
+            [game]
+            id = "test"
+            title = "Test"
+            machine = "48k"
+            [[media]]
+            name = "the tape"
+            [[states]]
+            name = "title"
+            role = "title"
+            pc = 0x8000
+            [pad.title]
+            any = { tap = ["0"] }
+            "#,
+        )
+        .expect("the test definition parses");
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        // JR -2: the game waits on its title.
+        machine.write(0x8000, 0x18);
+        machine.write(0x8001, 0xFE);
+        machine.registers_mut().set_pc(0x8000);
+        let mut session = Session::new(machine, Some(definition));
+        session.run_frame().expect("a frame");
+        assert_eq!(session.state(), Some("title"));
+        let data = tempfile::TempDir::new().expect("a folder");
+        let mut player = Player::new(Playing {
+            mapping: Mapping::new(session.definition()),
+            session,
+            title: "Test".to_owned(),
+            folder: None,
+            saves: Saves::of_tape("test.tap", "ABC123", data.path()),
+            quit_slot: false,
+            keep_lists: false,
+            save_point: SavePoint::Quick,
+            paused: false,
+            source: None,
+        });
+        let mut pads = Pads::default();
+        player
+            .play
+            .enter(player.known_state().map(str::to_owned).as_deref());
+        let presses = player.key_down(&key_down(Scancode::Q), &mut pads, Maker::Other);
         assert!(
-            !goes_on(&key_down(Scancode::Q), &[]),
-            "other keys do nothing"
+            matches!(presses[..], [(Part::Key(_), _)]),
+            "a letter presses: {presses:?}"
         );
-        assert!(!goes_on(&key_down(Scancode::Space), &[]));
-        assert!(goes_on(
-            &key_down(Scancode::Q),
-            &[(Part::Start, Maker::Other)]
-        ));
-        assert!(!goes_on(
-            &key_down(Scancode::Q),
-            &[(Part::South, Maker::Other)]
-        ));
+        assert!(player
+            .key_down(&key_down(Scancode::Escape), &mut pads, Maker::Other)
+            .is_empty());
+        assert!(player
+            .key_down(&key_down(Scancode::F1), &mut pads, Maker::Other)
+            .is_empty());
+        assert!(player.menu_event(&key_down(Scancode::Escape), &[], &mut pads) == MenuEvent::Taken);
+        assert!(player.menu.is_some(), "Esc opens the menu");
     }
 
     #[test]

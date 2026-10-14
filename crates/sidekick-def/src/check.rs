@@ -486,6 +486,10 @@ impl Checker<'_> {
                     self.report(&path, "select always opens the guidance menu");
                     continue;
                 }
+                if part == "any" && state == "default" {
+                    self.report(&path, "any is for a state's own table, not every state's");
+                    continue;
+                }
                 match target {
                     PadTarget::Named(name) => {
                         let ok = match name.as_str() {

@@ -174,42 +174,24 @@ fn the_pause_notice() {
         "paused-playstation.png",
         &paused(PadLabels::Shapes).draw(&mut fonts, 1.0).png(),
     );
-    golden(
-        "paused-unworded.png",
-        &PauseNotice::default().draw(&mut fonts, 1.0).png(),
-    );
+    let unworded = PauseNotice::default().draw(&mut fonts, 1.0);
+    assert_eq!(unworded.size(), (438, 107), "no hints: its words alone");
+    golden("paused-unworded.png", &unworded.png());
     // As Starquake's definition words it.
     let title = PauseNotice {
         heading: "Ignore the list".to_owned(),
-        text: "Play with the arrows or WASD, or a gamepad.".to_owned(),
-        hints: vec![
-            NoticeHint {
-                keys: Some("← ↑ → ↓".to_owned()),
-                pad: Some(PadMark::Directions),
-                does: "move".to_owned(),
-            },
-            NoticeHint {
-                keys: Some("Space".to_owned()),
-                pad: Some(PadMark::Face(Face::West)),
-                does: "fire".to_owned(),
-            },
-            NoticeHint {
-                keys: Some("Enter".to_owned()),
-                pad: Some(PadMark::Start),
-                does: "start".to_owned(),
-            },
-        ],
+        text: "Press any key or button to start.".to_owned(),
+        hints: Vec::new(),
         ..paused(PadLabels::Letters)
     };
     golden("title-notice.png", &title.draw(&mut fonts, 1.0).png());
-    let shapes = PauseNotice {
-        pad: PadLabels::Shapes,
+    // As the program words the loading screen's.
+    let loading = PauseNotice {
+        heading: "Loading screen".to_owned(),
+        text: "Press any key or button to go on.".to_owned(),
         ..title
     };
-    golden(
-        "title-notice-playstation.png",
-        &shapes.draw(&mut fonts, 1.0).png(),
-    );
+    golden("loading-notice.png", &loading.draw(&mut fonts, 1.0).png());
 }
 
 fn starquake_menu() -> Menu {

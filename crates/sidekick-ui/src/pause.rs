@@ -9,8 +9,10 @@ use crate::{
 
 /// The card's size, in logical pixels.
 pub const WIDTH: u32 = 438;
-/// The card's height, in logical pixels.
+/// The card's height, in logical pixels, with hints.
 pub const HEIGHT: u32 = 158;
+/// Its height without hints: its words alone, down to where the hints' rule would be.
+pub const PLAIN_HEIGHT: u32 = 107;
 
 /// Where the card sits on the picture's 960 × 768 logical pixels: its top left.
 pub const AT: (u32, u32) = (261, 305);
@@ -96,13 +98,24 @@ pub(crate) fn presses(
 }
 
 impl PauseNotice {
-    /// Draws the card at `scale` device pixels to a logical one; outside its rounded corners
-    /// stays clear.
+    /// The card's height, in logical pixels: [`HEIGHT`], or [`PLAIN_HEIGHT`] with no hints.
+    #[must_use]
+    pub const fn height(&self) -> u32 {
+        if self.hints.is_empty() {
+            PLAIN_HEIGHT
+        } else {
+            HEIGHT
+        }
+    }
+
+    /// Draws the card at `scale` device pixels to a logical one, [`WIDTH`] by
+    /// [`Self::height`]; outside its rounded corners stays clear.
     #[must_use]
     pub fn draw(&self, fonts: &mut Fonts, scale: f32) -> Canvas {
-        let mut c = Canvas::new(WIDTH, HEIGHT, scale);
+        let height = self.height();
+        let mut c = Canvas::new(WIDTH, height, scale);
         #[allow(clippy::cast_precision_loss, reason = "a card's size")]
-        let (w, h) = (WIDTH as f32, HEIGHT as f32);
+        let (w, h) = (WIDTH as f32, height as f32);
         c.rect(
             (0.0, 0.0, w, h),
             12.0,
@@ -128,7 +141,16 @@ impl PauseNotice {
             Align::Left,
             &body,
         );
-        c.rect((1.0, 107.0, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
+        if self.hints.is_empty() {
+            return c;
+        }
+        #[allow(clippy::cast_precision_loss, reason = "a card's size")]
+        c.rect(
+            (1.0, PLAIN_HEIGHT as f32, w - 2.0, 1.0),
+            0.0,
+            Some(CARD_EDGE),
+            None,
+        );
 
         let presses: Vec<Vec<Press>> = self
             .hints

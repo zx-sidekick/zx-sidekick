@@ -46,7 +46,7 @@ pub use panel::{
 };
 pub use pause::{
     NoticeHint, PadMark, PauseNotice, AT as PAUSE_NOTICE_AT, HEIGHT as PAUSE_NOTICE_HEIGHT,
-    WIDTH as PAUSE_NOTICE_WIDTH,
+    PLAIN_HEIGHT as PAUSE_NOTICE_PLAIN_HEIGHT, WIDTH as PAUSE_NOTICE_WIDTH,
 };
 pub use tape_prompt::{
     PromptButton, Refusal, TapePrompt, HEIGHT as TAPE_PROMPT_HEIGHT, WIDTH as TAPE_PROMPT_WIDTH,
