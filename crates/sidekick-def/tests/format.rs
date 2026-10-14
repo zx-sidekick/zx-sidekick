@@ -710,10 +710,16 @@ pc = 0x8000
 when = {{ value = "mode", equals = 1 }}
 west = {{ up = "none" }}
 
-[pad.play]
-when = {{ value = "nowhere", equals = 1 }}
+[[pad.play]]
+when = {{ value = "nowhere", equals_value = "elsewhere" }}
 dpad = {{ up = "none", down = "sideways" }}
 arrows = "joystick"
+
+[[pad.play]]
+west = "fire"
+
+[[pad.play]]
+when = {{ value = "nowhere", equals = 1 }}
 "#
     );
     let def = Definition::from_toml(&text).expect("it parses");
@@ -728,8 +734,11 @@ arrows = "joystick"
         [
             "pad.default.when: when is for a state's own table, not every state's",
             "pad.default.west: ways are for dpad, stick and arrows",
-            "pad.play.when.value: no value named \"nowhere\"",
-            "pad.play.dpad.down: \"sideways\" isn't a direction, fire, menu, none or an action",
+            "pad.play[0].when.value: no value named \"nowhere\"",
+            "pad.play[0].when.equals_value: no value named \"elsewhere\"",
+            "pad.play[0].dpad.down: \"sideways\" isn't a direction, fire, menu, none or an action",
+            "pad.play[1]: only the last of a state's tables can leave out when: those after it never apply",
+            "pad.play[2].when.value: no value named \"nowhere\"",
         ]
     );
 }

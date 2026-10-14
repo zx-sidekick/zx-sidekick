@@ -281,6 +281,9 @@ pub struct Test {
     /// It equals this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub equals: Option<i64>,
+    /// It equals this other value, as read in the same frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equals_value: Option<String>,
     /// It doesn't equal this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub not: Option<i64>,

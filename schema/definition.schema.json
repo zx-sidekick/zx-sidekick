@@ -84,7 +84,7 @@
       "description": "What a pad does, by state (`default` for every state).",
       "type": "object",
       "additionalProperties": {
-        "$ref": "#/$defs/Pad"
+        "$ref": "#/$defs/OneOrMany4"
       }
     },
     "panel": {
@@ -1096,6 +1096,22 @@
         }
       ]
     },
+    "OneOrMany4": {
+      "description": "One of something, or a list of them.",
+      "anyOf": [
+        {
+          "description": "Just one.",
+          "$ref": "#/$defs/Pad"
+        },
+        {
+          "description": "A list.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Pad"
+          }
+        }
+      ]
+    },
     "Pad": {
       "description": "`[pad.*]`: what each part of a pad does in a state (`default` for all states).",
       "type": "object",
@@ -1798,6 +1814,13 @@
             "null"
           ],
           "format": "int64"
+        },
+        "equals_value": {
+          "description": "It equals this other value, as read in the same frame.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "in": {
           "description": "It's one of these.",

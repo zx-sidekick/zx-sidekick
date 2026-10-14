@@ -223,6 +223,9 @@ impl Checker<'_> {
             None if !combines => self.report(path, "names no value, and combines no tests"),
             None => {}
         }
+        if let Some(other) = &test.equals_value {
+            self.need_value(&format!("{path}.equals_value"), other);
+        }
         for (i, t) in test.all.iter().enumerate() {
             self.test(&format!("{path}.all[{i}]"), t);
         }
@@ -476,10 +479,33 @@ impl Checker<'_> {
     }
 
     fn pad(&mut self) {
-        for (state, pad) in &self.def.pad {
+        for (state, tables) in &self.def.pad {
             if state != "default" && !self.state_exists(state) {
                 self.report(format!("pad.{state}"), format!("no state named {state:?}"));
             }
+            let count = tables.iter().count();
+            if state == "default" && count > 1 {
+                self.report("pad.default", "one table: lists are for a state's own");
+            }
+            for (n, pad) in tables.iter().enumerate() {
+                let state = &if count > 1 {
+                    format!("{state}[{n}]")
+                } else {
+                    state.clone()
+                };
+                if pad.when.is_none() && n + 1 < count {
+                    self.report(
+                        format!("pad.{state}"),
+                        "only the last of a state's tables can leave out when: those after it never apply",
+                    );
+                }
+                self.pad_table(state, pad);
+            }
+        }
+    }
+
+    fn pad_table(&mut self, state: &str, pad: &crate::Pad) {
+        {
             if let Some(when) = &pad.when {
                 if state == "default" {
                     self.report(

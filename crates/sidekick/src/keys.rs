@@ -836,11 +836,30 @@ mod tests {
     #[test]
     fn on_a_hover_platform_the_pad_s_up_and_down_fly_it() {
         // Room 234's hover pad, where its platform waits (games/starquake/tests/hover-pad.toml).
-        let Some(mut k) = starquake_in(234, 72, 87, false) else {
+        let Some(base) = starquake_in(234, 72, 87, false) else {
             return;
         };
-        k.hold(Part::East, 10);
-        assert_eq!(k.number("blob_mode"), 2, "east boards it");
+        let mut east = base.fork();
+        east.hold(Part::East, 10);
+        assert_eq!(east.number("blob_mode"), 2, "east boards it");
+        let mut away = base.fork();
+        away.s.write("blob_x", 88).expect("writable");
+        away.frames(10);
+        let height = away.number("blob_y");
+        away.hold(Part::DPad(Way::Up), 15);
+        assert_eq!(
+            away.number("blob_mode"),
+            0,
+            "a step from the pad, the D-pad's up does nothing"
+        );
+        assert_eq!(away.number("blob_y"), height);
+        let mut k = base.fork();
+        k.hold(Part::DPad(Way::Up), 10);
+        assert_eq!(
+            k.number("blob_mode"),
+            2,
+            "at the pad, the D-pad's up boards it"
+        );
         let height = k.number("blob_y");
         let mut g = k.fork();
         g.hold(Part::DPad(Way::Up), 15);

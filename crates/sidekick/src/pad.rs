@@ -368,16 +368,18 @@ impl Does {
 /// Each part's `Does`.
 type Parts = BTreeMap<Part, Does>;
 
+/// One of a state's `[pad]` tables: the test it applies while, its parts, and its `any`.
+type Case = (Option<Test>, Parts, Option<Does>);
+
 /// What each part of a pad does in play, in each of the game's states, from its `[run]
 /// joystick`, `[pad]` and `[[actions]]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Mapping {
     /// With no state, or one without its own `[pad]`.
     default: Parts,
-    /// States with their own `[pad]`, and the test of a value it applies while, if any.
-    states: BTreeMap<String, (Option<Test>, Parts)>,
-    /// What every other key does in the states whose `[pad]` has `any`.
-    any: BTreeMap<String, Does>,
+    /// States with their own `[pad]`: each table, in turn, with the test of a value it applies
+    /// while (if any), and what every other key does where it has `any`.
+    states: BTreeMap<String, Vec<Case>>,
     /// The keys the Spectrum doesn't have that do an action, by SDL's name for them; each is
     /// `Part::HostKey` of its index.
     host_keys: Vec<String>,
@@ -415,7 +417,7 @@ impl Mapping {
                 targets.set(part, target);
             }
         };
-        if let Some(pad) = pads.and_then(|p| p.get("default")) {
+        for pad in pads.and_then(|p| p.get("default")).into_iter().flatten() {
             over(&mut targets, pad);
         }
         let mut host_keys = Vec::new();
@@ -442,32 +444,32 @@ impl Mapping {
             parts
         };
         let default = parts(&targets);
-        let mut any = BTreeMap::new();
+        let mut table = |pad: &Pad| -> Case {
+            let mut targets = targets.clone();
+            if let Some(target) = &pad.any {
+                for name in ANY_PARTS {
+                    targets.set(name, target);
+                }
+            }
+            over(&mut targets, pad);
+            let mut parts = parts(&targets);
+            if let Some(target) = &pad.any {
+                let does = joy.does(target, None);
+                for (_, host_key) in parts
+                    .iter_mut()
+                    .filter(|(p, _)| matches!(p, Part::HostKey(_)))
+                {
+                    *host_key = does.clone();
+                }
+                return (pad.when.clone(), parts, Some(does));
+            }
+            (pad.when.clone(), parts, None)
+        };
         let states = pads
             .into_iter()
             .flatten()
             .filter(|(state, _)| *state != "default")
-            .map(|(state, pad)| {
-                let mut targets = targets.clone();
-                if let Some(target) = &pad.any {
-                    for name in ANY_PARTS {
-                        targets.set(name, target);
-                    }
-                }
-                over(&mut targets, pad);
-                let mut parts = parts(&targets);
-                if let Some(target) = &pad.any {
-                    let does = joy.does(target, None);
-                    for (_, host_key) in parts
-                        .iter_mut()
-                        .filter(|(p, _)| matches!(p, Part::HostKey(_)))
-                    {
-                        *host_key = does.clone();
-                    }
-                    any.insert(state.clone(), does);
-                }
-                (state.clone(), (pad.when.clone(), parts))
-            })
+            .map(|(state, tables)| (state.clone(), tables.iter().map(&mut table).collect()))
             .collect();
         let actions = joy
             .actions
@@ -477,31 +479,40 @@ impl Mapping {
         Self {
             default,
             states,
-            any,
             host_keys,
             actions,
         }
     }
 
-    /// What each part does in `state`: its own table while its `when` holds (`active`), or
-    /// when it has none; the default's otherwise.
-    fn parts(&self, state: Option<&str>, active: bool) -> &Parts {
+    /// Which of `state`'s own tables applies: the first whose `when` holds (`holds` tests a
+    /// value), or has none. `None`: the default's.
+    pub(crate) fn case(&self, state: Option<&str>, holds: &dyn Fn(&Test) -> bool) -> Option<usize> {
+        self.states
+            .get(state?)?
+            .iter()
+            .position(|(when, _, _)| when.as_ref().is_none_or(holds))
+    }
+
+    /// The last of `state`'s own tables: what a card shows its keys by, the one a list ends
+    /// with when nothing more particular holds.
+    fn last_case(&self, state: Option<&str>) -> Option<usize> {
+        self.states.get(state?)?.len().checked_sub(1)
+    }
+
+    /// What each part does in `state`, by its table `case`; the default's without one.
+    fn parts(&self, state: Option<&str>, case: Option<usize>) -> &Parts {
         state
             .and_then(|s| self.states.get(s))
-            .filter(|(when, _)| when.is_none() || active)
-            .map_or(&self.default, |(_, parts)| parts)
+            .zip(case)
+            .and_then(|(cases, case)| cases.get(case))
+            .map_or(&self.default, |(_, parts, _)| parts)
     }
 
-    /// The test of a value `state`'s own table applies while, if it has one.
-    pub(crate) fn when(&self, state: Option<&str>) -> Option<&Test> {
-        self.states.get(state?)?.0.as_ref()
-    }
-
-    /// What `part` does in `state`, if anything.
-    fn does(&self, state: Option<&str>, active: bool, part: Part) -> Option<&Does> {
+    /// What `part` does in `state`, by its table `case`, if anything.
+    fn does(&self, state: Option<&str>, case: Option<usize>, part: Part) -> Option<&Does> {
         match part {
-            Part::Key(_) => self.any.get(state?),
-            part => self.parts(state, active).get(&part),
+            Part::Key(_) => self.states.get(state?)?.get(case?)?.2.as_ref(),
+            part => self.parts(state, case).get(&part),
         }
     }
 
@@ -533,7 +544,7 @@ impl Mapping {
         if let Some(key) = key_for(part, spectrum) {
             return Some(key.to_owned());
         }
-        let parts = self.parts(state, true);
+        let parts = self.parts(state, self.last_case(state));
         let does = parts.get(&part)?;
         let same = |other: Part| parts.get(&other).is_some_and(|o| o.alike(does));
         let arrows: Vec<&str> = WAYS
@@ -765,8 +776,8 @@ struct Lasting {
 pub(crate) struct Play {
     mapping: Mapping,
     state: Option<String>,
-    /// Whether the state's own `[pad]` table applies: its `when` holds, or it has none.
-    active: bool,
+    /// Which of the state's own `[pad]` tables applies, if one does.
+    case: Option<usize>,
     lasting: Vec<Lasting>,
     sent: BTreeSet<Input>,
 }
@@ -800,12 +811,12 @@ impl Play {
         state: Option<&str>,
         holds: &dyn Fn(&Test) -> bool,
     ) -> Vec<Part> {
-        let active = self.mapping.when(state).is_none_or(holds);
-        if self.state.as_deref() == state && self.active == active {
+        let case = self.mapping.case(state, holds);
+        if self.state.as_deref() == state && self.case == case {
             return Vec::new();
         }
-        let before = self.mapping.parts(self.state.as_deref(), self.active);
-        let after = self.mapping.parts(state, active);
+        let before = self.mapping.parts(self.state.as_deref(), self.case);
+        let after = self.mapping.parts(state, case);
         let changed = before
             .keys()
             .chain(after.keys())
@@ -815,14 +826,14 @@ impl Play {
             .into_iter()
             .collect();
         self.state = state.map(str::to_owned);
-        self.active = active;
+        self.case = case;
         changed
     }
 
     /// Whether `part` does anything in the game's state now.
     pub(crate) fn maps(&self, part: Part) -> bool {
         self.mapping
-            .does(self.state.as_deref(), self.active, part)
+            .does(self.state.as_deref(), self.case, part)
             .is_some()
     }
 
@@ -853,9 +864,7 @@ impl Play {
     /// A part was pressed: starts its tap, and keeps what it holds going for the frames it
     /// lasts at least. Returns the script function it calls, if it calls one.
     pub(crate) fn pressed(&mut self, part: Part) -> Option<String> {
-        let does = self
-            .mapping
-            .does(self.state.as_deref(), self.active, part)?;
+        let does = self.mapping.does(self.state.as_deref(), self.case, part)?;
         Self::start(&mut self.lasting, does);
         does.script.clone()
     }
@@ -914,7 +923,7 @@ impl Play {
             add(&lasting.inputs, &lasting.patches);
         }
         for part in held {
-            if let Some(does) = self.mapping.does(self.state.as_deref(), self.active, part) {
+            if let Some(does) = self.mapping.does(self.state.as_deref(), self.case, part) {
                 add(&does.hold, &does.patches);
             }
         }
@@ -1087,6 +1096,40 @@ pub(crate) mod tests {
             play.enter(Some("play"), &|_| false).is_empty(),
             "nothing changed"
         );
+    }
+
+    #[test]
+    fn a_state_s_tables_apply_in_turn_the_first_whose_when_holds() {
+        let mapping = Mapping::new(Some(&def(r#"
+            [run]
+            joystick = "kempston"
+            [[states]]
+            name = "play"
+            role = "play"
+            pc = 0x8000
+            [values.mode]
+            addr = 0x9000
+            type = "u8"
+            [[pad.play]]
+            when = { value = "mode", equals = 2 }
+            [[pad.play]]
+            when = { value = "mode", equals = 1 }
+            dpad = { down = "none" }
+            [[pad.play]]
+            dpad = { up = "none", down = "none" }
+        "#)));
+        let mut play = Play::new(mapping);
+        let ups = |play: &mut Play, mode: i64| {
+            let test = |t: &Test| t.equals == Some(mode);
+            play.enter(Some("play"), &test);
+            (
+                holds(play, &[Part::DPad(Way::Up)]).len(),
+                holds(play, &[Part::DPad(Way::Down)]).len(),
+            )
+        };
+        assert_eq!(ups(&mut play, 2), (1, 1), "the first: as the default");
+        assert_eq!(ups(&mut play, 1), (1, 0), "the second: up only");
+        assert_eq!(ups(&mut play, 0), (0, 0), "the last, which has no when");
     }
 
     #[test]

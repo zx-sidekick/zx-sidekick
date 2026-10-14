@@ -50,7 +50,7 @@ pub struct Definition {
     pub cheats: Vec<Cheat>,
     /// What a pad does, by state (`default` for every state).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub pad: BTreeMap<String, Pad>,
+    pub pad: BTreeMap<String, OneOrMany<Pad>>,
     /// Things a button or key can do.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<Action>,

@@ -141,7 +141,7 @@ pc = [0x5F10, 0x5F42]  # any of these
 | `name` | The state's name: yours, meaning nothing to the program by itself. Other sections name it (`[pad.<state>]`, `text_entry.state`, `menu_in`), and a script sees it as `mem.state`. |
 | `role` | What it means to the program, if anything: `title` (the kept high scores go in when it's first reached; coming back to it ends a game), `play` (training switches apply; coming to it from the title, game over or nothing starts a game's record; a crafted situation enters it), `paused` (the picture dims and the pause notice shows) or `game_over` (no game is under way, so nothing is kept on quitting). At most one state has each. `sidekick check` points out a state named after a role without it. |
 | `pc` | One address or a list: matches if the processor executed it during the frame. |
-| `when` | A test of a value: `equals`, `not`, `in = [..]`, `at_least`, `at_most`, or `bits = 0x80` (all set). `all = [..]` and `any = [..]` combine tests. |
+| `when` | A test of a value: `equals`, `equals_value` (another value's name: equal to it as read in the same frame), `not`, `in = [..]`, `at_least`, `at_most`, or `bits = 0x80` (all set). `all = [..]` and `any = [..]` combine tests. |
 | `notice` | For the states with `role = "paused"` or `"title"`. The pause's shows while the game is paused, over the dimmed picture; the title's shows on the title, over the foot of the picture, which isn't dimmed, and goes half a second after the title was last seen: say there how the game plays here where its own screen says otherwise. `heading` replaces the card's own ("Paused", "How it plays"); `text` is its line; `hints` are what to press, each with `keys` (the keyboard's, as shown: `"Alt"`, or arrows such as `"← ↑ → ↓"`; on a Mac, which has no right Control, `Right Ctrl` is shown as `/`, which fires too), `pad` (a pad part by position: `dpad`, `stick`, `west`, `south`, `east`, `north` or `start`, shown as the pad's maker marks it: Start is "Start", "Options" or "+") or both, and `does`; without hints the card is its heading and line alone. Without one, the pause's says "Press a key or a button to go on." |
 | `set` | One or a list of `{ value, to }`, written at each sync point while the game was last known in this state: a choice the program makes for the player, such as Starquake's title picking the joystick. Each value must be `writable`. |
 
@@ -317,15 +317,28 @@ What a part can do:
 dpad = { up = "none", down = "none" }   # left and right still drive the joystick
 ```
 
-**`when`**, in a state's own table: it applies only while this test of a value holds (as a `[[states]]` `when`), and the state plays as `[pad.default]` does otherwise. For a meaning that depends on more than the state, without a state of its own, which would leave play and its switches and saves. Starquake's pad moves BLOB left and right only while he's on foot, and flies a hover platform up and down while he rides one:
+**`when`**, in a state's own table: it applies only while this test of a value holds (as a `[[states]]` `when`), and the state plays as `[pad.default]` does otherwise. A state can have several tables, `[[pad.<state>]]`, tried in turn: the first whose `when` holds applies, and only the last may leave `when` out. For meanings that depend on more than the state, without states of their own, which would leave play and its switches and saves. A How to play card shows a state's keys by its last table. Starquake's pad flies a hover platform up and down while BLOB rides one, boards it with up where it waits, and moves him left and right only elsewhere on foot, while the keyboard's arrows keep up and down throughout:
 
 ```toml
-[pad.play]
-when = { value = "blob_mode", not = 2 }   # not on a hover platform
+[[pad.play]]
+when = { value = "blob_mode", equals = 2 }   # riding a hover platform: as [pad.default]
+
+[[pad.play]]
+when = { all = [                              # on foot at the platform's pad
+  { value = "blob_x", equals_value = "hover_pad_x" },
+  { value = "blob_y", equals_value = "hover_pad_height" },
+] }
+dpad = { down = "none" }
+stick = { down = "none" }
+arrows = "joystick"
+
+[[pad.play]]                                  # elsewhere
 dpad = { up = "none", down = "none" }
 stick = { up = "none", down = "none" }
-arrows = "joystick"                       # the keyboard keeps up and down
+arrows = "joystick"
 ```
+
+A button held when a table changes what it does is held back, as when a state does.
 
 A button held when a state changes what it does is held back from the game until it's let go (`ZX-SIDEKICK.md` §9); one that does the same in both states carries on, so a held direction isn't cut short.
 

@@ -75,7 +75,7 @@ The program's own keys:
 
 | Pad | Keyboard | Does |
 |---|---|---|
-| D-pad, left stick | Arrow keys | Move left and right; on a hover platform, fly up and down. The arrow keys' up and down pick up or board, and build, everywhere |
+| D-pad, left stick | Arrow keys | Move left and right; up boards a hover platform where it waits, and on it, up and down fly it. The arrow keys' up and down pick up or board, and build, everywhere |
 | West button | Space | Fire |
 | South button | ↓ | Down: build a platform, or fly down |
 | East button | ↑ | Up: pick up or swap an item, or board a hover platform |

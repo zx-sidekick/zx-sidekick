@@ -1223,6 +1223,10 @@ fn holds(test: &Test, reading: &Reading) -> bool {
     let own = test.value.as_ref().is_none_or(|name| {
         reading.get(name).and_then(Read::number).is_some_and(|n| {
             test.equals.is_none_or(|e| n == e)
+                && test
+                    .equals_value
+                    .as_ref()
+                    .is_none_or(|other| reading.get(other).and_then(Read::number) == Some(n))
                 && test.not.is_none_or(|e| n != e)
                 && (test.one_of.is_empty() || test.one_of.contains(&n))
                 && test.at_least.is_none_or(|e| n >= e)

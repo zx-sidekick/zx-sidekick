@@ -121,6 +121,16 @@ type = "u8"
 addr = 0xDD22
 description = "How BLOB moves: 0 on foot, 1 carried up a vacuum tube, 2 on a hover platform"
 
+[values.hover_pad_x]
+type = "u8"
+addr = 0xD2CA
+description = "Where the room's hover platform waits on its pad: BLOB's x there; 0 in a room without one"
+
+[values.hover_pad_height]
+type = "u8"
+addr = 0xD2CB
+description = "Where the room's hover platform waits on its pad: BLOB's height there; 0 in a room without one"
+
 [values.lives]
 type = "u8"
 writable = true
@@ -357,13 +367,28 @@ east = "pick-up"
 north = "next-route"
 start = { tap = ["SPACE"], frames = 2 }
 
-[pad.play]
-# On foot (and in a vacuum tube), the pad's D-pad and stick move left and right only: up and
-# down would pick up or swap, and build, so a diagonal pressed by accident would too. East and
-# south do those. On a hover platform (blob_mode 2) the table doesn't apply, and the D-pad and
-# stick fly it up and down as [pad.default] has them. The keyboard's arrows keep up and down
-# everywhere (#194).
-when = { value = "blob_mode", not = 2 }
+# In play, the first of these tables whose `when` holds applies (#194). The keyboard's arrows keep
+# up and down throughout (`arrows`): keys aren't pressed by accident on a diagonal.
+
+[[pad.play]]
+# Riding a hover platform: the D-pad and stick fly it up and down, as [pad.default] has them.
+when = { value = "blob_mode", equals = 2 }
+
+[[pad.play]]
+# On foot where a hover platform waits: up boards it, as east does; there it picks nothing up
+# (docs/re/starquake.md). Down does nothing.
+when = { all = [
+  { value = "blob_x", equals_value = "hover_pad_x" },
+  { value = "blob_y", equals_value = "hover_pad_height" },
+] }
+dpad = { down = "none" }
+stick = { down = "none" }
+arrows = "joystick"
+
+[[pad.play]]
+# Elsewhere on foot, or carried up a vacuum tube: the D-pad and stick move left and right only,
+# since up and down would pick up or swap, and build, on a diagonal pressed by accident. East and
+# south do those.
 dpad = { up = "none", down = "none" }
 stick = { up = "none", down = "none" }
 arrows = "joystick"
