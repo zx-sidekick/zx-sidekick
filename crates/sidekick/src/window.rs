@@ -5,7 +5,7 @@ use crate::{
     compose,
     entry::{self, Entry, Stroke, Typing},
     games::{self, Game, Playing},
-    keys::{self, spectrum_key, Spectrum},
+    keys::{self, KeyDoes, KeyboardMode, Spectrum},
     menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
@@ -99,7 +99,7 @@ fn cached<'a, T: Clone + PartialEq, K: Copy + PartialEq>(
     Ok(())
 }
 
-/// The keyboard, as a pad, for the keys that do a game's actions: an id no pad SDL opens has.
+/// The keyboard, as a pad: an id no pad SDL opens has.
 const KEYBOARD: u32 = u32::MAX;
 
 /// The tape prompt's size, in its logical pixels.
@@ -176,6 +176,9 @@ struct Player {
     /// in the window's device pixels, its scale, and device pixels to a window point.
     menu: Option<Menu>,
     menu_at: Option<(f32, f32, f32, f32)>,
+    /// The Spectrum's keyboard turned on or off in the menu, for this session; `None`, the
+    /// game's choice: the definition decides.
+    keyboard: Option<bool>,
     /// The text-entry card while it's open, and a word being typed.
     entry: Option<Entry>,
     typing: Option<Typing>,
@@ -426,6 +429,8 @@ impl App {
             event => {
                 let mut presses = gamepads.event(&event);
                 if let Screen::Play(player) = &mut *screen {
+                    // A key let go lets go of whatever it pressed, whoever takes the event.
+                    player.key_up(&event, &mut gamepads.pads);
                     if player.offer_event(&event, &presses, &mut gamepads.pads)
                         || player.save_keys(&event, &mut gamepads.pads)
                         || player.held(&event, &presses, &mut gamepads.pads)
@@ -437,10 +442,11 @@ impl App {
                         MenuEvent::Taken => return Ok(Flow::Go),
                         MenuEvent::Quit => return Ok(Flow::Quit),
                     }
+                    let keys = player.key_down(&event, &mut gamepads.pads, gamepads.last);
                     if player.entry_event(&presses, &mut gamepads.pads) {
                         return Ok(Flow::Go);
                     }
-                    presses.extend(gamepads.host_key(&event, player.play.mapping()));
+                    presses.extend(keys);
                 }
                 let choice = screen.event(&event, &presses, &out.canvas);
                 return follow(choice, screen, &mut out.canvas, &mut gamepads.pads);
@@ -610,9 +616,15 @@ impl Screen {
         let navs = presses.iter().filter_map(|&(p, m)| pad::nav(p, m));
         match self {
             Self::Play(player) => {
-                play_event(player.session.machine_mut(), event);
                 for &(part, _) in presses {
-                    if let Some(function) = player.play.pressed(part) {
+                    let function = if part == Part::Start
+                        && player.session.machine().waits_on_loading_screen()
+                    {
+                        player.play.start_on_loading_screen()
+                    } else {
+                        player.play.pressed(part)
+                    };
+                    if let Some(function) = function {
                         // A failure turns the script off, which the panel shows.
                         let _ = player.session.script_action(&function);
                     }
@@ -678,31 +690,6 @@ impl Gamepads {
             self.last = maker;
         }
         parts.into_iter().map(|p| (p, maker)).collect()
-    }
-
-    /// A key the Spectrum doesn't have, pressed or let go like a pad's button: one the
-    /// definition binds to an action, else an arrow (the D-pad) or the right Control or Alt
-    /// (fire). Returns its part when pressed.
-    fn host_key(&mut self, event: &Event, mapping: &Mapping) -> Vec<(Part, Maker)> {
-        let (scancode, down) = match *event {
-            Event::KeyDown {
-                scancode: Some(scancode),
-                repeat: false,
-                ..
-            } => (scancode, true),
-            Event::KeyUp {
-                scancode: Some(scancode),
-                ..
-            } => (scancode, false),
-            _ => return Vec::new(),
-        };
-        mapping
-            .host_key(scancode.name())
-            .or_else(|| keys::pad_part(scancode))
-            .and_then(|part| self.pads.button(KEYBOARD, part, down))
-            .map(|part| (part, self.last))
-            .into_iter()
-            .collect()
     }
 
     /// How the last pad used marks its buttons, while a pad is plugged in.
@@ -786,6 +773,7 @@ impl Player {
             folder: playing.folder,
             menu: None,
             menu_at: None,
+            keyboard: None,
             entry: None,
             typing: None,
             table: Vec::new(),
@@ -819,13 +807,14 @@ impl Player {
         player
     }
 
-    /// Whether the game is held on its loading screen, taking the event. Any key or button
-    /// lets it go, and doesn't reach the game; its time starts again from then.
+    /// Whether the game is held on its loading screen, taking the event. Enter, the pad's
+    /// Start or a click lets it go, as its card says, and doesn't reach the game; its time
+    /// starts again from then.
     fn held(&mut self, event: &Event, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
         if !self.session.holding() {
             return false;
         }
-        if is_press(event) || !presses.is_empty() {
+        if goes_on(event, presses) {
             self.session.release();
             self.started = Instant::now();
             self.frames_run = 0;
@@ -857,7 +846,8 @@ impl Player {
             if self.session.holding() || self.menu.is_some() || self.offer.is_some() {
                 break;
             }
-            pads.hold_back_parts(&self.play.enter(self.session.state()));
+            let known = self.session.progress().last_known.as_deref();
+            pads.hold_back_parts(&self.play.enter(known));
             if self.starting == Starting::ToPause && self.ready_to_pause() {
                 self.starting = Starting::Running;
                 self.pause_at_start();
@@ -866,8 +856,9 @@ impl Player {
                 }
             }
             self.type_word();
-            // While the card is open, the pad drives only the card.
-            let held: Vec<Part> = if self.entry.is_some() {
+            // While the game asks for text, the joystick waits: the pad drives only the card,
+            // and the keyboard types.
+            let held: Vec<Part> = if self.entry.is_some() || self.asks_for_text() {
                 Vec::new()
             } else {
                 pads.held().collect()
@@ -1415,7 +1406,7 @@ impl Player {
             }
             PauseBy::Menu => {
                 let can_load = self.save_point.exists(&self.saves);
-                self.menu = Some(Menu::open(&self.session, self.level, &self.title, can_load));
+                self.menu = Some(self.open_menu(can_load));
             }
         }
     }
@@ -1441,16 +1432,18 @@ impl Player {
                     ..
                 }
             );
+            // Esc closes the text card first, when it's open.
+            if esc && self.entry.take().is_some() {
+                pads.hold_back();
+                return MenuEvent::Taken;
+            }
             if esc || presses.iter().any(|&(p, _)| p == Part::Select) {
                 let can_load = self.save_point.exists(&self.saves);
-                self.menu = Some(Menu::open(&self.session, self.level, &self.title, can_load));
+                self.menu = Some(self.open_menu(can_load));
                 return MenuEvent::Taken;
             }
             return MenuEvent::NotMine;
         };
-        if let Event::KeyUp { .. } = event {
-            play_event(self.session.machine_mut(), event);
-        }
         let mut inputs: Vec<menu::Input> = presses
             .iter()
             .filter_map(|&(part, maker)| {
@@ -1544,6 +1537,9 @@ impl Player {
             Outcome::Cancelled => self.close_menu(pads),
             Outcome::Applied => {
                 self.level = level;
+                if let Some(menu) = &self.menu {
+                    self.keyboard = menu.keyboard();
+                }
                 self.close_menu(pads);
             }
             Outcome::Act(index) => {
@@ -1571,6 +1567,94 @@ impl Player {
             }
         }
         MenuEvent::Taken
+    }
+
+    /// The state the game was last known in: steady through frames that match none, as a
+    /// title passed only every few frames is, so the pad and the keyboard do what that state
+    /// maps them to whichever frame they're pressed in.
+    fn known_state(&self) -> Option<&str> {
+        self.session.progress().last_known.as_deref()
+    }
+
+    /// Whether the game asks for text in the state it was last known in: its `[text_entry]` or
+    /// `[name_entry]`'s.
+    fn asks_for_text(&self) -> bool {
+        keys::asks_for_text(self.session.definition(), self.known_state())
+    }
+
+    /// The menu, opened on the game as it stands: `can_load`, whether the quick slot holds a
+    /// save.
+    fn open_menu(&self, can_load: bool) -> Menu {
+        let game = keys::spectrum_on(self.session.definition(), self.known_state(), None);
+        Menu::open(
+            &self.session,
+            self.level,
+            &self.title,
+            can_load,
+            self.keyboard,
+            game,
+        )
+    }
+
+    /// Takes a key pressed in play: a Spectrum key reaches the game, or the keyboard's pad
+    /// presses a part, as the keyboard is now ([`keys::mode`]); a key bound to one of the
+    /// game's actions does it, except while the game asks for text. Returns the parts pressed
+    /// that count. A letter typed while the text card is open closes it: the keyboard has it.
+    fn key_down(&mut self, event: &Event, pads: &mut Pads, maker: Maker) -> Vec<(Part, Maker)> {
+        let Event::KeyDown {
+            scancode: Some(scancode),
+            repeat: false,
+            ..
+        } = *event
+        else {
+            return Vec::new();
+        };
+        if self.typing.is_some() {
+            return Vec::new();
+        }
+        let mode = keys::mode(self.session.definition(), self.known_state(), self.keyboard);
+        let action = match mode {
+            KeyboardMode::Typing => None,
+            _ => self.play.mapping().host_key(scancode.name()),
+        };
+        match action
+            .map(KeyDoes::Pad)
+            .or_else(|| keys::pressed(scancode, &mode))
+        {
+            Some(KeyDoes::Spectrum(key)) => {
+                press(self.session.machine_mut(), key, true);
+                if matches!(mode, KeyboardMode::Typing) && self.entry.take().is_some() {
+                    pads.hold_back();
+                }
+                Vec::new()
+            }
+            Some(KeyDoes::Pad(part)) => pads
+                .button(KEYBOARD, part, true)
+                .map(|part| (part, maker))
+                .into_iter()
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Takes a key let go: whatever it may have pressed is let go, on the Spectrum and on the
+    /// keyboard's pad, so nothing sticks when the keyboard changed while it was held.
+    fn key_up(&mut self, event: &Event, pads: &mut Pads) {
+        let Event::KeyUp {
+            scancode: Some(scancode),
+            ..
+        } = *event
+        else {
+            return;
+        };
+        let (key, parts) = keys::let_go(scancode);
+        if let Some(key) = key {
+            press(self.session.machine_mut(), key, false);
+        }
+        let action = self.play.mapping().host_key(scancode.name());
+        for part in parts.into_iter().chain(action) {
+            pads.button(KEYBOARD, part, false);
+        }
     }
 
     /// The definition's text entry for the state the game is in: its `[text_entry]`, or its
@@ -2079,21 +2163,6 @@ fn frect((x, y, w, h): (u32, u32, u32, u32)) -> FRect {
     FRect::new(x as f32, y as f32, w as f32, h as f32)
 }
 
-fn play_event(machine: &mut Machine, event: &Event) {
-    match *event {
-        Event::KeyDown {
-            scancode: Some(scancode),
-            repeat: false,
-            ..
-        } => press(machine, scancode, true),
-        Event::KeyUp {
-            scancode: Some(scancode),
-            ..
-        } => press(machine, scancode, false),
-        _ => {}
-    }
-}
-
 /// A point in window coordinates, as one in the prompt's logical pixels.
 #[allow(
     clippy::cast_precision_loss,
@@ -2119,12 +2188,17 @@ fn inside((x, y, w, h): (f32, f32, f32, f32), px: f32, py: f32) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
 }
 
-/// A key pressed (not repeating), or a mouse button.
-const fn is_press(event: &Event) -> bool {
+/// Whether an event goes on from a held loading screen: Enter (the keyboard's Start), the
+/// pad's Start, or a click.
+fn goes_on(event: &Event, presses: &[(Part, Maker)]) -> bool {
     matches!(
         event,
-        Event::KeyDown { repeat: false, .. } | Event::MouseButtonDown { .. }
-    )
+        Event::KeyDown {
+            scancode: Some(Scancode::Return | Scancode::KpEnter),
+            repeat: false,
+            ..
+        } | Event::MouseButtonDown { .. }
+    ) || presses.iter().any(|&(part, _)| part == Part::Start)
 }
 
 /// What a key says to the offer to continue: Enter goes on, other keys start afresh, and a
@@ -2177,11 +2251,10 @@ fn send(machine: &mut Machine, changes: Changes) {
     }
 }
 
-fn press(machine: &mut Machine, scancode: Scancode, pressed: bool) {
-    match spectrum_key(scancode) {
-        Some(Spectrum::Key(key)) => machine.key(key, pressed),
-        Some(Spectrum::Compound(key)) => machine.compound_key(key, pressed),
-        None => {}
+fn press(machine: &mut Machine, key: Spectrum, pressed: bool) {
+    match key {
+        Spectrum::Key(key) => machine.key(key, pressed),
+        Spectrum::Compound(key) => machine.compound_key(key, pressed),
     }
 }
 
@@ -2257,6 +2330,90 @@ notice = { text = "Press fire." }
 
         let closed: RefCell<Option<i32>> = RefCell::new(None);
         if_free(&closed, |_| panic!("no window to draw with"));
+    }
+
+    fn key_down(scancode: Scancode) -> Event {
+        Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: None,
+            scancode: Some(scancode),
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        }
+    }
+
+    #[test]
+    fn esc_closes_an_open_text_card_and_opens_the_menu_without_one() {
+        let definition = Definition::from_toml(
+            r#"
+            schema = 1
+            [game]
+            id = "test"
+            title = "Test"
+            machine = "48k"
+            [[media]]
+            name = "the tape"
+            [[states]]
+            name = "booth"
+            pc = 0x8000
+            [text_entry]
+            state = "booth"
+            letters = "ABC"
+            length = 3
+            "#,
+        )
+        .expect("the test definition parses");
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        // JR -2: the game waits in its booth.
+        machine.write(0x8000, 0x18);
+        machine.write(0x8001, 0xFE);
+        machine.registers_mut().set_pc(0x8000);
+        let mut session = Session::new(machine, Some(definition));
+        session.run_frame().expect("a frame");
+        assert_eq!(session.state(), Some("booth"));
+        let data = tempfile::TempDir::new().expect("a folder");
+        let mut player = Player::new(Playing {
+            mapping: Mapping::new(session.definition()),
+            session,
+            title: "Test".to_owned(),
+            folder: None,
+            saves: Saves::of_tape("test.tap", "ABC123", data.path()),
+            quit_slot: false,
+            keep_lists: false,
+            save_point: SavePoint::Quick,
+            paused: false,
+            source: None,
+        });
+        let mut pads = Pads::default();
+        assert!(player.entry_event(&[(Part::South, Maker::Other)], &mut pads));
+        assert!(player.entry.is_some(), "a pad press opens the card");
+        assert!(player.menu_event(&key_down(Scancode::Escape), &[], &mut pads) == MenuEvent::Taken);
+        assert!(player.entry.is_none(), "Esc closes it");
+        assert!(player.menu.is_none(), "and opens no menu");
+        player.menu_event(&key_down(Scancode::Escape), &[], &mut pads);
+        assert!(player.menu.is_some(), "with no card, Esc opens the menu");
+    }
+
+    #[test]
+    fn a_held_loading_screen_goes_on_with_enter_or_start_as_its_card_says() {
+        assert!(goes_on(&key_down(Scancode::Return), &[]));
+        assert!(goes_on(&key_down(Scancode::KpEnter), &[]));
+        assert!(
+            !goes_on(&key_down(Scancode::Q), &[]),
+            "other keys do nothing"
+        );
+        assert!(!goes_on(&key_down(Scancode::Space), &[]));
+        assert!(goes_on(
+            &key_down(Scancode::Q),
+            &[(Part::Start, Maker::Other)]
+        ));
+        assert!(!goes_on(
+            &key_down(Scancode::Q),
+            &[(Part::South, Maker::Other)]
+        ));
     }
 
     #[test]

@@ -750,6 +750,21 @@
         }
       ]
     },
+    "Keyboard": {
+      "description": "What the computer's keyboard is in play.",
+      "oneOf": [
+        {
+          "description": "A pad, through `[pad]`: the arrows and WASD its D-pad, Space its west button, Enter its\nStart. No Spectrum key reaches the game.",
+          "type": "string",
+          "const": "pad"
+        },
+        {
+          "description": "The Spectrum's own keyboard: its keys reach the game, and the arrows are still the D-pad.",
+          "type": "string",
+          "const": "spectrum"
+        }
+      ]
+    },
     "Layout": {
       "description": "The order of a picture's bytes.",
       "oneOf": [
@@ -1407,6 +1422,17 @@
           "description": "What the pad's directions drive in play.",
           "$ref": "#/$defs/Joystick",
           "default": "kempston"
+        },
+        "keyboard": {
+          "description": "What the computer's keyboard is in play: a pad, or the Spectrum's own keyboard.",
+          "$ref": "#/$defs/Keyboard"
+        },
+        "keyboard_in": {
+          "description": "With `keyboard = \"spectrum\"`: the states it's the Spectrum's keyboard in, a pad in the\nrest. Empty, it's the Spectrum's throughout.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "keys": {
           "description": "With `joystick = \"keys\"`: the game's own keys for each direction and fire.",

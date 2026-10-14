@@ -5,7 +5,7 @@
 use crate::press::{self, Pressed};
 use sidekick_core::{Record, Session, SwitchError};
 use sidekick_def::Definition;
-use sidekick_ui::{Levels, Menu as Card, PadLabels, Question, Row, SwitchRow};
+use sidekick_ui::{ChoiceRow, Levels, Menu as Card, PadLabels, Question, Row, SwitchRow};
 use std::time::Instant;
 
 /// What the menu is asked to do.
@@ -72,6 +72,10 @@ pub(crate) struct Menu {
     levels: Vec<(String, String)>,
     level: usize,
     switches: Vec<Switch>,
+    /// The Spectrum keyboard's setting for the session: `None` the game's own choice, which is
+    /// `game_keyboard` here.
+    keyboard: Option<bool>,
+    game_keyboard: bool,
     actions: Vec<(Action, String)>,
     chosen: Row,
     /// The row pressed, while its press shows; what it does waits until then.
@@ -88,8 +92,17 @@ const REFUSED: &str = "Not this tape's code here: the switch can't go on.";
 
 impl Menu {
     /// The menu for the game being played, as its settings stand: `level` is the guidance
-    /// level in use; `can_load`, whether the quick slot holds a save.
-    pub(crate) fn open(session: &Session, level: usize, title: &str, can_load: bool) -> Self {
+    /// level in use; `can_load`, whether the quick slot holds a save; `keyboard`, the Spectrum
+    /// keyboard's setting for the session (`None`, the game's choice), and `game_keyboard` the
+    /// game's choice here.
+    pub(crate) fn open(
+        session: &Session,
+        level: usize,
+        title: &str,
+        can_load: bool,
+        keyboard: Option<bool>,
+        game_keyboard: bool,
+    ) -> Self {
         let definition = session.definition();
         let levels: Vec<(String, String)> = definition
             .and_then(|d| d.guidance.as_ref())
@@ -136,6 +149,8 @@ impl Menu {
             level: level.min(levels.len().saturating_sub(1)),
             levels,
             switches,
+            keyboard,
+            game_keyboard,
             actions,
             chosen,
             pressed: None,
@@ -151,6 +166,7 @@ impl Menu {
         level
             .into_iter()
             .chain((0..self.switches.len()).map(Row::Switch))
+            .chain(std::iter::once(Row::Keyboard))
             .chain((0..self.actions.len()).flat_map(|i| {
                 let saves = (i == 0).then_some(Row::Save(0));
                 std::iter::once(Row::Action(i)).chain(saves)
@@ -215,7 +231,7 @@ impl Menu {
             }
             Input::Back => Outcome::Cancelled,
             Input::Confirm => {
-                if matches!(self.chosen, Row::Switch(_)) {
+                if matches!(self.chosen, Row::Switch(_) | Row::Keyboard) {
                     return self.press(session);
                 }
                 self.pressed = Some(Pressed::new(self.chosen, now));
@@ -227,7 +243,7 @@ impl Menu {
                 }
                 self.chosen = row;
                 if matches!(input, Input::Click(_)) {
-                    if matches!(row, Row::Switch(_)) {
+                    if matches!(row, Row::Switch(_) | Row::Keyboard) {
                         return self.press(session);
                     }
                     self.pressed = Some(Pressed::new(row, now));
@@ -270,6 +286,14 @@ impl Menu {
                 }
                 switch.on = on;
             }
+            // Round the three, either way: the game's choice, on, off.
+            Row::Keyboard => {
+                self.keyboard = match (self.keyboard, up) {
+                    (None, true) | (Some(false), false) => Some(true),
+                    (Some(true), true) | (None, false) => Some(false),
+                    (Some(false), true) | (Some(true), false) => None,
+                };
+            }
             Row::Save(i) => {
                 self.chosen = Row::Save(if up {
                     (i + 1).min(2)
@@ -284,7 +308,7 @@ impl Menu {
     /// Enter on the chosen row.
     fn press(&mut self, session: &mut Session) -> Outcome {
         match self.chosen {
-            Row::Level | Row::Switch(_) => {
+            Row::Level | Row::Switch(_) | Row::Keyboard => {
                 self.change(true, true, session);
                 Outcome::Stay
             }
@@ -368,6 +392,11 @@ impl Menu {
         self.level
     }
 
+    /// The Spectrum keyboard's setting chosen: on, off, or `None`, the game's choice.
+    pub(crate) const fn keyboard(&self) -> Option<bool> {
+        self.keyboard
+    }
+
     /// The card, as it stands, for a pad marked as `pad` says, its switches' knobs at rest.
     pub(crate) fn card(&self, pad: PadLabels) -> Card {
         self.card_at(pad, None)
@@ -380,16 +409,17 @@ impl Menu {
                 levels: self.levels.clone(),
                 level: self.level,
             }),
-            switches: self
-                .switches
-                .iter()
-                .map(|s| SwitchRow {
-                    label: s.label.clone(),
-                    on: s.on,
-                    knob: knob(s, now),
-                    refusal: s.refusal.clone(),
-                })
-                .collect(),
+            switches: self.switches.iter().map(|s| switch_row(s, now)).collect(),
+            keyboard: Some(ChoiceRow {
+                label: "Spectrum keyboard".to_owned(),
+                value: match self.keyboard {
+                    None if self.game_keyboard => "Game's choice (on)",
+                    None => "Game's choice (off)",
+                    Some(true) => "On",
+                    Some(false) => "Off",
+                }
+                .to_owned(),
+            }),
             actions: self.actions.iter().map(|(_, a)| a.clone()).collect(),
             saves: Some(self.can_load),
             chosen: self.chosen,
@@ -446,6 +476,16 @@ fn menu_actions(definition: Option<&Definition>, state: Option<&str>) -> Vec<(us
             offered.then_some((i, words))
         })
         .collect()
+}
+
+/// A switch's row as the card shows it at `now`.
+fn switch_row(switch: &Switch, now: Option<Instant>) -> SwitchRow {
+    SwitchRow {
+        label: switch.label.clone(),
+        on: switch.on,
+        knob: knob(switch, now),
+        refusal: switch.refusal.clone(),
+    }
 }
 
 /// Where a switch's knob is at `now`, 0 to 100: sliding over [`press::SHOWN`] since it flipped,
@@ -558,7 +598,7 @@ menu = "End this game"
     #[test]
     fn a_switch_flips_at_once_and_its_knob_slides_across() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", false);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
         let t0 = Instant::now();
         menu.input(Input::Down, &mut s, t0);
         assert_eq!(menu.input(Input::Confirm, &mut s, t0), Outcome::Stay);
@@ -593,9 +633,72 @@ menu = "End this game"
     }
 
     #[test]
+    fn the_spectrum_keyboard_is_the_game_s_choice_on_or_off_until_applied() {
+        let mut s = session(DEFINITION);
+        let value = |menu: &Menu| {
+            let card = menu.card(PadLabels::Letters);
+            let row = card.keyboard.expect("the keyboard's row");
+            assert_eq!(row.label, "Spectrum keyboard");
+            row.value
+        };
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
+        assert_eq!(value(&menu), "Game's choice (off)");
+        assert_eq!(menu.keyboard(), None);
+        press(&mut menu, &mut s, &[Input::Down; 4]);
+        assert_eq!(
+            menu.card(PadLabels::Letters).chosen,
+            Row::Keyboard,
+            "past the level and the three switches"
+        );
+        let mut seen = Vec::new();
+        for _ in 0..3 {
+            act(&mut menu, &mut s, Input::Right);
+            seen.push((value(&menu), menu.keyboard()));
+        }
+        assert_eq!(
+            seen,
+            [
+                ("On".to_owned(), Some(true)),
+                ("Off".to_owned(), Some(false)),
+                ("Game's choice (off)".to_owned(), None),
+            ],
+            "right goes round the three"
+        );
+        act(&mut menu, &mut s, Input::Left);
+        assert_eq!(
+            menu.keyboard(),
+            Some(false),
+            "left goes round the other way"
+        );
+        act(&mut menu, &mut s, Input::Confirm);
+        assert_eq!(
+            menu.keyboard(),
+            None,
+            "Enter steps on, back to the game's choice"
+        );
+        act(&mut menu, &mut s, Input::Click(Row::Keyboard));
+        assert_eq!(menu.keyboard(), Some(true), "a click steps on");
+        assert!(
+            menu.card(PadLabels::Letters).switches.iter().all(|s| !s.on),
+            "no training switch with it"
+        );
+        assert_eq!(
+            act(&mut menu, &mut s, Input::Click(Row::Action(0))),
+            Outcome::Applied
+        );
+        assert_eq!(menu.keyboard(), Some(true), "for the window to keep");
+        assert!(s.record().switches.is_empty(), "not a training switch");
+
+        let chosen = Menu::open(&s, 0, "Test", false, Some(false), true);
+        assert_eq!(value(&chosen), "Off", "as chosen before");
+        let game = Menu::open(&s, 0, "Test", false, None, true);
+        assert_eq!(value(&game), "Game's choice (on)");
+    }
+
+    #[test]
     fn its_rows_come_from_the_definition() {
         let s = session(DEFINITION);
-        let menu = Menu::open(&s, 0, "Test", false);
+        let menu = Menu::open(&s, 0, "Test", false, None, false);
         let card = menu.card(PadLabels::Letters);
         assert!(card.levels.is_some());
         assert_eq!(card.switches.len(), 3);
@@ -608,7 +711,7 @@ menu = "End this game"
         let plain = session(
             "schema = 1\n[game]\nid = \"p\"\ntitle = \"P\"\nmachine = \"48k\"\n[[media]]\nname = \"t\"\n",
         );
-        let card = Menu::open(&plain, 0, "P", false).card(PadLabels::Letters);
+        let card = Menu::open(&plain, 0, "P", false, None, true).card(PadLabels::Letters);
         assert!(card.levels.is_none());
         assert!(card.switches.is_empty());
         assert_eq!(card.actions, ["Back to the game", "Exit P"]);
@@ -618,7 +721,7 @@ menu = "End this game"
     #[test]
     fn changes_wait_for_back_to_the_game_and_esc_drops_them() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", false);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
         press(
             &mut menu,
             &mut s,
@@ -634,12 +737,12 @@ menu = "End this game"
     #[test]
     fn the_question_comes_first_when_the_score_would_show_more() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", false);
-        let to_back = [Input::Down, Input::Down, Input::Down, Input::Down];
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
+        let to_back = [Input::Down; 3];
         press(&mut menu, &mut s, &[Input::Right, Input::Right]);
         press(&mut menu, &mut s, &[Input::Down, Input::Confirm]);
         press(&mut menu, &mut s, &[Input::Down, Input::Confirm]);
-        press(&mut menu, &mut s, &to_back[..2]);
+        press(&mut menu, &mut s, &to_back);
         assert_eq!(press(&mut menu, &mut s, &[Input::Confirm]), Outcome::Stay);
         let question = menu.question(PadLabels::Letters).expect("asked");
         assert_eq!(
@@ -660,8 +763,8 @@ menu = "End this game"
         assert!(s.switched_on("full-energy") && s.switched_on("practice"));
         assert_eq!(s.record().level, 2);
 
-        let mut again = Menu::open(&s, 2, "Test", false);
-        let rows = [Input::Down, Input::Down, Input::Down, Input::Down];
+        let mut again = Menu::open(&s, 2, "Test", false, None, false);
+        let rows = [Input::Down; 5];
         assert_eq!(
             press(&mut again, &mut s, &[&rows[..], &[Input::Confirm]].concat()),
             Outcome::Applied,
@@ -672,7 +775,7 @@ menu = "End this game"
     #[test]
     fn a_switch_that_can_t_go_on_stays_off_and_says_why() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", false);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
         press(
             &mut menu,
             &mut s,
@@ -695,7 +798,7 @@ menu = "End this game"
         );
         let mut s = session(&text);
         assert!(
-            !Menu::open(&s, 0, "Test", false)
+            !Menu::open(&s, 0, "Test", false, None, false)
                 .card(PadLabels::Letters)
                 .actions
                 .iter()
@@ -706,7 +809,7 @@ menu = "End this game"
             "codes".to_owned(),
             vec!["TOPAZ".to_owned()],
         )]));
-        let mut menu = Menu::open(&s, 0, "Test", false);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
         let card = menu.card(PadLabels::Letters);
         assert_eq!(card.actions[1], "Forget the teleport codes");
         let forget = Row::Action(1);
@@ -727,7 +830,7 @@ menu = "End this game"
     #[test]
     fn end_and_exit_want_a_second_press() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", false);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
         let end = Row::Action(1);
         assert_eq!(act(&mut menu, &mut s, Input::Click(end)), Outcome::Stay);
         assert_eq!(
@@ -759,7 +862,7 @@ menu = "End this game"
         );
         let mut s = session(&text);
         let rows = |s: &Session| {
-            Menu::open(s, 0, "Test", false)
+            Menu::open(s, 0, "Test", false, None, false)
                 .card(PadLabels::Letters)
                 .actions
         };
@@ -776,7 +879,7 @@ menu = "End this game"
     #[test]
     fn choosing_a_row_doesn_t_press_it() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", false);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
         act(&mut menu, &mut s, Input::Choose(Row::Switch(0)));
         assert_eq!(menu.card(PadLabels::Letters).chosen, Row::Switch(0));
         assert!(!menu.card(PadLabels::Letters).switches[0].on);
@@ -788,9 +891,9 @@ menu = "End this game"
     #[test]
     fn the_saves_row_comes_after_back_to_the_game() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", true);
+        let mut menu = Menu::open(&s, 0, "Test", true, None, false);
         assert_eq!(menu.card(PadLabels::Letters).saves, Some(true));
-        let down = [Input::Down; 5];
+        let down = [Input::Down; 6];
         press(&mut menu, &mut s, &down);
         assert_eq!(menu.card(PadLabels::Letters).chosen, Row::Save(0));
         press(
@@ -822,7 +925,7 @@ menu = "End this game"
     #[test]
     fn enter_on_the_level_steps_up_and_wraps_round() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 2, "Test", false);
+        let mut menu = Menu::open(&s, 2, "Test", false, None, false);
         press(&mut menu, &mut s, &[Input::Confirm]);
         assert_eq!(menu.level(), 0);
         press(&mut menu, &mut s, &[Input::Left, Input::Confirm]);
@@ -832,8 +935,8 @@ menu = "End this game"
     #[test]
     fn a_press_shows_for_a_moment_before_it_acts() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", true);
-        press(&mut menu, &mut s, &[Input::Down; 5]);
+        let mut menu = Menu::open(&s, 0, "Test", true, None, false);
+        press(&mut menu, &mut s, &[Input::Down; 6]);
         let t0 = Instant::now();
         assert_eq!(menu.input(Input::Confirm, &mut s, t0), Outcome::Stay);
         let card = menu.card(PadLabels::Letters);
@@ -852,7 +955,7 @@ menu = "End this game"
     #[test]
     fn a_click_shows_on_the_button_clicked() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", true);
+        let mut menu = Menu::open(&s, 0, "Test", true, None, false);
         let t0 = Instant::now();
         assert_eq!(
             menu.input(Input::Click(Row::Save(2)), &mut s, t0),
@@ -878,7 +981,7 @@ menu = "End this game"
     #[test]
     fn choosing_a_row_shows_no_press() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", false);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
         let t0 = Instant::now();
         menu.input(Input::Choose(Row::Switch(0)), &mut s, t0);
         menu.input(Input::Down, &mut s, t0);
@@ -889,7 +992,7 @@ menu = "End this game"
     #[test]
     fn an_input_while_a_press_shows_does_the_press_first() {
         let mut s = session(DEFINITION);
-        let mut menu = Menu::open(&s, 0, "Test", false);
+        let mut menu = Menu::open(&s, 0, "Test", false, None, false);
         let t0 = Instant::now();
         menu.input(Input::Click(Row::Switch(0)), &mut s, t0);
         menu.input(Input::Down, &mut s, t0);

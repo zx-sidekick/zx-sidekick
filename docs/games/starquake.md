@@ -10,27 +10,29 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 ## Keys and pad
 
-**Keyboard:** exactly as the original: its five control methods, defined keys, **SPACE** to pause, **A S D F G** together to abandon a game. **Tab** switches level 5's route between pieces (`[[actions]] next-route`, `host_key = "Tab"`).
+**Keyboard:** a second pad (`[run] keyboard`, left at its default `"pad"`), so it plays on the Kempston joystick too: the arrows or W A S D move, Space fires, Z and X send down and up, V switches level 5's route, and Enter starts a game on the title, goes on from the story that follows, and pauses in play (it taps SPACE, the game's own pause key). The game's own keys don't reach it: its menu's list of control methods and its defined keys are left behind, and so is **A S D F G** together to abandon a game, which the guidance menu's "End this game" does instead. The menu's "Spectrum keyboard" row, set to On, gives the original keys back for the session. **Tab** switches level 5's route between pieces (`[[actions]] next-route`, `host_key = "Tab"`). At a teleport booth and the high score's name, the keyboard types the letters straight into the game.
 
-**Pad**, in play, on the Kempston joystick (`[run] joystick = "kempston"`), whichever control method the game's menu chose:
+**Pad**, in play, on the Kempston joystick (`[run] joystick = "kempston"`), whichever control method the game's menu chose. The keyboard's keys for each button are beside it:
 
-| Button | Does | In the definition |
-|---|---|---|
-| D-pad, left stick | Move | `dpad`, `stick = "joystick"` |
-| West | Fire | `west = "fire"` |
-| South | Down: build a platform, or fly down | `south = "build"` |
-| East | Up: pick up or swap an item, or board a hover platform | `east = "pick-up"` |
-| North | Switch level 5's route | `north = "next-route"` |
-| Start | Pause in play; start a game on the title screen | `[pad.default] start`, `[pad.title] start` |
-| Select | The guidance menu | always |
+| Button | Keys | Does | In the definition |
+|---|---|---|---|
+| D-pad, left stick | Arrows, W A S D | Move | `dpad`, `stick = "joystick"` |
+| West | Space, C, right Ctrl, right Alt, `/` | Fire | `west = "fire"` |
+| South | Z | Down: build a platform, or fly down | `south = "build"` |
+| East | X | Up: pick up or swap an item, or board a hover platform | `east = "pick-up"` |
+| North | V | Switch level 5's route | `north = "next-route"` |
+| Start | Enter | Pause in play; start a game on the title screen; go on from the story | `[pad.default] start`, `[pad.title] start` |
+| Select | Esc | The guidance menu | always |
 
 **Up and down.** In the original, *up* both picks up or swaps and boards a hover platform, and *down* both builds and flies down; the game decides which from where BLOB is. The east button sends *up* and the south one *down* (`[[actions]] pick-up` and `build`), each with both of the game's meanings, as the D-pad's up and down do. Splitting them, so that east only picks up and south only builds, was looked at and not taken up (#20).
 
-**The pause notice:** in the original, any move or fire continues once the pause key is let go. On a pad, A or B dismisses it.
+**The story:** a game starts with its story, under a tune that plays until a key is pressed; the joystick doesn't end it. No state matches there, so the title is still the state last known: Start (Enter) taps 0 on the title to start a game, and again on the story to go on into play. It taps 0 rather than SPACE, which pauses play.
+
+**The pause notice:** in the original, any move or fire continues once the pause key is let go: the arrows or Space, or the pad's D-pad or west button.
 
 **The loading screen:** the game's loader shows its screen until a key is pressed, and the rest of the tape loads after it; a card at the screen's foot says so, with Start on the pad (it taps SPACE).
 
-**The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), so a card over the foot of the title says "Ignore the list: play with the arrow keys or a gamepad", with the keys to move, fire and start.
+**The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), so a card over the foot of the title says "Ignore the list: play with the arrows or WASD, or a gamepad", with the keys to move (the arrows), fire (Space) and start (Enter).
 
 ## Guidance levels
 

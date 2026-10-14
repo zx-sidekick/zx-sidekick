@@ -222,13 +222,13 @@ pub(crate) fn foot_notice(session: &Session, labels: PadLabels) -> Option<PauseN
     }
 }
 
-/// The loading screen's notice: a key goes on loading.
+/// The loading screen's notice: Enter, or the pad's Start, goes on loading.
 fn loading_notice(labels: PadLabels) -> PauseNotice {
     PauseNotice {
         heading: "Loading screen".to_owned(),
-        text: "The rest of the game loads once you press a key.".to_owned(),
+        text: "The rest of the game loads once you go on.".to_owned(),
         hints: vec![NoticeHint {
-            keys: Some("Any key".to_owned()),
+            keys: Some("Enter".to_owned()),
             pad: Some(PadMark::Start),
             does: "go on".to_owned(),
         }],
