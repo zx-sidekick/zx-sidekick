@@ -1432,6 +1432,11 @@ impl Player {
                     ..
                 }
             );
+            // Esc closes the text card first, when it's open.
+            if esc && self.entry.take().is_some() {
+                pads.hold_back();
+                return MenuEvent::Taken;
+            }
             if esc || presses.iter().any(|&(p, _)| p == Part::Select) {
                 let can_load = self.save_point.exists(&self.saves);
                 self.menu = Some(self.open_menu(can_load));
@@ -2338,6 +2343,58 @@ notice = { text = "Press fire." }
             which: 0,
             raw: 0,
         }
+    }
+
+    #[test]
+    fn esc_closes_an_open_text_card_and_opens_the_menu_without_one() {
+        let definition = Definition::from_toml(
+            r#"
+            schema = 1
+            [game]
+            id = "test"
+            title = "Test"
+            machine = "48k"
+            [[media]]
+            name = "the tape"
+            [[states]]
+            name = "booth"
+            pc = 0x8000
+            [text_entry]
+            state = "booth"
+            letters = "ABC"
+            length = 3
+            "#,
+        )
+        .expect("the test definition parses");
+        let mut machine = Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        // JR -2: the game waits in its booth.
+        machine.write(0x8000, 0x18);
+        machine.write(0x8001, 0xFE);
+        machine.registers_mut().set_pc(0x8000);
+        let mut session = Session::new(machine, Some(definition));
+        session.run_frame().expect("a frame");
+        assert_eq!(session.state(), Some("booth"));
+        let data = tempfile::TempDir::new().expect("a folder");
+        let mut player = Player::new(Playing {
+            mapping: Mapping::new(session.definition()),
+            session,
+            title: "Test".to_owned(),
+            folder: None,
+            saves: Saves::of_tape("test.tap", "ABC123", data.path()),
+            quit_slot: false,
+            keep_lists: false,
+            save_point: SavePoint::Quick,
+            paused: false,
+            source: None,
+        });
+        let mut pads = Pads::default();
+        assert!(player.entry_event(&[(Part::South, Maker::Other)], &mut pads));
+        assert!(player.entry.is_some(), "a pad press opens the card");
+        assert!(player.menu_event(&key_down(Scancode::Escape), &[], &mut pads) == MenuEvent::Taken);
+        assert!(player.entry.is_none(), "Esc closes it");
+        assert!(player.menu.is_none(), "and opens no menu");
+        player.menu_event(&key_down(Scancode::Escape), &[], &mut pads);
+        assert!(player.menu.is_some(), "with no card, Esc opens the menu");
     }
 
     #[test]
