@@ -31,6 +31,35 @@ const LINE: f32 = 22.0;
 const HEIGHT_F: f32 = HEIGHT as f32;
 /// A meter's length in a column, and across the panel.
 const METER: f32 = 160.0;
+/// The hint's band: its top and height, under the level's name; what follows starts below it.
+const HINT_TOP: f32 = 66.0;
+const HINT_HEIGHT: f32 = 34.0;
+const HINTED_TOP: f32 = HINT_TOP + HINT_HEIGHT + SPACING;
+/// The width a hint's line has, in logical pixels: the columns' span.
+pub const HINT_ROOM: f32 = RIGHT - LEFT;
+
+/// A hint's style: the panel's body size, in the main text's color.
+const fn hint_style() -> Style {
+    Style::new(13.0, colors::TEXT).weight(Weight::Medium)
+}
+
+/// How wide a hint's line is drawn, in logical pixels: it fits when no wider than
+/// [`HINT_ROOM`].
+pub fn hint_width(fonts: &mut Fonts, text: &str) -> f32 {
+    fonts.measure(text, &hint_style())
+}
+
+/// The slot for a hint, under the level's name.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum HintSlot {
+    /// No slot: the game has no hints, or guidance is off.
+    #[default]
+    Absent,
+    /// The slot kept, empty: no hint holds.
+    Empty,
+    /// The slot with a hint in it.
+    Shows(String),
+}
 /// The top of the row of keys that open the menu, at level 0: its middle where the
 /// description's was.
 const KEYS_TOP: f32 = 350.0;
@@ -262,6 +291,8 @@ pub struct Panel {
     pub training: Vec<String>,
     /// How the pad plugged in marks its buttons; `None` without one.
     pub pad: Option<PadLabels>,
+    /// The hint's slot.
+    pub hint: HintSlot,
 }
 
 /// The panel's background and its left edge, filling `size` device pixels, `WIDTH` logical
@@ -340,7 +371,15 @@ impl Panel {
                 &name,
             );
         }
-        let (top, reach) = self.training(&mut c, fonts);
+        let top = match &self.hint {
+            HintSlot::Absent => TOP,
+            HintSlot::Empty => HINTED_TOP,
+            HintSlot::Shows(text) => {
+                Self::hint(&mut c, fonts, text);
+                HINTED_TOP
+            }
+        };
+        let (top, reach) = self.training(&mut c, fonts, top);
         if !self.widgets.is_empty() {
             self.widgets(&mut c, fonts, top, reach);
         } else if self.level == 0 {
@@ -351,17 +390,31 @@ impl Panel {
         c
     }
 
-    /// The training switches on, at the top, on as few lines as they fit: a switch's label is
+    /// The hint on a band tinted with the accent across the panel, a bar of it at the left.
+    fn hint(c: &mut Canvas, fonts: &mut Fonts, text: &str) {
+        let tint = faded(colors::ACCENT, 0x24);
+        c.rect((1.0, HINT_TOP, 407.0, HINT_HEIGHT), 0.0, Some(tint), None);
+        c.rect(
+            (1.0, HINT_TOP, 3.0, HINT_HEIGHT),
+            0.0,
+            Some(colors::ACCENT),
+            None,
+        );
+        let y = HINT_TOP + (HINT_HEIGHT - LINE) / 2.0 + 1.0;
+        line(c, fonts, text, (LEFT, y), Align::Left, &hint_style());
+    }
+
+    /// The training switches on, from `top`, on as few lines as they fit: a switch's label is
     /// never split. Returns where what follows starts, and how far right the list reaches.
-    fn training(&self, c: &mut Canvas, fonts: &mut Fonts) -> (f32, f32) {
+    fn training(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32) -> (f32, f32) {
         if self.training.is_empty() {
-            return (TOP, LEFT);
+            return (top, LEFT);
         }
         let title = label(colors::LABEL);
-        line(c, fonts, "TRAINING", (LEFT, TOP), Align::Left, &title);
+        line(c, fonts, "TRAINING", (LEFT, top), Align::Left, &title);
         let mut reach = LEFT + fonts.measure("TRAINING", &title);
         let style = Style::new(13.0, BODY);
-        let mut y = TOP + TO_BODY;
+        let mut y = top + TO_BODY;
         for words in Self::packed(fonts, &self.training, &style, RIGHT - LEFT) {
             line(c, fonts, &words, (LEFT, y), Align::Left, &style);
             reach = reach.max(LEFT + fonts.measure(&words, &style));
