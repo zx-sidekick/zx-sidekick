@@ -853,6 +853,24 @@ mod tests {
             "a step from the pad, the D-pad's up does nothing"
         );
         assert_eq!(away.number("blob_y"), height);
+        for (left, up) in [
+            (Part::DPad(Way::Left), Part::DPad(Way::Up)),
+            (Part::Stick(Way::Left), Part::Stick(Way::Up)),
+        ] {
+            let mut g = base.fork();
+            g.s.write("blob_x", 104).expect("writable");
+            g.frames(10);
+            g.button(0, up, true);
+            g.button(0, left, true);
+            g.frames(40);
+            g.button(0, left, false);
+            g.button(0, up, false);
+            assert_eq!(
+                g.number("blob_mode"),
+                2,
+                "{up:?} held while walking onto the pad boards it on arrival"
+            );
+        }
         let mut k = base.fork();
         k.hold(Part::DPad(Way::Up), 10);
         assert_eq!(

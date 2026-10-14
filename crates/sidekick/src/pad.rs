@@ -803,9 +803,11 @@ impl Play {
         &self.mapping
     }
 
-    /// The game's state for the frames to come. Returns the parts whose meaning it changed,
-    /// for those held to be held back: a part that does the same in both carries on, so a
-    /// state that flickers doesn't cut out a held direction.
+    /// The game's state, and which of its tables applies (`holds` tests a value), for the
+    /// frames to come. Returns the parts whose meaning it changed, for those held to be held
+    /// back: a part that does the same in both carries on, so a state that flickers doesn't cut
+    /// out a held direction; and within a state, one that did nothing and now does something
+    /// starts at once.
     pub(crate) fn enter(
         &mut self,
         state: Option<&str>,
@@ -817,10 +819,15 @@ impl Play {
         }
         let before = self.mapping.parts(self.state.as_deref(), self.case);
         let after = self.mapping.parts(state, case);
+        // Within a state, a part that did nothing and now does something isn't held back: a
+        // direction held while walking onto where it means something starts at once, as a
+        // key held on the Spectrum would.
+        let same_state = self.state.as_deref() == state;
         let changed = before
             .keys()
             .chain(after.keys())
             .filter(|part| before.get(part) != after.get(part))
+            .filter(|part| !(same_state && before.get(part).is_none()))
             .copied()
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -1086,7 +1093,10 @@ pub(crate) mod tests {
             "the arrows have their own"
         );
         let changed = play.enter(Some("play"), &|_| false);
-        assert!(changed.contains(&Part::DPad(Way::Up)), "{changed:?}");
+        assert!(
+            !changed.contains(&Part::DPad(Way::Up)),
+            "from nothing to something: not held back, {changed:?}"
+        );
         assert_eq!(
             holds(&mut play, &[Part::DPad(Way::Up)]),
             [up],
@@ -1130,6 +1140,16 @@ pub(crate) mod tests {
         assert_eq!(ups(&mut play, 2), (1, 1), "the first: as the default");
         assert_eq!(ups(&mut play, 1), (1, 0), "the second: up only");
         assert_eq!(ups(&mut play, 0), (0, 0), "the last, which has no when");
+        let into = play.enter(Some("play"), &|t: &Test| t.equals == Some(1));
+        assert!(
+            !into.contains(&Part::DPad(Way::Up)),
+            "up did nothing, and now does: not held back, {into:?}"
+        );
+        let out = play.enter(Some("play"), &|_| false);
+        assert!(
+            out.contains(&Part::DPad(Way::Up)),
+            "up does nothing again: held back"
+        );
     }
 
     #[test]

@@ -338,7 +338,7 @@ stick = { up = "none", down = "none" }
 arrows = "joystick"
 ```
 
-A button held when a table changes what it does is held back, as when a state does.
+A button held when a table changes what it does is held back, as when a state does, except one that did nothing and now does something: that starts at once, so a direction held while walking onto where it means something works on arrival, as a key held on the Spectrum would.
 
 A button held when a state changes what it does is held back from the game until it's let go (`ZX-SIDEKICK.md` §9); one that does the same in both states carries on, so a held direction isn't cut short.
 
