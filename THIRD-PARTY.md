@@ -16,7 +16,7 @@ The program's own text is set in [Inter](https://rsms.me/inter/) 4.1, by Rasmus 
 
 ## The crates and SDL3
 
-The program is built from Rust crates and from [SDL3](https://libsdl.org), under the zlib licence, compiled into it from the source carried by the `sdl3-src` crate. Each release includes `licenses/THIRD-PARTY-NOTICES.txt`, written at release time by `scripts/notices.sh` with [cargo-about](https://github.com/EmbarkStudios/cargo-about): every crate built into the program on each platform, grouped by licence, with each licence's text, and SDL3's licence with those of HIDAPI and yuv2rgb, two of its parts. Most crates are under MIT, Apache-2.0, BSD or zlib terms. `option-ext` and `smartstring` are under the Mozilla Public License 2.0, which asks that whoever receives the program can get their source: they're used unmodified, from crates.io, as the notices say.
+The program is built from Rust crates and from [SDL3](https://libsdl.org), under the zlib licence, compiled into it from the source carried by the `sdl3-src` crate. Each release includes `licenses/THIRD-PARTY-NOTICES.txt`, written at release time by `scripts/notices.sh` with [cargo-about](https://github.com/EmbarkStudios/cargo-about): every crate built into the program on each platform, grouped by licence, with each licence's text, and SDL3's licence with the notices of the parts of SDL3 by other authors (HIDAPI, yuv2rgb, the Khronos headers, the Wayland protocols and others), as they stand in its source. Most crates are under MIT, Apache-2.0, BSD or zlib terms. `option-ext` and `smartstring` are under the Mozilla Public License 2.0, which asks that whoever receives the program can get their source: they're used unmodified, from crates.io, as the notices say.
 
 ## Games
 

@@ -27,12 +27,30 @@ built_crates() {
     | grep -v ' (/' | awk '{ sub(/^v/, "", $2); print $1, $2 }' | LC_ALL=C sort -u
 }
 
+# SDL3's source as cargo fetched it, in the sdl3-src crate.
+sdl_source() {
+  cargo metadata --locked --format-version 1 \
+    | jq -r '.packages[] | select(.name == "sdl3-src") | .manifest_path' | xargs dirname
+}
+
+# Every copyright line in SDL3's source other than SDL's own, from the files built into the
+# program on some platform it ships for, with its comment marks taken off. Left out: other
+# platforms, SDL's tests, the build scripts, the two HIDAPI licences not taken, OpenVR (off by
+# default), and SDL_init.h, whose line is an example in its documentation.
+sdl_copyright_lines() {
+  (cd "$1/SDL" && grep -rIE '[Cc]opyright[[:space:]]+(\([Cc]\)|©|[0-9])' src include wayland-protocols) \
+    | grep -vE '^src/(test|hidapi/(android|ios|netbsd|hidtest|testgui|m4)|video/(haiku|qnx|openvr))/' \
+    | grep -vE '^(src/hidapi/LICENSE-(gpl3|orig)\.txt|include/SDL3/SDL_init\.h):' \
+    | grep -v 'Sam Lantinga' | sed -E 's/^[^:]*://; s/^[[:space:]*#/]*//; s/[[:space:]]+$//' | sort -u
+}
+
 # Packs a stand-in game folder with a stand-in binary: the archive is named by its version and
 # holds the guides and licences, the notices name every crate built into the program and carry
-# SDL3's licence, a definition's tests/ stays out, and a tape in it is refused. Then packs the
-# stand-in definition alone, its files at the zip's top, without its tests/.
+# SDL3's licence and every other notice in its source, a definition's tests/ stays out, and a
+# tape in it is refused. Then packs the stand-in definition alone, its files at the zip's top,
+# without its tests/.
 package() {
-  local scratch archive listing file missing
+  local scratch archive listing file missing line
   scratch=$(mktemp -d)
   trap 'rm -rf -- "$scratch"' RETURN
   mkdir -p "$scratch/games/stand-in/tests" "$scratch/out"
@@ -62,6 +80,15 @@ package() {
   fi
   if ! grep -q '^Copyright (C) .* Sam Lantinga' "$scratch/notices.txt"; then
     echo "package: THIRD-PARTY-NOTICES.txt should carry SDL3's licence" >&2
+    return 1
+  fi
+  sdl_copyright_lines "$(sdl_source)" >"$scratch/sdl.txt"
+  missing=$(while read -r line; do
+    grep -qF -- "$line" "$scratch/notices.txt" || echo "$line"
+  done <"$scratch/sdl.txt")
+  if [ ! -s "$scratch/sdl.txt" ] || [ -n "$missing" ]; then
+    echo "package: THIRD-PARTY-NOTICES.txt should carry these notices from SDL3's source (pin them in about.toml):" >&2
+    echo "$missing" >&2
     return 1
   fi
   if grep -q '/tests/' <<<"$listing"; then
