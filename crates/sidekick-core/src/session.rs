@@ -300,6 +300,16 @@ impl Session {
 
     /// Adds an entry to a kept list the definition has, unless it's there or empty.
     pub fn keep(&mut self, list: &str, entry: &str) {
+        self.add_kept(list, entry, false);
+    }
+
+    /// Adds an entry to a kept list the definition has, as its newest: one already there
+    /// moves to the end. An empty one isn't kept.
+    pub fn keep_latest(&mut self, list: &str, entry: &str) {
+        self.add_kept(list, entry, true);
+    }
+
+    fn add_kept(&mut self, list: &str, entry: &str, latest: bool) {
         let entry = entry.trim();
         let Some(persist) = self.definition.as_ref().and_then(|d| d.persist.get(list)) else {
             return;
@@ -312,13 +322,20 @@ impl Session {
             .and_then(|m| usize::try_from(m).ok())
             .unwrap_or(usize::MAX);
         let entries = self.kept.entry(list.to_owned()).or_default();
-        if !entries.iter().any(|e| e == entry) {
-            entries.push(entry.to_owned());
-            // The oldest go first, past the list's most.
-            let over = entries.len().saturating_sub(most);
-            entries.drain(..over);
-            self.kept_changed.insert(list.to_owned());
+        match entries.iter().position(|e| e == entry) {
+            None => {
+                entries.push(entry.to_owned());
+                // The oldest go first, past the list's most.
+                let over = entries.len().saturating_sub(most);
+                entries.drain(..over);
+            }
+            Some(at) if latest && at + 1 < entries.len() => {
+                let moved = entries.remove(at);
+                entries.push(moved);
+            }
+            Some(_) => return,
         }
+        self.kept_changed.insert(list.to_owned());
     }
 
     /// Adds what the game shows to the lists that keep a value in a state.

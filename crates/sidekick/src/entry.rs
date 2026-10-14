@@ -76,13 +76,17 @@ impl Entry {
             .choices_from_level
             .and_then(|l| usize::try_from(l).ok())
             .unwrap_or(0);
-        let words: Vec<String> = text_entry
+        let mut words: Vec<String> = text_entry
             .choices
             .as_ref()
             .filter(|_| level >= from)
             .and_then(|list| kept.get(list))
             .cloned()
             .unwrap_or_default();
+        // A list is kept oldest first; the name most recently entered is likeliest the player's.
+        if card == Card::Name {
+            words.reverse();
+        }
         let mut entry = Self {
             title_choose: text_entry
                 .title_choose
@@ -399,8 +403,15 @@ choices = "names"
             (Some((5, Card::Word)), Some((3, Card::Name)), None)
         );
         let name_entry = definition.name_entry.as_ref().unwrap();
-        let mut e = Entry::open(name_entry, Card::Name, &names(&["ZOE", "SAM"]), 0);
-        assert_eq!(e.chosen(), Some("ZOE"), "at any guidance level");
+        let mut e = Entry::open(name_entry, Card::Name, &names(&["SAM", "ZOE"]), 0);
+        assert_eq!(
+            e.chosen(),
+            Some("ZOE"),
+            "the most recent first, at any guidance level"
+        );
+        e.input(Input::Down);
+        assert_eq!(e.chosen(), Some("SAM"), "then the one before");
+        e.input(Input::Up);
         assert_eq!(e.card(PadLabels::Letters).title_choose, "Choose a name");
         assert!(e.card(PadLabels::Letters).each_place);
         e.input(Input::Switch);

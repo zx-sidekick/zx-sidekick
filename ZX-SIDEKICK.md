@@ -231,7 +231,7 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 - **A enters** the word either way. It's then typed on the keys the game reads, one letter down for a frame and released the next (timings from the definition), because games often wait for every key to be let go before reading the next letter.
 - **While the card is open, the pad drives only the card.** The game sees none of it. Otherwise a held A could keep the game waiting for a release and swallow letters.
 - **Keyboard players** never see the card.
-- **A high score's name** gets the same card from `[name_entry]`, in the state where the game asks for it. It offers the names entered before first, from a list the program keeps itself: the name of each entry a game puts in the high-score table (§13). While spelling, A takes the letter into its place and moves on to the next, and enters the name at the last, so every place the game waits for gets a letter. A space, when the game takes one, is shown as an open box (␣).
+- **A high score's name** gets the same card from `[name_entry]`, in the state where the game asks for it. It offers the names entered before first, the most recent first, from a list the program keeps itself: the name of each entry a game puts in the high-score table (§13). While spelling, A takes the letter into its place and moves on to the next, and enters the name at the last, so every place the game waits for gets a letter. A space, when the game takes one, is shown as an open box (␣).
 
 | Choosing | Spelling |
 |---|---|

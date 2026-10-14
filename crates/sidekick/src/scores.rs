@@ -103,8 +103,8 @@ fn value(score: &str) -> u64 {
     score.trim().parse().unwrap_or(0)
 }
 
-/// Adds the name of this game's entry to the definition's kept list of names entered, so the
-/// name card offers it next time.
+/// Adds the name of this game's entry to the definition's kept list of names entered, as its
+/// newest, so the name card offers it first next time.
 pub(crate) fn keep_name(session: &mut Session, table: &[Kept], mine: Option<usize>) {
     let list = session
         .definition()
@@ -112,7 +112,7 @@ pub(crate) fn keep_name(session: &mut Session, table: &[Kept], mine: Option<usiz
         .and_then(|n| n.choices.clone());
     if let (Some(list), Some(k)) = (list, mine.and_then(|i| table.get(i))) {
         let name = k.entry.name.clone();
-        session.keep(&list, &name);
+        session.keep_latest(&list, &name);
     }
 }
 
@@ -467,8 +467,13 @@ score = { offset = 3, len = 6, type = "digits" }
             "no entry, no name"
         );
         keep_name(&mut s, &table, Some(2));
+        keep_name(&mut s, &table, Some(0));
         keep_name(&mut s, &table, Some(2));
-        assert_eq!(s.kept()["names"], ["CCC"], "once");
+        assert_eq!(
+            s.kept()["names"],
+            ["AAA", "CCC"],
+            "once, the latest last, as the card offers it first"
+        );
     }
 
     /// Starquake's definition, and a session of it at its title, when the player's tape is in
