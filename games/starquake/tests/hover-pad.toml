@@ -1,5 +1,5 @@
 # A new game with BLOB on a hover pad (room 234), its platform waiting there, and creatures that
-# do no harm: up boards it. Two steps right, at 88, he's beside it, on the floor.
+# do no harm: up boards it. Two cells right, at 88, he's beside it, on the floor.
 room = 234
 blob_x = 72
 blob_y = 87

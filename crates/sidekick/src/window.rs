@@ -2139,7 +2139,6 @@ fn is_fullscreen_toggle(scancode: Scancode, keymod: Mod) -> bool {
     scancode == Scancode::F11 || (scancode == Scancode::F && control_command)
 }
 
-/// Presses and lets go on the Spectrum what a pad changed.
 fn press(machine: &mut Machine, scancode: Scancode, pressed: bool) {
     match spectrum_key(scancode) {
         Some(Spectrum::Key(key)) => machine.key(key, pressed),
