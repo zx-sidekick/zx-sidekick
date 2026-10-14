@@ -5,14 +5,21 @@ use crate::picture::color;
 use sidekick_core::{Bitmap, Fact, Font, Read, Reading, Session};
 use sidekick_def::{Column, Definition, MarkerPlace, MarkerShape, Widget, WidgetKind};
 use sidekick_ui::{
-    CardRow, Cell, Chip, Color, Edge, Icon, Inside, Look, MapGrid, Marker, MarkerKind, Panel,
-    PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Place, Route, RouteColor, Step, StepLine,
+    CardRow, Cell, Chip, Color, Edge, Icon, Inside, Look, MapGrid, Marker, MarkerKind, PadLabels,
+    Panel, PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Place, Route, RouteColor, Step,
+    StepLine,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-/// The panel for a session's game at guidance level `level`; `None` when its definition has
-/// no guidance levels, and so no panel.
-pub(crate) fn of(session: &Session, level: usize, chosen: Option<&str>) -> Option<Panel> {
+/// The panel for a session's game at guidance level `level`, with the training switches on
+/// and the keys of the pad plugged in, if one is; `None` when its definition has no guidance
+/// levels, and so no panel.
+pub(crate) fn of(
+    session: &Session,
+    level: usize,
+    chosen: Option<&str>,
+    pad: Option<PadLabels>,
+) -> Option<Panel> {
     let script = Script {
         results: session.script_results(),
         off: session.script_off(),
@@ -27,13 +34,31 @@ pub(crate) fn of(session: &Session, level: usize, chosen: Option<&str>) -> Optio
             .and_then(|p| session.sprites(p))
             .unwrap_or_default(),
     };
-    panel(
+    let shown = panel(
         session.definition(),
         level,
         session.reading(),
         &script,
         &graphics,
-    )
+    )?;
+    Some(Panel {
+        training: training(session.definition(), session.switches_on()),
+        pad,
+        ..shown
+    })
+}
+
+/// The labels of the training switches `on`, in the definition's order.
+pub(crate) fn training(definition: Option<&Definition>, on: &BTreeSet<String>) -> Vec<String> {
+    definition
+        .map(|d| {
+            d.cheats
+                .iter()
+                .filter(|c| on.contains(&c.id))
+                .map(|c| c.label.clone())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// A widget's font and pictures, read from the game's memory.
@@ -169,6 +194,8 @@ pub(crate) fn panel(
         name: at.name.clone(),
         description: at.description.clone(),
         widgets,
+        training: Vec::new(),
+        pad: None,
     })
 }
 
@@ -1185,6 +1212,52 @@ source = "script:core"
         );
     }
 
+    const CHEATS: &str = r#"
+[[cheats]]
+id = "lives"
+label = "Endless lives"
+set = { value = "lives", to = 3 }
+
+[[cheats]]
+id = "energy"
+label = "Full energy"
+set = { value = "energy", to = "max" }
+"#;
+
+    #[test]
+    fn the_training_list_holds_the_switches_on_in_the_definition_s_order() {
+        let def = definition(CHEATS);
+        let on = |ids: &[&str]| ids.iter().map(|&id| id.to_owned()).collect::<BTreeSet<_>>();
+        assert!(training(Some(&def), &on(&[])).is_empty());
+        assert_eq!(
+            training(Some(&def), &on(&["energy", "lives"])),
+            ["Endless lives", "Full energy"]
+        );
+        assert_eq!(
+            training(Some(&def), &on(&["energy", "gone"])),
+            ["Full energy"]
+        );
+        assert!(training(None, &on(&["energy"])).is_empty());
+    }
+
+    #[test]
+    fn the_panel_lists_the_switches_on_at_every_level_with_the_pad_plugged_in() {
+        let machine =
+            sidekick_core::Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        let mut s = Session::new(machine, Some(definition(CHEATS)));
+        let off = of(&s, 0, None, None).expect("a panel");
+        assert!(off.training.is_empty(), "nothing on, nothing listed");
+        assert_eq!(off.pad, None);
+        s.switch("energy", true).expect("the switch goes on");
+        for level in 0..3 {
+            let shown = of(&s, level, None, Some(PadLabels::Shapes)).expect("a panel");
+            assert_eq!(shown.training, ["Full energy"], "at level {level}");
+            assert_eq!(shown.pad, Some(PadLabels::Shapes));
+        }
+        s.switch("energy", false).expect("the switch goes off");
+        assert!(of(&s, 1, None, None).expect("a panel").training.is_empty());
+    }
+
     #[test]
     fn level_0_shows_no_widgets_and_no_levels_no_panel() {
         let def = definition(PANEL);
@@ -1240,7 +1313,7 @@ mod real_tape {
 
     /// The body of the widget with `title`, or of the map when `title` is `None`.
     fn body(s: &Session, level: usize, title: Option<&str>) -> Body {
-        of(s, level, None)
+        of(s, level, None, None)
             .expect("a panel")
             .widgets
             .into_iter()

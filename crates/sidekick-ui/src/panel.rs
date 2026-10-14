@@ -1,7 +1,12 @@
 //! The panel beside the picture: the guidance level, and the widgets it shows
 //! (`docs/mockups/starquake/play-level*.png`).
 
-use crate::{colors, map::MapGrid, Align, Canvas, Color, Fonts, Line, Style, Weight};
+use crate::{
+    colors,
+    hints::{hints_from, row_width, Hint, PadLabels, Press, GAP as HINT_GAP},
+    map::MapGrid,
+    Align, Canvas, Color, Fonts, Line, Style, Weight,
+};
 
 /// The panel's width, in logical pixels.
 pub const WIDTH: u32 = 408;
@@ -26,6 +31,13 @@ const LINE: f32 = 22.0;
 const HEIGHT_F: f32 = HEIGHT as f32;
 /// A meter's length in a column, and across the panel.
 const METER: f32 = 160.0;
+/// The top of the row of keys that open the menu, at level 0: its middle where the
+/// description's was.
+const KEYS_TOP: f32 = 350.0;
+/// Between the words and the keys, beside them or under them.
+const KEYS_GAP: f32 = 10.0;
+/// A row of keys' height.
+const KEYS_HEIGHT: f32 = 20.0;
 
 /// Where a widget goes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -239,10 +251,15 @@ pub struct Panel {
     pub level: usize,
     /// The level's name.
     pub name: String,
-    /// The level's description, shown in the middle when no widget is.
+    /// The level's description, shown in the middle when no widget is. At level 0, the words
+    /// before the keys that open the menu.
     pub description: String,
     /// The widgets shown at this level, in order.
     pub widgets: Vec<Widget>,
+    /// The training switches on, by their labels: listed at the top.
+    pub training: Vec<String>,
+    /// How the pad plugged in marks its buttons; `None` without one.
+    pub pad: Option<PadLabels>,
 }
 
 /// The panel's background and its left edge, filling `size` device pixels, `WIDTH` logical
@@ -321,12 +338,76 @@ impl Panel {
                 &name,
             );
         }
-        if self.widgets.is_empty() {
-            self.description(&mut c, fonts);
+        let (top, reach) = self.training(&mut c, fonts);
+        if !self.widgets.is_empty() {
+            self.widgets(&mut c, fonts, top, reach);
+        } else if self.level == 0 {
+            self.keys(&mut c, fonts);
         } else {
-            self.widgets(&mut c, fonts);
+            self.description(&mut c, fonts);
         }
         c
+    }
+
+    /// The training switches on, a line each, at the top. Returns where what follows starts,
+    /// and how far right the list reaches.
+    fn training(&self, c: &mut Canvas, fonts: &mut Fonts) -> (f32, f32) {
+        if self.training.is_empty() {
+            return (TOP, LEFT);
+        }
+        let title = label(colors::LABEL);
+        line(c, fonts, "TRAINING", (LEFT, TOP), Align::Left, &title);
+        let mut reach = LEFT + fonts.measure("TRAINING", &title);
+        let style = Style::new(13.0, BODY);
+        let mut y = TOP + TO_BODY;
+        for switch in &self.training {
+            line(c, fonts, switch, (LEFT, y), Align::Left, &style);
+            reach = reach.max(LEFT + fonts.measure(switch, &style));
+            y += LINE;
+        }
+        (y + SPACING, reach)
+    }
+
+    /// The level's words, then the keys that open the menu, in the middle: on one line when
+    /// they fit, the keys under the words when they don't.
+    fn keys(&self, c: &mut Canvas, fonts: &mut Fonts) {
+        let style = Style::new(13.0, colors::MUTED);
+        let pad = self.pad.map(PadLabels::select);
+        let press: Vec<Press> = std::iter::once(Press::Key("Esc")).chain(pad).collect();
+        let list = [Hint {
+            press: &press,
+            does: "",
+        }];
+        // The hint's own gap before its words, which are none.
+        let badges = row_width(fonts, &list) - HINT_GAP;
+        let words = self.description.trim();
+        let width = fonts.measure(words, &style);
+        let room = RIGHT - LEFT;
+        let middle = 204.0;
+        if words.is_empty() {
+            hints_from(c, fonts, (middle - badges / 2.0, KEYS_TOP), &list);
+        } else if width + KEYS_GAP + badges <= room {
+            let left = middle - (width + KEYS_GAP + badges) / 2.0;
+            c.text(
+                fonts,
+                words,
+                (left, KEYS_TOP + 1.0),
+                18.0,
+                Align::Left,
+                &style,
+            );
+            hints_from(c, fonts, (left + width + KEYS_GAP, KEYS_TOP), &list);
+        } else {
+            let lines = fonts.wrap(words, &style, room);
+            #[allow(clippy::cast_precision_loss, reason = "a few lines")]
+            let height = LINE * lines.len() as f32 + KEYS_GAP + KEYS_HEIGHT;
+            let mut y = KEYS_TOP + KEYS_HEIGHT / 2.0 - height / 2.0;
+            for words in &lines {
+                c.text(fonts, words, (middle, y), LINE, Align::Center, &style);
+                y += LINE;
+            }
+            hints_from(c, fonts, (middle - badges / 2.0, y + KEYS_GAP), &list);
+        }
     }
 
     /// The level's description in the middle, a sentence a line.
@@ -347,10 +428,11 @@ impl Panel {
         }
     }
 
-    fn widgets(&self, c: &mut Canvas, fonts: &mut Fonts) {
-        let (mut left, mut right) = (TOP, TOP);
+    /// The widgets, from `top`; `reach` is how far right what's above them reaches.
+    fn widgets(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, reach: f32) {
+        let (mut left, mut right) = (top, top);
         // How far right the left column reaches, for the map's legend beside it.
-        let mut reach = LEFT;
+        let mut reach = reach;
         for widget in &self.widgets {
             let (x, align, top) = match widget.column {
                 Column::Left => (LEFT, Align::Left, left),

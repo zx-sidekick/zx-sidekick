@@ -313,10 +313,42 @@ fn the_panel() {
     let off = Panel {
         level: 0,
         name: "Off".to_owned(),
-        description: "No guidance. Press Esc or Select to choose a level.".to_owned(),
+        description: "Guidance or training".to_owned(),
         widgets: Vec::new(),
+        training: Vec::new(),
+        pad: None,
     };
     golden("panel-level0.png", &off.draw(&mut fonts, PANEL_AT_1).png());
+    for (name, pad) in [
+        ("panel-level0-pad.png", PadLabels::Letters),
+        ("panel-level0-playstation.png", PadLabels::Shapes),
+        ("panel-level0-nintendo.png", PadLabels::Nintendo),
+    ] {
+        let with_pad = Panel {
+            pad: Some(pad),
+            ..off.clone()
+        };
+        golden(name, &with_pad.draw(&mut fonts, PANEL_AT_1).png());
+    }
+    let training = Panel {
+        training: vec!["Full energy".to_owned(), "Endless lives".to_owned()],
+        pad: Some(PadLabels::Letters),
+        ..off.clone()
+    };
+    golden(
+        "panel-level0-training.png",
+        &training.draw(&mut fonts, PANEL_AT_1).png(),
+    );
+    let long = Panel {
+        description: "No guidance yet: open the menu to choose a level or a training switch"
+            .to_owned(),
+        pad: Some(PadLabels::Letters),
+        ..off
+    };
+    golden(
+        "panel-level0-long.png",
+        &long.draw(&mut fonts, PANEL_AT_1).png(),
+    );
 
     let widget = |column, title: &str, body| PanelWidget {
         column,
@@ -361,8 +393,18 @@ fn the_panel() {
                 },
             ),
         ],
+        training: Vec::new(),
+        pad: None,
     };
     golden("panel-plain.png", &plain.draw(&mut fonts, PANEL_AT_1).png());
+    let training = Panel {
+        training: vec!["Full energy".to_owned(), "Endless lives".to_owned()],
+        ..plain
+    };
+    golden(
+        "panel-training.png",
+        &training.draw(&mut fonts, PANEL_AT_1).png(),
+    );
 }
 
 /// A stand-in picture: an 8 × 8 pattern, mirrored left to right, from a seed. Plainly not any
@@ -442,6 +484,8 @@ fn the_panel_in_the_game_s_own_font_and_pictures() {
                 body: PanelBody::Cards(cards),
             },
         ],
+        training: Vec::new(),
+        pad: None,
     };
     golden(
         "panel-game-pictures.png",
@@ -547,7 +591,12 @@ fn the_map() {
             look: Look::Bright,
         })
         .collect();
-    for (name, seen) in [("panel-map-dots.png", false), ("panel-map-walls.png", true)] {
+    let training = || vec!["Full energy".to_owned(), "Endless lives".to_owned()];
+    for (name, seen, training) in [
+        ("panel-map-dots.png", false, Vec::new()),
+        ("panel-map-walls.png", true, Vec::new()),
+        ("panel-map-training.png", true, training()),
+    ] {
         let panel = Panel {
             level: 5,
             name: "Routes".to_owned(),
@@ -587,6 +636,8 @@ fn the_map() {
                     body: PanelBody::Map(stand_in_map(seen)),
                 },
             ],
+            training,
+            pad: None,
         };
         golden(name, &panel.draw(&mut fonts, PANEL_AT_1).png());
     }
@@ -773,6 +824,8 @@ fn a_map_of_some_rooms_walked_has_no_frame() {
             title: None,
             body: PanelBody::Map(map),
         }],
+        training: Vec::new(),
+        pad: None,
     };
     golden(
         "panel-map-walked.png",
@@ -873,6 +926,8 @@ fn routes_are_solid_through_rooms_walked_and_side_by_side_where_they_meet() {
                 body: PanelBody::Map(map),
             },
         ],
+        training: Vec::new(),
+        pad: None,
     };
     golden(
         "panel-map-routes.png",
@@ -964,6 +1019,8 @@ fn the_map_shows_what_is_inside_each_room() {
             title: None,
             body: PanelBody::Map(map),
         }],
+        training: Vec::new(),
+        pad: None,
     };
     golden(
         "panel-map-inside.png",
@@ -1018,6 +1075,8 @@ fn every_marker_in_a_room_shows() {
             title: None,
             body: PanelBody::Map(map),
         }],
+        training: Vec::new(),
+        pad: None,
     };
     golden(
         "panel-map-markers.png",

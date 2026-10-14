@@ -135,6 +135,7 @@ pub(crate) fn run(
                 usize::from(level),
                 size,
                 PadLabels::Letters,
+                None,
                 &mut Fonts::new(),
             );
             fs::write(path, sidekick_ui::png::encode(&rgba, size.0, size.1))

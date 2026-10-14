@@ -447,7 +447,7 @@ score = { offset = 3, len = 6, type = "digits" }
 
 [[guidance.levels]]
 name = "Off"
-description = "No guidance. Press Esc or Select to choose a level."
+description = "Guidance or training"
 
 [[guidance.levels]]
 name = "Codes and the core"

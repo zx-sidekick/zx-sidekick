@@ -78,6 +78,16 @@ impl PadLabels {
         }
     }
 
+    /// The Select button, as it's marked.
+    #[must_use]
+    pub const fn select(self) -> Press<'static> {
+        match self {
+            Self::Letters => Press::Pill("Back"),
+            Self::Nintendo => Press::Pill("\u{2212}"),
+            Self::Shapes => Press::Pill("Create"),
+        }
+    }
+
     /// A face button, as it's marked.
     #[must_use]
     pub const fn face(self, face: Face) -> Press<'static> {
@@ -107,7 +117,7 @@ const KEY: Style = Style::new(12.0, colors::TEXT).weight(Weight::SemiBold);
 const PAD: Style = Style::new(10.0, colors::TEXT).weight(Weight::SemiBold);
 const WHAT: Style = Style::new(12.0, colors::MUTED);
 /// Between a press and the next, or the words.
-const GAP: f32 = 6.0;
+pub(crate) const GAP: f32 = 6.0;
 /// Between one hint and the next.
 const SPACING: f32 = 14.0;
 const PAD_SIZE: f32 = 18.0;
@@ -222,5 +232,20 @@ pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &
         x += GAP;
         x += c.text(fonts, hint.does, (x, y + 1.0), 18.0, Align::Left, &WHAT);
         x += SPACING;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn select_is_marked_as_each_maker_marks_it() {
+        assert!(matches!(PadLabels::Letters.select(), Press::Pill("Back")));
+        assert!(matches!(PadLabels::Shapes.select(), Press::Pill("Create")));
+        assert!(matches!(
+            PadLabels::Nintendo.select(),
+            Press::Pill("\u{2212}")
+        ));
     }
 }
