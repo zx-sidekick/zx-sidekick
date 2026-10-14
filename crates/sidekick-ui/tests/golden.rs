@@ -591,7 +591,17 @@ fn the_map() {
             look: Look::Bright,
         })
         .collect();
-    let training = || vec!["Full energy".to_owned(), "Endless lives".to_owned()];
+    let training = || {
+        [
+            "Full energy",
+            "Full bridging platforms",
+            "Full laser",
+            "Endless lives",
+            "No harm from enemies",
+        ]
+        .map(str::to_owned)
+        .to_vec()
+    };
     for (name, seen, training) in [
         ("panel-map-dots.png", false, Vec::new()),
         ("panel-map-walls.png", true, Vec::new()),

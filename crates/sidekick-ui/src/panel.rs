@@ -36,6 +36,8 @@ const METER: f32 = 160.0;
 const KEYS_TOP: f32 = 350.0;
 /// Between the words and the keys, beside them or under them.
 const KEYS_GAP: f32 = 10.0;
+/// Between one training switch and the next on a line.
+const TRAINING_DOT: &str = " \u{b7} ";
 /// A row of keys' height.
 const KEYS_HEIGHT: f32 = 20.0;
 
@@ -349,8 +351,8 @@ impl Panel {
         c
     }
 
-    /// The training switches on, a line each, at the top. Returns where what follows starts,
-    /// and how far right the list reaches.
+    /// The training switches on, at the top, on as few lines as they fit: a switch's label is
+    /// never split. Returns where what follows starts, and how far right the list reaches.
     fn training(&self, c: &mut Canvas, fonts: &mut Fonts) -> (f32, f32) {
         if self.training.is_empty() {
             return (TOP, LEFT);
@@ -360,12 +362,29 @@ impl Panel {
         let mut reach = LEFT + fonts.measure("TRAINING", &title);
         let style = Style::new(13.0, BODY);
         let mut y = TOP + TO_BODY;
-        for switch in &self.training {
-            line(c, fonts, switch, (LEFT, y), Align::Left, &style);
-            reach = reach.max(LEFT + fonts.measure(switch, &style));
+        for words in Self::packed(fonts, &self.training, &style, RIGHT - LEFT) {
+            line(c, fonts, &words, (LEFT, y), Align::Left, &style);
+            reach = reach.max(LEFT + fonts.measure(&words, &style));
             y += LINE;
         }
         (y + SPACING, reach)
+    }
+
+    /// Labels joined by dots into lines no wider than `room`, a label too wide alone on its own.
+    fn packed(fonts: &mut Fonts, labels: &[String], style: &Style, room: f32) -> Vec<String> {
+        let mut lines: Vec<String> = Vec::new();
+        for label in labels {
+            match lines.last_mut() {
+                Some(last)
+                    if fonts.measure(&format!("{last}{TRAINING_DOT}{label}"), style) <= room =>
+                {
+                    last.push_str(TRAINING_DOT);
+                    last.push_str(label);
+                }
+                _ => lines.push(label.clone()),
+            }
+        }
+        lines
     }
 
     /// The level's words, then the keys that open the menu, in the middle: on one line when
@@ -428,11 +447,13 @@ impl Panel {
         }
     }
 
-    /// The widgets, from `top`; `reach` is how far right what's above them reaches.
-    fn widgets(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, reach: f32) {
+    /// The widgets, from `top`; `above` is how far right what's above them reaches.
+    fn widgets(&self, c: &mut Canvas, fonts: &mut Fonts, top: f32, above: f32) {
         let (mut left, mut right) = (top, top);
-        // How far right the left column reaches, for the map's legend beside it.
-        let mut reach = reach;
+        // How far right the left column reaches, for the map's legend beside it: what's above
+        // the widgets, until the column has a widget of its own.
+        let mut reach = above;
+        let mut own = false;
         for widget in &self.widgets {
             let (x, align, top) = match widget.column {
                 Column::Left => (LEFT, Align::Left, left),
@@ -441,6 +462,10 @@ impl Panel {
             };
             // The map's legend goes beside what's above it, so the map itself doesn't count.
             if widget.column == Column::Left && !matches!(widget.body, Body::Map(_)) {
+                if !own {
+                    reach = LEFT;
+                    own = true;
+                }
                 reach = reach.max(LEFT + Self::extent(fonts, widget));
             }
             let bottom = if let Body::Map(map) = &widget.body {
@@ -835,6 +860,32 @@ mod tests {
         );
         // Its middle stays where it was: (3.3 + 8) × 1.4, less half its 24 device pixels.
         assert_eq!(runs[0], 4);
+    }
+
+    #[test]
+    fn training_switches_share_lines_and_are_never_split() {
+        let mut fonts = Fonts::new();
+        let style = Style::new(13.0, BODY);
+        let labels = [
+            "Full energy",
+            "Full bridging platforms",
+            "Full laser",
+            "Endless lives",
+        ]
+        .map(str::to_owned);
+        let room = fonts.measure("Full energy \u{b7} Full bridging platforms", &style);
+        assert_eq!(
+            Panel::packed(&mut fonts, &labels, &style, room),
+            [
+                "Full energy \u{b7} Full bridging platforms",
+                "Full laser \u{b7} Endless lives"
+            ]
+        );
+        assert_eq!(
+            Panel::packed(&mut fonts, &labels[..2], &style, 10.0),
+            ["Full energy", "Full bridging platforms"],
+            "a label wider than the room stands alone, whole"
+        );
     }
 
     #[test]
