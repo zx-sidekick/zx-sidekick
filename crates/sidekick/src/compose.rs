@@ -4,7 +4,7 @@
 
 use crate::{
     panel,
-    picture::{layout, smallest, to_rgba, Layout, Part, FULL, LOGICAL_PIXEL, SCREEN},
+    picture::{layout, smallest, to_rgba, Layout, Part, FULL, LEAST_PIXEL, LOGICAL_PIXEL, SCREEN},
 };
 use sidekick_core::Session;
 use sidekick_def::{Border, Definition, Role};
@@ -134,6 +134,59 @@ pub(crate) fn card_at_foot(
     let ((x, _, w, h), scale) = card_over(on, output, layout, logical);
     let foot = (on.1 + on.3).saturating_sub(h + device(MARGIN, scale));
     (within((x, foot, w, h), output, scale), scale)
+}
+
+/// The top and foot, in device pixels, of the screen's character row just above `row`: the
+/// line a card placed at `row` keeps in sight. `screen_top` is where the screen starts in the
+/// part of the picture shown.
+pub(crate) const fn line_above(layout: Layout, screen_top: u32, row: u32) -> (u32, u32) {
+    let foot = screen_top + row * 8;
+    let top = foot.saturating_sub(8);
+    let (_, y, _, _) = layout.picture;
+    (y + top * layout.pixel, y + foot * layout.pixel)
+}
+
+/// The smallest scale a card is shrunk to so it fits under a line: its scale beside the
+/// smallest picture, where it's still read easily.
+#[allow(clippy::cast_precision_loss, reason = "two small whole numbers")]
+const LEAST_UNDER_LINE: f32 = LEAST_PIXEL as f32 / LOGICAL_PIXEL as f32;
+
+/// Where a card `logical` pixels large goes so the picture's `line` (its top and foot, in device
+/// pixels) stays in sight, and its scale. It sits just under the line, centred across the
+/// picture, at the scale it has over the picture; where the window has no room for it there,
+/// it's made smaller, down to [`LEAST_UNDER_LINE`]; past that it sits just above the line
+/// instead, made smaller only if that has no room either.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "screen sizes are far below f32's limit"
+)]
+pub(crate) fn card_under_line(
+    line: (u32, u32),
+    output: (u32, u32),
+    layout: Layout,
+    logical: (u32, u32),
+) -> ((u32, u32, u32, u32), f32) {
+    let usual = card_scale(layout, output, logical);
+    let (px, _, pw, _) = layout.picture;
+    let place = |y: u32, scale: f32| {
+        let (w, h) = (device(logical.0, scale), device(logical.1, scale));
+        let (x, _, _, _) = within((px + pw.saturating_sub(w) / 2, y, w, h), output, scale);
+        ((x, y, w, h), scale)
+    };
+    // The most a card and its margin may take in `room` device pixels: one less than an even
+    // share, since each is rounded to whole pixels.
+    let fitting = |room: u32| room.saturating_sub(1) as f32 / (logical.1 + MARGIN) as f32;
+    let below = output.1.saturating_sub(line.1);
+    let fits_below = |scale: f32| device(logical.1, scale) + device(MARGIN, scale) <= below;
+    if fits_below(usual) {
+        return place(line.1, usual);
+    }
+    let shrunk = fitting(below).min(usual);
+    if shrunk >= LEAST_UNDER_LINE {
+        return place(line.1, shrunk);
+    }
+    let scale = usual.min(fitting(line.0));
+    place(line.0.saturating_sub(device(logical.1, scale)), scale)
 }
 
 /// Whether the state the game was last known in has `role`: steady through frames that match
@@ -371,6 +424,70 @@ mod tests {
         assert_eq!(host_keys("0", true), "0");
     }
 
+    /// Where the text-entry card goes in a window `size` large, under a borderless screen's
+    /// row 19, and that row's top and foot.
+    fn entry_card_by_row_19(size: (u32, u32)) -> ((u32, u32, u32, u32), f32, (u32, u32)) {
+        let layout = layout(size, (256, 192), true);
+        let (_, y, _, _) = layout.picture;
+        let row_19 = (y + 152 * layout.pixel, y + 160 * layout.pixel);
+        let line = line_above(layout, 0, 20);
+        assert_eq!(line, row_19);
+        let (at, scale) = card_under_line(line, size, layout, (ENTRY_WIDTH, ENTRY_HEIGHT));
+        (at, scale, row_19)
+    }
+
+    #[test]
+    fn the_entry_card_never_covers_the_line_above_its_row() {
+        let sizes = [
+            (1368, 768),
+            (1440, 900),
+            (1280, 720),
+            (1920, 1080),
+            (2560, 1440),
+            (900, 1600),
+            (700, 1000),
+            (1100, 600),
+        ];
+        for size in sizes {
+            let ((x, y, w, h), scale, (top, foot)) = entry_card_by_row_19(size);
+            assert!(
+                y + h <= top || y >= foot,
+                "{size:?}: {y}..{} over {top}..{foot}",
+                y + h
+            );
+            assert!(
+                x + w <= size.0 && y + h <= size.1,
+                "{size:?}: inside the window"
+            );
+            assert!(
+                scale
+                    >= LEAST_UNDER_LINE.min(card_scale(
+                        layout(size, (256, 192), true),
+                        size,
+                        (ENTRY_WIDTH, ENTRY_HEIGHT)
+                    ))
+            );
+        }
+    }
+
+    #[test]
+    fn the_entry_card_sits_under_the_line_shrunk_where_it_must_and_above_it_past_that() {
+        let ((_, y, _, _), scale, (_, foot)) = entry_card_by_row_19((1368, 768));
+        assert_eq!(
+            (y, scale),
+            (foot, 1.0),
+            "the mockup's size, just under the line"
+        );
+        for size in [(1280, 720), (1920, 1080), (2560, 1440)] {
+            let usual = layout(size, (256, 192), true).scale();
+            let ((_, y, _, _), scale, (_, foot)) = entry_card_by_row_19(size);
+            assert_eq!(y, foot, "{size:?}: just under the line");
+            assert!(scale < usual, "{size:?}: smaller, to fit");
+        }
+        let ((_, y, _, h), _, (top, _)) = entry_card_by_row_19((1100, 600));
+        assert_eq!(y + h, top, "no room under it: just above the line");
+    }
+
     #[test]
     fn the_title_s_notice_rests_at_the_picture_s_foot() {
         let layout = layout((1920, 1080), (256, 192), true);
@@ -388,7 +505,7 @@ mod tests {
 
     use super::*;
     use sidekick_core::{Machine, Model};
-    use sidekick_ui::MENU_WIDTH;
+    use sidekick_ui::{ENTRY_HEIGHT, ENTRY_WIDTH, MENU_WIDTH};
     use std::path::PathBuf;
 
     /// Where the stand-in game sits while paused: a loop the processor is parked in.

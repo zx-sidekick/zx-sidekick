@@ -1617,7 +1617,8 @@ impl Player {
         }
     }
 
-    /// Draws the text-entry card over the picture, its top at the definition's character row.
+    /// Draws the text-entry card over the picture, its top at the definition's character row, or
+    /// as near it as keeps the row above in sight.
     fn draw_entry(&self, out: &mut Output, labels: PadLabels) -> Result<(), String> {
         let Some(entry) = &self.entry else {
             out.entry = None;
@@ -1626,8 +1627,11 @@ impl Player {
         let row = self.text_entry().and_then(|t| t.card_row).unwrap_or(20);
         let output = out.canvas.output_size().map_err(|e| e.to_string())?;
         let layout = self.layout(output);
-        let (px, py, pw, _) = layout.picture;
-        let scale = compose::card_scale(layout, output, (ENTRY_WIDTH, ENTRY_HEIGHT));
+        // The row's top on the screen, below the border when it's shown.
+        let screen_top = SCREEN.1 - compose::shown(&self.session).1;
+        let line = compose::line_above(layout, screen_top, row);
+        let (at, scale) =
+            compose::card_under_line(line, output, layout, (ENTRY_WIDTH, ENTRY_HEIGHT));
         let card = entry.card(labels);
         cached(
             out.creator,
@@ -1637,19 +1641,6 @@ impl Player {
             scale,
             EntryCard::draw,
         )?;
-        let (w, h) = (device(ENTRY_WIDTH, scale), device(ENTRY_HEIGHT, scale));
-        // The row's top on the screen, below the border when it's shown.
-        let screen_top = SCREEN.1 - compose::shown(&self.session).1;
-        let at = compose::within(
-            (
-                px + pw.saturating_sub(w) / 2,
-                py + (screen_top + row * 8) * layout.pixel,
-                w,
-                h,
-            ),
-            output,
-            scale,
-        );
         if let Some((texture, _, _)) = &out.entry {
             out.canvas
                 .copy(texture, None, frect(at))
