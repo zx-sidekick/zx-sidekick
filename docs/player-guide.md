@@ -114,6 +114,12 @@ The codes you discover are kept between games. The menu's **Forget the teleport 
 
 A game remembers the highest guidance level it used and the training switches it had on, and shows them beside its score at the end. Raising either asks first: "Your score will show this".
 
+## High scores
+
+Starquake's high-score table is kept between runs. Only games played here are kept, so it starts with the game's own entries, which are never kept. Each entry carries the highest guidance level its game had; a training game is shown, then left out; a game a save was loaded into is marked "loaded".
+
+When the game asks for your name, a pad opens a card offering the names entered before, the most recent first. The west button switches to spelling one: up and down change a letter, and A takes it and moves to the next. On the keyboard, type the name as on the original.
+
 ## Saves
 
 Saves work for every game, at any moment: in play, paused, or with the menu open.
@@ -139,7 +145,7 @@ Setting the `ZX_SIDEKICK_DATA` environment variable moves it.
 
 In it:
 
-- `<game>/`, one folder a game (`starquake/`): its tape as you gave it (`tape.tap` or `tape.tzx`), the quick save `quick.sav`, the save made on quitting `quit.sav`, and its kept lists (Starquake: `teleporter-codes.txt`, `doors-met.txt`) and scores (`high-scores.txt`, for a game whose definition describes its table).
+- `<game>/`, one folder a game (`starquake/`): its tape as you gave it (`tape.tap` or `tape.tzx`), the quick save `quick.sav`, the save made on quitting `quit.sav`, its kept lists (Starquake: `teleporter-codes.txt`, `doors-met.txt`, `high-score-names.txt`), and its high-score table, `high-scores.txt`.
 - `tapes/`, for tapes played without a definition: one folder a tape, holding its saves.
 - `games/`, for definitions you add. One there with the same id as one beside the program wins.
 
