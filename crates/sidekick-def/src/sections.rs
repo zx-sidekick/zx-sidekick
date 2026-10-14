@@ -1039,6 +1039,52 @@ pub struct About {
     /// The main moves, in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub how: Vec<HowTo>,
+    /// Up to two clips above the goal: the game itself, running in a loop from a crafted
+    /// situation, played by scripted input.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clips: Vec<Clip>,
+}
+
+/// `[[about.clips]]`: a move shown being made, by a small copy of the game running from a
+/// crafted situation in a loop, with what's pressed drawn under it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Clip {
+    /// What it shows, under it: "pick up or swap".
+    pub does: String,
+    /// The pad part shown pressed, by position, lit while the input holds it; its key is
+    /// worked out from the `[pad]` mapping in play, as a move's is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pad: Option<String>,
+    /// The keyboard's key as shown, when not the one worked out from `pad`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<String>,
+    /// The crafted situation it starts from, a file in the definition's folder: entered from
+    /// the game the player started, as `--load` enters one.
+    pub situation: String,
+    /// The part of the screen shown: x, y, width and height in its pixels (256 × 192), 4 by 3.
+    pub area: [u32; 4],
+    /// The loop's length, in frames (50 a second).
+    pub frames: u32,
+    /// What's held, in turn from the loop's start; nothing is held after the last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input: Vec<ClipStep>,
+}
+
+/// One step of a clip's input: the pad's parts held, for some frames or until a test holds.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ClipStep {
+    /// How long, in frames.
+    pub frames: u32,
+    /// The parts held: the D-pad's `up`, `down`, `left` and `right`, and the face buttons
+    /// `west`, `south`, `east` and `north`. None is a wait.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hold: Vec<String>,
+    /// Ends the step early, once this test of a value holds after a frame: walking until BLOB
+    /// is where the next step needs him, however fast the game runs. `frames` is then the most.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub until: Option<Test>,
 }
 
 /// `[[about.how]]`: one of the main moves, with what does it.

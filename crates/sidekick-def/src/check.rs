@@ -78,6 +78,17 @@ const ROLES: [Role; 4] = [Role::Title, Role::Play, Role::Paused, Role::GameOver]
 /// directions and Start.
 const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north", "start"];
 
+/// The clips the How to play card has room for.
+const CLIPS: usize = 2;
+
+/// The D-pad's ways, which a clip can show pressed one at a time.
+const DPAD_WAYS: &[&str] = &["up", "down", "left", "right"];
+
+/// What a clip's input can hold: the D-pad's ways and the face buttons.
+const CLIP_PARTS: &[&str] = &[
+    "up", "down", "left", "right", "west", "south", "east", "north",
+];
+
 /// The program's own keys, which an action can't take.
 const PROGRAM_KEYS: &[&str] = &["Esc", "F5", "F9", "F11"];
 
@@ -924,6 +935,76 @@ impl Checker<'_> {
             self.report(
                 "about",
                 "shown when a game starts: it needs a state with role = \"play\"",
+            );
+        }
+        if about.clips.len() > CLIPS {
+            self.report("about.clips", format!("the card has room for {CLIPS}"));
+        }
+        for (i, clip) in about.clips.iter().enumerate() {
+            self.clip(&format!("about.clips[{i}]"), clip);
+        }
+    }
+
+    fn clip(&mut self, path: &str, clip: &crate::Clip) {
+        if clip.does.trim().is_empty() {
+            self.report(format!("{path}.does"), "says nothing");
+        }
+        let shown = |p: &&str| NOTICE_PARTS.contains(p) || DPAD_WAYS.contains(p);
+        if let Some(pad) = clip.pad.as_deref().filter(|p| !shown(p)) {
+            self.report(
+                format!("{path}.pad"),
+                format!(
+                    "{pad:?} isn't a part the screen shows: one of {}, {}",
+                    NOTICE_PARTS.join(", "),
+                    DPAD_WAYS.join(", ")
+                ),
+            );
+        }
+        let inside = std::path::Path::new(&clip.situation)
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)));
+        if clip.situation.is_empty() || !inside {
+            self.report(
+                format!("{path}.situation"),
+                "a file in the definition's folder",
+            );
+        }
+        let [x, y, w, h] = clip.area;
+        if w == 0 || w * 3 != h * 4 {
+            self.report(format!("{path}.area"), "4 by 3, as the card's place for it");
+        } else if x + w > 256 || y + h > 192 {
+            self.report(format!("{path}.area"), "inside the screen's 256 × 192");
+        }
+        let input: u32 = clip.input.iter().map(|s| s.frames).sum();
+        if clip.frames == 0 || input > clip.frames {
+            self.report(
+                format!("{path}.frames"),
+                format!("at least 1, and the input's {input} at most"),
+            );
+        }
+        for (j, step) in clip.input.iter().enumerate() {
+            if let Some(until) = &step.until {
+                self.test(&format!("{path}.input[{j}].until"), until);
+            }
+            for part in &step.hold {
+                if !CLIP_PARTS.contains(&part.as_str()) {
+                    self.report(
+                        format!("{path}.input[{j}].hold"),
+                        format!("{part:?}: one of {}", CLIP_PARTS.join(", ")),
+                    );
+                }
+            }
+        }
+        let enters = self
+            .def
+            .situations
+            .as_ref()
+            .is_some_and(|s| s.enter.is_some());
+        let sync = self.def.run.as_ref().is_some_and(|r| r.sync.is_some());
+        if !enters || !sync {
+            self.report(
+                path,
+                "a clip enters its situation as --load does: it needs [situations] enter and [run] sync",
             );
         }
     }

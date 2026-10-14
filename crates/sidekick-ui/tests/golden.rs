@@ -1258,24 +1258,67 @@ fn how_to_play() {
         ..how_to()
     };
     golden("how-to-play-back.png", &back.draw(&mut fonts, 1.0).png());
-    let clip = |keys: &str, pad, does: &str| ClipSlot {
+    let clip = |keys: &str, pad, does: &str, running, lit| ClipSlot {
         keys: Some(keys.to_owned()),
         pad: Some(pad),
         does: does.to_owned(),
+        running,
+        lit,
     };
+    // The first running, its button held now; the second before a game is under way.
     let clips = HowTo {
         clips: vec![
-            clip("↑", PadMark::Face(Face::East), "pick up or swap"),
-            clip("↓", PadMark::Face(Face::South), "build a platform"),
+            clip(
+                "↑",
+                PadMark::Face(Face::East),
+                "pick up or swap",
+                true,
+                true,
+            ),
+            clip(
+                "↓",
+                PadMark::Face(Face::South),
+                "build a platform",
+                false,
+                false,
+            ),
         ],
         pad: Some(PadLabels::Letters),
         ..how_to()
     };
     golden("how-to-play-clips.png", &clips.draw(&mut fonts, 1.0).png());
+    // Without a pad, the arrows alone; both running, the second's button held.
+    let keys_only = HowTo {
+        clips: vec![
+            clip(
+                "↑",
+                PadMark::Face(Face::East),
+                "pick up or swap",
+                true,
+                false,
+            ),
+            clip(
+                "↓",
+                PadMark::Face(Face::South),
+                "build a platform",
+                true,
+                true,
+            ),
+        ],
+        pad: None,
+        ..how_to()
+    };
+    golden(
+        "how-to-play-clips-keys.png",
+        &keys_only.draw(&mut fonts, 1.0).png(),
+    );
     assert!(
         clips.height(&mut fonts) > keys.height(&mut fonts) + 216,
         "the clips' room comes only with clips"
     );
+    assert_eq!(clips.clip_place(0), Some((27.0, 68.0, 288.0, 216.0)));
+    assert_eq!(clips.clip_place(1), Some((333.0, 68.0, 288.0, 216.0)));
+    assert_eq!(clips.clip_place(2), None);
 }
 
 #[test]

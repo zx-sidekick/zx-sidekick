@@ -10,6 +10,7 @@
 // shows only when sent to a file or a pipe (docs/player-guide.md).
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod clips;
 mod compose;
 mod entry;
 mod games;
@@ -31,7 +32,9 @@ use games::{Game, Playing};
 use pad::Mapping;
 use saves::{SavePoint, Saves};
 use sidekick_core::{Machine, Model, Session};
-use sidekick_def::{tapes_in, Definition, Identified, Library, Package, Tape, TapeFormat};
+use sidekick_def::{
+    tapes_in, Definition, Identified, Library, Package, Situation, Tape, TapeFormat,
+};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -315,6 +318,7 @@ fn tape_session(file: &Path, library: &Library, data: &Path) -> Result<Playing, 
         save_point: SavePoint::Quick,
         paused: false,
         source: None,
+        clips: clips::Clips::default(),
     })
 }
 
@@ -371,6 +375,24 @@ fn check(path: &Path, tape: Option<&Path>) -> ExitCode {
                 "hints[{i}].text: too wide for the panel's line, {width:.0} pixels of {:.0}",
                 sidekick_ui::HINT_ROOM
             ));
+        }
+    }
+    let clips = package.definition.about.iter().flat_map(|a| &a.clips);
+    for (i, clip) in clips.enumerate() {
+        let file = &clip.situation;
+        let read = package
+            .read(file)
+            .map_err(|e| e.to_string())
+            .and_then(|b| String::from_utf8(b).map_err(|_| "not text (UTF-8)".to_owned()))
+            .and_then(|text| Situation::from_toml(&text));
+        match read {
+            Ok(situation) => problems.extend(
+                situation
+                    .check(&package.definition)
+                    .iter()
+                    .map(|p| format!("about.clips[{i}].situation: {file}: {p}")),
+            ),
+            Err(why) => problems.push(format!("about.clips[{i}].situation: {file}: {why}")),
         }
     }
     for i in how_to::too_wide(&package.definition, &mut fonts) {
@@ -513,6 +535,7 @@ mod tests {
             save_point: SavePoint::Quick,
             paused: false,
             source: None,
+            clips: clips::Clips::default(),
         }
     }
 

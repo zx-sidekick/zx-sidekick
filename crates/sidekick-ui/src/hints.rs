@@ -1,5 +1,5 @@
 //! Key hints along a screen's bottom: keys in squarish badges, pad buttons in round ones,
-//! arrows bare.
+//! arrows to move bare (a single arrow naming one key, such as ↑ to pick up, is a key).
 
 use crate::{colors, Align, Canvas, Color, Fonts, Line, Style, Weight};
 
@@ -174,6 +174,8 @@ pub(crate) enum Ink {
     Plain,
     /// An accent button: dark marks.
     OnAccent,
+    /// Held now: badges filled with the accent, the words lit.
+    Lit,
 }
 
 /// The marks' colors for `ink`: a badge's edge, a key's letters, the words and slashes.
@@ -181,6 +183,7 @@ const fn inks(ink: Ink) -> (Color, Color, Color) {
     match ink {
         Ink::Plain => (colors::KEY_EDGE, colors::TEXT, colors::MUTED),
         Ink::OnAccent => (ON_ACCENT_EDGE, colors::PROMPT, ON_ACCENT_WORDS),
+        Ink::Lit => (colors::ACCENT, colors::PROMPT, colors::TEXT),
     }
 }
 
@@ -199,6 +202,13 @@ pub(crate) fn hints_on_accent(
     row(c, fonts, (left + width, y), list, Ink::OnAccent);
 }
 
+/// Draws hints in a row 20 pixels tall from `y`, the first starting at `left`, as held now:
+/// each badge filled with the accent, arrows and words lit.
+pub(crate) fn hints_lit(c: &mut Canvas, fonts: &mut Fonts, (left, y): (f32, f32), list: &[Hint]) {
+    let width = row_width(fonts, list);
+    row(c, fonts, (left + width, y), list, Ink::Lit);
+}
+
 fn row(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint], ink: Ink) {
     let (edge, letters, words) = inks(ink);
     let key_style = Style {
@@ -213,6 +223,15 @@ fn row(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint]
         color: words,
         ..WHAT
     };
+    let fill = (ink == Ink::Lit).then_some(colors::ACCENT);
+    let arrows = if ink == Ink::Lit {
+        Style {
+            color: colors::ACCENT,
+            ..WHAT
+        }
+    } else {
+        what
+    };
     let widths: Vec<f32> = hints.iter().map(|h| hint_width(fonts, h)).collect();
     let spacing: f32 = widths.iter().skip(1).map(|_| SPACING).sum();
     let mut x = right - widths.iter().sum::<f32>() - spacing;
@@ -226,7 +245,7 @@ fn row(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint]
             let w = width(fonts, press);
             match press {
                 Press::Key(k) => {
-                    c.rect((x, y, w, 20.0), 3.0, None, Some(Line::solid(edge, 1.0)));
+                    c.rect((x, y, w, 20.0), 3.0, fill, Some(Line::solid(edge, 1.0)));
                     c.text(
                         fonts,
                         k,
@@ -238,7 +257,7 @@ fn row(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint]
                 }
                 Press::Pad(b) => {
                     let center = (x + PAD_SIZE / 2.0, y + 10.0);
-                    c.circle(center, PAD_SIZE / 2.0, None, Some(Line::solid(edge, 1.0)));
+                    c.circle(center, PAD_SIZE / 2.0, fill, Some(Line::solid(edge, 1.0)));
                     c.text(
                         fonts,
                         b,
@@ -249,14 +268,14 @@ fn row(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint]
                     );
                 }
                 Press::Arrows(a) => {
-                    c.text(fonts, a, (x, y + 1.0), 18.0, Align::Left, &what);
+                    c.text(fonts, a, (x, y + 1.0), 18.0, Align::Left, &arrows);
                 }
                 Press::Pill(p) => {
                     let top = y + 10.0 - PAD_SIZE / 2.0;
                     c.rect(
                         (x, top, w, PAD_SIZE),
                         PAD_SIZE / 2.0,
-                        None,
+                        fill,
                         Some(Line::solid(edge, 1.0)),
                     );
                     c.text(
@@ -270,24 +289,8 @@ fn row(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint]
                 }
                 Press::Cross | Press::Circle | Press::Square | Press::Triangle | Press::Minus => {
                     let (cx, cy) = (x + PAD_SIZE / 2.0, y + 10.0);
-                    c.circle((cx, cy), PAD_SIZE / 2.0, None, Some(Line::solid(edge, 1.0)));
-                    let mark = Line::solid(letters, 1.5);
-                    match press {
-                        Press::Cross => {
-                            c.line((cx - 3.5, cy - 3.5), (cx + 3.5, cy + 3.5), mark);
-                            c.line((cx - 3.5, cy + 3.5), (cx + 3.5, cy - 3.5), mark);
-                        }
-                        Press::Square => {
-                            c.rect((cx - 4.0, cy - 4.0, 8.0, 8.0), 0.0, None, Some(mark));
-                        }
-                        Press::Minus => c.line((cx - 4.0, cy), (cx + 4.0, cy), mark),
-                        Press::Triangle => {
-                            c.line((cx, cy - 4.5), (cx + 4.5, cy + 3.5), mark);
-                            c.line((cx + 4.5, cy + 3.5), (cx - 4.5, cy + 3.5), mark);
-                            c.line((cx - 4.5, cy + 3.5), (cx, cy - 4.5), mark);
-                        }
-                        _ => c.circle((cx, cy), 4.5, None, Some(mark)),
-                    }
+                    c.circle((cx, cy), PAD_SIZE / 2.0, fill, Some(Line::solid(edge, 1.0)));
+                    shape(c, press, (cx, cy), Line::solid(letters, 1.5));
                 }
             }
             x += w;
@@ -295,6 +298,26 @@ fn row(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint]
         x += GAP;
         x += c.text(fonts, hint.does, (x, y + 1.0), 18.0, Align::Left, &what);
         x += SPACING;
+    }
+}
+
+/// A PlayStation or Nintendo button's mark, drawn in its badge around `(cx, cy)`.
+fn shape(c: &mut Canvas, press: Press, (cx, cy): (f32, f32), mark: Line) {
+    match press {
+        Press::Cross => {
+            c.line((cx - 3.5, cy - 3.5), (cx + 3.5, cy + 3.5), mark);
+            c.line((cx - 3.5, cy + 3.5), (cx + 3.5, cy - 3.5), mark);
+        }
+        Press::Square => {
+            c.rect((cx - 4.0, cy - 4.0, 8.0, 8.0), 0.0, None, Some(mark));
+        }
+        Press::Minus => c.line((cx - 4.0, cy), (cx + 4.0, cy), mark),
+        Press::Triangle => {
+            c.line((cx, cy - 4.5), (cx + 4.5, cy + 3.5), mark);
+            c.line((cx + 4.5, cy + 3.5), (cx - 4.5, cy + 3.5), mark);
+            c.line((cx - 4.5, cy + 3.5), (cx, cy - 4.5), mark);
+        }
+        _ => c.circle((cx, cy), 4.5, None, Some(mark)),
     }
 }
 

@@ -182,6 +182,8 @@ The title's state may carry a notice too: a card over the foot of the title, whi
 
 When a game starts, a definition's `[about]` shows as a card over the dimmed, paused game: the goal in a sentence or two, then the main moves, each with its key and, while a pad is plugged in, its button. Enter, Esc or the pad's confirm or back plays on. A "Show next time" toggle on the card (the arrows left and right, or a click) turns its showing at a game's start off, kept per game in its folder (`how-to-play.txt`). The menu's *How to play* row opens the same card any time, its button reading Back, which returns to the menu.
 
+Up to two clips (`[[about.clips]]`) run above the goal: small copies of the player's own game, taken when a game first starts, each entered into a crafted situation as `--load` enters one and played by scripted input in a loop, a part of the screen drawn at the picture's own scale, with the buttons pressed drawn under it, lit while held. Nothing of the game is stored. The game itself is held while the card is open, so two clips cost less than the game would: about 1.2 ms a frame in a release build.
+
 ![How to play](crates/sidekick-ui/tests/golden/how-to-play-pad.png)
 
 ## 11. Guidance and training

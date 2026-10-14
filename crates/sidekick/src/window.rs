@@ -2,13 +2,14 @@
 //! the largest whole scale, its sound, and the keyboard.
 
 use crate::{
+    clips::Clips,
     compose,
     entry::{self, Entry, Stroke, Typing},
     games::{self, Game, Playing},
     how_to::{self, HowToPlay},
     keys::{self, KeyDoes, KeyboardMode, Spectrum},
     menu::{self, Menu, Outcome},
-    pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
+    pad::{self, Maker, Mapping, Nav, Pads, Part, Play, Way},
     panel,
     picture::{placement, to_rgba, Layout, FULL, LOGICAL_PIXEL, SCREEN},
     press::{self, Pressed},
@@ -203,6 +204,11 @@ struct Player {
     /// The How to play screen, and where its card was last drawn, as the menu's.
     how_to: HowToPlay,
     how_to_at: Option<(f32, f32, f32, f32)>,
+    /// How to play's clips, and when they were last started and the frames they've run since.
+    clips: Clips,
+    clips_started: Instant,
+    clip_frames: u64,
+    clip_rgba: Vec<u8>,
     /// Whether the quit slot and the kept lists are this session's to write (`Playing`).
     quit_slot: bool,
     keep_lists: bool,
@@ -259,8 +265,9 @@ struct Output<'a> {
     note: Option<(Texture<'a>, Note, f32)>,
     /// The offer to continue, likewise.
     offer: Option<(Texture<'a>, Offer, f32)>,
-    /// The How to play screen, likewise.
+    /// The How to play screen, likewise, and each clip's picture with its size.
     how_to: Option<(Texture<'a>, HowTo, f32)>,
+    clips: Vec<Option<(Texture<'a>, (u32, u32))>>,
     /// The guidance menu and its question, likewise.
     menu: Option<(Texture<'a>, MenuCard, f32)>,
     question: Option<(Texture<'a>, Question, f32)>,
@@ -331,6 +338,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         note: None,
         offer: None,
         how_to: None,
+        clips: Vec::new(),
         menu: None,
         question: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
@@ -801,6 +809,10 @@ impl Player {
             choosing: false,
             offer,
             how_to_at: None,
+            clips: playing.clips,
+            clips_started: Instant::now(),
+            clip_frames: 0,
+            clip_rgba: Vec::new(),
             quit_slot: playing.quit_slot,
             keep_lists: playing.keep_lists,
             save_point: playing.save_point,
@@ -860,6 +872,9 @@ impl Player {
             // Vsync normally paces the loop; without it (some drivers) don't spin.
             std::thread::sleep(Duration::from_millis(1));
         }
+        if self.how_to.is_open() {
+            self.run_clips()?;
+        }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
             if self.session.holding()
                 || self.menu.is_some()
@@ -888,7 +903,7 @@ impl Player {
             };
             let mut changes = self.play.update(held.into_iter());
             let patches = std::mem::take(&mut changes.patches);
-            send(self.session.machine_mut(), changes);
+            pad::send(self.session.machine_mut(), changes);
             let applied: Vec<_> = patches
                 .into_iter()
                 .filter(|p| self.session.patch(p))
@@ -914,8 +929,10 @@ impl Player {
                 pads.hold_back();
             }
             self.save_kept();
+            let opened = self.how_to.is_open();
             self.milestones();
-            if self.how_to.is_open() {
+            if self.how_to.is_open() && !opened {
+                self.how_to_opened();
                 pads.hold_back();
             }
             self.frames_run += 1;
@@ -1030,7 +1047,10 @@ impl Player {
         for milestone in self.session.take_milestones() {
             match milestone {
                 Milestone::FirstTitle => self.put_scores_in(),
-                Milestone::GameStarted => self.how_to.game_started(self.session.definition()),
+                Milestone::GameStarted => {
+                    self.clips.game_started(&self.session);
+                    self.how_to.game_started(self.session.definition());
+                }
                 Milestone::GameEnded => self.game_ended(),
             }
         }
@@ -1270,7 +1290,30 @@ impl Player {
             &self.title,
             pad,
             self.keyboard,
+            &self.clips,
         )
+    }
+
+    /// The How to play screen opened: its clips start from their loops' beginnings, on a
+    /// clock of their own.
+    fn how_to_opened(&mut self) {
+        self.clips.restart();
+        self.clips_started = Instant::now();
+        self.clip_frames = 0;
+    }
+
+    /// Runs the clips' frames that are due, at the Spectrum's 50 a second.
+    fn run_clips(&mut self) -> Result<(), String> {
+        let due = frames_due(self.clips_started.elapsed(), self.clip_frames);
+        if due > MOST_FRAMES_A_PASS {
+            // Behind (a slow pass, the window dragged): catch up by skipping, not by running.
+            self.clip_frames += u64::try_from(due - MOST_FRAMES_A_PASS).unwrap_or(0);
+        }
+        for _ in 0..due.min(MOST_FRAMES_A_PASS) {
+            self.clips.run_frame()?;
+            self.clip_frames += 1;
+        }
+        Ok(())
     }
 
     /// Draws the How to play screen over the picture, centred on it, with the buttons of the
@@ -1298,6 +1341,7 @@ impl Player {
                 .copy(texture, None, frect(at))
                 .map_err(|e| e.to_string())?;
         }
+        self.draw_clips(out, &card, (at.0, at.1), scale)?;
         let (window_w, _) = out.canvas.window().size();
         #[allow(
             clippy::cast_precision_loss,
@@ -1310,6 +1354,51 @@ impl Player {
             output.0 as f32 / window_w.max(1) as f32,
         );
         self.how_to_at = Some(place);
+        Ok(())
+    }
+
+    /// Draws each running clip's picture in its place on the How to play card, whose top left
+    /// is at `at` in device pixels, at `scale`.
+    fn draw_clips(
+        &mut self,
+        out: &mut Output,
+        card: &HowTo,
+        at: (u32, u32),
+        scale: f32,
+    ) -> Result<(), String> {
+        out.clips.resize_with(card.clips.len(), || None);
+        for (i, kept) in out.clips.iter_mut().enumerate() {
+            let (Some(size), Some(place)) = (
+                self.clips.picture(i, &mut self.clip_rgba),
+                card.clip_place(i),
+            ) else {
+                continue;
+            };
+            if kept.as_ref().is_none_or(|(_, s)| *s != size) {
+                *kept = Some((new_texture(out.creator, size.0, size.1)?, size));
+            }
+            if let Some((texture, _)) = kept {
+                texture
+                    .update(None::<Rect>, &self.clip_rgba, size.0 as usize * 4)
+                    .map_err(|e| e.to_string())?;
+                let (x, y, w, h) = place;
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    clippy::cast_precision_loss,
+                    reason = "a place on a card, far inside the window"
+                )]
+                let rect = (
+                    at.0 + (x * scale).round() as u32,
+                    at.1 + (y * scale).round() as u32,
+                    (w * scale).round() as u32,
+                    (h * scale).round() as u32,
+                );
+                out.canvas
+                    .copy(texture, None, frect(rect))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
         Ok(())
     }
 
@@ -1710,6 +1799,7 @@ impl Player {
             }
             Outcome::HowTo => {
                 self.how_to.open_from_menu();
+                self.how_to_opened();
                 pads.hold_back();
             }
         }
@@ -2412,21 +2502,6 @@ fn is_fullscreen_toggle(scancode: Scancode, keymod: Mod) -> bool {
     scancode == Scancode::F11 || (scancode == Scancode::F && control_command)
 }
 
-/// Presses and lets go on the Spectrum what a pad changed.
-fn send(machine: &mut Machine, changes: Changes) {
-    let inputs = changes
-        .release
-        .into_iter()
-        .map(|i| (i, false))
-        .chain(changes.press.into_iter().map(|i| (i, true)));
-    for (input, pressed) in inputs {
-        match input {
-            Input::Kempston(direction) => machine.kempston(direction.kempston(), pressed),
-            Input::Key(key) => machine.key(key.0, pressed),
-        }
-    }
-}
-
 fn press(machine: &mut Machine, key: Spectrum, pressed: bool) {
     match key {
         Spectrum::Key(key) => machine.key(key, pressed),
@@ -2535,6 +2610,7 @@ notice = { text = "Press fire." }
             save_point: SavePoint::Quick,
             paused: false,
             source: None,
+            clips: Clips::default(),
         })
     }
 
@@ -2792,18 +2868,7 @@ notice = { text = "Press fire." }
         session.run_frame().expect("a frame");
         assert_eq!(session.state(), Some("title"));
         let data = tempfile::TempDir::new().expect("a folder");
-        let mut player = Player::new(Playing {
-            mapping: Mapping::new(session.definition()),
-            session,
-            title: "Test".to_owned(),
-            folder: None,
-            saves: Saves::of_tape("test.tap", "ABC123", data.path()),
-            quit_slot: false,
-            keep_lists: false,
-            save_point: SavePoint::Quick,
-            paused: false,
-            source: None,
-        });
+        let mut player = player(session, data.path());
         let mut pads = Pads::default();
         player
             .play

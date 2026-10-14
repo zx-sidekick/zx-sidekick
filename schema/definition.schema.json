@@ -177,6 +177,13 @@
       "description": "`[about]`: the How to play screen, shown when a game starts: the game's goal, and how its\nmain moves are made.",
       "type": "object",
       "properties": {
+        "clips": {
+          "description": "Up to two clips above the goal: the game itself, running in a loop from a crafted\nsituation, played by scripted input.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Clip"
+          }
+        },
         "goal": {
           "description": "What the game is about, in a sentence or two.",
           "type": "string"
@@ -467,6 +474,99 @@
       "required": [
         "id",
         "label"
+      ]
+    },
+    "Clip": {
+      "description": "`[[about.clips]]`: a move shown being made, by a small copy of the game running from a\ncrafted situation in a loop, with what's pressed drawn under it.",
+      "type": "object",
+      "properties": {
+        "area": {
+          "description": "The part of the screen shown: x, y, width and height in its pixels (256 × 192), 4 by 3.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "maxItems": 4,
+          "minItems": 4
+        },
+        "does": {
+          "description": "What it shows, under it: \"pick up or swap\".",
+          "type": "string"
+        },
+        "frames": {
+          "description": "The loop's length, in frames (50 a second).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "input": {
+          "description": "What's held, in turn from the loop's start; nothing is held after the last.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClipStep"
+          }
+        },
+        "keys": {
+          "description": "The keyboard's key as shown, when not the one worked out from `pad`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pad": {
+          "description": "The pad part shown pressed, by position, lit while the input holds it; its key is\nworked out from the `[pad]` mapping in play, as a move's is.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "situation": {
+          "description": "The crafted situation it starts from, a file in the definition's folder: entered from\nthe game the player started, as `--load` enters one.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "does",
+        "situation",
+        "area",
+        "frames"
+      ]
+    },
+    "ClipStep": {
+      "description": "One step of a clip's input: the pad's parts held, for some frames or until a test holds.",
+      "type": "object",
+      "properties": {
+        "frames": {
+          "description": "How long, in frames.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hold": {
+          "description": "The parts held: the D-pad's `up`, `down`, `left` and `right`, and the face buttons\n`west`, `south`, `east` and `north`. None is a wait.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "until": {
+          "description": "Ends the step early, once this test of a value holds after a frame: walking until BLOB\nis where the next step needs him, however fast the game runs. `frames` is then the most.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Test"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "frames"
       ]
     },
     "Column": {

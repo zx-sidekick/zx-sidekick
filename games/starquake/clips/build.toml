@@ -1,0 +1,6 @@
+# How to play's building clip: the start room, BLOB where a new game puts him, and creatures
+# that do no harm.
+room = 8
+blob_x = 136
+blob_y = 63
+cheats = ["no-harm"]

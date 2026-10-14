@@ -1,0 +1,12 @@
+# How to play's pick-up clip: room 399, high up, so the carried slots in the status area fit in
+# the clip with BLOB. The room has one place an item can lie and no bonus, so the first item,
+# laid in the room, lies there in every game: BLOB meets it from x 200, height 135
+# (docs/re/starquake.md). BLOB starts on the same ledge, 16 pixels to its left, in the open (to
+# its right, the room's wall), and creatures do no harm.
+room = 399
+blob_x = 184
+blob_y = 135
+first_item_x = 93
+first_item_place = 128
+first_item_room = 143
+cheats = ["no-harm"]

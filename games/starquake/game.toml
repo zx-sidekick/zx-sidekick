@@ -188,6 +188,25 @@ fields.room_low = { offset = 2, type = "u8" }
 fields.picture = { offset = 3, type = "u8" }
 description = "The items, each in a room until picked up"
 
+# The first item's record, for How to play's pick-up clip to lay it in the room the clip shows.
+[values.first_item_x]
+type = "u8"
+writable = true
+addr = 0x94E8
+description = "The first item's x (the low five bits) and color (the top three)"
+
+[values.first_item_place]
+type = "u8"
+writable = true
+addr = 0x94E9
+description = "The first item's y (the low seven bits; 0 until its room places it) and its room's ninth bit (the top)"
+
+[values.first_item_room]
+type = "u8"
+writable = true
+addr = 0x94EA
+description = "The first item's room, its low byte"
+
 [values.carried]
 type = "table"
 addr = 0xD2D2
@@ -622,6 +641,39 @@ script = "core-not-seen"
 
 [about]
 goal = "The planet's core has broken apart. Find the pieces it needs, scattered across the planet, and carry them back to rebuild it. The core shows which pieces it wants only in its own room."
+
+# Two clips: the player's own game, entered into each situation in clips/ and played in a loop.
+[[about.clips]]
+does = "pick up or swap"
+pad = "east"
+keys = "↑"
+situation = "clips/pick-up.toml"
+# The status area's carried slots are in the clip, at twice the screen's scale. BLOB walks onto
+# the item until he's there, however fast the game runs, stands on it a second, takes it, and it
+# shows carried for two seconds before the loop starts again.
+area = [112, 0, 144, 108]
+frames = 230
+input = [
+  { frames = 40 },
+  { frames = 40, hold = ["right"], until = { value = "blob_x", at_least = 200 } },
+  { frames = 50 },
+  { frames = 15, hold = ["east"] },
+]
+
+[[about.clips]]
+does = "build a platform"
+pad = "south"
+keys = "↓"
+situation = "clips/build.toml"
+# Two platforms, one on the other, and the loop starts again before the first gives way.
+area = [96, 96, 96, 72]
+frames = 75
+input = [
+  { frames = 15 },
+  { frames = 10, hold = ["south"] },
+  { frames = 10 },
+  { frames = 10, hold = ["south"] },
+]
 
 [[about.how]]
 name = "Move"
