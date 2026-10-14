@@ -1609,6 +1609,13 @@
           "format": "uint32",
           "minimum": 0
         },
+        "fill": {
+          "description": "The key typed for each place left empty when the card is confirmed with fewer letters\nthan `length`, so the game has them all: `SPACE` for a name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "key_down_frames": {
           "description": "Frames each letter's key is held.",
           "type": [

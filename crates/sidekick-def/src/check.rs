@@ -621,6 +621,9 @@ impl Checker<'_> {
             if entry.length == 0 {
                 self.report(format!("{key}.length"), "at least 1");
             }
+            if let Some(fill) = &entry.fill {
+                self.keys(&format!("{key}.fill"), std::slice::from_ref(fill));
+            }
             if let Some(list) = &entry.choices {
                 if !self.def.persist.contains_key(list) {
                     self.report(

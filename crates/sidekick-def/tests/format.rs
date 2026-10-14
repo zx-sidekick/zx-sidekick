@@ -402,6 +402,7 @@ score = { offset = 3, len = 6, type = "digits" }
     let good = r#"state = "name"
 letters = "AB"
 length = 3
+fill = "SPACE"
 choices = "names""#;
     assert_eq!(with(table, good), Vec::<String>::new());
     assert_eq!(
@@ -410,10 +411,12 @@ choices = "names""#;
             r#"state = "booth"
 letters = ""
 length = 4
+fill = "BLANK"
 choices = "codes""#
         ),
         [
             "name_entry.letters: empty",
+            "name_entry.fill: \"BLANK\" isn't a Spectrum key",
             "name_entry.choices: no kept list named \"codes\"",
             "name_entry.state: text_entry's state: a state has one card",
             "name_entry.length: longer than high_scores.name",

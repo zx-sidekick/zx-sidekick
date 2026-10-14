@@ -399,6 +399,8 @@ choices = "names"
 # The game makes a sound after each letter before it looks for the next: a key sooner is lost.
 key_down_frames = 2
 key_up_frames = 9
+# A name confirmed short is made up with spaces, which the game takes and shows blank.
+fill = "SPACE"
 
 [persist.names]
 label = "high-score names"

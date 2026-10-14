@@ -198,13 +198,19 @@ pub(crate) enum Stroke {
 
 impl Typing {
     /// A word to type, with the definition's timings (a frame each when not given). A letter
-    /// that isn't a Spectrum key is left out.
+    /// that isn't a Spectrum key is left out. A word shorter than the definition's `length` is
+    /// made up to it with its `fill` key, when it gives one.
     pub(crate) fn new(word: &str, text_entry: &TextEntry) -> Self {
+        let mut keys: Vec<Key> = word
+            .chars()
+            .filter_map(|c| key_named(&c.to_string()))
+            .collect();
+        if let Some(fill) = text_entry.fill.as_deref().and_then(key_named) {
+            let length = usize::try_from(text_entry.length).unwrap_or(0);
+            keys.resize(keys.len().max(length), fill);
+        }
         Self {
-            keys: word
-                .chars()
-                .filter_map(|c| key_named(&c.to_string()))
-                .collect(),
+            keys,
             down: text_entry.key_down_frames.unwrap_or(1).max(1),
             up: text_entry.key_up_frames.unwrap_or(1).max(1),
             frame: 0,
@@ -247,6 +253,7 @@ mod tests {
             choices_from_level: Some(1),
             key_down_frames: Some(2),
             key_up_frames: Some(1),
+            fill: None,
         }
     }
 
@@ -361,5 +368,22 @@ choices = "names"
             })
             .collect();
         assert_eq!(strokes, ["+A", ".", "-A", "+B", ".", "-B"]);
+    }
+
+    #[test]
+    fn a_short_word_is_made_up_to_its_length_with_the_fill_key() {
+        let keys = |fill: Option<&str>| {
+            let text_entry = TextEntry {
+                fill: fill.map(str::to_owned),
+                ..text_entry()
+            };
+            let t = Typing::new("A", &text_entry);
+            t.keys()
+                .iter()
+                .map(|k| format!("{k:?}"))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(keys(Some("SPACE")), ["A", "Space", "Space"]);
+        assert_eq!(keys(None), ["A"], "without one, only what's spelled");
     }
 }

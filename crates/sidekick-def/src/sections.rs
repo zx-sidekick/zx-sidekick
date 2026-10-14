@@ -715,6 +715,10 @@ pub struct TextEntry {
     /// Frames between letters, with no key held.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_up_frames: Option<u32>,
+    /// The key typed for each place left empty when the card is confirmed with fewer letters
+    /// than `length`, so the game has them all: `SPACE` for a name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
 }
 
 /// `[persist.*]`: a list kept between games.
