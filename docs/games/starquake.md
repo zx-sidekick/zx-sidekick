@@ -18,13 +18,13 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 |---|---|---|
 | D-pad, left stick | Move | `dpad`, `stick = "joystick"` |
 | West | Fire | `west = "fire"` |
-| South | Build a platform | `south = "build"` |
-| East | Pick up or swap an item | `east = "pick-up"` |
+| South | Down: build a platform, or fly down | `south = "build"` |
+| East | Up: pick up or swap an item, or board a hover platform | `east = "pick-up"` |
 | North | Switch level 5's route | `north = "next-route"` |
 | Start | Pause in play; start a game on the title screen | `[pad.default] start`, `[pad.title] start` |
 | Select | The guidance menu | always |
 
-**Split meanings.** In the original, *up* both picks up and boards the hover platform, and *down* both builds and flies down. The pad separates them: the D-pad's up and down board and fly; the east button only picks up, and the south one only builds. The game decides in its own code what *up* means at that moment, so `pick-up` and `build` are `[[actions]]` with a `patch_for_frame` at the point where it reads the direction for each purpose, or a write that suppresses one meaning for that frame. Find the decision points first (below). If it proves fragile, ship without the split.
+**Up and down.** In the original, *up* both picks up or swaps and boards a hover platform, and *down* both builds and flies down; the game decides which from where BLOB is. The east button sends *up* and the south one *down* (`[[actions]] pick-up` and `build`), each with both of the game's meanings, as the D-pad's up and down do. Splitting them, so that east only picks up and south only builds, was looked at and not taken up (#20).
 
 **The pause notice:** in the original, any move or fire continues once the pause key is let go. On a pad, A or B dismisses it.
 
@@ -39,16 +39,16 @@ Each level adds to the ones below it (`[[guidance.levels]]`, with these names an
 | Level | Name | Adds |
 |:-:|---|---|
 | 0 | Off | Nothing: "No guidance. Press Esc or Select to choose a level." |
-| 1 | Codes and the core | **TELEPORTS:** the codes of the teleports entered, in the game's own letters. **DOORS:** each security door's three key code cards, drawn in the game's own graphics, each dim until something carried answers it. **CORE:** the core's nine slots in the game's own pictures, once BLOB has been in the core's room, where the game shows them ("Not seen yet" before); pieces delivered are bright, those missing are dim, and a piece being carried is outlined. |
+| 1 | Codes and the core | **TELEPORTS:** the codes of the teleports entered, in the game's own letters. **DOORS:** each security door's three key code cards, drawn in the game's own graphics, each dim until what BLOB carries answers it as the door would: a 15 answers all three, a 14 the first card that no card of its own picture answers, and each carried card one card. **CORE:** the core's nine slots in the game's own pictures, once BLOB has been in the core's room, where the game shows them ("Not seen yet" before); pieces delivered are bright, those missing are dim, and a piece being carried is outlined. |
 | 2 | The map you have walked | A map of the rooms visited: walls drawn along each edge without an opening, so an opening is a gap, and inside a room the walls that keep apart two ways through it. Teleports are diamonds, BLOB's room is marked, and a door is drawn dotted, with its number. |
-| 3 | What you have seen | The items lying in rooms walked through, in the game's own pictures, coloured by what they do: once the core has been seen, the core pieces still needed in the first colour (pink), unless BLOB carries one with the same picture; cards violet (a door's, or one that answers any card); the key yellow; any other core piece, which a pyramid takes, white. Packs, which act as they're picked up, aren't marked. |
+| 3 | What you have seen | The items lying in rooms walked through, in the game's own pictures, coloured by what they do: once the core has been seen, the core pieces still needed in the first colour (pink), unless BLOB carries one with the same picture; cards violet (a door's, or one that answers any card); the key yellow; any other core piece, which a pyramid takes, white. Packs aren't marked: they're a room's bonus rather than items, and act as BLOB touches them. |
 | 4 | What you have not | The same for rooms not reached; a room not reached that holds a needed piece is outlined with dashes. From this level up the core and the pieces it needs show from a new game. |
 | 5 | Routes | The shortest route to the nearest missing piece, and to the core while a needed piece is carried, in two colours, teleports included. Arrows at the picture's edge show which way out of the room each route goes. Tab, or the north pad button, switches between the nearest pieces. The first door each route passes is outlined in the rail. |
 | 6 | Everything | Every teleport's code, every door's cards, and the whole planet. |
 
 Levels 0 to 3 show only what the player could have written down; 4 and up tell things they couldn't have known. So below level 4 the core waits until BLOB has been in its room (199) this game, which the game's own set of rooms visited records: the game shows what the core wants only there. A door's cards appear in the rail in the frame the game draws them, a teleport's code once the booth shows it.
 
-**Widgets:** CORE is an `icon-grid` (3 columns); TELEPORTS a `chip-list` in the game's font, from `persist:teleport-codes` up to level 5 and from the script at level 6; DOORS a `card-set`; the map a `map-grid`. All of them take their data from `scripts/starquake.rhai`, except TELEPORTS below level 6. DOORS lists the doors met this game, numbered as met; at level 6, every door on the planet: those met first, keeping their numbers, then the rest in room order. A door's cards are worked out when BLOB meets it, from the game's seed and the room (`docs/re/starquake.md`). So the script notes each door, in the `door` state, in the kept list `doors-met` (`seed:room:cards`), where a game continued from a save finds it again. A card is answered when BLOB carries it.
+**Widgets:** CORE is an `icon-grid` (3 columns); TELEPORTS a `chip-list` in the game's font, from `persist:teleport-codes` up to level 5 and from the script at level 6; DOORS a `card-set`; the map a `map-grid`. All of them take their data from `scripts/starquake.rhai`, except TELEPORTS below level 6. DOORS lists the doors met this game, numbered as met; at level 6, every door on the planet: those met first, keeping their numbers, then the rest in room order. A door's cards are worked out when BLOB meets it, from the game's seed and the room (`docs/re/starquake.md`). So the script notes each door, in the `door` state, in the kept list `doors-met` (`seed:room:cards`), where a game continued from a save finds it again. A card is answered as the door's screen would answer it with what BLOB carries (`docs/re/starquake.md`, what items do).
 
 **The map you have walked** (level 2) comes from the game's own set of rooms not yet visited, which it keeps for its first-visit bonus: a room whose bit is clear has been walked. A saved game carries the set, so a continued game shows its map again. Each room is drawn with its walls as decoded from the room data (below), and what's inside it (`docs/mockups/2026-10-13-inner-walls.png`). The game decides what blocks BLOB by each cell's attribute, and the real-tape tests check the decoded cells against the screen's, cell for cell. BLOB is two cells by two, so a room is read as the places he fits, joined up, down, left and right into parts. An edge is an opening where he fits against it and against the facing edge of the room beside, at the same place; a pair of wall passages opens the edge between their rooms; the core's room, shut in rock, is open where BLOB fits against the room beside it. Inside a room, the walls drawn are the blocking cells on the seams between the parts that lead out: a part leads out by an opening or a passage, or through a security door or a locked door's post to a part that does. A seam's cells in a door's entry tiles, or on a post, are drawn dotted. The doors listed in the DOORS rail carry their numbers on the map, in the middle of the door's tile.
 
@@ -109,16 +109,4 @@ The game's **CORE OF HEROES** holds eight entries, best first: a three-letter na
 
 ## Facts to find
 
-Under `CLAUDE.md`'s rules, written up in `docs/re/starquake.md`, each marked confirmed, read or guess:
-
-- the program's entry point and the stack at handover;
-- **the main loop's top** (`[run] sync`);
-- the routine that starts play in a room (`[situations] enter`);
-- the states: title screen, play, paused, booth, death, game over;
-- every value listed above;
-- where the game checks pause, death and enemy collisions;
-- where it decides what *up* and *down* mean (split meanings);
-- the booth's code reading;
-- the high-score table.
-
-`games/starquake/game.toml` has the definition's shape, with each of these marked `TODO` until it's found and confirmed.
+Under `CLAUDE.md`'s rules, written up in `docs/re/starquake.md`, each marked confirmed, read or guess. None is left to find: every fact the definition holds has been seen running (#173), and `sidekick check` passes on `games/starquake` with the supported dump.

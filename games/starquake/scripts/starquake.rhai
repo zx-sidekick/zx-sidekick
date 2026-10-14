@@ -802,14 +802,37 @@ fn numbered(listed) {
     doors
 }
 
-// The doors for the panel, by number, each card answered when BLOB carries it; a door a route
-// passes first outlined in its colour, as `outlined` has it by room.
+// Which of a door's cards what BLOB carries answers, as the door's screen decides it
+// (docs/re/starquake.md): a 15 answers them all; otherwise each card in turn is answered by a
+// carried card of its own picture, or failing that by a 14, each carried card answering one.
+fn answered(cards, carrying) {
+    if carrying.contains(15) {
+        return cards.map(|card| true);
+    }
+    let left = carrying;
+    let marks = [];
+    for card in cards {
+        let k = left.index_of(card);
+        if k < 0 {
+            k = left.index_of(14);
+        }
+        if k >= 0 {
+            left.remove(k);
+        }
+        marks.push(k >= 0);
+    }
+    marks
+}
+
+// The doors for the panel, by number, each card answered as the door would answer it with what
+// BLOB carries; a door a route passes first outlined in its colour, as `outlined` has it by room.
 fn doors(listed, carrying, outlined) {
     let rows = [];
     for door in listed {
+        let marks = answered(door.cards, carrying);
         let cards = [];
-        for card in door.cards {
-            cards.push(#{ picture: card, answered: carrying.contains(card) });
+        for k in 0..door.cards.len() {
+            cards.push(#{ picture: door.cards[k], answered: marks[k] });
         }
         let row = #{ label: door.label, cards: cards };
         let room = `${door.room}`;
@@ -883,8 +906,9 @@ fn needed(mem) {
 
 // The items lying in rooms, each with its room and kind, by what the game does with its
 // picture (docs/re/starquake.md): a core piece still needed, but not the twin of one BLOB
-// carries; a card, 9 to 13 for doors and 14 and 15 that answer any card; the key, 16; anything
-// else is a core piece a pyramid takes. Packs (17 to 24) act when picked up: nothing to fetch.
+// carries; a card, 9 to 13 for doors, 14 answering any one card and 15 every card; the key, 16;
+// anything else is a core piece a pyramid takes. Packs (17 to 24) are a room's bonus, never in
+// the item table, and act as they're touched: nothing to fetch.
 // Not those off the floor (rows 1 to 5: the game lays an item down at row 6 or more, and a
 // carried one has a row below that), nor those kept in the core's room. Which pieces are needed
 // is only `known` once the core has been seen, below level 4.
@@ -1201,7 +1225,13 @@ fn guide(mem, prev, level, rooms, carrying, lying, listed) {
                     cards = met.cards;
                 }
             }
-            let open = cards.filter(|c| !carrying.contains(c));
+            let marks = answered(cards, carrying);
+            let open = [];
+            for k in 0..cards.len() {
+                if !marks[k] {
+                    open.push(cards[k]);
+                }
+            }
             if open.len() > 0 {
                 for item in lying {
                     let p = item.picture;
