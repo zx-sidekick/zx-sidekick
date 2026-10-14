@@ -995,6 +995,42 @@ impl Session {
         self.state.as_deref()
     }
 
+    /// The hint to show at guidance level `level`: of the definition's hints that hold, the one
+    /// with the lowest priority, the first listed of equals. None at level 0, which is no
+    /// guidance. A frame that matched no state counts as the state last matched.
+    #[must_use]
+    pub fn hint(&self, level: u8) -> Option<&str> {
+        if level == 0 {
+            return None;
+        }
+        let level = u32::from(level);
+        let state = self.state().or(self.progress.last_known.as_deref());
+        let named = match (&self.script_off, self.results.get("hints")) {
+            (None, Some(Fact::List(names))) => names.as_slice(),
+            _ => &[],
+        };
+        self.definition
+            .as_ref()?
+            .hints
+            .iter()
+            .filter(|h| h.from_level <= level && h.to_level.is_none_or(|to| level <= to))
+            .filter(|h| {
+                h.state
+                    .as_ref()
+                    .is_none_or(|states| states.iter().any(|s| Some(s.as_str()) == state))
+            })
+            .filter(|h| h.when.as_ref().is_none_or(|t| holds(t, &self.reading)))
+            .filter(|h| {
+                h.script.as_ref().is_none_or(|condition| {
+                    named
+                        .iter()
+                        .any(|n| matches!(n, Fact::Text(t) if t == condition))
+                })
+            })
+            .min_by_key(|h| h.priority)
+            .map(|h| h.text.as_str())
+    }
+
     /// Frames run since one last matched a state: how long ago the game was last seen in the
     /// state it was last known in.
     #[must_use]
