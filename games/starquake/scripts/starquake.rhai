@@ -802,14 +802,37 @@ fn numbered(listed) {
     doors
 }
 
-// The doors for the panel, by number, each card answered when BLOB carries it; a door a route
-// passes first outlined in its colour, as `outlined` has it by room.
+// Which of a door's cards what BLOB carries answers, as the door's screen decides it
+// (docs/re/starquake.md): a 15 answers them all; otherwise each card in turn is answered by a
+// carried card of its own picture, or failing that by a 14, each carried card answering one.
+fn answered(cards, carrying) {
+    if carrying.contains(15) {
+        return cards.map(|card| true);
+    }
+    let left = carrying;
+    let marks = [];
+    for card in cards {
+        let k = left.index_of(card);
+        if k < 0 {
+            k = left.index_of(14);
+        }
+        if k >= 0 {
+            left.remove(k);
+        }
+        marks.push(k >= 0);
+    }
+    marks
+}
+
+// The doors for the panel, by number, each card answered as the door would answer it with what
+// BLOB carries; a door a route passes first outlined in its colour, as `outlined` has it by room.
 fn doors(listed, carrying, outlined) {
     let rows = [];
     for door in listed {
+        let marks = answered(door.cards, carrying);
         let cards = [];
-        for card in door.cards {
-            cards.push(#{ picture: card, answered: carrying.contains(card) });
+        for k in 0..door.cards.len() {
+            cards.push(#{ picture: door.cards[k], answered: marks[k] });
         }
         let row = #{ label: door.label, cards: cards };
         let room = `${door.room}`;
@@ -1202,7 +1225,13 @@ fn guide(mem, prev, level, rooms, carrying, lying, listed) {
                     cards = met.cards;
                 }
             }
-            let open = cards.filter(|c| !carrying.contains(c));
+            let marks = answered(cards, carrying);
+            let open = [];
+            for k in 0..cards.len() {
+                if !marks[k] {
+                    open.push(cards[k]);
+                }
+            }
             if open.len() > 0 {
                 for item in lying {
                     let p = item.picture;

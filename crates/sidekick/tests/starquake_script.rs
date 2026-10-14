@@ -134,6 +134,69 @@ fn a_door_is_kept_with_its_game_and_listed_for_that_game_only() {
     );
 }
 
+/// Which of a met door's cards the DOORS rail shows answered while BLOB carries `carried`.
+fn answered_carrying(cards: [u8; 3], carried: &[u8]) -> Vec<bool> {
+    let mut s = session();
+    let (at, count) = (addr(&s, "door_cards"), addr(&s, "door_card_count"));
+    poke_into(&mut s, "seed", 0, &[0x34, 0x12]);
+    poke_into(&mut s, "room", 0, &[40, 0]);
+    poke(&mut s, count, &[3]);
+    poke(&mut s, at, &[cards[0], 0, cards[1], 0, cards[2]]);
+    for (k, &picture) in (0..).zip(carried) {
+        poke_into(&mut s, "carried", k * 2, &[picture, 3]);
+    }
+    enter(&mut s, "door");
+    enter(&mut s, "play");
+    s.run_frame().expect("a frame");
+    let doors = result(&s, "doors");
+    assert_eq!(doors.len(), 1, "the door met");
+    list(field(&doors[0], "cards"))
+        .iter()
+        .map(|card| field(card, "answered") == &Fact::Flag(true))
+        .collect()
+}
+
+#[test]
+fn a_carried_15_answers_all_of_a_door_s_cards() {
+    assert_eq!(answered_carrying([9, 12, 13], &[]), [false, false, false]);
+    assert_eq!(answered_carrying([9, 12, 13], &[15]), [true, true, true]);
+}
+
+#[test]
+fn a_carried_14_answers_the_first_card_no_card_of_its_own_answers() {
+    assert_eq!(answered_carrying([9, 12, 13], &[14]), [true, false, false]);
+    assert_eq!(
+        answered_carrying([9, 12, 13], &[12, 14]),
+        [true, true, false],
+        "the 12 answers its own card, the 14 the first left"
+    );
+    assert_eq!(
+        answered_carrying([9, 12, 13], &[14, 13, 14]),
+        [true, true, true]
+    );
+}
+
+#[test]
+fn a_14_and_a_15_together_answer_them_all() {
+    assert_eq!(
+        answered_carrying([9, 12, 13], &[14, 15]),
+        [true, true, true]
+    );
+}
+
+#[test]
+fn each_carried_card_answers_one_of_a_door_s_cards() {
+    assert_eq!(
+        answered_carrying([9, 13, 13], &[13]),
+        [false, true, false],
+        "one 13 for two"
+    );
+    assert_eq!(
+        answered_carrying([9, 13, 13], &[13, 13]),
+        [false, true, true]
+    );
+}
+
 #[test]
 fn level_6_lists_every_teleport_s_code() {
     let mut s = session();
