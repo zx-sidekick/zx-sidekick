@@ -2,7 +2,7 @@
 
 ## RustZX
 
-ZX Sidekick's emulated machine is `rustzx-core` and `rustzx-z80` (with `aym`, through `rustzx-core`) from the [zx-sidekick fork of RustZX](https://github.com/zx-sidekick/rustzx), taken as a Cargo dependency pinned to one commit. RustZX is under the MIT licence, copyright (c) 2016 Vladyslav Nikonov and the RustZX contributors; the fork's patches are under the same licence. The licence is in the fork's `LICENSE.md`, and is included in each release.
+ZX Sidekick's emulated machine is `rustzx-core` and `rustzx-z80` (with `aym`, through `rustzx-core`) from the [zx-sidekick fork of RustZX](https://github.com/zx-sidekick/rustzx), taken as a Cargo dependency pinned to one commit. RustZX is under the MIT licence, copyright (c) 2016 Vladyslav Nikonov and the RustZX contributors; the fork's patches are under the same licence. The licence is the fork's `LICENSE.md`, copied unchanged to [`licenses/RustZX-LICENSE.md`](licenses/RustZX-LICENSE.md), and included in each release as `licenses/RustZX-LICENSE.md`.
 
 ## The ZX Spectrum ROMs
 
@@ -12,7 +12,7 @@ Amstrad has [given permission](https://groups.google.com/forum/?hl=en#!msg/comp.
 
 ## Inter
 
-The program's own text is set in [Inter](https://rsms.me/inter/) 4.1, by Rasmus Andersson and The Inter Project Authors, under the SIL Open Font License 1.1. Its Regular, Medium, SemiBold and Bold are embedded from `crates/sidekick-ui/fonts/`, with the licence beside them (`LICENSE.txt`), included in each release.
+The program's own text is set in [Inter](https://rsms.me/inter/) 4.1, by Rasmus Andersson and The Inter Project Authors, under the SIL Open Font License 1.1. Its Regular, Medium, SemiBold and Bold are embedded from `crates/sidekick-ui/fonts/`, with the licence beside them (`LICENSE.txt`), included in each release as `licenses/Inter-LICENSE.txt`.
 
 ## Games
 
