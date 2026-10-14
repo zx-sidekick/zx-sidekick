@@ -318,7 +318,7 @@ The games' logic is the originals', so there's no rewrite to prove. What needs p
 
 ### Releases
 
-Releases are built for **macOS** (one universal binary, Apple silicon and Intel, macOS 11 and later), **Windows** (x64) and **Linux** (x64), unsigned: the player's guide says how to open the program the first time on macOS and past SmartScreen on Windows.
+Releases are built for **macOS** (one universal binary, Apple silicon and Intel, macOS 11 and later), **Windows** (x64) and **Linux** (x64, built on Ubuntu 22.04 so it runs from glibc 2.35), unsigned: the player's guide says how to open the program the first time on macOS and past SmartScreen on Windows.
 
 - **Each platform's archive** (`scripts/package.sh`): the program, `games/` without any definition's `tests/`, `PLAYER-GUIDE.md` (`docs/player-guide.md`), `AUTHORS-GUIDE.md` (`docs/definition-format.md`), the README, the licence, `THIRD-PARTY.md`, and `licenses/` with Inter's and RustZX's licences. It refuses a tape, snapshot or ROM file. **Each definition** in `games/` also goes on the release alone, as `<id>.zip` without its `tests/`, for a program already installed.
 - **Making one:** the workspace version in `Cargo.toml` is the release's number. Push the tag `v<version>` on a commit of `main`, and `.github/workflows/release.yml` checks the tag matches the version, tests and builds on each platform, packs the archives and the definitions, writes the notes (`scripts/release-notes.sh`: the titles merged since the previous tag, the downloads and the notice), and creates a **draft** release. The maintainer reads the draft, edits the notes if need be, and publishes it. Nothing is published by the workflow. `scripts/release-notes.sh v<version>` previews the notes before the tag is made.

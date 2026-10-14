@@ -48,8 +48,10 @@ jobs:
       fail-fast: true
       matrix:
         include:
+          # An older Ubuntu than CI's, so the binary needs only its glibc (2.35) and runs on
+          # older systems too.
           - platform: linux-x64
-            os: ubuntu-24.04
+            os: ubuntu-22.04
             binary: sidekick
           - platform: macos-universal
             os: macos-15

@@ -6,7 +6,7 @@ ZX Sidekick plays original ZX Spectrum games from your own copy, in an emulated 
 
 ## What you need
 
-- **The program for your system:** macOS 11 or later (Apple silicon or Intel), 64-bit Windows 10 or 11, or 64-bit Linux on x86 with a desktop running Wayland or X11 (built on Ubuntu 24.04, so it needs a distribution about as recent).
+- **The program for your system:** macOS 11 or later (Apple silicon or Intel), 64-bit Windows 10 or 11, or 64-bit Linux on x86 with a desktop running Wayland or X11 and glibc 2.35 or later (Ubuntu 22.04, Debian 12 or newer).
 - **Your own copy of the game's tape.** A definition names the tape it works with, and the program checks the file you give it against that; a different dump is refused, with a message naming the one it needs. For Starquake that's the tape World of Spectrum distributes: download `Starquake.tap.zip` from <https://worldofspectrum.net/item/0004873>. The `.zip` can be given as it is.
 
 ## Installing
