@@ -462,6 +462,36 @@ A `map-grid`'s `markers` say how each kind of marker its script uses is drawn: `
 
 A cell's inside is drawn when the map gives `inside = [w, h]`: each cell is divided into `w` columns and `h` rows, stretched over its square. A cell's `inside.walls` are drawn as small blocks of that grid, and its `inside.doors` as a checkerboard, in teal. A marker's `at` puts it on the middle of that inside cell rather than its cell's middle.
 
+## `[[hints]]`: a line in the panel
+
+A hint is one short line in the panel, under the level's name, shown while its conditions hold: energy running low, a door met without its cards. It's there to be ignored as easily as read, and nothing dismisses it: it goes when its conditions stop holding.
+
+```toml
+[[hints]]
+text = "Energy low: avoid creatures, pick up supplies"
+priority = 1
+state = "play"
+when = { value = "energy", at_most = 30 }
+
+[[hints]]
+text = "The core shows what it wants only in its room"
+priority = 8
+to_level = 3
+script = "core-not-seen"
+```
+
+| Key | Meaning |
+|---|---|
+| `text` | What it says, in the definition's own words: one line, which must fit the panel's width (`sidekick check` measures it, at the size the panel draws it) |
+| `priority` | Which shows when several hold: the lowest number, and the first listed of those equal |
+| `from_level` | The guidance level it shows from: 1 (the default) or more. Level 0 is no guidance, and shows no hints |
+| `to_level` | The highest level it shows at, when a higher level makes it needless; every level from `from_level` up when left out |
+| `state` | A state, or a list of states, it holds in. A frame that matches no state counts as the state last matched, so a state whose address isn't passed every frame doesn't make the hint blink |
+| `when` | A test of a value, as a `[[states]]` `when` |
+| `script` | A condition only the script can work out: the hint holds while the script's `on_frame` names it in the list it returns under `hints` |
+
+A hint holds when every one of `state`, `when` and `script` it gives holds; it needs at least one. One hint shows at a time. A game with hints keeps a fixed slot for the line at every level from 1 up, empty while none holds, so the widgets below it don't move as hints come and go.
+
 ## `[situations]`
 
 ```toml
@@ -492,7 +522,7 @@ file = "scripts/starquake.rhai"
 It may provide:
 
 - **`on_load`**, run once: when the tape has loaded through the ROM's loader, or when the game's state is first known. Whatever it returns is passed to every later call as `loaded`.
-- **`on_frame`**, run each frame, after the values are read. It returns a map of results: each key is a `script:<result>` a widget can show, plus `kept` to add entries to `[persist]` lists.
+- **`on_frame`**, run each frame, after the values are read. It returns a map of results: each key is a `script:<result>` a widget can show, plus `kept` to add entries to `[persist]` lists, and `hints`, a list of the `[[hints]] script` conditions that hold.
 - **Action functions** named by `[[actions]] script`, called when the action's button or key is pressed, returning the same as `on_frame`.
 
 Each function is given as many of `mem`, `loaded`, `prev`, `kept` and `level` as it takes, in that order: `fn on_load(mem)` and `fn on_frame(mem, loaded, prev)` are both fine.
@@ -523,6 +553,7 @@ A script can't touch files, the network or the clock, and can't `eval`. Each cal
 
 - anything the schema doesn't allow (an unknown key is an error, so a typo can't hide), with the line;
 - what's still missing (an address not found yet), names used but not defined, and values used in ways their type doesn't allow;
+- a hint whose text is wider than the panel's line;
 - given a tape, or a zip of tapes: whether it's one of `[[media]]`'s dumps, by SHA-1.
 
 It also says what works but may not be what was meant, as `path: warning: message`: a state named `play`, `title`, `paused` or `game_over` without that `role`, an action named `end-game` without a `menu` row, and a `map-grid` without `markers`. Those names meant something to the program once; now only `role`, `menu` and `markers` do.

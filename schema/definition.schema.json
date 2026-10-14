@@ -44,6 +44,13 @@
         }
       ]
     },
+    "hints": {
+      "description": "Hints, a line in the panel while their conditions hold.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PanelHint"
+      }
+    },
     "media": {
       "description": "The dumps supported.",
       "type": "array",
@@ -1203,6 +1210,72 @@
           "description": "Keys, a tap, or an action.",
           "$ref": "#/$defs/PadTable"
         }
+      ]
+    },
+    "PanelHint": {
+      "description": "`[[hints]]`: a line in the panel, under the level's name, while its conditions hold. Of\nthose that hold at the guidance level, the one with the lowest `priority` shows.",
+      "type": "object",
+      "properties": {
+        "from_level": {
+          "description": "The guidance level from which it shows: 1 or more.",
+          "type": "integer",
+          "format": "uint32",
+          "default": 1,
+          "minimum": 0
+        },
+        "priority": {
+          "description": "Which shows when several hold: 1 before 2; in the order listed when equal.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "script": {
+          "description": "Holds only while the script names this condition in the `hints` it returns.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "description": "Holds only while the game is in one of these states.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneOrMany3"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "description": "What it says: one short line.",
+          "type": "string"
+        },
+        "to_level": {
+          "description": "The highest level it shows at, when not every level above `from_level`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "when": {
+          "description": "Holds only while this test of a value holds.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Test"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "priority"
       ]
     },
     "Patch": {

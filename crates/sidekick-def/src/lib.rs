@@ -72,6 +72,9 @@ pub struct Definition {
     /// The panel's widgets, in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub panel: Vec<Widget>,
+    /// Hints, a line in the panel while their conditions hold.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hints: Vec<PanelHint>,
     /// How a crafted situation enters play.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub situations: Option<Situations>,

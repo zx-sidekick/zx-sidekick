@@ -837,6 +837,32 @@ pub struct Widget {
     pub places: BTreeMap<String, MarkerPlace>,
 }
 
+/// `[[hints]]`: a line in the panel, under the level's name, while its conditions hold. Of
+/// those that hold at the guidance level, the one with the lowest `priority` shows.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PanelHint {
+    /// What it says: one short line.
+    pub text: String,
+    /// Which shows when several hold: 1 before 2; in the order listed when equal.
+    pub priority: u32,
+    /// The guidance level from which it shows: 1 or more.
+    #[serde(default = "one")]
+    pub from_level: u32,
+    /// The highest level it shows at, when not every level above `from_level`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_level: Option<u32>,
+    /// Holds only while the game is in one of these states.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<OneOrMany<String>>,
+    /// Holds only while this test of a value holds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<Test>,
+    /// Holds only while the script names this condition in the `hints` it returns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
+}
+
 /// Where in its cell a map's marker sits.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -946,4 +972,8 @@ const fn is_true(b: &bool) -> bool {
 
 const fn yes() -> bool {
     true
+}
+
+const fn one() -> u32 {
+    1
 }
