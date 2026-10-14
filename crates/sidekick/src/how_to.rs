@@ -108,8 +108,8 @@ impl HowToPlay {
     }
 
     /// The card, while it's open, for the game `definition` describes, its keys from
-    /// `mapping` in play, the keyboard as the menu chose it (`keyboard`, the Spectrum's on or
-    /// not, or as the definition says), and its buttons as the pad plugged in, `pad`, marks
+    /// `mapping` in play, the keyboard as the menu set it (`keyboard`, the Spectrum's turned on
+    /// for the session, or as the definition says), and its buttons as the pad plugged in, `pad`, marks
     /// them.
     pub(crate) fn card(
         &self,
@@ -117,7 +117,7 @@ impl HowToPlay {
         mapping: &Mapping,
         title: &str,
         pad: Option<PadLabels>,
-        keyboard: Option<bool>,
+        keyboard: bool,
     ) -> Option<HowTo> {
         let from_menu = self.open?;
         let definition = definition?;
@@ -166,7 +166,7 @@ pub(crate) fn too_wide(definition: &Definition, fonts: &mut Fonts) -> Vec<usize>
             &mapping,
             &definition.game.title,
             Some(PadLabels::Letters),
-            None,
+            false,
         )
         .map(|card| card.too_wide(fonts))
         .unwrap_or_default()
@@ -327,13 +327,19 @@ mod tests {
         let mut screen = HowToPlay::new(None, true);
         assert!(
             screen
-                .card(Some(&def), &mapping, "Test", None, None)
+                .card(Some(&def), &mapping, "Test", None, false)
                 .is_none(),
             "closed"
         );
         screen.game_started(Some(&def));
         let card = screen
-            .card(Some(&def), &mapping, "Test", Some(PadLabels::Letters), None)
+            .card(
+                Some(&def),
+                &mapping,
+                "Test",
+                Some(PadLabels::Letters),
+                false,
+            )
             .expect("open");
         assert_eq!(card.goal, "Find the pieces.");
         assert_eq!(
@@ -342,7 +348,7 @@ mod tests {
             "the keyboard's east, as a pad"
         );
         let spectrum = screen
-            .card(Some(&def), &mapping, "Test", None, Some(true))
+            .card(Some(&def), &mapping, "Test", None, true)
             .expect("open");
         assert_eq!(
             spectrum.entries[0].keys.as_deref(),
@@ -358,7 +364,7 @@ mod tests {
         screen.input(Input::Close);
         screen.open_from_menu();
         let card = screen
-            .card(Some(&def), &mapping, "Test", None, None)
+            .card(Some(&def), &mapping, "Test", None, false)
             .expect("open");
         assert!(card.from_menu, "its button reads Back");
         assert_eq!(card.pad, None, "keys alone without a pad");

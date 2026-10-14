@@ -36,9 +36,7 @@ pub use map::{
     pins, Cell, Edge, Inside, MapGrid, Marker, MarkerKind, Pin, Place, Route, RouteColor, Step,
     StepLine,
 };
-pub use menu::{
-    ChoiceRow, Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH,
-};
+pub use menu::{Levels, Menu, Question, Row, SwitchRow, QUESTION_WIDTH, WIDTH as MENU_WIDTH};
 pub use note::{Note, AT as NOTE_AT, HEIGHT as NOTE_HEIGHT};
 pub use offer::{Offer, HEIGHT as OFFER_HEIGHT, WIDTH as OFFER_WIDTH};
 pub use panel::{
