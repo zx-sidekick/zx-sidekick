@@ -55,6 +55,12 @@ name = "name"
 pc = [0x68DD, 0x68E4]
 
 [[states]]
+name = "scores"
+# The start of the table's display after a game, once a name is in: passed in one frame, it
+# ends the name's state at once, so the table is read back then (docs/re/starquake.md).
+pc = 0x654B
+
+[[states]]
 name = "door"
 # The card routine's loop, reached once a door's cards are worked out; the main loop waits
 # meanwhile, so the values are read at the frame's end, cards and all (docs/re/starquake.md).

@@ -241,7 +241,7 @@ Some games ask for a word on the keyboard: a code, a password, a name. A definit
 
 ## 13. Scores and saves
 
-**The high-score table**, when a definition describes it (`[high_scores]`), is kept between runs in `high-scores.txt` in the game's data folder, put back into the game's memory when it starts, and read back from it after each game. Each entry carries the highest guidance level its game had.
+**The high-score table**, when a definition describes it (`[high_scores]`), is kept between runs in `high-scores.txt` in the game's data folder, put back into the game's memory when it starts, and read back from it after each game: at the title, or as soon as the game has a high score's name, so a save loaded before the title doesn't lose it. Each entry carries the highest guidance level its game had.
 - **Only games played here are kept**, so the kept table starts empty. Until one is kept, the game shows its own entries; they stay in its memory and are never kept.
 - **Put back whole and ranked:** each kept entry goes in with everything the game keeps beside its name and score, ranked by score among the game's own entries, which fill the rest. The table is as the last run left it.
 - **A training game** is shown in the table, then left out of it.

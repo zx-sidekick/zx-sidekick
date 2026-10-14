@@ -32,7 +32,8 @@ pub struct Record {
 pub enum Milestone {
     /// The game reached its title for the first time: time to put its kept high scores in.
     FirstTitle,
-    /// The title came round after a game: time to read the high scores back.
+    /// A game ended and the game has its high scores in: the title came round after it, or
+    /// the game left the state that asks a high score's name. Time to read them back.
     GameEnded,
 }
 
@@ -135,7 +136,8 @@ pub struct Progress {
     pub last_known: Option<String>,
     /// Whether the title has been seen.
     pub seen_title: bool,
-    /// Whether a game has been played since the title was last.
+    /// Whether a game is under way: from its start until it ends, at the title or once the
+    /// game has its high score's name.
     pub in_game: bool,
 }
 
@@ -694,7 +696,7 @@ impl Session {
         let Some(state) = self.state.clone() else {
             return;
         };
-        let (starts, came_to_title) = {
+        let (starts, came_to_title, named) = {
             let Some(definition) = &self.definition else {
                 return;
             };
@@ -703,9 +705,15 @@ impl Session {
             let from_start = after.is_none()
                 || definition.is(after, Role::Title)
                 || definition.is(after, Role::GameOver);
+            // The game has put the new entry in once it leaves the state that asks its name.
+            let named = definition
+                .name_entry
+                .as_ref()
+                .is_some_and(|n| after == Some(n.state.as_str()) && now != after);
             (
                 definition.is(now, Role::Play) && from_start,
                 definition.is(now, Role::Title) && !definition.is(after, Role::Title),
+                named,
             )
         };
         if starts {
@@ -716,14 +724,12 @@ impl Session {
             self.note_use();
             self.progress.in_game = true;
         }
-        if came_to_title {
-            if !self.progress.seen_title {
-                self.progress.seen_title = true;
-                self.milestones.push(Milestone::FirstTitle);
-            }
-            if std::mem::take(&mut self.progress.in_game) {
-                self.milestones.push(Milestone::GameEnded);
-            }
+        if came_to_title && !self.progress.seen_title {
+            self.progress.seen_title = true;
+            self.milestones.push(Milestone::FirstTitle);
+        }
+        if (came_to_title || named) && std::mem::take(&mut self.progress.in_game) {
+            self.milestones.push(Milestone::GameEnded);
         }
         self.progress.last_known = Some(state);
     }

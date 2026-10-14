@@ -217,3 +217,82 @@ fn a_state_s_meaning_comes_from_its_role_not_its_name() {
         "back to the title ends it"
     );
 }
+
+/// A game that asks a high score's name, then shows its table for a frame.
+const NAMED: &str = r#"
+schema = 1
+[game]
+id = "test"
+title = "Test"
+machine = "48k"
+[[media]]
+name = "the tape"
+
+[values.mode]
+addr = 0x8100
+type = "u8"
+
+[[states]]
+name = "title"
+role = "title"
+when = { value = "mode", equals = 1 }
+[[states]]
+name = "play"
+role = "play"
+when = { value = "mode", equals = 2 }
+[[states]]
+name = "name"
+when = { value = "mode", equals = 3 }
+[[states]]
+name = "scores"
+when = { value = "mode", equals = 4 }
+
+[name_entry]
+state = "name"
+letters = "ABC"
+length = 3
+"#;
+
+#[test]
+fn a_game_that_asks_a_name_ends_once_the_name_is_in() {
+    let definition = Definition::from_toml(NAMED).expect("the test definition parses");
+    let mut machine = Machine::new(Model::Sinclair48K).expect("a 48K machine");
+    for _ in 0..BOOT_FRAMES {
+        machine.run_frame().expect("a frame");
+    }
+    let mut s = Session::new(machine, Some(definition));
+    mode(&mut s, 1);
+    mode(&mut s, 1);
+    assert_eq!(s.take_milestones(), [Milestone::FirstTitle]);
+    for m in [2, 2, 3, 3, 0, 0, 3, 3] {
+        mode(&mut s, m);
+    }
+    assert!(
+        s.take_milestones().is_empty(),
+        "frames between the letters, matching no state, aren't the name's end"
+    );
+    assert!(s.progress().in_game);
+    mode(&mut s, 4);
+    mode(&mut s, 4);
+    assert_eq!(
+        s.take_milestones(),
+        [Milestone::GameEnded],
+        "the name is in"
+    );
+    assert!(!s.progress().in_game, "so quitting now keeps nothing");
+    mode(&mut s, 0);
+    mode(&mut s, 1);
+    mode(&mut s, 1);
+    assert!(
+        s.take_milestones().is_empty(),
+        "the title doesn't end it twice"
+    );
+    for m in [2, 2, 4, 4, 1, 1] {
+        mode(&mut s, m);
+    }
+    assert_eq!(
+        s.take_milestones(),
+        [Milestone::GameEnded],
+        "no name asked: the title ends it, as before"
+    );
+}

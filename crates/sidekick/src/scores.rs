@@ -541,34 +541,11 @@ score = { offset = 3, len = 6, type = "digits" }
         );
     }
 
-    #[test]
-    #[allow(clippy::print_stderr, reason = "a skipped test says why")]
-    fn on_the_tape_a_score_named_with_the_card_is_kept_and_goes_back_in() {
-        use crate::entry::{Entry, Input, Stroke, Typing};
-        let Some(mut s) = starquake_at_title() else {
-            eprintln!("skipped: no assets/Starquake.tap.zip (the player's own tape)");
-            return;
-        };
-        assert_eq!(s.take_milestones(), [sidekick_core::Milestone::FirstTitle]);
-        // The same run again, for the kept table to go back into.
-        let mut fresh = s.clone();
-        let own = s.scores().expect("Starquake's table");
-        let table = put_in(&mut s, &[]);
-        assert_eq!(
-            s.scores().as_ref(),
-            Some(&own),
-            "nothing kept: memory left alone"
-        );
-        assert!(table.iter().all(|k| k.mark == FROM_TAPE));
-
-        // A score that beats the table's lowest, then the name typed through the card.
-        let lowest = value(&own.last().unwrap().score);
-        to_the_name(&mut s, i64::try_from(lowest).unwrap() + 1);
+    /// Types what the card enters on its confirm, at the definition's timings.
+    fn confirm_card(s: &mut Session, card: &mut crate::entry::Entry) {
+        use crate::entry::{Input, Stroke, Typing};
         let name_entry = s.definition().unwrap().name_entry.clone().unwrap();
-        let list = name_entry.choices.clone().unwrap();
-        let names = std::collections::BTreeMap::from([(list.clone(), vec!["ZOE".to_owned()])]);
-        let mut card = Entry::open(&name_entry, &names, 0);
-        let word = card.input(Input::Confirm).expect("the name offered");
+        let word = card.input(Input::Confirm).expect("confirmed, a word");
         let mut typing = Typing::new(&word, &name_entry);
         while let Some(stroke) = typing.next() {
             match stroke {
@@ -578,11 +555,47 @@ score = { offset = 3, len = 6, type = "digits" }
             }
             s.run_frame().unwrap();
         }
-        assert!(
-            until(&mut s, 3000, |s| s.state() == Some("title")),
-            "the game takes the name and goes back to its title"
+    }
+
+    /// Runs until the game ends with its name in, before the title comes round.
+    fn until_named(s: &mut Session) {
+        let ended = (0..300).any(|_| {
+            s.run_frame().unwrap();
+            s.take_milestones()
+                .contains(&sidekick_core::Milestone::GameEnded)
+        });
+        assert!(ended, "the game takes the name");
+        assert_ne!(s.state(), Some("title"), "before the title");
+    }
+
+    #[test]
+    #[allow(clippy::print_stderr, reason = "a skipped test says why")]
+    fn on_the_tape_a_score_named_with_the_card_is_kept_at_once_and_goes_back_in() {
+        let Some(mut s) = starquake_at_title() else {
+            eprintln!("skipped: no assets/Starquake.tap.zip (the player's own tape)");
+            return;
+        };
+        assert_eq!(s.take_milestones(), [sidekick_core::Milestone::FirstTitle]);
+        // The run as it was at the title: a save loaded before the next title.
+        let mut loaded = s.clone();
+        let own = s.scores().expect("Starquake's table");
+        let table = put_in(&mut s, &[]);
+        assert_eq!(
+            s.scores().as_ref(),
+            Some(&own),
+            "nothing kept: memory left alone"
         );
-        assert_eq!(s.take_milestones(), [sidekick_core::Milestone::GameEnded]);
+        assert!(table.iter().all(|k| k.mark == FROM_TAPE));
+
+        // A score that beats the table's lowest, then a past name chosen on the card.
+        let lowest = value(&own.last().unwrap().score);
+        to_the_name(&mut s, i64::try_from(lowest).unwrap() + 1);
+        let name_entry = s.definition().unwrap().name_entry.clone().unwrap();
+        let list = name_entry.choices.clone().unwrap();
+        let names = std::collections::BTreeMap::from([(list.clone(), vec!["ZOE".to_owned()])]);
+        let mut card = crate::entry::Entry::open(&name_entry, &names, 0);
+        confirm_card(&mut s, &mut card);
+        until_named(&mut s);
 
         let read = s.scores().unwrap();
         let (after, mine) = after_game(&table, read.clone(), "no guidance", false);
@@ -596,9 +609,37 @@ score = { offset = 3, len = 6, type = "digits" }
         let kept = load(folder.path());
         assert_eq!(kept.len(), 1, "only this game's: {kept:?}");
 
-        // A new run: the kept entry goes back in, ranked, the game's own around it.
-        let table = put_in(&mut fresh, &kept);
-        assert_eq!(fresh.scores(), Some(read), "the table as the game left it");
+        // Loaded before the title: the kept entry goes back in, ranked, the game's own
+        // around it.
+        let table = put_in(&mut loaded, &kept);
+        assert_eq!(loaded.scores(), Some(read), "the table as the game left it");
         assert_eq!(table[at].mark, "no guidance");
+        assert!(
+            until(&mut s, 3000, |s| s.state() == Some("title")),
+            "the game goes on to its title"
+        );
+        assert!(s.take_milestones().is_empty(), "read back once a game");
+    }
+
+    #[test]
+    #[allow(clippy::print_stderr, reason = "a skipped test says why")]
+    fn on_the_tape_a_one_letter_name_confirmed_on_the_card_ends_the_prompt() {
+        use crate::entry::{Entry, Input};
+        let Some(mut s) = starquake_at_title() else {
+            eprintln!("skipped: no assets/Starquake.tap.zip (the player's own tape)");
+            return;
+        };
+        s.take_milestones();
+        let table = put_in(&mut s, &[]);
+        let lowest = value(&s.scores().unwrap().last().unwrap().score);
+        to_the_name(&mut s, i64::try_from(lowest).unwrap() + 1);
+        let name_entry = s.definition().unwrap().name_entry.clone().unwrap();
+        let mut card = Entry::open(&name_entry, &std::collections::BTreeMap::new(), 0);
+        card.input(Input::Up);
+        confirm_card(&mut s, &mut card);
+        until_named(&mut s);
+        let (after, mine) = after_game(&table, s.scores().unwrap(), "no guidance", false);
+        let first = name_entry.letters.chars().next().unwrap().to_string();
+        assert_eq!(after[mine.expect("this game's entry")].entry.name, first);
     }
 }
