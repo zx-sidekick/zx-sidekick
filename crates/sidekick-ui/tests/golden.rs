@@ -2,10 +2,10 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, HintSlot, Icon, Inside,
-    Levels, LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint,
-    Offer, PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin,
-    Pixels, Place, PromptButton, Question, Refusal, Route, RouteColor, Row, ScoreRow, Step,
+    pins, CardRow, Cell, Chip, ChoiceRow, Edge, EntryCard, EntryMode, Face, Fonts, HintSlot, Icon,
+    Inside, Levels, LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note,
+    NoticeHint, Offer, PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice,
+    Pin, Pixels, Place, PromptButton, Question, Refusal, Route, RouteColor, Row, ScoreRow, Step,
     StepLine, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
@@ -245,7 +245,10 @@ fn starquake_menu() -> Menu {
         ]
         .map(switch)
         .to_vec(),
-        keyboard: Some(switch("Spectrum keyboard")),
+        keyboard: Some(ChoiceRow {
+            label: "Spectrum keyboard".to_owned(),
+            value: "Game's choice (off)".to_owned(),
+        }),
         actions: ["Back to the game", "End this game", "Exit Starquake"]
             .map(str::to_owned)
             .to_vec(),
@@ -278,11 +281,9 @@ fn the_guidance_menu() {
     let armed = Menu {
         levels: None,
         switches: Vec::new(),
-        keyboard: Some(SwitchRow {
+        keyboard: Some(ChoiceRow {
             label: "Spectrum keyboard".to_owned(),
-            on: true,
-            knob: 100,
-            refusal: None,
+            value: "Game's choice (on)".to_owned(),
         }),
         chosen: Row::Action(1),
         armed: Some((1, "end this game".to_owned())),
@@ -290,6 +291,19 @@ fn the_guidance_menu() {
         ..starquake_menu()
     };
     golden("menu-plain-armed.png", &armed.draw(&mut fonts, 1.0).png());
+
+    let keyboard = Menu {
+        keyboard: Some(ChoiceRow {
+            label: "Spectrum keyboard".to_owned(),
+            value: "On".to_owned(),
+        }),
+        chosen: Row::Keyboard,
+        ..starquake_menu()
+    };
+    golden(
+        "menu-keyboard-chosen.png",
+        &keyboard.draw(&mut fonts, 1.0).png(),
+    );
 
     // As the mockup has it (`docs/mockups/2026-10-13-pressed-button.png`).
     let save = Menu {

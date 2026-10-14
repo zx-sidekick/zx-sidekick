@@ -176,8 +176,8 @@ struct Player {
     /// in the window's device pixels, its scale, and device pixels to a window point.
     menu: Option<Menu>,
     menu_at: Option<(f32, f32, f32, f32)>,
-    /// The Spectrum's keyboard turned on or off in the menu, for this session; the definition
-    /// decides until then.
+    /// The Spectrum's keyboard turned on or off in the menu, for this session; `None`, the
+    /// game's choice: the definition decides.
     keyboard: Option<bool>,
     /// The text-entry card while it's open, and a word being typed.
     entry: Option<Entry>,
@@ -1532,8 +1532,8 @@ impl Player {
             Outcome::Cancelled => self.close_menu(pads),
             Outcome::Applied => {
                 self.level = level;
-                if let Some(on) = self.menu.as_ref().and_then(Menu::keyboard_changed) {
-                    self.keyboard = Some(on);
+                if let Some(menu) = &self.menu {
+                    self.keyboard = menu.keyboard();
                 }
                 self.close_menu(pads);
             }
@@ -1580,9 +1580,15 @@ impl Player {
     /// The menu, opened on the game as it stands: `can_load`, whether the quick slot holds a
     /// save.
     fn open_menu(&self, can_load: bool) -> Menu {
-        let keyboard =
-            keys::spectrum_on(self.session.definition(), self.known_state(), self.keyboard);
-        Menu::open(&self.session, self.level, &self.title, can_load, keyboard)
+        let game = keys::spectrum_on(self.session.definition(), self.known_state(), None);
+        Menu::open(
+            &self.session,
+            self.level,
+            &self.title,
+            can_load,
+            self.keyboard,
+            game,
+        )
     }
 
     /// Takes a key pressed in play: a Spectrum key reaches the game, or the keyboard's pad
