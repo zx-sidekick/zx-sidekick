@@ -71,6 +71,30 @@ fn arrows(keys: &str) -> bool {
         .all(|c| matches!(c, '←' | '↑' | '→' | '↓' | ' '))
 }
 
+/// What a hint shows to press: the keys (bare when only arrows), then the pad's part as the
+/// pad plugged in, `pad`, marks it; no pad part without a pad. Arrows on the keyboard stand for
+/// the D-pad too.
+pub(crate) fn presses(
+    keys: Option<&str>,
+    mark: Option<PadMark>,
+    pad: Option<PadLabels>,
+) -> Vec<Press<'_>> {
+    let keys = keys.map(|k| {
+        if arrows(k) {
+            Press::Arrows(k)
+        } else {
+            Press::Key(k)
+        }
+    });
+    let part = pad.zip(mark).and_then(|(pad, mark)| match mark {
+        PadMark::Face(face) => Some(pad.face(face)),
+        PadMark::Directions if keys.is_some() => None,
+        PadMark::Directions => Some(Press::Arrows("← ↑ → ↓")),
+        PadMark::Start => Some(pad.start()),
+    });
+    keys.into_iter().chain(part).collect()
+}
+
 impl PauseNotice {
     /// Draws the card at `scale` device pixels to a logical one; outside its rounded corners
     /// stays clear.
@@ -109,23 +133,7 @@ impl PauseNotice {
         let presses: Vec<Vec<Press>> = self
             .hints
             .iter()
-            .map(|hint| {
-                let keys = hint.keys.as_deref().map(|k| {
-                    if arrows(k) {
-                        Press::Arrows(k)
-                    } else {
-                        Press::Key(k)
-                    }
-                });
-                let pad = hint.pad.and_then(|mark| match mark {
-                    PadMark::Face(face) => Some(self.pad.face(face)),
-                    // Arrows on the keyboard stand for the D-pad too.
-                    PadMark::Directions if keys.is_some() => None,
-                    PadMark::Directions => Some(Press::Arrows("← ↑ → ↓")),
-                    PadMark::Start => Some(self.pad.start()),
-                });
-                keys.into_iter().chain(pad).collect()
-            })
+            .map(|hint| presses(hint.keys.as_deref(), hint.pad, Some(self.pad)))
             .collect();
         let list: Vec<Hint> = self
             .hints

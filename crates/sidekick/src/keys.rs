@@ -204,6 +204,26 @@ pub(crate) const fn pad_part(scancode: Scancode) -> Option<Part> {
     }
 }
 
+/// How a card names the key that plays `part`: with the keyboard a pad ([`pad_key`]), the arrows,
+/// Space for west, Z, X and V for south, east and north, and Enter for Start; with the Spectrum's
+/// keyboard on (`spectrum`, [`pad_part`]), the arrows and the right Control for fire (a Mac's
+/// cards name `/` instead), and no others.
+pub(crate) const fn key_for(part: Part, spectrum: bool) -> Option<&'static str> {
+    match (part, spectrum) {
+        (Part::DPad(Way::Up), _) => Some("↑"),
+        (Part::DPad(Way::Down), _) => Some("↓"),
+        (Part::DPad(Way::Left), _) => Some("←"),
+        (Part::DPad(Way::Right), _) => Some("→"),
+        (Part::West, true) => Some("Right Ctrl"),
+        (Part::West, false) => Some("Space"),
+        (Part::South, false) => Some("Z"),
+        (Part::East, false) => Some("X"),
+        (Part::North, false) => Some("V"),
+        (Part::Start, false) => Some("Enter"),
+        _ => None,
+    }
+}
+
 /// A Spectrum key by the name definitions give it: `A`, `1`, `ENTER`, `SPACE`, `CAPS SHIFT`,
 /// `SYMBOL SHIFT`.
 pub(crate) fn key_named(name: &str) -> Option<Key> {
@@ -703,6 +723,38 @@ mod tests {
         assert_eq!(k.s.state(), Some("paused"), "and stays paused");
         k.tap(Scancode::Right, 4);
         assert!(k.until(50, "play"), "a move goes on");
+    }
+
+    #[test]
+    fn a_card_names_the_keys_that_play_as_a_pad() {
+        let named = |scancode, spectrum| {
+            let part = if spectrum {
+                pad_part(scancode)
+            } else {
+                pad_key(scancode)
+            };
+            part.and_then(|p| key_for(p, spectrum))
+        };
+        for (scancode, name) in [
+            (Scancode::Up, "↑"),
+            (Scancode::Left, "←"),
+            (Scancode::Space, "Space"),
+            (Scancode::Z, "Z"),
+            (Scancode::X, "X"),
+            (Scancode::V, "V"),
+            (Scancode::Return, "Enter"),
+        ] {
+            assert_eq!(named(scancode, false), Some(name), "{scancode:?}, as a pad");
+        }
+        for (scancode, name) in [(Scancode::Down, "↓"), (Scancode::RCtrl, "Right Ctrl")] {
+            assert_eq!(
+                named(scancode, true),
+                Some(name),
+                "{scancode:?}, the Spectrum's on"
+            );
+        }
+        assert_eq!(key_for(Part::South, true), None, "Z is the Spectrum's then");
+        assert_eq!(key_for(Part::L1, false), None, "no key plays it");
     }
 
     #[test]

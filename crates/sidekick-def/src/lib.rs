@@ -75,6 +75,9 @@ pub struct Definition {
     /// Hints, a line in the panel while their conditions hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hints: Vec<PanelHint>,
+    /// The How to play screen: the goal, and the main moves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub about: Option<About>,
     /// How a crafted situation enters play.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub situations: Option<Situations>,

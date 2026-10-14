@@ -576,6 +576,33 @@ to_level = 3
 state = "play"
 script = "core-not-seen"
 
+# How to play: the screen shown when a game starts (and from the menu), in our own words. Each
+# move's keyboard key comes from [pad] in play.
+
+[about]
+goal = "The planet's core has broken apart. Find the pieces it needs, scattered across the planet, and carry them back to rebuild it. The core shows which pieces it wants only in its own room."
+
+[[about.how]]
+name = "Pick up or swap"
+text = "Stand on an item to take it. Four at most: a fifth puts down the oldest."
+pad = "east"
+
+[[about.how]]
+name = "Build a platform"
+text = "A step to cross a gap or climb out of a pit. They run out."
+pad = "south"
+
+[[about.how]]
+name = "Teleport booths"
+text = "Walk into one and type another booth's code. Each booth shows its own."
+keys = "← →"
+pad = "dpad"
+
+[[about.how]]
+name = "Fire"
+text = "Clears creatures from your way. The laser runs down as it fires."
+pad = "west"
+
 [situations]
 # The routine that starts play in the current room (docs/re/starquake.md).
 enter = 0xA426

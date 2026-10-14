@@ -54,6 +54,8 @@ The game starts fullscreen. **F11** switches between fullscreen and a window; on
 
 On Starquake's title the program has already chosen the joystick for you, so ignore the game's list of controls: play with the arrow keys or a gamepad, and press **0**, or **Start**, to begin.
 
+When a game starts, a **How to play** card says what the game is about and how its main moves are made, with the keys (and a pad's buttons, while one is plugged in) for each. Enter, Esc or A plays on. Turn **Show next time** off (left or right, or a click) to skip it at the start of later games; the menu's *How to play* row shows it any time.
+
 ## Keys and pad
 
 **Keyboard.** The Spectrum's own keys reach the game as on the original: letters, digits, Enter, Space, Shift as CAPS SHIFT, the left Ctrl and Alt (Option) as SYMBOL SHIFT, Backspace as DELETE. The keys the Spectrum doesn't have work as a pad: the **arrow keys** move, and the **right Ctrl**, the **right Alt (Option)** or **/** fire. The program's own keys:
@@ -145,7 +147,7 @@ Setting the `ZX_SIDEKICK_DATA` environment variable moves it.
 
 In it:
 
-- `<game>/`, one folder a game (`starquake/`): its tape as you gave it (`tape.tap` or `tape.tzx`), the quick save `quick.sav`, the save made on quitting `quit.sav`, its kept lists (Starquake: `teleporter-codes.txt`, `doors-met.txt`, `high-score-names.txt`), and its high-score table, `high-scores.txt`.
+- `<game>/`, one folder a game (`starquake/`): its tape as you gave it (`tape.tap` or `tape.tzx`), the quick save `quick.sav`, the save made on quitting `quit.sav`, its kept lists (Starquake: `teleporter-codes.txt`, `doors-met.txt`, `high-score-names.txt`), its high-score table, `high-scores.txt`, and `how-to-play.txt` once How to play's *Show next time* has been changed.
 - `tapes/`, for tapes played without a definition: one folder a tape, holding its saves.
 - `games/`, for definitions you add. One there with the same id as one beside the program wins.
 

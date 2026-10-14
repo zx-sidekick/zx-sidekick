@@ -495,6 +495,35 @@ script = "core-not-seen"
 
 A hint holds when every one of `state`, `when` and `script` it gives holds; it needs at least one. One hint shows at a time. A game with hints keeps a fixed slot for the line at every level from 1 up, empty while none holds, so the widgets below it don't move as hints come and go.
 
+## `[about]`: How to play
+
+The How to play screen: a card over the paused game when a game starts, with the game's goal and its main moves, each with what does it. The menu's *How to play* row opens it any time. The player can turn off its showing at the start of a game on the card itself ("Show next time"); the program keeps that in the game's folder.
+
+```toml
+[about]
+goal = "The planet's core has broken apart. Find the pieces it needs and carry them back."
+
+[[about.how]]
+name = "Build a platform"
+text = "A step to cross a gap or climb out of a pit. They run out."
+pad = "south"
+
+[[about.how]]
+name = "Teleport booths"
+text = "Walk into one and type another booth's code."
+keys = "← →"
+pad = "dpad"
+```
+
+| Key | Meaning |
+|---|---|
+| `goal` | What the game is about, in a sentence or two of the definition's own words; it wraps |
+| `how` | The main moves, in order: each a `name` and one line of `text`, which must fit the card's width (`sidekick check` measures them) |
+| `how.pad` | The pad part that makes the move, by position: `west`, `south`, `east`, `north`, `dpad`, `stick` or `start`. Its button shows while a pad is plugged in |
+| `how.keys` | The keyboard's key as shown, when not the one the program works out from `pad`; arrows alone are drawn bare |
+
+Without `keys`, the key shown is the keyboard's for `pad` in the state with role `play`: the arrows for `dpad` or `stick`, and, as the keyboard plays as a pad, its key for the part (Z, X, C or Space, V, Enter). Where the Spectrum's keyboard is on, it's a key that does the same as the part there (the up arrow, for a button mapped to an action that pushes the joystick up), or the right Ctrl for fire. A move with neither shows no key. The screen opens when a game starts: play after the title, a game over, or nothing known yet, so a definition with `[about]` needs a state with role `play`.
+
 ## `[situations]`
 
 ```toml

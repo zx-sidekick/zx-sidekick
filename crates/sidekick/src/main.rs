@@ -14,6 +14,7 @@ mod compose;
 mod entry;
 mod games;
 mod headless;
+mod how_to;
 mod keys;
 mod menu;
 mod pad;
@@ -371,6 +372,11 @@ fn check(path: &Path, tape: Option<&Path>) -> ExitCode {
                 sidekick_ui::HINT_ROOM
             ));
         }
+    }
+    for i in how_to::too_wide(&package.definition, &mut fonts) {
+        problems.push(format!(
+            "about.how[{i}]: its name or text is too wide for the How to play card"
+        ));
     }
     match games::script(&package) {
         Some(Err(why)) => problems.push(format!("script: {why}")),

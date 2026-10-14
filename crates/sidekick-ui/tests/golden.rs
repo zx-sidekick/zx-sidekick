@@ -2,11 +2,11 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    pins, CardRow, Cell, Chip, ChoiceRow, Edge, EntryCard, EntryMode, Face, Fonts, HintSlot, Icon,
-    Inside, Levels, LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note,
-    NoticeHint, Offer, PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice,
-    Pin, Pixels, Place, PromptButton, Question, Refusal, Route, RouteColor, Row, ScoreRow, Step,
-    StepLine, SwitchRow, TapePrompt, ThisGame,
+    pins, CardRow, Cell, Chip, ChoiceRow, ClipSlot, Edge, EntryCard, EntryMode, Face, Fonts,
+    HintSlot, HowTo, HowToEntry, HowToTarget, Icon, Inside, Levels, LibraryEntry, LibraryPage,
+    Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer, PadLabels, PadMark, Panel,
+    PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels, Place, PromptButton, Question,
+    Refusal, Route, RouteColor, Row, ScoreRow, Step, StepLine, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -1232,4 +1232,95 @@ fn a_hint_fits_the_panel_s_width_or_doesn_t() {
         "Far too long a hint for one line in the panel, by a good many words",
     );
     assert!(long > sidekick_ui::HINT_ROOM, "{long}");
+}
+
+/// Starquake's How to play, its keys as the keyboard plays them, with no pad plugged in.
+fn how_to() -> HowTo {
+    let entry = |keys: &str, pad: PadMark, name: &str, text: &str| HowToEntry {
+        keys: Some(keys.to_owned()),
+        pad: Some(pad),
+        name: name.to_owned(),
+        text: text.to_owned(),
+    };
+    HowTo {
+        title: "Starquake".to_owned(),
+        goal: "The planet's core has broken apart. Find the pieces it needs, scattered across the planet, and carry them back to rebuild it. The core shows which pieces it wants only in its own room.".to_owned(),
+        entries: vec![
+            entry("X", PadMark::Face(Face::East), "Pick up or swap", "Stand on an item to take it. Four at most: a fifth puts down the oldest."),
+            entry("Z", PadMark::Face(Face::South), "Build a platform", "A step to cross a gap or climb out of a pit. They run out."),
+            entry("← →", PadMark::Directions, "Teleport booths", "Walk into one and type another booth's code. Each booth shows its own."),
+            entry("Space", PadMark::Face(Face::West), "Fire", "Clears creatures from your way. The laser runs down as it fires."),
+        ],
+        clips: Vec::new(),
+        show_next: true,
+        from_menu: false,
+        pad: None,
+    }
+}
+
+#[test]
+fn how_to_play() {
+    let mut fonts = Fonts::new();
+    let keys = how_to();
+    golden("how-to-play.png", &keys.draw(&mut fonts, 1.0).png());
+    let pad = HowTo {
+        pad: Some(PadLabels::Letters),
+        ..how_to()
+    };
+    golden("how-to-play-pad.png", &pad.draw(&mut fonts, 1.0).png());
+    let back = HowTo {
+        from_menu: true,
+        show_next: false,
+        pad: Some(PadLabels::Shapes),
+        ..how_to()
+    };
+    golden("how-to-play-back.png", &back.draw(&mut fonts, 1.0).png());
+    let clip = |keys: &str, pad, does: &str| ClipSlot {
+        keys: Some(keys.to_owned()),
+        pad: Some(pad),
+        does: does.to_owned(),
+    };
+    let clips = HowTo {
+        clips: vec![
+            clip("X", PadMark::Face(Face::East), "pick up or swap"),
+            clip("Z", PadMark::Face(Face::South), "build a platform"),
+        ],
+        pad: Some(PadLabels::Letters),
+        ..how_to()
+    };
+    golden("how-to-play-clips.png", &clips.draw(&mut fonts, 1.0).png());
+    assert!(
+        clips.height(&mut fonts) > keys.height(&mut fonts) + 216,
+        "the clips' room comes only with clips"
+    );
+}
+
+#[test]
+fn an_entry_too_wide_for_the_card_is_found() {
+    let mut fonts = Fonts::new();
+    let mut card = HowTo {
+        pad: Some(PadLabels::Letters),
+        ..how_to()
+    };
+    assert!(card.too_wide(&mut fonts).is_empty());
+    card.entries[2].text =
+        "Far too long a line for the card, by a good many words more than it could ever have room for"
+            .to_owned();
+    assert_eq!(card.too_wide(&mut fonts), [2]);
+}
+
+#[test]
+fn a_click_finds_the_toggle_and_the_button() {
+    let mut fonts = Fonts::new();
+    let card = how_to();
+    let foot = f32::from(u16::try_from(card.height(&mut fonts)).unwrap()) - 38.0;
+    assert_eq!(
+        card.target_at(&mut fonts, 40.0, foot),
+        Some(HowToTarget::Toggle)
+    );
+    assert_eq!(
+        card.target_at(&mut fonts, 600.0, foot),
+        Some(HowToTarget::Button)
+    );
+    assert_eq!(card.target_at(&mut fonts, 300.0, 100.0), None);
 }

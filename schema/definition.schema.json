@@ -4,6 +4,17 @@
   "description": "A game definition.",
   "type": "object",
   "properties": {
+    "about": {
+      "description": "The How to play screen: the goal, and the main moves.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/About"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "actions": {
       "description": "Things a button or key can do.",
       "type": "array",
@@ -162,6 +173,27 @@
     "media"
   ],
   "$defs": {
+    "About": {
+      "description": "`[about]`: the How to play screen, shown when a game starts: the game's goal, and how its\nmain moves are made.",
+      "type": "object",
+      "properties": {
+        "goal": {
+          "description": "What the game is about, in a sentence or two.",
+          "type": "string"
+        },
+        "how": {
+          "description": "The main moves, in order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HowTo"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "goal"
+      ]
+    },
     "Action": {
       "description": "`[[actions]]`: something a button or key does beyond a key or a direction.",
       "type": "object",
@@ -718,6 +750,39 @@
       "additionalProperties": false,
       "required": [
         "does"
+      ]
+    },
+    "HowTo": {
+      "description": "`[[about.how]]`: one of the main moves, with what does it.",
+      "type": "object",
+      "properties": {
+        "keys": {
+          "description": "The keyboard's key as shown, when not the one worked out from `pad`; arrows are shown\nbare (`\"← →\"`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Its name: \"Build a platform\".",
+          "type": "string"
+        },
+        "pad": {
+          "description": "The pad part that does it, by position (`east`, `dpad`…): its button shows while a pad\nis plugged in, and the keyboard's key for it, worked out from the `[pad]` mapping in\nplay, always.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "description": "One line on it.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "text"
       ]
     },
     "Joystick": {

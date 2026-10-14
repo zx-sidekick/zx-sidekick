@@ -5,6 +5,7 @@ use crate::{
     compose,
     entry::{self, Entry, Stroke, Typing},
     games::{self, Game, Playing},
+    how_to::{self, HowToPlay},
     keys::{self, KeyDoes, KeyboardMode, Spectrum},
     menu::{self, Menu, Outcome},
     pad::{self, Changes, Input, Maker, Mapping, Nav, Pads, Part, Play, Way},
@@ -30,10 +31,11 @@ use sdl3::{
 use sidekick_core::{Machine, Milestone, Session, SAMPLE_RATE};
 use sidekick_def::{Package, Role};
 use sidekick_ui::{
-    device, Canvas, EntryCard, Fonts, LibraryPage, Menu as MenuCard, Note, Offer, PadLabels, Panel,
-    PauseNotice, Pin, PromptButton, Question, Refusal, Row, TapePrompt, ThisGame, ENTRY_HEIGHT,
-    ENTRY_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT, OFFER_HEIGHT, OFFER_WIDTH, PAUSE_NOTICE_HEIGHT,
-    PAUSE_NOTICE_WIDTH, QUESTION_WIDTH, TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
+    device, Canvas, EntryCard, Fonts, HowTo, HowToTarget, LibraryPage, Menu as MenuCard, Note,
+    Offer, PadLabels, Panel, PauseNotice, Pin, PromptButton, Question, Refusal, Row, TapePrompt,
+    ThisGame, ENTRY_HEIGHT, ENTRY_WIDTH, HOW_TO_WIDTH, MENU_WIDTH, NOTE_AT, NOTE_HEIGHT,
+    OFFER_HEIGHT, OFFER_WIDTH, PAUSE_NOTICE_HEIGHT, PAUSE_NOTICE_WIDTH, QUESTION_WIDTH,
+    TAPE_PROMPT_HEIGHT, TAPE_PROMPT_WIDTH,
 };
 use std::{
     cell::RefCell,
@@ -194,6 +196,9 @@ struct Player {
     choosing: bool,
     /// The game kept on quitting last time, while it's offered.
     offer: Option<Vec<u8>>,
+    /// The How to play screen, and where its card was last drawn, as the menu's.
+    how_to: HowToPlay,
+    how_to_at: Option<(f32, f32, f32, f32)>,
     /// Whether the quit slot and the kept lists are this session's to write (`Playing`).
     quit_slot: bool,
     keep_lists: bool,
@@ -250,6 +255,8 @@ struct Output<'a> {
     note: Option<(Texture<'a>, Note, f32)>,
     /// The offer to continue, likewise.
     offer: Option<(Texture<'a>, Offer, f32)>,
+    /// The How to play screen, likewise.
+    how_to: Option<(Texture<'a>, HowTo, f32)>,
     /// The guidance menu and its question, likewise.
     menu: Option<(Texture<'a>, MenuCard, f32)>,
     question: Option<(Texture<'a>, Question, f32)>,
@@ -319,6 +326,7 @@ pub(crate) fn run(start: Start) -> Result<(), String> {
         entry: None,
         note: None,
         offer: None,
+        how_to: None,
         menu: None,
         question: None,
         // No sound device (a server, a test) is no reason not to play: time paces the frames.
@@ -432,6 +440,7 @@ impl App {
                     // A key let go lets go of whatever it pressed, whoever takes the event.
                     player.key_up(&event, &mut gamepads.pads);
                     if player.offer_event(&event, &presses, &mut gamepads.pads)
+                        || player.how_to_event(&event, &presses, &mut gamepads.pads)
                         || player.save_keys(&event, &mut gamepads.pads)
                         || player.held(&event, &presses, &mut gamepads.pads)
                     {
@@ -568,7 +577,9 @@ impl Screen {
             Self::Play(player) => {
                 let plugged = gamepads.plugged();
                 player.frame(out, &mut gamepads.pads, plugged)?;
-                if player.menu.is_some() {
+                if player.how_to.is_open() {
+                    player.draw_how_to(out, plugged)?;
+                } else if player.menu.is_some() {
                     player.draw_menu(out, gamepads.last.labels())?;
                 } else {
                     player.notice(out, gamepads.last.labels())?;
@@ -770,6 +781,7 @@ impl Player {
             session: Box::new(playing.session),
             play: Play::new(playing.mapping),
             title: playing.title,
+            how_to: HowToPlay::new(playing.folder.clone(), playing.keep_lists),
             folder: playing.folder,
             menu: None,
             menu_at: None,
@@ -783,6 +795,7 @@ impl Player {
             opened: Arc::new(Mutex::new(None)),
             choosing: false,
             offer,
+            how_to_at: None,
             quit_slot: playing.quit_slot,
             keep_lists: playing.keep_lists,
             save_point: playing.save_point,
@@ -843,7 +856,11 @@ impl Player {
             std::thread::sleep(Duration::from_millis(1));
         }
         for _ in 0..due.min(MOST_FRAMES_A_PASS) {
-            if self.session.holding() || self.menu.is_some() || self.offer.is_some() {
+            if self.session.holding()
+                || self.menu.is_some()
+                || self.offer.is_some()
+                || self.how_to.is_open()
+            {
                 break;
             }
             let known = self.session.progress().last_known.as_deref();
@@ -892,6 +909,9 @@ impl Player {
             }
             self.save_kept();
             self.milestones();
+            if self.how_to.is_open() {
+                pads.hold_back();
+            }
             self.frames_run += 1;
             if let Some(stream) = &out.sound {
                 self.samples.clear();
@@ -1004,6 +1024,7 @@ impl Player {
         for milestone in self.session.take_milestones() {
             match milestone {
                 Milestone::FirstTitle => self.put_scores_in(),
+                Milestone::GameStarted => self.how_to.game_started(self.session.definition()),
                 Milestone::GameEnded => self.game_ended(),
             }
         }
@@ -1106,6 +1127,7 @@ impl Player {
             }
         }
         self.menu = None;
+        self.how_to.close();
         self.entry = None;
         self.this_game = None;
         // The kept table, not the save's: a new entry is told against it after a game.
@@ -1170,6 +1192,118 @@ impl Player {
                 .copy(texture, None, frect(at))
                 .map_err(|e| e.to_string())?;
         }
+        Ok(())
+    }
+
+    /// Takes an event while the How to play screen is open: Enter, Esc, the pad's confirm or
+    /// back, or a click on its button closes it (back to the menu when it was opened from
+    /// there); the arrows left and right, or a click on it, turn "Show next time" over. Every
+    /// other event is its too, but keys let go still reach the game, so none sticks. Returns
+    /// whether it took the event.
+    fn how_to_event(&mut self, event: &Event, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
+        if !self.how_to.is_open() {
+            return false;
+        }
+        let mut inputs: Vec<how_to::Input> = presses
+            .iter()
+            .filter_map(|&(part, maker)| how_to_press(part, maker))
+            .collect();
+        match *event {
+            Event::KeyDown {
+                scancode: Some(scancode),
+                repeat: false,
+                ..
+            } => inputs.extend(how_to_key(scancode)),
+            Event::MouseButtonDown {
+                mouse_btn: MouseButton::Left,
+                x,
+                y,
+                ..
+            } => {
+                if let (Some((left, top, scale, density)), Some(card)) =
+                    (self.how_to_at, self.how_to_card(None))
+                {
+                    // Clicks come in window points; the card was placed in device pixels.
+                    let (lx, ly) = (
+                        x.mul_add(density, -left) / scale,
+                        y.mul_add(density, -top) / scale,
+                    );
+                    inputs.extend(card.target_at(&mut Fonts::new(), lx, ly).map(|target| {
+                        match target {
+                            HowToTarget::Toggle => how_to::Input::Toggle,
+                            HowToTarget::Button => how_to::Input::Close,
+                        }
+                    }));
+                }
+            }
+            _ => {}
+        }
+        for input in inputs {
+            match self.how_to.input(input) {
+                how_to::Outcome::Stay => {}
+                how_to::Outcome::Menu => {
+                    pads.hold_back();
+                    break;
+                }
+                how_to::Outcome::Play => {
+                    self.started = Instant::now();
+                    self.frames_run = 0;
+                    pads.hold_back();
+                    break;
+                }
+            }
+        }
+        true
+    }
+
+    /// The How to play card, while it's open, with the pad plugged in, `pad`.
+    fn how_to_card(&self, pad: Option<PadLabels>) -> Option<HowTo> {
+        self.how_to.card(
+            self.session.definition(),
+            self.play.mapping(),
+            &self.title,
+            pad,
+            self.keyboard,
+        )
+    }
+
+    /// Draws the How to play screen over the picture, centred on it, with the buttons of the
+    /// pad `plugged` in, if one is.
+    fn draw_how_to(&mut self, out: &mut Output, plugged: Option<PadLabels>) -> Result<(), String> {
+        let Some(card) = self.how_to_card(plugged) else {
+            out.how_to = None;
+            return Ok(());
+        };
+        let output = out.canvas.output_size().map_err(|e| e.to_string())?;
+        let layout = self.layout(output);
+        let height = card.height(&mut out.fonts);
+        let (at, scale) =
+            compose::card_over(layout.picture, output, layout, (HOW_TO_WIDTH, height));
+        cached(
+            out.creator,
+            &mut out.how_to,
+            &mut out.fonts,
+            &card,
+            scale,
+            HowTo::draw,
+        )?;
+        if let Some((texture, _, _)) = &out.how_to {
+            out.canvas
+                .copy(texture, None, frect(at))
+                .map_err(|e| e.to_string())?;
+        }
+        let (window_w, _) = out.canvas.window().size();
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "screen sizes are far below f32's limit"
+        )]
+        let place = (
+            at.0 as f32,
+            at.1 as f32,
+            scale,
+            output.0 as f32 / window_w.max(1) as f32,
+        );
+        self.how_to_at = Some(place);
         Ok(())
     }
 
@@ -1412,7 +1546,10 @@ impl Player {
     }
 
     fn paused(&self) -> bool {
-        self.menu.is_some() || self.offer.is_some() || self.in_role(Role::Paused)
+        self.menu.is_some()
+            || self.offer.is_some()
+            || self.how_to.is_open()
+            || self.in_role(Role::Paused)
     }
 
     /// Takes an event for the guidance menu: Esc or Select opens it in play; while it's open,
@@ -1564,6 +1701,10 @@ impl Player {
             Outcome::OpenSave => {
                 self.close_menu(pads);
                 self.choosing = true;
+            }
+            Outcome::HowTo => {
+                self.how_to.open_from_menu();
+                pads.hold_back();
             }
         }
         MenuEvent::Taken
@@ -2201,6 +2342,29 @@ fn goes_on(event: &Event, presses: &[(Part, Maker)]) -> bool {
     ) || presses.iter().any(|&(part, _)| part == Part::Start)
 }
 
+/// What a key does on the How to play screen: the arrows left and right turn "Show next time"
+/// over; Enter and Esc close it.
+const fn how_to_key(scancode: Scancode) -> Option<how_to::Input> {
+    match scancode {
+        Scancode::Left | Scancode::Right => Some(how_to::Input::Toggle),
+        Scancode::Return | Scancode::KpEnter | Scancode::Escape => Some(how_to::Input::Close),
+        _ => None,
+    }
+}
+
+/// What a pad's part does on the How to play screen: left and right turn "Show next time"
+/// over; confirm, back and Select close it.
+fn how_to_press(part: Part, maker: Maker) -> Option<how_to::Input> {
+    if part == Part::Select {
+        return Some(how_to::Input::Close);
+    }
+    match pad::nav(part, maker)? {
+        Nav::Left | Nav::Right => Some(how_to::Input::Toggle),
+        Nav::Confirm | Nav::Back => Some(how_to::Input::Close),
+        Nav::Up | Nav::Down => None,
+    }
+}
+
 /// What a key says to the offer to continue: Enter goes on, other keys start afresh, and a
 /// modifier says nothing, since it may begin Cmd-Q, Alt-F4 or the fullscreen keys.
 const fn key_answers_offer(scancode: Scancode) -> Option<bool> {
@@ -2414,6 +2578,27 @@ notice = { text = "Press fire." }
             &key_down(Scancode::Q),
             &[(Part::South, Maker::Other)]
         ));
+    }
+
+    #[test]
+    fn how_to_play_closes_with_enter_esc_or_a_pad_s_confirm_or_back() {
+        use how_to::Input::{Close, Toggle};
+        for key in [Scancode::Return, Scancode::KpEnter, Scancode::Escape] {
+            assert_eq!(how_to_key(key), Some(Close), "{key:?}");
+        }
+        for key in [Scancode::Left, Scancode::Right] {
+            assert_eq!(how_to_key(key), Some(Toggle), "{key:?}");
+        }
+        assert_eq!(how_to_key(Scancode::Space), None);
+        for maker in [Maker::Other, Maker::PlayStation, Maker::Nintendo] {
+            assert_eq!(how_to_press(maker.confirm(), maker), Some(Close));
+            assert_eq!(how_to_press(maker.back(), maker), Some(Close));
+            assert_eq!(how_to_press(Part::DPad(Way::Left), maker), Some(Toggle));
+            assert_eq!(how_to_press(Part::Stick(Way::Right), maker), Some(Toggle));
+        }
+        assert_eq!(how_to_press(Part::Select, Maker::Other), Some(Close));
+        assert_eq!(how_to_press(Part::DPad(Way::Up), Maker::Other), None);
+        assert_eq!(how_to_press(Part::West, Maker::Other), None);
     }
 
     #[test]

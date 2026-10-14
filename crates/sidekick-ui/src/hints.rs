@@ -1,7 +1,7 @@
 //! Key hints along a screen's bottom: keys in squarish badges, pad buttons in round ones,
 //! arrows bare.
 
-use crate::{colors, Align, Canvas, Fonts, Line, Style, Weight};
+use crate::{colors, Align, Canvas, Color, Fonts, Line, Style, Weight};
 
 /// One thing a hint shows to press.
 #[derive(Clone, Copy, Debug)]
@@ -164,6 +164,55 @@ pub fn hints_from(c: &mut Canvas, fonts: &mut Fonts, (left, y): (f32, f32), list
 
 /// Draws hints in a row 20 pixels tall from `y`, the last one ending at `right`.
 pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint]) {
+    row(c, fonts, (right, y), hints, Ink::Plain);
+}
+
+/// What hints are drawn on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Ink {
+    /// A card.
+    Plain,
+    /// An accent button: dark marks.
+    OnAccent,
+}
+
+/// The marks' colors for `ink`: a badge's edge, a key's letters, the words and slashes.
+const fn inks(ink: Ink) -> (Color, Color, Color) {
+    match ink {
+        Ink::Plain => (colors::KEY_EDGE, colors::TEXT, colors::MUTED),
+        Ink::OnAccent => (ON_ACCENT_EDGE, colors::PROMPT, ON_ACCENT_WORDS),
+    }
+}
+
+const ON_ACCENT_EDGE: Color = Color::rgb(0x3A, 0x4A, 0x6A);
+const ON_ACCENT_WORDS: Color = Color::rgb(0x2A, 0x36, 0x50);
+
+/// Draws hints in a row 20 pixels tall from `y`, the first starting at `left`, on an accent
+/// button.
+pub(crate) fn hints_on_accent(
+    c: &mut Canvas,
+    fonts: &mut Fonts,
+    (left, y): (f32, f32),
+    list: &[Hint],
+) {
+    let width = row_width(fonts, list);
+    row(c, fonts, (left + width, y), list, Ink::OnAccent);
+}
+
+fn row(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &[Hint], ink: Ink) {
+    let (edge, letters, words) = inks(ink);
+    let key_style = Style {
+        color: letters,
+        ..KEY
+    };
+    let pad_style = Style {
+        color: letters,
+        ..PAD
+    };
+    let what = Style {
+        color: words,
+        ..WHAT
+    };
     let widths: Vec<f32> = hints.iter().map(|h| hint_width(fonts, h)).collect();
     let spacing: f32 = widths.iter().skip(1).map(|_| SPACING).sum();
     let mut x = right - widths.iter().sum::<f32>() - spacing;
@@ -171,32 +220,36 @@ pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &
         for (i, &press) in hint.press.iter().enumerate() {
             if i > 0 {
                 x += GAP;
-                x += c.text(fonts, "/", (x, y + 1.0), 18.0, Align::Left, &WHAT);
+                x += c.text(fonts, "/", (x, y + 1.0), 18.0, Align::Left, &what);
                 x += GAP;
             }
             let w = width(fonts, press);
             match press {
                 Press::Key(k) => {
-                    c.rect(
-                        (x, y, w, 20.0),
-                        3.0,
-                        None,
-                        Some(Line::solid(colors::KEY_EDGE, 1.0)),
+                    c.rect((x, y, w, 20.0), 3.0, None, Some(Line::solid(edge, 1.0)));
+                    c.text(
+                        fonts,
+                        k,
+                        (x + w / 2.0, y + 1.0),
+                        18.0,
+                        Align::Center,
+                        &key_style,
                     );
-                    c.text(fonts, k, (x + w / 2.0, y + 1.0), 18.0, Align::Center, &KEY);
                 }
                 Press::Pad(b) => {
                     let center = (x + PAD_SIZE / 2.0, y + 10.0);
-                    c.circle(
-                        center,
-                        PAD_SIZE / 2.0,
-                        None,
-                        Some(Line::solid(colors::KEY_EDGE, 1.0)),
+                    c.circle(center, PAD_SIZE / 2.0, None, Some(Line::solid(edge, 1.0)));
+                    c.text(
+                        fonts,
+                        b,
+                        (center.0, y + 1.0),
+                        18.0,
+                        Align::Center,
+                        &pad_style,
                     );
-                    c.text(fonts, b, (center.0, y + 1.0), 18.0, Align::Center, &PAD);
                 }
                 Press::Arrows(a) => {
-                    c.text(fonts, a, (x, y + 1.0), 18.0, Align::Left, &WHAT);
+                    c.text(fonts, a, (x, y + 1.0), 18.0, Align::Left, &what);
                 }
                 Press::Pill(p) => {
                     let top = y + 10.0 - PAD_SIZE / 2.0;
@@ -204,19 +257,21 @@ pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &
                         (x, top, w, PAD_SIZE),
                         PAD_SIZE / 2.0,
                         None,
-                        Some(Line::solid(colors::KEY_EDGE, 1.0)),
+                        Some(Line::solid(edge, 1.0)),
                     );
-                    c.text(fonts, p, (x + w / 2.0, y + 1.0), 18.0, Align::Center, &PAD);
+                    c.text(
+                        fonts,
+                        p,
+                        (x + w / 2.0, y + 1.0),
+                        18.0,
+                        Align::Center,
+                        &pad_style,
+                    );
                 }
                 Press::Cross | Press::Circle | Press::Square | Press::Triangle | Press::Minus => {
                     let (cx, cy) = (x + PAD_SIZE / 2.0, y + 10.0);
-                    c.circle(
-                        (cx, cy),
-                        PAD_SIZE / 2.0,
-                        None,
-                        Some(Line::solid(colors::KEY_EDGE, 1.0)),
-                    );
-                    let mark = Line::solid(colors::TEXT, 1.5);
+                    c.circle((cx, cy), PAD_SIZE / 2.0, None, Some(Line::solid(edge, 1.0)));
+                    let mark = Line::solid(letters, 1.5);
                     match press {
                         Press::Cross => {
                             c.line((cx - 3.5, cy - 3.5), (cx + 3.5, cy + 3.5), mark);
@@ -238,7 +293,7 @@ pub fn hints(c: &mut Canvas, fonts: &mut Fonts, (right, y): (f32, f32), hints: &
             x += w;
         }
         x += GAP;
-        x += c.text(fonts, hint.does, (x, y + 1.0), 18.0, Align::Left, &WHAT);
+        x += c.text(fonts, hint.does, (x, y + 1.0), 18.0, Align::Left, &what);
         x += SPACING;
     }
 }

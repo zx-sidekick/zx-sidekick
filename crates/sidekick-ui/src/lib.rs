@@ -16,6 +16,7 @@
 
 mod entry;
 pub mod hints;
+mod how_to;
 mod library;
 mod map;
 mod menu;
@@ -29,6 +30,7 @@ mod text;
 
 pub use entry::{EntryCard, EntryMode, HEIGHT as ENTRY_HEIGHT, WIDTH as ENTRY_WIDTH};
 pub use hints::{Face, PadLabels};
+pub use how_to::{ClipSlot, HowTo, HowToEntry, HowToTarget, WIDTH as HOW_TO_WIDTH};
 pub use library::{LibraryEntry, LibraryPage};
 pub use map::{
     pins, Cell, Edge, Inside, MapGrid, Marker, MarkerKind, Pin, Place, Route, RouteColor, Step,
