@@ -1,6 +1,6 @@
 //! Format 1, as `docs/definition-format.md` and the committed definitions write it.
 
-use sidekick_def::{schema, Border, Definition};
+use sidekick_def::{schema, Border, Definition, Keyboard};
 use std::path::Path;
 
 fn repo(path: &str) -> String {
@@ -174,6 +174,38 @@ keys = { up = "Q", down = "A", left = "O", right = "P", fire = "FIRE" }"#
     assert_eq!(
         problems(r#"keys = { up = "Q", down = "A", left = "O", right = "P", fire = "M" }"#),
         ["run.keys: only with joystick = \"keys\""]
+    );
+}
+
+#[test]
+fn the_keyboard_is_a_pad_unless_a_definition_makes_it_the_spectrum_s() {
+    let run = |run: &str| {
+        Definition::from_toml(&format!("{HEADER}\n{run}\n")).map(|d| d.run.unwrap_or_default())
+    };
+    let plain = run("[run]").expect("it parses");
+    assert_eq!(plain.keyboard, Keyboard::Pad);
+    assert!(plain.keyboard_in.is_empty());
+    let spectrum = run("[run]\nkeyboard = \"spectrum\"").expect("it parses");
+    assert_eq!(spectrum.keyboard, Keyboard::Spectrum);
+    assert!(run("[run]\nkeyboard = \"keys\"").is_err());
+
+    let problems = |run: &str| -> Vec<String> {
+        let text = format!("{HEADER}\n[[states]]\nname = \"define\"\npc = 0x8000\n[run]\n{run}\n");
+        let def = Definition::from_toml(&text).expect("it parses");
+        def.check()
+            .iter()
+            .map(ToString::to_string)
+            .filter(|p| p.starts_with("run."))
+            .collect()
+    };
+    assert!(problems("keyboard = \"spectrum\"\nkeyboard_in = [\"define\"]").is_empty());
+    assert_eq!(
+        problems("keyboard_in = [\"define\"]"),
+        ["run.keyboard_in: only with keyboard = \"spectrum\""]
+    );
+    assert_eq!(
+        problems("keyboard = \"spectrum\"\nkeyboard_in = [\"keys\"]"),
+        ["run.keyboard_in: no state named \"keys\""]
     );
 }
 

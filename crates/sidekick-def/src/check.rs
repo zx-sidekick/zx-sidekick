@@ -289,6 +289,12 @@ impl Checker<'_> {
             (_, Some(_)) => self.report("run.keys", "only with joystick = \"keys\""),
             (_, None) => {}
         }
+        if !run.keyboard_in.is_empty() && run.keyboard != crate::Keyboard::Spectrum {
+            self.report("run.keyboard_in", "only with keyboard = \"spectrum\"");
+        }
+        for state in &run.keyboard_in {
+            self.need_state("run.keyboard_in", state);
+        }
     }
 
     fn notice(&mut self, path: &str, state: &crate::State) {

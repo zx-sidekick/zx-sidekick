@@ -103,6 +103,35 @@ pub struct Run {
     /// How much of the border is shown once the tape has loaded.
     #[serde(default, skip_serializing_if = "Border::is_full")]
     pub border: Border,
+    /// What the computer's keyboard is in play: a pad, or the Spectrum's own keyboard.
+    #[serde(default, skip_serializing_if = "Keyboard::is_pad")]
+    pub keyboard: Keyboard,
+    /// With `keyboard = "spectrum"`: the states it's the Spectrum's keyboard in, a pad in the
+    /// rest. Empty, it's the Spectrum's throughout.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keyboard_in: Vec<String>,
+}
+
+/// What the computer's keyboard is in play.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Keyboard {
+    /// A pad, through `[pad]`: the arrows and WASD its D-pad, Space its west button, Enter its
+    /// Start. No Spectrum key reaches the game.
+    #[default]
+    Pad,
+    /// The Spectrum's own keyboard: its keys reach the game, and the arrows are still the D-pad.
+    Spectrum,
+}
+
+impl Keyboard {
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde's skip_serializing_if passes a reference"
+    )]
+    const fn is_pad(&self) -> bool {
+        matches!(self, Self::Pad)
+    }
 }
 
 /// How much of the border round the screen is shown.
