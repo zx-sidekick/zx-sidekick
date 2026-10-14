@@ -13,6 +13,10 @@ const HALF_TRAVEL: i16 = 16_384;
 /// How many frames a tap lasts when the definition doesn't say.
 pub(crate) const TAP_FRAMES: u32 = 2;
 
+/// How many frames Start's own tap on a loading screen lasts: the ROM's `PAUSE` reads the
+/// keyboard once a frame.
+const LOADING_TAP_FRAMES: u32 = 4;
+
 /// A way the D-pad or the stick points.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Way {
@@ -634,6 +638,22 @@ impl Play {
         does.script.clone()
     }
 
+    /// Start pressed while a loader waits for a key (the ROM's `PAUSE 0`, its loading screen
+    /// up): what the definition maps Start to there, or with nothing mapped a tap of ENTER, so
+    /// Start goes on from every loading screen, as its card says.
+    pub(crate) fn start_on_loading_screen(&mut self) -> Option<String> {
+        if self.maps(Part::Start) {
+            return self.pressed(Part::Start);
+        }
+        self.lasting.push(Lasting {
+            inputs: vec![Input::Key(SpectrumKey(Key::Enter))],
+            patches: Vec::new(),
+            wait: 0,
+            left: LOADING_TAP_FRAMES,
+        });
+        None
+    }
+
     /// Does one of the game's actions, by id, as a press that's let go at once: its taps, and
     /// what it holds for the frames it lasts. Returns the script function it calls, if any.
     pub(crate) fn act(&mut self, id: &str) -> Option<String> {
@@ -1021,6 +1041,80 @@ mod tests {
             Some("paused"),
             "the story's Start didn't pause it"
         );
+    }
+
+    /// A `.tap` block: its length, then the flag, the data and their XOR.
+    fn block(flag: u8, data: &[u8]) -> Vec<u8> {
+        let checksum = data.iter().fold(flag, |x, b| x ^ b);
+        let len = u16::try_from(data.len() + 2).expect("a short block");
+        let mut out = len.to_le_bytes().to_vec();
+        out.push(flag);
+        out.extend_from_slice(data);
+        out.push(checksum);
+        out
+    }
+
+    /// A program of one line of BASIC tokens, auto-running, as a header and a data block.
+    fn program(line: &[u8]) -> Vec<u8> {
+        let mut line = line.to_vec();
+        line.push(0x0D);
+        let mut program = vec![0x00, 0x0A];
+        program.extend_from_slice(&u16::try_from(line.len()).expect("short").to_le_bytes());
+        program.extend_from_slice(&line);
+        let len = u16::try_from(program.len()).expect("short").to_le_bytes();
+        let mut header = vec![0x00];
+        header.extend_from_slice(b"stand-in  ");
+        header.extend_from_slice(&len);
+        header.extend_from_slice(&10u16.to_le_bytes());
+        header.extend_from_slice(&len);
+        let mut tap = block(0x00, &header);
+        tap.extend(block(0xFF, &program));
+        tap
+    }
+
+    #[test]
+    fn start_goes_on_from_a_loader_s_wait_with_nothing_mapped_to_it() {
+        // `10 PAUSE 0: LOAD ""`, then `10 BORDER 2`: loading that waits for a key halfway.
+        let hidden = |n: u8| [0x0E, 0x00, 0x00, n, 0x00, 0x00];
+        let mut first = vec![0xF2, b'0'];
+        first.extend_from_slice(&hidden(0));
+        first.extend_from_slice(&[b':', 0xEF, b'"', b'"']);
+        let mut second = vec![0xE7, b'2'];
+        second.extend_from_slice(&hidden(2));
+        let mut tap = program(&first);
+        tap.extend(program(&second));
+
+        let mut machine =
+            sidekick_core::Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        machine.load_tap(&tap).expect("the tape goes in");
+        let mut s = sidekick_core::Session::new(machine, Some(def("")));
+        let mut play = Play::new(Mapping::new(s.definition()));
+        assert!(!play.maps(Part::Start), "nothing mapped to Start");
+        let waits = (0..1000).any(|_| {
+            frame(&mut s, &mut play, &[]);
+            s.machine().waits_on_loading_screen()
+        });
+        assert!(waits, "the loader waits for a key");
+        for _ in 0..50 {
+            frame(&mut s, &mut play, &[]);
+        }
+        assert!(s.machine().waits_on_loading_screen(), "until one comes");
+        play.start_on_loading_screen();
+        let went_on = (0..50).any(|_| {
+            frame(&mut s, &mut play, &[]);
+            !s.machine().waits_on_loading_screen()
+        });
+        assert!(went_on, "Start taps a key the loader takes");
+    }
+
+    #[test]
+    fn start_on_a_loading_screen_does_what_the_definition_maps_it_to() {
+        let mut play = Play::new(Mapping::new(Some(&def(r#"
+            [pad.default]
+            start = { tap = ["SPACE"] }
+            "#))));
+        play.start_on_loading_screen();
+        assert_eq!(holds(&mut play, &[]), [key(Key::Space)], "not ENTER");
     }
 
     #[test]

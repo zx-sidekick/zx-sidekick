@@ -53,19 +53,17 @@ pub(crate) fn spectrum_on(
 
 /// What the keyboard is in `state`: typing when the definition's `[text_entry]` or
 /// `[name_entry]` asks for text there; the Spectrum's keyboard where it's on
-/// ([`spectrum_on`]), or while the loading screen waits for a key (`loading`), so any key goes
-/// on as the card says; a pad otherwise.
+/// ([`spectrum_on`]); a pad otherwise, the loading screen included, where Enter is Start.
 pub(crate) fn mode(
     definition: Option<&Definition>,
     state: Option<&str>,
     chosen: Option<bool>,
-    loading: bool,
 ) -> KeyboardMode {
     let on = spectrum_on(definition, state, chosen);
     if let Some((text_entry, _)) = definition.and_then(|d| entry::section_for(d, state)) {
         return KeyboardMode::Typing((!on).then(|| text_entry.letters.clone()));
     }
-    if on || loading {
+    if on {
         KeyboardMode::Spectrum
     } else {
         KeyboardMode::Pad
@@ -374,7 +372,7 @@ mod tests {
 
     #[test]
     fn by_default_the_keyboard_plays_as_a_pad_and_no_spectrum_key_reaches_the_game() {
-        let pad = mode(Some(&def("")), Some("play"), None, false);
+        let pad = mode(Some(&def("")), Some("play"), None);
         assert_eq!(pad, KeyboardMode::Pad);
         for (keys, want) in [
             (&[Scancode::Up, Scancode::W][..], Part::DPad(Way::Up)),
@@ -417,7 +415,7 @@ mod tests {
 
     #[test]
     fn played_plainly_the_spectrum_keyboard_is_on_and_the_arrows_are_the_joystick() {
-        let plain = mode(None, None, None, false);
+        let plain = mode(None, None, None);
         assert_eq!(plain, KeyboardMode::Spectrum);
         assert!(matches!(spectrum(Scancode::Q, &plain), Some(Key::Q)));
         assert!(matches!(spectrum(Scancode::W, &plain), Some(Key::W)));
@@ -443,21 +441,18 @@ mod tests {
         let throughout = def("[run]\nkeyboard = \"spectrum\"");
         for state in [None, Some("define"), Some("play")] {
             assert_eq!(
-                mode(Some(&throughout), state, None, false),
+                mode(Some(&throughout), state, None),
                 KeyboardMode::Spectrum,
                 "{state:?}"
             );
         }
         let some = def("[run]\nkeyboard = \"spectrum\"\nkeyboard_in = [\"define\"]");
         assert_eq!(
-            mode(Some(&some), Some("define"), None, false),
+            mode(Some(&some), Some("define"), None),
             KeyboardMode::Spectrum
         );
-        assert_eq!(
-            mode(Some(&some), Some("play"), None, false),
-            KeyboardMode::Pad
-        );
-        assert_eq!(mode(Some(&some), None, None, false), KeyboardMode::Pad);
+        assert_eq!(mode(Some(&some), Some("play"), None), KeyboardMode::Pad);
+        assert_eq!(mode(Some(&some), None, None), KeyboardMode::Pad);
     }
 
     #[test]
@@ -465,20 +460,12 @@ mod tests {
         let pad = def("");
         assert!(spectrum_on(Some(&pad), Some("play"), Some(true)));
         assert_eq!(
-            mode(Some(&pad), Some("play"), Some(true), false),
+            mode(Some(&pad), Some("play"), Some(true)),
             KeyboardMode::Spectrum
         );
         let on = def("[run]\nkeyboard = \"spectrum\"");
         assert!(!spectrum_on(Some(&on), Some("play"), Some(false)));
         assert!(!spectrum_on(None, None, Some(false)), "plain play too");
-    }
-
-    #[test]
-    fn the_loading_screen_takes_any_key_as_its_card_says() {
-        assert_eq!(
-            mode(Some(&def("")), None, None, true),
-            KeyboardMode::Spectrum
-        );
     }
 
     const TEXT: &str = r#"
@@ -495,7 +482,7 @@ mod tests {
     #[test]
     fn asked_for_text_the_keyboard_types_the_letters_it_takes_and_plays_no_pad() {
         let text = def(TEXT);
-        let booth = mode(Some(&text), Some("booth"), None, false);
+        let booth = mode(Some(&text), Some("booth"), None);
         assert_eq!(booth, KeyboardMode::Typing(Some("ABC".to_owned())));
         assert!(matches!(spectrum(Scancode::A, &booth), Some(Key::A)));
         assert!(matches!(spectrum(Scancode::C, &booth), Some(Key::C)));
@@ -516,11 +503,11 @@ mod tests {
         );
         assert!(!asks_for_text(Some(&text), Some("play")));
         assert!(!asks_for_text(None, None), "played plainly");
-        let name = mode(Some(&text), Some("name"), None, false);
+        let name = mode(Some(&text), Some("name"), None);
         assert!(matches!(spectrum(Scancode::_0, &name), Some(Key::N0)));
         assert!(matches!(spectrum(Scancode::Space, &name), Some(Key::Space)));
 
-        let typing = mode(Some(&text), Some("booth"), Some(true), false);
+        let typing = mode(Some(&text), Some("booth"), Some(true));
         assert_eq!(
             typing,
             KeyboardMode::Typing(None),
@@ -566,16 +553,15 @@ mod tests {
                 }
                 return;
             }
-            let mode = mode(
-                self.s.definition(),
-                self.known(),
-                None,
-                self.s.on_loading_screen(),
-            );
+            let mode = mode(self.s.definition(), self.known(), None);
             match pressed(scancode, &mode) {
                 Some(KeyDoes::Spectrum(Spectrum::Key(key))) => self.s.machine_mut().key(key, true),
                 Some(KeyDoes::Pad(part)) if self.pads.button(0, part, true).is_some() => {
-                    self.play.pressed(part);
+                    if part == Part::Start && self.s.machine().waits_on_loading_screen() {
+                        self.play.start_on_loading_screen();
+                    } else {
+                        self.play.pressed(part);
+                    }
                 }
                 _ => {}
             }
@@ -651,6 +637,12 @@ mod tests {
         k.frames(400);
         assert!(k.s.on_loading_screen(), "the loader waits for a key");
         k.tap(Scancode::Q, 4);
+        k.frames(50);
+        assert!(
+            k.s.on_loading_screen(),
+            "Q does nothing: the keyboard is a pad"
+        );
+        k.tap(Scancode::Return, 4);
         assert!(
             k.until(1500, "title"),
             "any key goes on from the loading screen"
@@ -661,10 +653,7 @@ mod tests {
             k.s.state().is_none()
         });
         assert!(between && k.known() == Some("title"), "a frame between");
-        assert_eq!(
-            mode(k.s.definition(), k.known(), None, false),
-            KeyboardMode::Pad
-        );
+        assert_eq!(mode(k.s.definition(), k.known(), None), KeyboardMode::Pad);
 
         k.tap(Scancode::Return, 4);
         let mut seen = Vec::new();

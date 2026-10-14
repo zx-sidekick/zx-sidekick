@@ -617,7 +617,14 @@ impl Screen {
         match self {
             Self::Play(player) => {
                 for &(part, _) in presses {
-                    if let Some(function) = player.play.pressed(part) {
+                    let function = if part == Part::Start
+                        && player.session.machine().waits_on_loading_screen()
+                    {
+                        player.play.start_on_loading_screen()
+                    } else {
+                        player.play.pressed(part)
+                    };
+                    if let Some(function) = function {
                         // A failure turns the script off, which the panel shows.
                         let _ = player.session.script_action(&function);
                     }
@@ -800,13 +807,14 @@ impl Player {
         player
     }
 
-    /// Whether the game is held on its loading screen, taking the event. Any key or button
-    /// lets it go, and doesn't reach the game; its time starts again from then.
+    /// Whether the game is held on its loading screen, taking the event. Enter, the pad's
+    /// Start or a click lets it go, as its card says, and doesn't reach the game; its time
+    /// starts again from then.
     fn held(&mut self, event: &Event, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
         if !self.session.holding() {
             return false;
         }
-        if is_press(event) || !presses.is_empty() {
+        if goes_on(event, presses) {
             self.session.release();
             self.started = Instant::now();
             self.frames_run = 0;
@@ -1593,12 +1601,7 @@ impl Player {
         if self.typing.is_some() {
             return Vec::new();
         }
-        let mode = keys::mode(
-            self.session.definition(),
-            self.known_state(),
-            self.keyboard,
-            self.session.on_loading_screen(),
-        );
+        let mode = keys::mode(self.session.definition(), self.known_state(), self.keyboard);
         let action = match mode {
             KeyboardMode::Typing(_) => None,
             _ => self.play.mapping().host_key(scancode.name()),
@@ -2174,12 +2177,17 @@ fn inside((x, y, w, h): (f32, f32, f32, f32), px: f32, py: f32) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
 }
 
-/// A key pressed (not repeating), or a mouse button.
-const fn is_press(event: &Event) -> bool {
+/// Whether an event goes on from a held loading screen: Enter (the keyboard's Start), the
+/// pad's Start, or a click.
+fn goes_on(event: &Event, presses: &[(Part, Maker)]) -> bool {
     matches!(
         event,
-        Event::KeyDown { repeat: false, .. } | Event::MouseButtonDown { .. }
-    )
+        Event::KeyDown {
+            scancode: Some(Scancode::Return | Scancode::KpEnter),
+            repeat: false,
+            ..
+        } | Event::MouseButtonDown { .. }
+    ) || presses.iter().any(|&(part, _)| part == Part::Start)
 }
 
 /// What a key says to the offer to continue: Enter goes on, other keys start afresh, and a
@@ -2311,6 +2319,38 @@ notice = { text = "Press fire." }
 
         let closed: RefCell<Option<i32>> = RefCell::new(None);
         if_free(&closed, |_| panic!("no window to draw with"));
+    }
+
+    fn key_down(scancode: Scancode) -> Event {
+        Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: None,
+            scancode: Some(scancode),
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        }
+    }
+
+    #[test]
+    fn a_held_loading_screen_goes_on_with_enter_or_start_as_its_card_says() {
+        assert!(goes_on(&key_down(Scancode::Return), &[]));
+        assert!(goes_on(&key_down(Scancode::KpEnter), &[]));
+        assert!(
+            !goes_on(&key_down(Scancode::Q), &[]),
+            "other keys do nothing"
+        );
+        assert!(!goes_on(&key_down(Scancode::Space), &[]));
+        assert!(goes_on(
+            &key_down(Scancode::Q),
+            &[(Part::Start, Maker::Other)]
+        ));
+        assert!(!goes_on(
+            &key_down(Scancode::Q),
+            &[(Part::South, Maker::Other)]
+        ));
     }
 
     #[test]
