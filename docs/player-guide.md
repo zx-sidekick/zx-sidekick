@@ -149,7 +149,7 @@ To start again from nothing, quit and delete a game's folder; you'll be asked fo
 
 A tape no definition knows still plays: open it with `sidekick TAPE` (the `.tap`, `.tzx` or the `.zip` it came in). It runs with the keyboard, and the pad on the Kempston joystick, without the panel, training switches or kept scores; saves still work.
 
-Anyone can write a definition for another game: `AUTHORS-GUIDE.md` says how.
+Anyone can write a definition for another game: `AUTHORS-GUIDE.md` (in the source, `docs/definition-format.md`) says how.
 
 ## The command line
 
