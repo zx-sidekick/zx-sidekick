@@ -5,9 +5,9 @@ use crate::picture::color;
 use sidekick_core::{Bitmap, Fact, Font, Read, Reading, Session};
 use sidekick_def::{Column, Definition, MarkerPlace, MarkerShape, Widget, WidgetKind};
 use sidekick_ui::{
-    CardRow, Cell, Chip, Color, Edge, Icon, Inside, Look, MapGrid, Marker, MarkerKind, PadLabels,
-    Panel, PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Place, Route, RouteColor, Step,
-    StepLine,
+    CardRow, Cell, Chip, Color, Edge, HintSlot, Icon, Inside, Look, MapGrid, Marker, MarkerKind,
+    PadLabels, Panel, PanelBody, PanelColumn, PanelWidget, Pin, Pixels, Place, Route, RouteColor,
+    Step, StepLine,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -41,9 +41,16 @@ pub(crate) fn of(
         &script,
         &graphics,
     )?;
+    let hint = match shown.hint {
+        HintSlot::Empty => session
+            .hint(u8::try_from(level).unwrap_or(u8::MAX))
+            .map_or(HintSlot::Empty, |hint| HintSlot::Shows(hint.to_owned())),
+        slot => slot,
+    };
     Some(Panel {
         training: training(session.definition(), session.switches_on()),
         pad,
+        hint,
         ..shown
     })
 }
@@ -196,6 +203,12 @@ pub(crate) fn panel(
         widgets,
         training: Vec::new(),
         pad: None,
+        // A game with hints keeps their slot from level 1, filled by `of` while one holds.
+        hint: if level > 0 && !definition.hints.is_empty() {
+            HintSlot::Empty
+        } else {
+            HintSlot::Absent
+        },
     })
 }
 
@@ -1256,6 +1269,46 @@ set = { value = "energy", to = "max" }
         }
         s.switch("energy", false).expect("the switch goes off");
         assert!(of(&s, 1, None, None).expect("a panel").training.is_empty());
+    }
+
+    #[test]
+    fn a_game_with_hints_keeps_their_slot_from_level_1() {
+        let hinted = definition(
+            "[[hints]]\ntext = \"Lives low\"\npriority = 1\nwhen = { value = \"lives\", at_most = 1 }\n",
+        );
+        let slot = |def: &Definition, level| {
+            panel(Some(def), level, &reading(), &none(), &no_graphics)
+                .expect("a panel")
+                .hint
+        };
+        assert_eq!(slot(&hinted, 1), HintSlot::Empty, "kept, empty");
+        assert_eq!(slot(&hinted, 2), HintSlot::Empty);
+        assert_eq!(slot(&hinted, 0), HintSlot::Absent, "no guidance, no slot");
+        assert_eq!(slot(&definition(PANEL), 1), HintSlot::Absent, "no hints");
+    }
+
+    #[test]
+    fn the_hint_that_holds_fills_the_slot() {
+        let def = definition(
+            "[[states]]\nname = \"any\"\npc = 0x0038\n[[hints]]\ntext = \"Lives low\"\npriority = 1\nwhen = { value = \"lives\", at_most = 1 }\n",
+        );
+        let mut machine =
+            sidekick_core::Machine::new(sidekick_core::Model::Sinclair48K).expect("a 48K");
+        for _ in 0..100 {
+            machine.run_frame().expect("a frame");
+        }
+        let mut s = Session::new(machine, Some(def));
+        s.machine_mut().write(0x8000, 3);
+        s.run_frame().expect("a frame");
+        assert_eq!(
+            of(&s, 1, None, None).expect("a panel").hint,
+            HintSlot::Empty
+        );
+        s.machine_mut().write(0x8000, 1);
+        s.run_frame().expect("a frame");
+        let shown = |level| of(&s, level, None, None).expect("a panel").hint;
+        assert_eq!(shown(1), HintSlot::Shows("Lives low".to_owned()));
+        assert_eq!(shown(0), HintSlot::Absent);
     }
 
     #[test]

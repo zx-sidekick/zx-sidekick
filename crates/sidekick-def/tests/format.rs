@@ -530,3 +530,97 @@ places = {{ item = "top-right", door = "top-left" }}
         "a kind it draws may have a place"
     );
 }
+
+#[test]
+fn a_hint_shows_at_its_levels_on_conditions_that_exist() {
+    let text = format!(
+        r#"{HEADER}
+[[states]]
+name = "play"
+pc = 0x8000
+
+[values.energy]
+addr = 0x9000
+type = "u8"
+
+[[guidance.levels]]
+name = "Off"
+description = "None."
+[[guidance.levels]]
+name = "Some"
+description = "Some."
+[[guidance.levels]]
+name = "More"
+description = "More."
+
+[[hints]]
+text = "Energy low"
+priority = 1
+state = "play"
+when = {{ value = "energy", at_most = 30 }}
+
+[[hints]]
+text = "At Off"
+priority = 2
+from_level = 0
+state = "play"
+
+[[hints]]
+text = "Backwards"
+priority = 3
+from_level = 2
+to_level = 1
+state = ["play", "booth"]
+
+[[hints]]
+text = "Past the levels"
+priority = 4
+from_level = 3
+when = {{ value = "lives", equals = 1 }}
+
+[[hints]]
+text = "Always"
+priority = 5
+
+[[hints]]
+text = "From the script"
+priority = 6
+script = "lost"
+
+[[hints]]
+text = """Two
+lines"""
+priority = 7
+state = "play"
+
+[[hints]]
+text = "For no time"
+priority = 8
+state = "play"
+for_seconds = 0
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    assert_eq!(def.hints[0].from_level, 1, "from level 1 unless it says");
+    assert_eq!(def.hints[0].to_level, None);
+    let problems: Vec<String> = def
+        .check()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|p| p.starts_with("hints"))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            "hints[1].from_level: hints show from level 1: level 0 is no guidance",
+            "hints[2].to_level: below its from_level, 2",
+            "hints[2].state: no state named \"booth\"",
+            "hints[3].from_level: the definition has 3 guidance levels",
+            "hints[3].when.value: no value named \"lives\"",
+            "hints[4]: needs state, when or script",
+            "hints[5].script: the definition has no [script]",
+            "hints[6].text: one line",
+            "hints[7].for_seconds: at least 1",
+        ]
+    );
+}

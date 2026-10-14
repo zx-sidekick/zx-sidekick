@@ -512,6 +512,65 @@ source = "script:map"
 markers = { player = "player", teleport = "diamond", door = "label", piece = "picture", item = "picture", target = "ring" }
 places = { teleport = "top-left" }
 
+# Hints: a line in the panel while each holds, the lowest priority first. In our own words,
+# from what players have found hard (docs/games/starquake.md, "Hints"). Each holds in play (or
+# at a door), so none shows on the title, paused or after a game.
+
+[[hints]]
+text = "Energy low: avoid creatures, pick up supplies"
+priority = 1
+state = "play"
+# About 40 seconds left at the rate time takes it (docs/re/starquake.md).
+when = { value = "energy", at_most = 30 }
+
+[[hints]]
+text = "This door's cards are among the violet items on the map"
+priority = 2
+from_level = 4
+state = ["play", "door"]
+# Only while a card that would answer lies on the planet: some wait in the core's room.
+script = "door-cards-on-map"
+
+[[hints]]
+text = "This door wants the three cards under DOORS"
+priority = 3
+state = "door"
+script = "door-cards-missing"
+
+[[hints]]
+text = "This post opens only for the key"
+priority = 4
+from_level = 4
+state = "play"
+script = "post-locked"
+
+[[hints]]
+text = "Platforms low: mind pits you can't climb out of"
+priority = 5
+state = "play"
+# Five platforms left, at 2 each.
+when = { value = "platforms", at_most = 10 }
+
+[[hints]]
+text = "Type another booth's code to go there"
+priority = 6
+state = "booth"
+
+[[hints]]
+text = "Hands full: a new pick-up drops your oldest item"
+priority = 7
+state = "play"
+script = "hands-full"
+# Four are carried much of a game: shown a while once the fourth is picked up.
+for_seconds = 10
+
+[[hints]]
+text = "The core shows what it wants only in its room"
+priority = 8
+to_level = 3
+state = "play"
+script = "core-not-seen"
+
 [situations]
 # The routine that starts play in the current room (docs/re/starquake.md).
 enter = 0xA426

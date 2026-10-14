@@ -362,6 +362,16 @@ fn check(path: &Path, tape: Option<&Path>) -> ExitCode {
         .into_iter()
         .partition(|p| p.warning);
     let mut problems: Vec<String> = errors.iter().map(ToString::to_string).collect();
+    let mut fonts = sidekick_ui::Fonts::new();
+    for (i, hint) in package.definition.hints.iter().enumerate() {
+        let width = sidekick_ui::hint_width(&mut fonts, &hint.text);
+        if width > sidekick_ui::HINT_ROOM {
+            problems.push(format!(
+                "hints[{i}].text: too wide for the panel's line, {width:.0} pixels of {:.0}",
+                sidekick_ui::HINT_ROOM
+            ));
+        }
+    }
     match games::script(&package) {
         Some(Err(why)) => problems.push(format!("script: {why}")),
         Some(Ok(script)) => {

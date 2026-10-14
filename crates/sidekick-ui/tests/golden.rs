@@ -2,11 +2,11 @@
 //! rewrites them; look at a changed image before committing it.
 
 use sidekick_ui::{
-    pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, Icon, Inside, Levels,
-    LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint, Offer,
-    PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin, Pixels,
-    Place, PromptButton, Question, Refusal, Route, RouteColor, Row, ScoreRow, Step, StepLine,
-    SwitchRow, TapePrompt, ThisGame,
+    pins, CardRow, Cell, Chip, Edge, EntryCard, EntryMode, Face, Fonts, HintSlot, Icon, Inside,
+    Levels, LibraryEntry, LibraryPage, Look, MapGrid, Marker, MarkerKind, Menu, Note, NoticeHint,
+    Offer, PadLabels, PadMark, Panel, PanelBody, PanelColumn, PanelWidget, PauseNotice, Pin,
+    Pixels, Place, PromptButton, Question, Refusal, Route, RouteColor, Row, ScoreRow, Step,
+    StepLine, SwitchRow, TapePrompt, ThisGame,
 };
 use std::path::PathBuf;
 
@@ -317,6 +317,7 @@ fn the_panel() {
         widgets: Vec::new(),
         training: Vec::new(),
         pad: None,
+        hint: HintSlot::Absent,
     };
     golden("panel-level0.png", &off.draw(&mut fonts, PANEL_AT_1).png());
     for (name, pad) in [
@@ -395,6 +396,7 @@ fn the_panel() {
         ],
         training: Vec::new(),
         pad: None,
+        hint: HintSlot::Absent,
     };
     golden("panel-plain.png", &plain.draw(&mut fonts, PANEL_AT_1).png());
     let training = Panel {
@@ -486,6 +488,7 @@ fn the_panel_in_the_game_s_own_font_and_pictures() {
         ],
         training: Vec::new(),
         pad: None,
+        hint: HintSlot::Absent,
     };
     golden(
         "panel-game-pictures.png",
@@ -648,6 +651,7 @@ fn the_map() {
             ],
             training,
             pad: None,
+            hint: HintSlot::Absent,
         };
         golden(name, &panel.draw(&mut fonts, PANEL_AT_1).png());
     }
@@ -836,6 +840,7 @@ fn a_map_of_some_rooms_walked_has_no_frame() {
         }],
         training: Vec::new(),
         pad: None,
+        hint: HintSlot::Absent,
     };
     golden(
         "panel-map-walked.png",
@@ -938,6 +943,7 @@ fn routes_are_solid_through_rooms_walked_and_side_by_side_where_they_meet() {
         ],
         training: Vec::new(),
         pad: None,
+        hint: HintSlot::Absent,
     };
     golden(
         "panel-map-routes.png",
@@ -1031,6 +1037,7 @@ fn the_map_shows_what_is_inside_each_room() {
         }],
         training: Vec::new(),
         pad: None,
+        hint: HintSlot::Absent,
     };
     golden(
         "panel-map-inside.png",
@@ -1087,6 +1094,7 @@ fn every_marker_in_a_room_shows() {
         }],
         training: Vec::new(),
         pad: None,
+        hint: HintSlot::Absent,
     };
     golden(
         "panel-map-markers.png",
@@ -1096,4 +1104,96 @@ fn every_marker_in_a_room_shows() {
         "panel-map-markers-2x.png",
         &panel.draw(&mut fonts, PANEL_AT_2).png(),
     );
+}
+
+/// A level-4 panel over stand-ins, with `hint` in its slot.
+fn hinted(hint: HintSlot) -> Panel {
+    let icons = (1..=9)
+        .map(|i| Icon {
+            picture: stand_in(i),
+            look: if [2, 5, 9].contains(&i) {
+                Look::Dim
+            } else {
+                Look::Bright
+            },
+        })
+        .collect();
+    let chips = ["LUMEN", "TOPAZ"]
+        .iter()
+        .map(|w| Chip {
+            glyphs: stand_in_word(w),
+            outline: None,
+        })
+        .collect();
+    let door = CardRow {
+        outline: Some(sidekick_ui::colors::ACCENT),
+        label: stand_in_word("4"),
+        cards: (0..3).map(|c| (stand_in(40 + c), false)).collect(),
+    };
+    Panel {
+        level: 4,
+        name: "What you have not".to_owned(),
+        description: String::new(),
+        training: Vec::new(),
+        pad: None,
+        hint,
+        widgets: vec![
+            PanelWidget {
+                column: PanelColumn::Left,
+                title: Some("Core".to_owned()),
+                body: PanelBody::Icons { columns: 3, icons },
+            },
+            PanelWidget {
+                column: PanelColumn::Right,
+                title: Some("Teleports".to_owned()),
+                body: PanelBody::Chips(chips),
+            },
+            PanelWidget {
+                column: PanelColumn::Right,
+                title: Some("Doors".to_owned()),
+                body: PanelBody::Cards(vec![door]),
+            },
+            PanelWidget {
+                column: PanelColumn::Left,
+                title: None,
+                body: PanelBody::Map(stand_in_map(false)),
+            },
+        ],
+    }
+}
+
+#[test]
+fn a_hint_shows_on_a_band_in_a_slot_that_stays_when_empty() {
+    let mut fonts = Fonts::new();
+    let shown = hinted(HintSlot::Shows(
+        "This door's cards are among the violet items".to_owned(),
+    ))
+    .draw(&mut fonts, PANEL_AT_1);
+    let empty = hinted(HintSlot::Empty).draw(&mut fonts, PANEL_AT_1);
+    let absent = hinted(HintSlot::Absent).draw(&mut fonts, PANEL_AT_1);
+    golden("panel-hint.png", &shown.png());
+    golden("panel-hint-empty.png", &empty.png());
+    // Below the band, a hint coming or going moves nothing.
+    let below = |c: &sidekick_ui::Canvas| c.rgba()[408 * 4 * 101..].to_vec();
+    assert_eq!(below(&shown), below(&empty), "the widgets stay put");
+    assert_ne!(
+        below(&empty),
+        below(&absent),
+        "a game without hints keeps no slot"
+    );
+}
+
+#[test]
+fn a_hint_fits_the_panel_s_width_or_doesn_t() {
+    let mut fonts = Fonts::new();
+    let fits = sidekick_ui::hint_width(
+        &mut fonts,
+        "Platforms low: mind pits you can't climb out of",
+    );
+    assert!(fits < sidekick_ui::HINT_ROOM, "{fits}");
+    let long = sidekick_ui::hint_width(
+        &mut fonts,
+        "Far too long a hint for one line in the panel, by a good many words",
+    );
+    assert!(long > sidekick_ui::HINT_ROOM, "{long}");
 }

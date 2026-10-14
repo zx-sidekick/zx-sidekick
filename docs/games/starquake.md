@@ -62,6 +62,33 @@ Screenshots of the program running the game: [level 1](../media/starquake-level1
 
 **The game's own letters:** codes and door numbers are drawn with the game's font, read from the tape, at a whole number of screen pixels per game pixel, so every letter is the same size.
 
+## Hints
+
+Eight `[[hints]]`, a line under the level's name while each holds, the lowest priority first; each holds only in play or at a door, so none shows on the title, paused or after a game. They come from what players have found hard, summed up here in our own words, and from the facts in `docs/re/starquake.md`:
+
+- **The goal is unclear at first:** what the core wants changes every game, and the game shows it only in the core's own room. Some players lost every life before working out what to do.
+- **Energy and platforms run out:** energy falls with time and faster under some creatures' touch; supplies taken don't come back; without platforms a pit can't be climbed out of.
+- **Doors, posts and booths:** a security door wants three particular cards (two items answer any card), a locked post opens only for the key, and a booth wants another booth's code, found only by visiting it.
+- **Four items at most:** a fifth pick-up drops the oldest carried, so the core takes many trips.
+- **Getting lost:** 512 rooms, and players who nearly finished couldn't find the last pieces.
+
+| Priority | Says, in short | Holds while | Levels |
+|:-:|---|---|:-:|
+| 1 | Energy is low | in play, `energy` at most 30: about 40 seconds left | 1 up |
+| 2 | Where this door's cards lie on the map | in play or at the door, the script's `door-cards-on-map`: BLOB in a security door's room, its cards not all answered by what he carries, and an item that would answer one lying on the planet (some wait in the core's room, off the map) | 4 up |
+| 3 | This door wants the cards under DOORS | the `door` state, and the script's `door-cards-missing`: its cards not all answered | 1 up |
+| 4 | This post opens only for the key | in play, the script's `post-locked`: BLOB in a room with a post still locked (`locked_doors`), the key not carried | 4 up |
+| 5 | Platforms are low | in play, `platforms` at most 10: five left | 1 up |
+| 6 | How a booth is used | the `booth` state | 1 up |
+| 7 | Hands are full | in play, the script's `hands-full`: four items carried; for ten seconds, then again only once fewer are carried and the fourth is picked up anew | 1 up |
+| 8 | The core shows what it wants only in its room | in play, the script's `core-not-seen`: 20 rooms walked without the core's room among them | 1 to 3; from 4 the core shows anyway |
+
+The door's routine isn't passed every frame, so a frame between counts as the state last matched, and the door's hint stays up while the door runs.
+
+A screenshot of the program running the game at level 4, beside a door: [the hint](../media/starquake-hint.png).
+
+What players have written, read for this: Wikipedia's article on the game; the reviews in Crash #22, Sinclair User #44, Computer Gamer #9 and Amstrad Action (as everygamegoing.com reprints them); C64-Wiki; PixelatedArcade; the Spectrum Computing review index and user reviews; three Spectrum Computing forum threads; and two retrospectives, on A Most Agreeable Pastime and Affectionate Discourse.
+
 ## What the definition reads
 
 Each of these is a fact to find (below) and then a `[values]` entry:
@@ -72,6 +99,7 @@ Each of these is a fact to find (below) and then a `[values]` entry:
 - the teleport table: each teleport's room and code;
 - each security door's room and the three cards it asks for;
 - the item table: each item's room, position, colour and graphic, and whether it's carried;
+- the locked doors' posts, each with its room and whether it's still locked (`locked_doors`), for the post's hint;
 - the core's nine slots: the graphic each wants, and which are filled;
 - the inventory;
 - lives, and the three bars (energy, bridging platforms, laser);

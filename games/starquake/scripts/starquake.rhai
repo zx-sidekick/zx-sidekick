@@ -1319,6 +1319,81 @@ fn map(mem, loaded, rooms, level, lying, listed, guided) {
 }
 
 // At each sync point: the panel's data, and codes to keep.
+// The door's cards the cards BLOB carries leave unanswered: each card answers itself, and each
+// of pictures 14 and 15 answers any one card (docs/re/starquake.md). Empty when all are.
+fn cards_missing(cards, carrying) {
+    let wild = carrying.filter(|p| p == 14 || p == 15).len();
+    let missing = cards.filter(|card| !carrying.contains(card));
+    if missing.len() > wild { missing } else { [] }
+}
+
+// Whether an item that would answer one of `missing` lies on the planet, where the map shows
+// it: that card, or one that answers any card; not carried, nor kept in the core's room.
+fn card_lying(mem, missing) {
+    for item in mem.table("items") {
+        let picture = item.picture;
+        let row = item.second & 0x7F;
+        let room = item.room_low + (item.second >> 7) * 256;
+        let answers = missing.contains(picture) || picture == 14 || picture == 15;
+        if answers && !(row >= 1 && row <= 5) && room != core_room() {
+            return true;
+        }
+    }
+    false
+}
+
+// A table field read as a flag, whether it comes as one or as a number.
+fn set(field) {
+    if type_of(field) == "bool" { field } else { field != 0 }
+}
+
+// Whether the locked door's post in `room` is still locked, by the game's table of locked
+// doors (docs/re/starquake.md).
+fn post_locked(mem, room) {
+    for door in mem.table("locked_doors") {
+        let ninth = if set(door.room_high) { 256 } else { 0 };
+        if door.room_low + ninth == room {
+            return set(door.locked);
+        }
+    }
+    false
+}
+
+// How many rooms walked before the hint that the core shows what it wants only in its room.
+fn rooms_before_core_hint() {
+    20
+}
+
+// The definition's `[[hints]]` script conditions that hold now (docs/games/starquake.md): BLOB
+// in a security door's room without its cards, and whether one that would answer lies on the
+// map; at a locked door's post without the key; with four items carried; or a good way into the
+// planet without having seen the core.
+fn hint_conditions(mem, loaded, carrying, rooms) {
+    let holding = [];
+    let room = mem.value("room");
+    if room != () && "doors" in loaded && loaded.doors.some(|d| d.room == room) {
+        let missing = cards_missing(door_cards(mem.value("seed"), room), carrying);
+        if missing.len() > 0 {
+            holding.push("door-cards-missing");
+            if card_lying(mem, missing) {
+                holding.push("door-cards-on-map");
+            }
+        }
+    }
+    if room != () && "graph" in loaded && loaded.graph.posts.contains(room) {
+        if !carrying.contains(16) && post_locked(mem, room) {
+            holding.push("post-locked");
+        }
+    }
+    if carrying.len() == 4 {
+        holding.push("hands-full");
+    }
+    if !core_seen(mem) && rooms.len() >= rooms_before_core_hint() {
+        holding.push("core-not-seen");
+    }
+    holding
+}
+
 fn on_frame(mem, loaded, prev, kept, level) {
     let carrying = carried(mem);
     let keep = #{};
@@ -1352,6 +1427,7 @@ fn on_frame(mem, loaded, prev, kept, level) {
         room: mem.value("room"),
         blocks: decoded(mem, loaded),
         route: guided.route,
+        hints: hint_conditions(mem, loaded, carrying, rooms),
     }
 }
 

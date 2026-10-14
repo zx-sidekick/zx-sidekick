@@ -780,6 +780,57 @@ impl Checker<'_> {
         }
     }
 
+    fn hints(&mut self) {
+        let levels = self.def.guidance.as_ref().map_or(0, |g| g.levels.len());
+        for (i, hint) in self.def.hints.iter().enumerate() {
+            let path = format!("hints[{i}]");
+            if hint.text.trim().is_empty() {
+                self.report(format!("{path}.text"), "says nothing");
+            } else if hint.text.contains('\n') {
+                self.report(format!("{path}.text"), "one line");
+            }
+            if hint.from_level == 0 {
+                self.report(
+                    format!("{path}.from_level"),
+                    "hints show from level 1: level 0 is no guidance",
+                );
+            } else if usize::try_from(hint.from_level).map_or(true, |l| l >= levels) {
+                self.report(
+                    format!("{path}.from_level"),
+                    format!("the definition has {levels} guidance levels"),
+                );
+            }
+            if let Some(to) = hint.to_level {
+                if to < hint.from_level {
+                    self.report(
+                        format!("{path}.to_level"),
+                        format!("below its from_level, {}", hint.from_level),
+                    );
+                } else if usize::try_from(to).map_or(true, |l| l >= levels) {
+                    self.report(
+                        format!("{path}.to_level"),
+                        format!("the definition has {levels} guidance levels"),
+                    );
+                }
+            }
+            for name in hint.state.iter().flat_map(OneOrMany::iter) {
+                self.need_state(&format!("{path}.state"), name);
+            }
+            if let Some(when) = &hint.when {
+                self.test(&format!("{path}.when"), when);
+            }
+            if hint.script.is_some() && self.def.script.is_none() {
+                self.report(format!("{path}.script"), "the definition has no [script]");
+            }
+            if hint.for_seconds == Some(0) {
+                self.report(format!("{path}.for_seconds"), "at least 1");
+            }
+            if hint.state.is_none() && hint.when.is_none() && hint.script.is_none() {
+                self.report(&path, "needs state, when or script");
+            }
+        }
+    }
+
     fn situations(&mut self) {
         if let Some(situations) = &self.def.situations {
             if situations.enter.is_none() {
@@ -815,6 +866,7 @@ pub(crate) fn check(def: &Definition) -> Vec<Problem> {
     checker.persist();
     checker.high_scores();
     checker.panel();
+    checker.hints();
     checker.situations();
     checker.problems
 }

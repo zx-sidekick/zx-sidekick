@@ -218,3 +218,29 @@ fn import_pok_writes_switches_a_definition_takes() {
     assert_eq!(broken.status, 2);
     assert!(broken.stderr.contains("line 1"), "{}", broken.stderr);
 }
+
+#[test]
+fn check_refuses_a_hint_wider_than_the_panel_s_line() {
+    let dir = TempDir::new().unwrap();
+    let def = dir.path().join("example.toml");
+    let levels = "[[guidance.levels]]\nname = \"Off\"\ndescription = \"None.\"\n[[guidance.levels]]\nname = \"On\"\ndescription = \"On.\"\n";
+    let hint = |text: &str| {
+        format!("{COMPLETE}{levels}[[hints]]\ntext = \"{text}\"\npriority = 1\nwhen = {{ value = \"lives\", at_most = 1 }}\n")
+    };
+    fs::write(&def, hint("Lives low: go carefully")).unwrap();
+    let fits = sidekick(&["check", path(&def)]);
+    assert_eq!((fits.status, fits.stdout.as_str()), (0, ""));
+    fs::write(
+        &def,
+        hint("Lives low: go carefully, keep away from everything that moves, and rest"),
+    )
+    .unwrap();
+    let wide = sidekick(&["check", path(&def)]);
+    assert_eq!(wide.status, 1, "{}", wide.stdout);
+    assert!(
+        wide.stdout
+            .starts_with("hints[0].text: too wide for the panel's line"),
+        "{}",
+        wide.stdout
+    );
+}
