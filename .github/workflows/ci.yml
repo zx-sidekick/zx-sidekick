@@ -36,7 +36,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - run: scripts/check.sh guard package fmt clippy
+      - run: scripts/check.sh guard package notes fmt clippy
 
   # The program built and tested on each platform it ships for, SDL3 built from source into
   # it. Packed ready to run (scripts/package.sh) and kept as an artifact, to try a pull
