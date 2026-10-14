@@ -5,7 +5,7 @@
 #   scripts/check.sh guard fmt ...    only the named steps (CI runs them in two jobs)
 #
 # Steps: guard (no tape, snapshot or ROM file committed; CLAUDE.md), package (the packing
-# script leaves out tests/ and refuses game files), fmt, clippy, test.
+# script leaves out tests/ and refuses game files), notes (the release notes), fmt, clippy, test.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -62,15 +62,50 @@ package() {
     return 1
   fi
 }
+
+# The release notes on a stand-in history: a release lists the titles since the previous tag,
+# counts Dependabot's, names each definition's zip, and carries the notice.
+notes() {
+  local scratch notes
+  scratch=$(mktemp -d)
+  trap 'rm -rf -- "$scratch"' RETURN
+  stand_in() { git -C "$scratch" -c user.name="${AUTHOR:-Maintainer}" -c user.email=m@example.com \
+    -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
+  git init -q "$scratch"
+  mkdir -p "$scratch/games/stand-in"
+  echo 'title = "Stand-in"' >"$scratch/games/stand-in/game.toml"
+  stand_in commit -q --allow-empty -m 'First (#1)'
+  stand_in tag v0.1.0
+  stand_in commit -q --allow-empty -m 'Second (#2)'
+  AUTHOR='dependabot[bot]' stand_in commit -q --allow-empty -m 'Bump a crate (#3)'
+  stand_in tag v0.2.0
+  notes=$(RELEASE_NOTES_REPO="$scratch" scripts/release-notes.sh v0.2.0)
+  if ! grep -qx '## Changes since v0.1.0' <<<"$notes" || ! grep -qx -- '- Second (#2)' <<<"$notes" \
+    || grep -q 'First\|Bump' <<<"$notes" || ! grep -q 'One dependency update' <<<"$notes" \
+    || ! grep -q 'you need your own copy' <<<"$notes" || ! grep -q 'not affiliated' <<<"$notes" \
+    || ! grep -q 'zx-sidekick-0.2.0-windows-x64.zip' <<<"$notes" \
+    || ! grep -q "stand-in.zip\` | Stand-in's definition" <<<"$notes"; then
+    echo "notes: v0.2.0's notes should list #2 alone, count #3 and carry the notice:" >&2
+    echo "$notes" >&2
+    return 1
+  fi
+  notes=$(RELEASE_NOTES_REPO="$scratch" scripts/release-notes.sh v0.3.0)
+  if ! grep -qx '## Changes since v0.2.0' <<<"$notes" || grep -q '^- ' <<<"$notes"; then
+    echo "notes: a tag not made yet should be previewed from HEAD, since the last tag:" >&2
+    echo "$notes" >&2
+    return 1
+  fi
+}
+
 fmt() { cargo fmt --check; }
 clippy() { cargo clippy --all-targets -- -D warnings; }
 test() { cargo test; }
 
 steps=("$@")
-[ ${#steps[@]} -eq 0 ] && steps=(guard package fmt clippy test)
+[ ${#steps[@]} -eq 0 ] && steps=(guard package notes fmt clippy test)
 for step in "${steps[@]}"; do
   case "$step" in
-    guard | package | fmt | clippy | test) echo "== $step"; "$step" ;;
+    guard | package | notes | fmt | clippy | test) echo "== $step"; "$step" ;;
     *) echo "unknown step: $step" >&2; exit 2 ;;
   esac
 done
