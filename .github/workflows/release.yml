@@ -36,8 +36,9 @@ jobs:
             exit 1
           fi
 
-  # The same setup as CI's build jobs (SDL3 built from source into the program), with no cache,
-  # so a release is built from nothing but the tagged commit.
+  # CI's build jobs' setup (SDL3 built from source into the program), with Linux on an older
+  # Ubuntu and Windows on the static C runtime, and no cache, so a release is built from nothing
+  # but the tagged commit.
   build:
     name: build (${{ matrix.platform }})
     needs: version
@@ -60,8 +61,8 @@ jobs:
             os: windows-2025
             binary: sidekick.exe
     env:
-      # Windows: the C runtime linked into the program (SDL3 too, through the cmake crate), so it
-      # runs without the Visual C++ redistributable installed. Ignored on the other runners.
+      # Windows: the C runtime linked into the program, so it runs without the Visual C++
+      # redistributable installed. Ignored on the other runners.
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - uses: actions/checkout@v7
@@ -69,6 +70,10 @@ jobs:
           persist-credentials: false
       - if: runner.os == 'Linux'
         run: scripts/linux-deps.sh
+      # SDL3, built by CMake, on the same static C runtime (scripts/static-crt.cmake).
+      - if: runner.os == 'Windows'
+        shell: bash
+        run: echo "CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_msvc=$(cygpath -m "$PWD/scripts/static-crt.cmake")" >>"$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
