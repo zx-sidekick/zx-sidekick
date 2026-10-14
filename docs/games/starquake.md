@@ -10,7 +10,7 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 ## Keys and pad
 
-**Keyboard:** a second pad (`[run] keyboard`, left at its default `"pad"`), so it plays on the Kempston joystick too: the arrows or W A S D move, Space fires, Z and X send down and up, V switches level 5's route, and Enter starts a game on the title, goes on from the story that follows, and pauses in play (it taps SPACE, the game's own pause key). The game's own keys don't reach it: its menu's list of control methods and its defined keys are left behind, and so is **A S D F G** together to abandon a game, which the guidance menu's "End this game" does instead. The menu's "Use the Spectrum keyboard" toggle gives the original keys back for the session. **Tab** switches level 5's route between pieces (`[[actions]] next-route`, `host_key = "Tab"`). At a teleport booth and the high score's name, the keyboard types the letters straight into the game.
+**Keyboard:** a second pad (`[run] keyboard`, left at its default `"pad"`), so it plays on the Kempston joystick too: the arrows or W A S D move, Space fires, Z and X send down and up, V switches level 5's route, and Enter pauses in play (it taps SPACE, the game's own pause key). On the title, any key starts a game, letters and digits too, and any key goes on from the story that follows. The game's own keys don't reach it: its menu's list of control methods and its defined keys are left behind, and so is **A S D F G** together to abandon a game, which the guidance menu's "End this game" does instead. The menu's "Use the Spectrum keyboard" toggle gives the original keys back for the session. **Tab** switches level 5's route between pieces (`[[actions]] next-route`, `host_key = "Tab"`). At a teleport booth and the high score's name, the keyboard types the letters straight into the game.
 
 **Pad**, in play, on the Kempston joystick (`[run] joystick = "kempston"`), whichever control method the game's menu chose. The keyboard's keys for each button are beside it:
 
@@ -21,18 +21,19 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 | South | Z | Down: build a platform, or fly down | `south = "build"` |
 | East | X | Up: pick up or swap an item, or board a hover platform | `east = "pick-up"` |
 | North | V | Switch level 5's route | `north = "next-route"` |
-| Start | Enter | Pause in play; start a game on the title screen; go on from the story | `[pad.default] start`, `[pad.title] start` |
+| Start | Enter | Pause in play | `[pad.default] start` |
+| Any | Any key but Esc and the F keys | Start a game on the title screen; go on from the story | `[pad.title] any` |
 | Select | Esc | The guidance menu | always |
 
 **Up and down.** In the original, *up* both picks up or swaps and boards a hover platform, and *down* both builds and flies down; the game decides which from where BLOB is. The east button sends *up* and the south one *down* (`[[actions]] pick-up` and `build`), each with both of the game's meanings, as the D-pad's up and down do. Splitting them, so that east only picks up and south only builds, was looked at and not taken up (#20).
 
-**The story:** a game starts with its story, under a tune that plays until a key is pressed; the joystick doesn't end it. No state matches there, so the title is still the state last known: Start (Enter) taps 0 on the title to start a game, and again on the story to go on into play. It taps 0 rather than SPACE, which pauses play.
+**The story:** a game starts with its story, under a tune that plays until a key is pressed; the joystick doesn't end it. No state matches there, so the title is still the state last known: any key or button (Select apart) taps 0 on the title to start a game, and again on the story to go on into play. It taps 0 rather than SPACE, which pauses play.
 
 **The pause notice:** in the original, any move or fire continues once the pause key is let go: the arrows or Space, or the pad's D-pad or west button.
 
-**The loading screen:** the game's loader shows its screen until a key is pressed, and the rest of the tape loads after it; a card at the screen's foot says so, with Start on the pad (it taps SPACE).
+**The loading screen:** the game's loader shows its screen until a key is pressed, and the rest of the tape loads after it; a card at the screen's foot says so. Any button on the pad goes on (it taps ENTER, since the west button's Kempston fire is no key to the loader), and so do the keys that play as one: Enter, Space, Z X C V, the right Ctrl and Alt, `/`.
 
-**The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), so a card over the foot of the title says "Ignore the list: play with the arrows or WASD, or a gamepad", with the keys to move (the arrows), fire (Space) and start (Enter).
+**The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), and any key or button starts a game (`[pad.title] any`), so a card over the foot of the title says "Ignore the list: press any key or button to start", with the keys to move (the arrows) and fire (Space).
 
 ## How to play
 

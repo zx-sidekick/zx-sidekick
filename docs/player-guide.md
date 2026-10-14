@@ -50,9 +50,9 @@ With one game installed, the program starts it. Without its tape, it asks for it
 
 The tape is kept in the data folder, so it's found the next time.
 
-The game starts fullscreen. **F11** switches between fullscreen and a window; on a Mac, **Control-Command-F** does. The tape loads quickly; on the loading screen a card says to press a key, or Start on a pad, to go on.
+The game starts fullscreen. **F11** switches between fullscreen and a window; on a Mac, **Control-Command-F** does. The tape loads quickly; on the loading screen a card says to press any button on a pad, or Enter, Space, Z, X, C or V, to go on.
 
-On Starquake's title the program has already chosen the joystick for you, so ignore the game's list of controls: play with the arrow keys or a gamepad, and press **0**, or **Start**, to begin.
+On Starquake's title the program has already chosen the joystick for you, so ignore the game's list of controls: press any key or button to begin, and play with the arrow keys or a gamepad.
 
 When a game starts, a **How to play** card says what the game is about and how its main moves are made, with the keys (and a pad's buttons, while one is plugged in) for each. Enter, Esc or A plays on. Turn **Show next time** off (left or right, or a click) to skip it at the start of later games; the menu's *How to play* row shows it any time.
 
@@ -77,7 +77,7 @@ When a game starts, a **How to play** card says what the game is about and how i
 | East button | | Pick up or swap an item (the same as up, for now) |
 | North button | Tab | At guidance level 5, the next route |
 | Start | Space | Pause |
-| Start | 0 | On the title, start a game |
+| Any button | Any key | On the title, start a game |
 | Select | Esc | The guidance menu |
 
 Starquake's own keys still work too: Space pauses, and A S D F G held together end the game. When the game is paused, a card says how to go on: move or fire, or A or B on a pad.
