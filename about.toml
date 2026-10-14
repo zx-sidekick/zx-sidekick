@@ -26,16 +26,17 @@ ignore-dev-dependencies = true
 # The workspace's own crates: they're under LICENSE, packed beside the program.
 private = { ignore = true }
 
-# SDL3 is compiled into the program from the source in sdl3-src. Pinned here, rather than the
-# zlib notice at the top of each of SDL's own files: the crate's licence, SDL3's, those of
-# HIDAPI (offered under a choice of three; the BSD one is taken) and yuv2rgb, then every other
-# notice in the source of a file built for a platform the program ships on, verbatim from
-# `start` through `end`. Where several files carry the same notice, one stands for them all.
-# scripts/check.sh's package step names any copyright line in that source the notices lack.
-# A checksum that no longer matches stops scripts/notices.sh: read the text again and update it
-# (the SHA-256 of the file, or of the text from `start` through `end`, both included).
+# SDL3 is compiled into the program from the source in sdl3-src. Its section, last below, pins
+# the crate's licence, SDL3's, HIDAPI's and yuv2rgb's, and every other notice in the source of a
+# file built for a platform the program ships on, verbatim from `start` through `end`, rather
+# than the zlib notice at the top of each of SDL's own files. scripts/sdl-notices.sh writes it
+# from the source (its header says what it pins and what it leaves out); run it after sdl3-src
+# moves, and read what changed. scripts/check.sh's package step fails while it's out of date,
+# and scripts/notices.sh stops on a checksum that no longer matches. A licence it reports that
+# isn't accepted above has to be added there by hand.
+# Written by scripts/sdl-notices.sh from here to the end: run it rather than editing.
 [sdl3-src.clarify]
-license = "Zlib AND BSD-3-Clause AND MIT AND Apache-2.0 AND HPND AND SunPro"
+license = "Zlib AND BSD-3-Clause AND MIT AND Apache-2.0 AND SunPro AND HPND"
 
 [[sdl3-src.clarify.files]]
 path = "LICENSE.md"
