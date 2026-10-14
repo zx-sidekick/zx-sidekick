@@ -819,7 +819,7 @@
       "description": "What the computer's keyboard is in play.",
       "oneOf": [
         {
-          "description": "A pad, through `[pad]`: the arrows and WASD its D-pad, Space its west button, Enter its\nStart. No Spectrum key reaches the game.",
+          "description": "A pad, through `[pad]`: the arrows its D-pad, Space its west button, Enter its Start; no\nother key plays, and no Spectrum key reaches the game.",
           "type": "string",
           "const": "pad"
         },

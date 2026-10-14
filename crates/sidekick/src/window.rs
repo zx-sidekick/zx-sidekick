@@ -2700,18 +2700,20 @@ notice = { text = "Press fire." }
             Scancode::X,
             Scancode::C,
             Scancode::V,
-            Scancode::RCtrl,
-            Scancode::RAlt,
             Scancode::Slash,
             Scancode::Q,
             Scancode::_1,
             Scancode::Tab,
+            // Only the arrows are directions (#194).
+            Scancode::W,
         ] {
             assert!(goes_on(&key_down(key), &[]), "{key:?}");
         }
         for key in [
             Scancode::Left,
-            Scancode::W,
+            // Modifiers, no longer fire (#194).
+            Scancode::RCtrl,
+            Scancode::RAlt,
             Scancode::Escape,
             Scancode::F1,
             Scancode::LShift,

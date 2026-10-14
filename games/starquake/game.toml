@@ -340,8 +340,8 @@ note = "Stops zappers, creatures and deadly scenery taking a life, and creatures
 
 # The pad.
 
-# The keyboard plays as this pad too ([run] keyboard, the default): the arrows and WASD the
-# D-pad, Space west, Z X C V south, east, west and north, Enter Start. So Enter pauses in play.
+# The keyboard plays as this pad too ([run] keyboard, the default): the arrows the D-pad, Space
+# west, Enter Start. So Enter pauses in play; up picks up and down builds, as in the original.
 
 [pad.default]
 dpad = "joystick"

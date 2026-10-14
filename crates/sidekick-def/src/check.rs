@@ -82,8 +82,8 @@ const NOTICE_PARTS: &[&str] = &["dpad", "stick", "west", "south", "east", "north
 const PROGRAM_KEYS: &[&str] = &["Esc", "F5", "F9", "F11"];
 
 /// The keys that an action can take, by SDL's names for them: none the keyboard plays as a
-/// pad with (the arrows, W A S D, Z X C V, Space, Enter, the right Control and Alt, `/`) or
-/// types on the Spectrum with (letters, digits, the shifts, Backspace).
+/// pad with (the arrows, Space, Enter, and the right Control and Alt and `/` with the Spectrum's
+/// keyboard on) or types on the Spectrum with (letters, digits, the shifts, Backspace).
 const HOST_KEYS: &[&str] = &[
     "Tab", "F1", "F2", "F3", "F4", "F6", "F7", "F8", "F10", "F12", "Insert", "Delete", "Home",
     "End", "PageUp", "PageDown",

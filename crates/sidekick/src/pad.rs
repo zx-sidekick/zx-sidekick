@@ -927,12 +927,12 @@ pub(crate) mod tests {
         let pad = |part| mapping.keyboard_for(None, part, false);
         assert_eq!(
             pad("east").as_deref(),
-            Some("X"),
-            "the keyboard as a pad: its own key"
+            Some("↑"),
+            "the keyboard as a pad: no key of its own, so the arrow that does the same"
         );
-        assert_eq!(pad("south").as_deref(), Some("Z"));
-        assert_eq!(pad("west").as_deref(), Some("Space"));
-        assert_eq!(pad("north").as_deref(), Some("V"));
+        assert_eq!(pad("south").as_deref(), Some("↓"));
+        assert_eq!(pad("west").as_deref(), Some("Space"), "its own key");
+        assert_eq!(pad("north").as_deref(), Some("Tab"), "an action's key");
     }
 
     /// What `play` holds after one update with `held`.

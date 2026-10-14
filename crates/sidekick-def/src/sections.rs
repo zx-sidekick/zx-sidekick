@@ -116,8 +116,8 @@ pub struct Run {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Keyboard {
-    /// A pad, through `[pad]`: the arrows and WASD its D-pad, Space its west button, Enter its
-    /// Start. No Spectrum key reaches the game.
+    /// A pad, through `[pad]`: the arrows its D-pad, Space its west button, Enter its Start; no
+    /// other key plays, and no Spectrum key reaches the game.
     #[default]
     Pad,
     /// The Spectrum's own keyboard: its keys reach the game, and the arrows are still the D-pad.

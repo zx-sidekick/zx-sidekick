@@ -179,23 +179,18 @@ pub(crate) fn any_key(scancode: Scancode) -> Option<Part> {
     u16::try_from(scancode.to_i32()).ok().map(Part::Key)
 }
 
-/// The pad part a key plays as when the keyboard is a pad: the arrows and W A S D are the
-/// D-pad; Space, the right Control, the right Alt (Option) and `/` the west button; Z, X, C and
-/// V the south, east, west and north buttons, by position; Enter is Start. `/` is for a Mac,
-/// whose apps may take a modifier tapped twice for a shortcut of their own, whatever window has
-/// focus.
+/// The pad part a key plays as when the keyboard is a pad: the arrows are the D-pad, Space the
+/// west button (fire), Enter Start. No other key plays (#194); Esc and the F keys are the
+/// program's.
 #[must_use]
 pub(crate) const fn pad_key(scancode: Scancode) -> Option<Part> {
     use Scancode as S;
     Some(match scancode {
-        S::Up | S::W => Part::DPad(Way::Up),
-        S::Down | S::S => Part::DPad(Way::Down),
-        S::Left | S::A => Part::DPad(Way::Left),
-        S::Right | S::D => Part::DPad(Way::Right),
-        S::Space | S::RCtrl | S::RAlt | S::Slash | S::C => Part::West,
-        S::Z => Part::South,
-        S::X => Part::East,
-        S::V => Part::North,
+        S::Up => Part::DPad(Way::Up),
+        S::Down => Part::DPad(Way::Down),
+        S::Left => Part::DPad(Way::Left),
+        S::Right => Part::DPad(Way::Right),
+        S::Space => Part::West,
         S::Return | S::KpEnter => Part::Start,
         _ => return None,
     })
@@ -288,7 +283,7 @@ pub(crate) const fn pad_part(scancode: Scancode) -> Option<Part> {
 }
 
 /// How a card names the key that plays `part`: with the keyboard a pad ([`pad_key`]), the arrows,
-/// Space for west, Z, X and V for south, east and north, and Enter for Start; with the Spectrum's
+/// Space for west and Enter for Start; with the Spectrum's
 /// keyboard on (`spectrum`, [`pad_part`]), the arrows and the right Control for fire (a Mac's
 /// cards name `/` instead), and no others.
 pub(crate) const fn key_for(part: Part, spectrum: bool) -> Option<&'static str> {
@@ -299,9 +294,6 @@ pub(crate) const fn key_for(part: Part, spectrum: bool) -> Option<&'static str> 
         (Part::DPad(Way::Right), _) => Some("→"),
         (Part::West, true) => Some("Right Ctrl"),
         (Part::West, false) => Some("Space"),
-        (Part::South, false) => Some("Z"),
-        (Part::East, false) => Some("X"),
-        (Part::North, false) => Some("V"),
         (Part::Start, false) => Some("Enter"),
         _ => None,
     }
@@ -466,30 +458,30 @@ mod tests {
         let pad = mode(Some(&def("")), Some("play"), false);
         assert_eq!(pad, KeyboardMode::Pad);
         for (keys, want) in [
-            (&[Scancode::Up, Scancode::W][..], Part::DPad(Way::Up)),
-            (&[Scancode::Down, Scancode::S], Part::DPad(Way::Down)),
-            (&[Scancode::Left, Scancode::A], Part::DPad(Way::Left)),
-            (&[Scancode::Right, Scancode::D], Part::DPad(Way::Right)),
-            (
-                &[
-                    Scancode::Space,
-                    Scancode::RCtrl,
-                    Scancode::RAlt,
-                    Scancode::Slash,
-                    Scancode::C,
-                ],
-                Part::West,
-            ),
-            (&[Scancode::Z], Part::South),
-            (&[Scancode::X], Part::East),
-            (&[Scancode::V], Part::North),
+            (&[Scancode::Up][..], Part::DPad(Way::Up)),
+            (&[Scancode::Down], Part::DPad(Way::Down)),
+            (&[Scancode::Left], Part::DPad(Way::Left)),
+            (&[Scancode::Right], Part::DPad(Way::Right)),
+            (&[Scancode::Space], Part::West),
             (&[Scancode::Return, Scancode::KpEnter], Part::Start),
         ] {
             for &key in keys {
                 assert_eq!(part(key, &pad), Some(want), "{key:?}");
             }
         }
+        // Only the cursor keys and Space play (#194).
         for key in [
+            Scancode::W,
+            Scancode::A,
+            Scancode::S,
+            Scancode::D,
+            Scancode::Z,
+            Scancode::X,
+            Scancode::C,
+            Scancode::V,
+            Scancode::RCtrl,
+            Scancode::RAlt,
+            Scancode::Slash,
             Scancode::Q,
             Scancode::_0,
             Scancode::LShift,
@@ -625,9 +617,12 @@ mod tests {
 
     #[test]
     fn a_key_let_go_lets_go_of_whatever_it_may_have_pressed() {
-        let (key, parts) = let_go(Scancode::W);
-        assert!(matches!(key, Some(Spectrum::Key(Key::W))));
-        assert_eq!(parts, [Part::DPad(Way::Up)]);
+        let (key, parts) = let_go(Scancode::Space);
+        assert!(matches!(key, Some(Spectrum::Key(Key::Space))));
+        assert_eq!(parts, [Part::West]);
+        let (key, parts) = let_go(Scancode::RCtrl);
+        assert!(key.is_none());
+        assert_eq!(parts, [Part::West], "fire, with the Spectrum's keyboard on");
         let (key, parts) = let_go(Scancode::Up);
         assert!(key.is_none());
         assert_eq!(parts, [Part::DPad(Way::Up)], "once");
@@ -789,14 +784,17 @@ mod tests {
             Scancode::X,
             Scancode::C,
             Scancode::V,
-            Scancode::RCtrl,
-            Scancode::RAlt,
             Scancode::Slash,
             Scancode::Q,
             Scancode::M,
             Scancode::_1,
             Scancode::Tab,
             Scancode::Backspace,
+            // Not directions since #194: only the arrows are.
+            Scancode::W,
+            Scancode::A,
+            Scancode::S,
+            Scancode::D,
         ] {
             let mut k = waiting.fork();
             k.tap(key, 4);
@@ -814,10 +812,9 @@ mod tests {
         for key in [
             Scancode::Left,
             Scancode::Up,
-            Scancode::W,
-            Scancode::A,
-            Scancode::S,
-            Scancode::D,
+            // Modifiers since #194, no longer fire.
+            Scancode::RCtrl,
+            Scancode::RAlt,
             Scancode::Escape,
             Scancode::F1,
             Scancode::LShift,
@@ -920,7 +917,6 @@ mod tests {
             ("Esc", How::Key(Scancode::Escape)),
             ("an F key", How::Key(Scancode::F1)),
             ("an arrow", How::Key(Scancode::Left)),
-            ("W", How::Key(Scancode::W)),
             ("the D-pad", How::Button(Part::DPad(Way::Down))),
             ("the stick", How::Button(Part::Stick(Way::Right))),
         ] {
@@ -935,6 +931,7 @@ mod tests {
 
         for (what, how) in [
             ("a letter", How::Key(Scancode::Q)),
+            ("W, no direction since #194", How::Key(Scancode::W)),
             ("a digit", How::Key(Scancode::_5)),
             ("Space", How::Key(Scancode::Space)),
             ("a face button", How::Button(Part::West)),
@@ -1004,10 +1001,15 @@ mod tests {
             left < before,
             "the left arrow moves BLOB left on the joystick"
         );
+        k.key(Scancode::Right, true);
+        k.frames(40);
+        k.key(Scancode::Right, false);
+        let right = k.blob_x();
+        assert!(right > left, "the right arrow moves him right");
         k.key(Scancode::D, true);
         k.frames(40);
         k.key(Scancode::D, false);
-        assert!(k.blob_x() > left, "D moves him right");
+        assert_eq!(k.blob_x(), right, "D doesn't: only the cursor keys play");
 
         // The game's own keys don't reach it: A S D F G together would end the game.
         let together = [
@@ -1052,9 +1054,6 @@ mod tests {
             (Scancode::Up, "↑"),
             (Scancode::Left, "←"),
             (Scancode::Space, "Space"),
-            (Scancode::Z, "Z"),
-            (Scancode::X, "X"),
-            (Scancode::V, "V"),
             (Scancode::Return, "Enter"),
         ] {
             assert_eq!(named(scancode, false), Some(name), "{scancode:?}, as a pad");
@@ -1066,7 +1065,12 @@ mod tests {
                 "{scancode:?}, the Spectrum's on"
             );
         }
-        assert_eq!(key_for(Part::South, true), None, "Z is the Spectrum's then");
+        assert_eq!(
+            key_for(Part::South, false),
+            None,
+            "no key plays a face button but west"
+        );
+        assert_eq!(key_for(Part::South, true), None);
         assert_eq!(key_for(Part::L1, false), None, "no key plays it");
     }
 

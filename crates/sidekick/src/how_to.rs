@@ -344,8 +344,8 @@ mod tests {
         assert_eq!(card.goal, "Find the pieces.");
         assert_eq!(
             card.entries[0].keys.as_deref(),
-            Some("X"),
-            "the keyboard's east, as a pad"
+            Some("↑"),
+            "the keyboard as a pad: the arrow that does what east does"
         );
         let spectrum = screen
             .card(Some(&def), &mapping, "Test", None, true)

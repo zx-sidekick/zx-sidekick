@@ -1229,8 +1229,8 @@ fn how_to() -> HowTo {
         title: "Starquake".to_owned(),
         goal: "The planet's core has broken apart. Find the pieces it needs, scattered across the planet, and carry them back to rebuild it. The core shows which pieces it wants only in its own room.".to_owned(),
         entries: vec![
-            entry("X", PadMark::Face(Face::East), "Pick up or swap", "Stand on an item to take it. Four at most: a fifth puts down the oldest."),
-            entry("Z", PadMark::Face(Face::South), "Build a platform", "A step to cross a gap or climb out of a pit. They run out."),
+            entry("↑", PadMark::Face(Face::East), "Pick up or swap", "Stand on an item to take it. Four at most: a fifth puts down the oldest."),
+            entry("↓", PadMark::Face(Face::South), "Build a platform", "A step to cross a gap or climb out of a pit. They run out."),
             entry("← →", PadMark::Directions, "Teleport booths", "Walk into one and type another booth's code. Each booth shows its own."),
             entry("Space", PadMark::Face(Face::West), "Fire", "Clears creatures from your way. The laser runs down as it fires."),
         ],
@@ -1265,8 +1265,8 @@ fn how_to_play() {
     };
     let clips = HowTo {
         clips: vec![
-            clip("X", PadMark::Face(Face::East), "pick up or swap"),
-            clip("Z", PadMark::Face(Face::South), "build a platform"),
+            clip("↑", PadMark::Face(Face::East), "pick up or swap"),
+            clip("↓", PadMark::Face(Face::South), "build a platform"),
         ],
         pad: Some(PadLabels::Letters),
         ..how_to()
