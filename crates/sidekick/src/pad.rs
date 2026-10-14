@@ -544,7 +544,7 @@ impl Mapping {
             _ => None,
         };
         if let Some(way) = way {
-            return key_for(Part::DPad(way), spectrum).map(str::to_owned);
+            return key_for(Part::Arrow(way), spectrum).map(str::to_owned);
         }
         let &[(part, None)] = parts_named(name).as_slice() else {
             return None;
