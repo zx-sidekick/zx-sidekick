@@ -109,8 +109,4 @@ The game's **CORE OF HEROES** holds eight entries, best first: a three-letter na
 
 ## Facts to find
 
-Under `CLAUDE.md`'s rules, written up in `docs/re/starquake.md`, each marked confirmed, read or guess. Every fact the definition holds has been seen running (#173). Still to find, each marked `TODO` in `games/starquake/game.toml`:
-
-- the high-score table (`[high_scores]`, #171);
-- the row just under the booth's code line, for its card (`[text_entry] card_row`, #172);
-- where the game decides what *up* and *down* mean (split meanings, `patch_for_frame`, #20).
+Under `CLAUDE.md`'s rules, written up in `docs/re/starquake.md`, each marked confirmed, read or guess. None is left to find: every fact the definition holds has been seen running (#173), and `sidekick check` passes on `games/starquake` with the supported dump.
