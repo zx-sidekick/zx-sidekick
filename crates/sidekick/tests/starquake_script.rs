@@ -1483,3 +1483,17 @@ fn the_core_unseen_after_twenty_rooms_is_hinted_up_to_level_3() {
     s.run_frame().expect("a frame");
     assert!(conditions(&s).is_empty(), "the core seen");
 }
+
+#[test]
+fn no_hint_shows_on_the_title_or_paused() {
+    let mut s = session();
+    blank_planet(&mut s);
+    poke_into(&mut s, "energy", 0, &[5, 2]);
+    poke_into(&mut s, "carried", 0, &[26, 3, 27, 3, 28, 3, 29, 3]);
+    enter(&mut s, "play");
+    assert!(s.hint(1).is_some(), "in play, several hold");
+    for state in ["title", "paused", "game_over"] {
+        enter(&mut s, state);
+        assert_eq!(s.hint(1), None, "{state}");
+    }
+}

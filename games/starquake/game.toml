@@ -519,7 +519,8 @@ markers = { player = "player", teleport = "diamond", door = "label", piece = "pi
 places = { teleport = "top-left" }
 
 # Hints: a line in the panel while each holds, the lowest priority first. In our own words,
-# from what players have found hard (docs/games/starquake.md, "Hints").
+# from what players have found hard (docs/games/starquake.md, "Hints"). Each holds in play (or
+# at a door), so none shows on the title, paused or after a game.
 
 [[hints]]
 text = "Energy low: avoid creatures, pick up supplies"
@@ -532,6 +533,7 @@ when = { value = "energy", at_most = 30 }
 text = "This door's cards are among the violet items on the map"
 priority = 2
 from_level = 4
+state = ["play", "door"]
 # Only while a card that would answer lies on the planet: some wait in the core's room.
 script = "door-cards-on-map"
 
@@ -545,6 +547,7 @@ script = "door-cards-missing"
 text = "This post opens only for the key"
 priority = 4
 from_level = 4
+state = "play"
 script = "post-locked"
 
 [[hints]]
@@ -562,12 +565,14 @@ state = "booth"
 [[hints]]
 text = "Hands full: a new pick-up drops your oldest item"
 priority = 7
+state = "play"
 script = "hands-full"
 
 [[hints]]
 text = "The core shows what it wants only in its room"
 priority = 8
 to_level = 3
+state = "play"
 script = "core-not-seen"
 
 [situations]

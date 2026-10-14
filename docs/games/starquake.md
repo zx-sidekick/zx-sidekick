@@ -64,7 +64,7 @@ Screenshots of the program running the game: [level 1](../media/starquake-level1
 
 ## Hints
 
-Eight `[[hints]]`, a line under the level's name while each holds, the lowest priority first. They come from what players have found hard, summed up here in our own words, and from the facts in `docs/re/starquake.md`:
+Eight `[[hints]]`, a line under the level's name while each holds, the lowest priority first; each holds only in play or at a door, so none shows on the title, paused or after a game. They come from what players have found hard, summed up here in our own words, and from the facts in `docs/re/starquake.md`:
 
 - **The goal is unclear at first:** what the core wants changes every game, and the game shows it only in the core's own room. Some players lost every life before working out what to do.
 - **Energy and platforms run out:** energy falls with time and faster under some creatures' touch; supplies taken don't come back; without platforms a pit can't be climbed out of.
@@ -75,13 +75,13 @@ Eight `[[hints]]`, a line under the level's name while each holds, the lowest pr
 | Priority | Says, in short | Holds while | Levels |
 |:-:|---|---|:-:|
 | 1 | Energy is low | in play, `energy` at most 30: about 40 seconds left | 1 up |
-| 2 | Where this door's cards lie on the map | the script's `door-cards-on-map`: BLOB in a security door's room, its cards not all answered by what he carries, and an item that would answer one lying on the planet (some wait in the core's room, off the map) | 4 up |
+| 2 | Where this door's cards lie on the map | in play or at the door, the script's `door-cards-on-map`: BLOB in a security door's room, its cards not all answered by what he carries, and an item that would answer one lying on the planet (some wait in the core's room, off the map) | 4 up |
 | 3 | This door wants the cards under DOORS | the `door` state, and the script's `door-cards-missing`: its cards not all answered | 1 up |
-| 4 | This post opens only for the key | the script's `post-locked`: BLOB in a room with a post still locked (`locks`), the key not carried | 4 up |
+| 4 | This post opens only for the key | in play, the script's `post-locked`: BLOB in a room with a post still locked (`locks`), the key not carried | 4 up |
 | 5 | Platforms are low | in play, `platforms` at most 10: five left | 1 up |
 | 6 | How a booth is used | the `booth` state | 1 up |
-| 7 | Hands are full | the script's `hands-full`: four items carried | 1 up |
-| 8 | The core shows what it wants only in its room | the script's `core-not-seen`: 20 rooms walked without the core's room among them | 1 to 3; from 4 the core shows anyway |
+| 7 | Hands are full | in play, the script's `hands-full`: four items carried | 1 up |
+| 8 | The core shows what it wants only in its room | in play, the script's `core-not-seen`: 20 rooms walked without the core's room among them | 1 to 3; from 4 the core shows anyway |
 
 The door's routine isn't passed every frame, so a frame between counts as the state last matched, and the door's hint stays up while the door runs.
 
