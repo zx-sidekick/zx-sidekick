@@ -32,6 +32,22 @@ pub(crate) fn start(session: &mut Session, situation: &Situation) -> Result<(), 
     let definition = session
         .definition()
         .ok_or("a crafted situation needs the game's definition")?;
+    let start = definition.situations.clone().unwrap_or_default().start;
+    reach_play(session, &start)?;
+    enter(session, situation)
+}
+
+/// Enters a crafted situation from a game in play: at the sync point, the values are written,
+/// the switches turned on, the guidance level set and the kept lists added to, and
+/// `[situations] enter` is called, and play goes on through the change of room. The game is
+/// marked loaded.
+///
+/// # Errors
+/// What the situation or definition lacks, or the game never reached its sync point.
+pub(crate) fn enter(session: &mut Session, situation: &Situation) -> Result<(), String> {
+    let definition = session
+        .definition()
+        .ok_or("a crafted situation needs the game's definition")?;
     let problems = situation.check(definition);
     if !problems.is_empty() {
         let list: Vec<String> = problems.iter().map(ToString::to_string).collect();
@@ -42,9 +58,11 @@ pub(crate) fn start(session: &mut Session, situation: &Situation) -> Result<(), 
         .as_ref()
         .and_then(|r| r.sync)
         .ok_or("run.sync: a situation enters play at the sync point, and there's none")?;
-    let situations = definition.situations.clone().unwrap_or_default();
-    let enter = situations.enter.ok_or("situations.enter: missing")?;
-    reach_play(session, &situations.start)?;
+    let enter = definition
+        .situations
+        .as_ref()
+        .and_then(|s| s.enter)
+        .ok_or("situations.enter: missing")?;
     let mut at_sync = false;
     for _ in 0..SYNC_TRIES {
         if session.run_to_sync().map_err(|e| e.to_string())? {

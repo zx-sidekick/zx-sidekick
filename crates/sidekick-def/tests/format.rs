@@ -696,3 +696,40 @@ text = "Two\nlines"
         ]
     );
 }
+
+#[test]
+fn a_pad_table_s_ways_are_for_directions_and_its_when_for_a_state_s_own() {
+    let text = format!(
+        r#"{HEADER}
+[[states]]
+name = "play"
+role = "play"
+pc = 0x8000
+
+[pad.default]
+when = {{ value = "mode", equals = 1 }}
+west = {{ up = "none" }}
+
+[pad.play]
+when = {{ value = "nowhere", equals = 1 }}
+dpad = {{ up = "none", down = "sideways" }}
+arrows = "joystick"
+"#
+    );
+    let def = Definition::from_toml(&text).expect("it parses");
+    let problems: Vec<String> = def
+        .check()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|p| p.starts_with("pad"))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            "pad.default.when: when is for a state's own table, not every state's",
+            "pad.default.west: ways are for dpad, stick and arrows",
+            "pad.play.when.value: no value named \"nowhere\"",
+            "pad.play.dpad.down: \"sideways\" isn't a direction, fire, menu, none or an action",
+        ]
+    );
+}

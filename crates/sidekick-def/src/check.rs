@@ -480,6 +480,16 @@ impl Checker<'_> {
             if state != "default" && !self.state_exists(state) {
                 self.report(format!("pad.{state}"), format!("no state named {state:?}"));
             }
+            if let Some(when) = &pad.when {
+                if state == "default" {
+                    self.report(
+                        format!("pad.{state}.when"),
+                        "when is for a state's own table, not every state's",
+                    );
+                } else {
+                    self.test(&format!("pad.{state}.when"), when);
+                }
+            }
             for (part, target) in pad.parts() {
                 let path = format!("pad.{state}.{part}");
                 if part == "select" && *target != PadTarget::Named("menu".to_owned()) {
@@ -490,20 +500,36 @@ impl Checker<'_> {
                     self.report(&path, "any is for a state's own table, not every state's");
                     continue;
                 }
+                let directional = matches!(part, "dpad" | "stick" | "arrows");
+                let named_ok = |checker: &Self, name: &str| match name {
+                    "joystick" => directional,
+                    "menu" | "none" => true,
+                    n => DIRECTIONS.contains(&n) || checker.action_exists(n),
+                };
                 match target {
                     PadTarget::Named(name) => {
-                        let ok = match name.as_str() {
-                            "joystick" => matches!(part, "dpad" | "stick"),
-                            "menu" | "none" => true,
-                            n => DIRECTIONS.contains(&n) || self.action_exists(n),
-                        };
-                        if !ok {
+                        if !named_ok(self, name) {
                             self.report(
                                 path,
                                 format!(
                                     "{name:?} isn't a direction, fire, menu, none or an action"
                                 ),
                             );
+                        }
+                    }
+                    PadTarget::Ways(ways) => {
+                        if !directional {
+                            self.report(&path, "ways are for dpad, stick and arrows");
+                        }
+                        for (way, name) in ways.ways() {
+                            if !named_ok(self, name) {
+                                self.report(
+                                    format!("{path}.{way}"),
+                                    format!(
+                                        "{name:?} isn't a direction, fire, menu, none or an action"
+                                    ),
+                                );
+                            }
                         }
                     }
                     PadTarget::Table(table) => {

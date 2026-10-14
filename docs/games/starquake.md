@@ -16,7 +16,7 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 | Button | Keys | Does | In the definition |
 |---|---|---|---|
-| D-pad, left stick | Arrows | Move; up picks up, down builds | `dpad`, `stick = "joystick"` |
+| D-pad, left stick | Arrows | Move left and right; on a hover platform, fly up and down. The arrows' up and down pick up and build on foot | `dpad`, `stick = "joystick"`; `[pad.play]` with `when` |
 | West | Space | Fire | `west = "fire"` |
 | South | (↓) | Down: build a platform, or fly down | `south = "build"` |
 | East | (↑) | Up: pick up or swap an item, or board a hover platform | `east = "pick-up"` |
@@ -24,6 +24,8 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 | Start | Enter | Pause in play | `[pad.default] start` |
 | Any button | Any key but the arrows, Esc and the F keys | Start a game on the title screen; go on from the story | `[pad.title] any`, with `dpad` and `stick` `"none"` |
 | Select | Esc | The guidance menu | always |
+
+**The D-pad on foot (#194).** A D-pad's or stick's up and down pressed by accident on a diagonal would pick up, swap or build. So while BLOB is on foot (`blob_mode` not 2: on foot, or carried up a vacuum tube, where up and down do nothing of their own) `[pad.play]` leaves them out, and east and south do those. While he rides a hover platform the table doesn't apply, and the D-pad and stick fly it up and down. The keyboard's arrows keep up and down throughout (`arrows = "joystick"`).
 
 **Up and down.** In the original, *up* both picks up or swaps and boards a hover platform, and *down* both builds and flies down; the game decides which from where BLOB is. The east button sends *up* and the south one *down* (`[[actions]] pick-up` and `build`), each with both of the game's meanings, as the D-pad's up and down do. Splitting them, so that east only picks up and south only builds, was looked at and not taken up (#20).
 

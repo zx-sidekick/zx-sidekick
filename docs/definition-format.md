@@ -292,7 +292,7 @@ stick = "none"
 
 | Part | Names |
 |---|---|
-| Directions | `dpad`, `stick` (left stick) |
+| Directions | `dpad`, `stick` (left stick), `arrows` (the keyboard's, while it plays as a pad) |
 | Face buttons, by position | `west`, `south`, `east`, `north` |
 | Others | `l1`, `r1`, `l2`, `r2`, `start`, `select` |
 | Every button a state's table doesn't name, and every other key | `any` |
@@ -307,6 +307,25 @@ What a part can do:
 - `{ action = "build" }`, or just `"build"`: an `[[actions]]` entry.
 - `"menu"`: the guidance menu. `select` is always `"menu"`, so every game's pad can reach it.
 - `"none"`.
+
+**The keyboard's arrows** do what `dpad` does, way by way, unless a table names `arrows`. So a game can give the pad's D-pad and the keyboard's arrows different meanings: keys don't get pressed by accident on a diagonal, as a D-pad or a stick does.
+
+**A direction's ways** can be set one by one, with a table of `up`, `down`, `left` and `right`, each a name above (`"joystick"` being that way's own direction); the ways left out do what they did:
+
+```toml
+[pad.play]
+dpad = { up = "none", down = "none" }   # left and right still drive the joystick
+```
+
+**`when`**, in a state's own table: it applies only while this test of a value holds (as a `[[states]]` `when`), and the state plays as `[pad.default]` does otherwise. For a meaning that depends on more than the state, without a state of its own, which would leave play and its switches and saves. Starquake's pad moves BLOB left and right only while he's on foot, and flies a hover platform up and down while he rides one:
+
+```toml
+[pad.play]
+when = { value = "blob_mode", not = 2 }   # not on a hover platform
+dpad = { up = "none", down = "none" }
+stick = { up = "none", down = "none" }
+arrows = "joystick"                       # the keyboard keeps up and down
+```
 
 A button held when a state changes what it does is held back from the game until it's let go (`ZX-SIDEKICK.md` §9); one that does the same in both states carries on, so a held direction isn't cut short.
 

@@ -3,7 +3,7 @@
 
 use crate::keys::{key_for, key_named};
 use sidekick_core::{Kempston, Key};
-use sidekick_def::{Action, Definition, DirectionKeys, Joystick, Pad, PadTarget, Patch};
+use sidekick_def::{Action, Definition, DirectionKeys, Joystick, Pad, PadTarget, Patch, Test};
 use sidekick_ui::PadLabels;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -33,6 +33,9 @@ const WAYS: [Way; 4] = [Way::Up, Way::Down, Way::Left, Way::Right];
 pub(crate) enum Part {
     DPad(Way),
     Stick(Way),
+    /// One of the keyboard's arrows, which plays as the D-pad unless `[pad] arrows` says
+    /// otherwise.
+    Arrow(Way),
     West,
     South,
     East,
@@ -134,10 +137,12 @@ pub(crate) enum Nav {
 /// What `part`, pressed on a pad from `maker`, means on a page.
 pub(crate) fn nav(part: Part, maker: Maker) -> Option<Nav> {
     match part {
-        Part::DPad(Way::Up) | Part::Stick(Way::Up) => Some(Nav::Up),
-        Part::DPad(Way::Down) | Part::Stick(Way::Down) => Some(Nav::Down),
-        Part::DPad(Way::Left) | Part::Stick(Way::Left) => Some(Nav::Left),
-        Part::DPad(Way::Right) | Part::Stick(Way::Right) => Some(Nav::Right),
+        Part::DPad(Way::Up) | Part::Stick(Way::Up) | Part::Arrow(Way::Up) => Some(Nav::Up),
+        Part::DPad(Way::Down) | Part::Stick(Way::Down) | Part::Arrow(Way::Down) => Some(Nav::Down),
+        Part::DPad(Way::Left) | Part::Stick(Way::Left) | Part::Arrow(Way::Left) => Some(Nav::Left),
+        Part::DPad(Way::Right) | Part::Stick(Way::Right) | Part::Arrow(Way::Right) => {
+            Some(Nav::Right)
+        }
         p if p == maker.confirm() => Some(Nav::Confirm),
         p if p == maker.back() => Some(Nav::Back),
         _ => None,
@@ -369,8 +374,8 @@ type Parts = BTreeMap<Part, Does>;
 pub(crate) struct Mapping {
     /// With no state, or one without its own `[pad]`.
     default: Parts,
-    /// States with their own `[pad]`.
-    states: BTreeMap<String, Parts>,
+    /// States with their own `[pad]`, and the test of a value it applies while, if any.
+    states: BTreeMap<String, (Option<Test>, Parts)>,
     /// What every other key does in the states whose `[pad]` has `any`.
     any: BTreeMap<String, Does>,
     /// The keys the Spectrum doesn't have that do an action, by SDL's name for them; each is
@@ -396,29 +401,29 @@ impl Mapping {
             keys: run.and_then(|r| r.keys.clone()),
             actions: def.map(|d| d.actions.as_slice()).unwrap_or_default(),
         };
-        let mut targets: BTreeMap<&str, PadTarget> = [
+        let mut targets = Targets::default();
+        for (part, target) in [
             ("dpad", "joystick"),
             ("stick", "joystick"),
             ("west", "fire"),
-        ]
-        .into_iter()
-        .map(|(part, target)| (part, PadTarget::Named(target.to_owned())))
-        .collect();
+        ] {
+            targets.set(part, &PadTarget::Named(target.to_owned()));
+        }
         let pads = def.map(|d| &d.pad);
-        let over = |targets: &mut BTreeMap<&'static str, PadTarget>, pad: &Pad| {
+        let over = |targets: &mut Targets, pad: &Pad| {
             for (part, target) in Pad::parts(pad) {
-                targets.insert(part, target.clone());
+                targets.set(part, target);
             }
         };
         if let Some(pad) = pads.and_then(|p| p.get("default")) {
             over(&mut targets, pad);
         }
         let mut host_keys = Vec::new();
-        let mut parts = |targets: &BTreeMap<&str, PadTarget>| -> Parts {
+        let mut parts = |targets: &Targets| -> Parts {
             let mut parts = Parts::new();
-            for (name, target) in targets {
-                for (part, way) in parts_named(name) {
-                    let does = joy.does(target, way);
+            for (name, target) in targets.resolved() {
+                for (part, way) in parts_named(&name) {
+                    let does = joy.does(&target, way);
                     if does != Does::default() {
                         parts.insert(part, does);
                     }
@@ -446,7 +451,7 @@ impl Mapping {
                 let mut targets = targets.clone();
                 if let Some(target) = &pad.any {
                     for name in ANY_PARTS {
-                        targets.insert(name, target.clone());
+                        targets.set(name, target);
                     }
                 }
                 over(&mut targets, pad);
@@ -461,7 +466,7 @@ impl Mapping {
                     }
                     any.insert(state.clone(), does);
                 }
-                (state.clone(), parts)
+                (state.clone(), (pad.when.clone(), parts))
             })
             .collect();
         let actions = joy
@@ -478,17 +483,25 @@ impl Mapping {
         }
     }
 
-    fn parts(&self, state: Option<&str>) -> &Parts {
+    /// What each part does in `state`: its own table while its `when` holds (`active`), or
+    /// when it has none; the default's otherwise.
+    fn parts(&self, state: Option<&str>, active: bool) -> &Parts {
         state
             .and_then(|s| self.states.get(s))
-            .unwrap_or(&self.default)
+            .filter(|(when, _)| when.is_none() || active)
+            .map_or(&self.default, |(_, parts)| parts)
+    }
+
+    /// The test of a value `state`'s own table applies while, if it has one.
+    pub(crate) fn when(&self, state: Option<&str>) -> Option<&Test> {
+        self.states.get(state?)?.0.as_ref()
     }
 
     /// What `part` does in `state`, if anything.
-    fn does(&self, state: Option<&str>, part: Part) -> Option<&Does> {
+    fn does(&self, state: Option<&str>, active: bool, part: Part) -> Option<&Does> {
         match part {
             Part::Key(_) => self.any.get(state?),
-            part => self.parts(state).get(&part),
+            part => self.parts(state, active).get(&part),
         }
     }
 
@@ -520,12 +533,12 @@ impl Mapping {
         if let Some(key) = key_for(part, spectrum) {
             return Some(key.to_owned());
         }
-        let parts = self.parts(state);
+        let parts = self.parts(state, true);
         let does = parts.get(&part)?;
         let same = |other: Part| parts.get(&other).is_some_and(|o| o.alike(does));
         let arrows: Vec<&str> = WAYS
             .iter()
-            .map(|&w| Part::DPad(w))
+            .map(|&w| Part::Arrow(w))
             .filter(|&p| same(p))
             .filter_map(|p| key_for(p, spectrum))
             .collect();
@@ -543,6 +556,51 @@ impl Mapping {
     }
 }
 
+/// What each `[pad]` entry is set to, the directions way by way (`dpad:up`), and which of the
+/// arrows' ways have been set themselves rather than following the D-pad's.
+#[derive(Clone, Debug, Default)]
+struct Targets {
+    named: BTreeMap<String, PadTarget>,
+    arrows: BTreeSet<&'static str>,
+}
+
+const WAY_NAMES: [&str; 4] = ["up", "down", "left", "right"];
+
+impl Targets {
+    /// Sets entry `name`: a direction's ways all to a name or table, or some of them to theirs.
+    fn set(&mut self, name: &str, target: &PadTarget) {
+        if !matches!(name, "dpad" | "stick" | "arrows") {
+            self.named.insert(name.to_owned(), target.clone());
+            return;
+        }
+        let ways: Vec<(&'static str, PadTarget)> = match target {
+            PadTarget::Ways(ways) => ways
+                .ways()
+                .into_iter()
+                .map(|(way, n)| (way, PadTarget::Named(n.to_owned())))
+                .collect(),
+            target => WAY_NAMES.iter().map(|&w| (w, target.clone())).collect(),
+        };
+        for (way, target) in ways {
+            if name == "arrows" {
+                self.arrows.insert(way);
+            }
+            self.named.insert(format!("{name}:{way}"), target);
+        }
+    }
+
+    /// Every entry, the arrows' ways not set themselves as the D-pad's.
+    fn resolved(&self) -> Vec<(String, PadTarget)> {
+        let mut all = self.named.clone();
+        for way in WAY_NAMES.iter().filter(|w| !self.arrows.contains(*w)) {
+            if let Some(target) = self.named.get(&format!("dpad:{way}")) {
+                all.insert(format!("arrows:{way}"), target.clone());
+            }
+        }
+        all.into_iter().collect()
+    }
+}
+
 /// The parts a state's `any` stands for, unless its table names them: the buttons, not the
 /// directions or Select.
 const ANY_PARTS: [&str; 9] = [
@@ -555,6 +613,22 @@ fn parts_named(name: &str) -> Vec<(Part, Option<Way>)> {
     match name {
         "dpad" => WAYS.iter().map(|&w| (Part::DPad(w), Some(w))).collect(),
         "stick" => WAYS.iter().map(|&w| (Part::Stick(w), Some(w))).collect(),
+        "arrows" => WAYS.iter().map(|&w| (Part::Arrow(w), Some(w))).collect(),
+        name if name.contains(':') => {
+            let (pad, way) = name.split_once(':').unwrap_or_default();
+            let way = match way {
+                "up" => Way::Up,
+                "down" => Way::Down,
+                "left" => Way::Left,
+                _ => Way::Right,
+            };
+            let part = match pad {
+                "dpad" => Part::DPad(way),
+                "stick" => Part::Stick(way),
+                _ => Part::Arrow(way),
+            };
+            vec![(part, Some(way))]
+        }
         "west" => one(Part::West),
         "south" => one(Part::South),
         "east" => one(Part::East),
@@ -609,6 +683,8 @@ impl Joy<'_> {
                 // `menu` comes with the guidance menu (#14).
                 self.named_action(name)
             }
+            // Expanded way by way before they get here (`Targets::set`).
+            PadTarget::Ways(_) => Does::default(),
             PadTarget::Table(table) => {
                 let mut does = Does {
                     hold: keys(&table.keys),
@@ -689,6 +765,8 @@ struct Lasting {
 pub(crate) struct Play {
     mapping: Mapping,
     state: Option<String>,
+    /// Whether the state's own `[pad]` table applies: its `when` holds, or it has none.
+    active: bool,
     lasting: Vec<Lasting>,
     sent: BTreeSet<Input>,
 }
@@ -717,12 +795,17 @@ impl Play {
     /// The game's state for the frames to come. Returns the parts whose meaning it changed,
     /// for those held to be held back: a part that does the same in both carries on, so a
     /// state that flickers doesn't cut out a held direction.
-    pub(crate) fn enter(&mut self, state: Option<&str>) -> Vec<Part> {
-        if self.state.as_deref() == state {
+    pub(crate) fn enter(
+        &mut self,
+        state: Option<&str>,
+        holds: &dyn Fn(&Test) -> bool,
+    ) -> Vec<Part> {
+        let active = self.mapping.when(state).is_none_or(holds);
+        if self.state.as_deref() == state && self.active == active {
             return Vec::new();
         }
-        let before = self.mapping.parts(self.state.as_deref());
-        let after = self.mapping.parts(state);
+        let before = self.mapping.parts(self.state.as_deref(), self.active);
+        let after = self.mapping.parts(state, active);
         let changed = before
             .keys()
             .chain(after.keys())
@@ -732,12 +815,15 @@ impl Play {
             .into_iter()
             .collect();
         self.state = state.map(str::to_owned);
+        self.active = active;
         changed
     }
 
     /// Whether `part` does anything in the game's state now.
     pub(crate) fn maps(&self, part: Part) -> bool {
-        self.mapping.does(self.state.as_deref(), part).is_some()
+        self.mapping
+            .does(self.state.as_deref(), self.active, part)
+            .is_some()
     }
 
     /// Whether every key of the keyboard does something in the game's state now: the
@@ -767,7 +853,9 @@ impl Play {
     /// A part was pressed: starts its tap, and keeps what it holds going for the frames it
     /// lasts at least. Returns the script function it calls, if it calls one.
     pub(crate) fn pressed(&mut self, part: Part) -> Option<String> {
-        let does = self.mapping.does(self.state.as_deref(), part)?;
+        let does = self
+            .mapping
+            .does(self.state.as_deref(), self.active, part)?;
         Self::start(&mut self.lasting, does);
         does.script.clone()
     }
@@ -826,7 +914,7 @@ impl Play {
             add(&lasting.inputs, &lasting.patches);
         }
         for part in held {
-            if let Some(does) = self.mapping.does(self.state.as_deref(), part) {
+            if let Some(does) = self.mapping.does(self.state.as_deref(), self.active, part) {
                 add(&does.hold, &does.patches);
             }
         }
@@ -939,6 +1027,88 @@ pub(crate) mod tests {
     fn holds(play: &mut Play, held: &[Part]) -> Vec<Input> {
         play.update(held.iter().copied());
         play.sent.iter().copied().collect()
+    }
+
+    #[test]
+    fn a_state_s_table_with_when_applies_while_its_test_holds_and_the_arrows_follow_the_d_pad() {
+        let mapping = Mapping::new(Some(&def(r#"
+            [run]
+            joystick = "kempston"
+            [[states]]
+            name = "play"
+            role = "play"
+            pc = 0x8000
+            [values.mode]
+            addr = 0x9000
+            type = "u8"
+            [pad.play]
+            when = { value = "mode", not = 2 }
+            dpad = { up = "none", down = "none" }
+            stick = { up = "none" }
+            arrows = "joystick"
+        "#)));
+        let mut play = Play::new(mapping);
+        let up = Input::Kempston(Direction::Up);
+        let left = Input::Kempston(Direction::Left);
+        play.enter(Some("play"), &|_| true);
+        assert_eq!(
+            holds(&mut play, &[Part::DPad(Way::Up)]),
+            [],
+            "the D-pad's up does nothing"
+        );
+        assert_eq!(
+            holds(&mut play, &[Part::DPad(Way::Left)]),
+            [left],
+            "its left moves"
+        );
+        assert_eq!(
+            holds(&mut play, &[Part::Stick(Way::Up)]),
+            [],
+            "the stick's up, as listed"
+        );
+        assert_eq!(
+            holds(&mut play, &[Part::Stick(Way::Down)]),
+            [Input::Kempston(Direction::Down)],
+            "its down, not listed, as before"
+        );
+        assert_eq!(
+            holds(&mut play, &[Part::Arrow(Way::Up)]),
+            [up],
+            "the arrows have their own"
+        );
+        let changed = play.enter(Some("play"), &|_| false);
+        assert!(changed.contains(&Part::DPad(Way::Up)), "{changed:?}");
+        assert_eq!(
+            holds(&mut play, &[Part::DPad(Way::Up)]),
+            [up],
+            "the test fails: default"
+        );
+        assert!(
+            play.enter(Some("play"), &|_| false).is_empty(),
+            "nothing changed"
+        );
+    }
+
+    #[test]
+    fn the_keyboard_s_arrows_do_what_the_d_pad_does_unless_named() {
+        let mapping = Mapping::new(Some(&def(r#"
+            [[states]]
+            name = "title"
+            pc = 0x8000
+            [pad.title]
+            dpad = "none"
+        "#)));
+        let mut play = Play::new(mapping);
+        assert_eq!(
+            holds(&mut play, &[Part::Arrow(Way::Right)]),
+            [Input::Kempston(Direction::Right)]
+        );
+        play.enter(Some("title"), &|_| true);
+        assert_eq!(
+            holds(&mut play, &[Part::Arrow(Way::Right)]),
+            [],
+            "as the D-pad: nothing"
+        );
     }
 
     #[test]
@@ -1151,7 +1321,7 @@ pub(crate) mod tests {
         send(s.machine_mut(), changes);
         s.run_frame().expect("a frame");
         play.frame_ran();
-        play.enter(s.progress().last_known.as_deref());
+        play.enter(s.progress().last_known.as_deref(), &|_| true);
     }
 
     #[test]
@@ -1334,7 +1504,7 @@ pub(crate) mod tests {
             "#))));
         assert!(!play.takes_any_key(), "not before the title");
         assert!(!play.maps(Part::Key(20)));
-        play.enter(Some("title"));
+        play.enter(Some("title"), &|_| true);
         assert!(play.takes_any_key());
         for part in [
             Part::West,
@@ -1491,10 +1661,13 @@ pub(crate) mod tests {
             start = { keys = ["2"] }
             "#)));
         let mut play = Play::new(mapping);
-        assert!(play.enter(None).is_empty(), "no state to begin with");
+        assert!(
+            play.enter(None, &|_| true).is_empty(),
+            "no state to begin with"
+        );
         assert_eq!(holds(&mut play, &[Part::South]), [key(Key::H)]);
         assert_eq!(
-            play.enter(Some("title")),
+            play.enter(Some("title"), &|_| true),
             [Part::South, Part::Start],
             "only the parts it changes"
         );
@@ -1505,8 +1678,14 @@ pub(crate) mod tests {
             [Input::Kempston(Direction::Fire)],
             "the default's west"
         );
-        assert!(play.enter(Some("title")).is_empty(), "the same state");
-        assert_eq!(play.enter(Some("play")), [Part::South, Part::Start]);
+        assert!(
+            play.enter(Some("title"), &|_| true).is_empty(),
+            "the same state"
+        );
+        assert_eq!(
+            play.enter(Some("play"), &|_| true),
+            [Part::South, Part::Start]
+        );
         assert_eq!(
             holds(&mut play, &[Part::South]),
             [key(Key::H)],
@@ -1514,7 +1693,7 @@ pub(crate) mod tests {
         );
         assert!(holds(&mut play, &[Part::Start]).is_empty());
         assert!(!play.maps(Part::Start), "Start does nothing in play here");
-        play.enter(Some("title"));
+        play.enter(Some("title"), &|_| true);
         assert!(play.maps(Part::Start), "but on the title");
     }
 

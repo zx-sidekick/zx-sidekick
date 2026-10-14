@@ -1207,6 +1207,14 @@ fn fact(read: &Read) -> Fact {
     }
 }
 
+impl Session {
+    /// Whether a test of the definition's values holds for this frame's reading.
+    #[must_use]
+    pub fn holds(&self, test: &Test) -> bool {
+        holds(test, &self.reading)
+    }
+}
+
 /// Whether a test holds for the values read. A test of a value that isn't a number, or wasn't
 /// read, fails.
 fn holds(test: &Test, reading: &Reading) -> bool {

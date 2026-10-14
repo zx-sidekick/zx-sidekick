@@ -116,6 +116,11 @@ writable = true
 addr = 0xDD1E
 description = "BLOB's height, in pixels up from the screen's bottom"
 
+[values.blob_mode]
+type = "u8"
+addr = 0xDD22
+description = "How BLOB moves: 0 on foot, 1 carried up a vacuum tube, 2 on a hover platform"
+
 [values.lives]
 type = "u8"
 writable = true
@@ -351,6 +356,17 @@ south = "build"
 east = "pick-up"
 north = "next-route"
 start = { tap = ["SPACE"], frames = 2 }
+
+[pad.play]
+# On foot (and in a vacuum tube), the pad's D-pad and stick move left and right only: up and
+# down would pick up or swap, and build, so a diagonal pressed by accident would too. East and
+# south do those. On a hover platform (blob_mode 2) the table doesn't apply, and the D-pad and
+# stick fly it up and down as [pad.default] has them. The keyboard's arrows keep up and down
+# everywhere (#194).
+when = { value = "blob_mode", not = 2 }
+dpad = { up = "none", down = "none" }
+stick = { up = "none", down = "none" }
+arrows = "joystick"
 
 [pad.title]
 # The title starts a game on 0; the joystick is chosen by `set` above whatever key picked the
