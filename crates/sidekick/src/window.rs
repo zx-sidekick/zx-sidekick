@@ -822,9 +822,9 @@ impl Player {
         player
     }
 
-    /// Whether the game is held on its loading screen, taking the event. Any button, a key
-    /// that plays as one, or a click lets it go, as its card says, and doesn't reach the game;
-    /// its time starts again from then.
+    /// Whether the game is held on its loading screen, taking the event. Any key or button but
+    /// a direction ([`goes_on`]), or a click, lets it go, as its card says, and doesn't reach the
+    /// game; its time starts again from then.
     fn held(&mut self, event: &Event, presses: &[(Part, Maker)], pads: &mut Pads) -> bool {
         if !self.session.holding() {
             return false;
@@ -1736,8 +1736,8 @@ impl Player {
     /// Takes a key pressed in play: a Spectrum key reaches the game, or the keyboard's pad
     /// presses a part, as the keyboard is now ([`keys::mode`]); a key bound to one of the
     /// game's actions does it, except while the game asks for text. Where the state's `[pad]`
-    /// has `any`, the keyboard a pad, every other key presses that ([`keys::any_key`]), unless
-    /// Cmd or the Windows key is held for a shortcut. Returns the parts pressed that count. A
+    /// has `any`, or a loader waits for a key, the keyboard a pad, every other key presses
+    /// that ([`keys::any_key`]), unless Cmd or the Windows key is held for a shortcut. Returns the parts pressed that count. A
     /// letter typed while the text card is open closes it: the keyboard has it.
     fn key_down(&mut self, event: &Event, pads: &mut Pads, maker: Maker) -> Vec<(Part, Maker)> {
         let Event::KeyDown {
@@ -1757,8 +1757,8 @@ impl Player {
             KeyboardMode::Typing => None,
             _ => self.play.mapping().host_key(scancode.name()),
         };
-        let shortcut = keymod.intersects(Mod::LGUIMOD | Mod::RGUIMOD);
-        let any = self.play.takes_any_key() && !shortcut;
+        let loading = self.session.machine().waits_on_loading_screen();
+        let any = (self.play.takes_any_key() || loading) && !shortcut(keymod);
         match action
             .map(KeyDoes::Pad)
             .or_else(|| keys::pressed_or_any(scancode, &mode, any))
@@ -2330,16 +2330,22 @@ fn inside((x, y, w, h): (f32, f32, f32, f32), px: f32, py: f32) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
 }
 
+/// Whether a key goes with Cmd or the Windows key held: a shortcut, not a press.
+const fn shortcut(keymod: Mod) -> bool {
+    keymod.intersects(Mod::LGUIMOD.union(Mod::RGUIMOD))
+}
+
 /// Whether an event goes on from a held loading screen: any of a pad's buttons
-/// ([`Part::goes_on`]), a key that plays as one (Enter, Space, Z X C V, the right Control and
-/// Alt, `/`), or a click.
+/// ([`Part::goes_on`]), any key but a direction's, Esc, the F keys and the modifiers
+/// ([`keys::key_goes_on`]), or a click.
 fn goes_on(event: &Event, presses: &[(Part, Maker)]) -> bool {
     let key = match *event {
         Event::KeyDown {
             scancode: Some(scancode),
+            keymod,
             repeat: false,
             ..
-        } => keys::pad_key(scancode).is_some_and(Part::goes_on),
+        } => keys::key_goes_on(scancode, shortcut(keymod)),
         Event::MouseButtonDown { .. } => true,
         _ => false,
     };
@@ -2687,7 +2693,7 @@ notice = { text = "Press fire." }
     }
 
     #[test]
-    fn a_held_loading_screen_goes_on_with_any_button_or_a_key_that_plays_as_one() {
+    fn a_held_loading_screen_goes_on_with_any_key_or_button_but_a_direction() {
         for key in [
             Scancode::Return,
             Scancode::KpEnter,
@@ -2699,19 +2705,42 @@ notice = { text = "Press fire." }
             Scancode::RCtrl,
             Scancode::RAlt,
             Scancode::Slash,
+            Scancode::Q,
+            Scancode::_1,
+            Scancode::Tab,
         ] {
             assert!(goes_on(&key_down(key), &[]), "{key:?}");
         }
         for key in [
-            Scancode::Q,
-            Scancode::_1,
             Scancode::Left,
             Scancode::W,
-            Scancode::Tab,
+            Scancode::Escape,
+            Scancode::F1,
             Scancode::LShift,
         ] {
             assert!(!goes_on(&key_down(key), &[]), "{key:?} does nothing");
         }
+        let cmd_q = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: None,
+            scancode: Some(Scancode::Q),
+            keymod: Mod::LGUIMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        assert!(!goes_on(&cmd_q, &[]), "a shortcut does nothing");
+        let nothing = Event::KeyUp {
+            timestamp: 0,
+            window_id: 0,
+            keycode: None,
+            scancode: Some(Scancode::Q),
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
         for part in [
             Part::West,
             Part::South,
@@ -2723,16 +2752,10 @@ notice = { text = "Press fire." }
             Part::R2,
             Part::Start,
         ] {
-            assert!(
-                goes_on(&key_down(Scancode::Q), &[(part, Maker::Other)]),
-                "{part:?}"
-            );
+            assert!(goes_on(&nothing, &[(part, Maker::Other)]), "{part:?}");
         }
         for part in [Part::DPad(Way::Up), Part::Stick(Way::Left), Part::Select] {
-            assert!(
-                !goes_on(&key_down(Scancode::Q), &[(part, Maker::Other)]),
-                "{part:?}"
-            );
+            assert!(!goes_on(&nothing, &[(part, Maker::Other)]), "{part:?}");
         }
     }
 

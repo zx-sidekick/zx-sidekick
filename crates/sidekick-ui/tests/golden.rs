@@ -182,39 +182,15 @@ fn the_pause_notice() {
     let title = PauseNotice {
         heading: "Ignore the list".to_owned(),
         text: "Press any key or button to start.".to_owned(),
-        hints: vec![
-            NoticeHint {
-                keys: Some("← ↑ → ↓".to_owned()),
-                pad: Some(PadMark::Directions),
-                does: "move".to_owned(),
-            },
-            NoticeHint {
-                keys: Some("Space".to_owned()),
-                pad: Some(PadMark::Face(Face::West)),
-                does: "fire".to_owned(),
-            },
-        ],
+        hints: Vec::new(),
         ..paused(PadLabels::Letters)
     };
     golden("title-notice.png", &title.draw(&mut fonts, 1.0).png());
-    let shapes = PauseNotice {
-        pad: PadLabels::Shapes,
-        ..title
-    };
-    golden(
-        "title-notice-playstation.png",
-        &shapes.draw(&mut fonts, 1.0).png(),
-    );
-    // As the program words the loading screen's: keys apart by ` / `, each in its badge.
+    // As the program words the loading screen's.
     let loading = PauseNotice {
         heading: "Loading screen".to_owned(),
-        text: "Press any button to load the rest of the game.".to_owned(),
-        hints: vec![NoticeHint {
-            keys: Some("Enter / Space / Z / X / C / V".to_owned()),
-            pad: None,
-            does: "go on".to_owned(),
-        }],
-        ..paused(PadLabels::Letters)
+        text: "Press any key or button to go on.".to_owned(),
+        ..title
     };
     golden("loading-notice.png", &loading.draw(&mut fonts, 1.0).png());
 }

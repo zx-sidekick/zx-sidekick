@@ -32,8 +32,7 @@ pub enum PadMark {
 /// One thing to press, and what it does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NoticeHint {
-    /// The keyboard's key as shown, or arrows; keys that each do it are separated by ` / `
-    /// (`"Enter / Space"`), each shown in its own badge.
+    /// The keyboard's key as shown, or arrows.
     pub keys: Option<String>,
     /// The pad's part.
     pub pad: Option<PadMark>,
@@ -72,28 +71,24 @@ fn arrows(keys: &str) -> bool {
         .all(|c| matches!(c, '←' | '↑' | '→' | '↓' | ' '))
 }
 
-/// What a hint shows to press: the keys (bare when only arrows; keys apart by ` / ` each in its
-/// own badge), then the pad's part as the pad plugged in, `pad`, marks it; no pad part without
-/// a pad. Arrows on the keyboard stand for the D-pad too.
+/// What a hint shows to press: the keys (bare when only arrows), then the pad's part as the
+/// pad plugged in, `pad`, marks it; no pad part without a pad. Arrows on the keyboard stand for
+/// the D-pad too.
 pub(crate) fn presses(
     keys: Option<&str>,
     mark: Option<PadMark>,
     pad: Option<PadLabels>,
 ) -> Vec<Press<'_>> {
-    let keys: Vec<Press> = keys
-        .into_iter()
-        .flat_map(|k| k.split(" / "))
-        .map(|k| {
-            if arrows(k) {
-                Press::Arrows(k)
-            } else {
-                Press::Key(k)
-            }
-        })
-        .collect();
+    let keys = keys.map(|k| {
+        if arrows(k) {
+            Press::Arrows(k)
+        } else {
+            Press::Key(k)
+        }
+    });
     let part = pad.zip(mark).and_then(|(pad, mark)| match mark {
         PadMark::Face(face) => Some(pad.face(face)),
-        PadMark::Directions if !keys.is_empty() => None,
+        PadMark::Directions if keys.is_some() => None,
         PadMark::Directions => Some(Press::Arrows("← ↑ → ↓")),
         PadMark::Start => Some(pad.start()),
     });
@@ -133,7 +128,10 @@ impl PauseNotice {
             Align::Left,
             &body,
         );
-        c.rect((1.0, 107.0, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
+        // With nothing to list, the card is its words alone.
+        if !self.hints.is_empty() {
+            c.rect((1.0, 107.0, w - 2.0, 1.0), 0.0, Some(CARD_EDGE), None);
+        }
 
         let presses: Vec<Vec<Press>> = self
             .hints

@@ -1101,7 +1101,7 @@
       "type": "object",
       "properties": {
         "any": {
-          "description": "In a state's own table: what every other part does there (Select apart), and every\nother key of the keyboard while it plays as a pad (Esc, the F keys and the modifiers\napart).",
+          "description": "In a state's own table: what every other button does there (not the directions or\nSelect), and every other key of the keyboard while it plays as a pad (not the\ndirections' keys, Esc, the F keys or the modifiers).",
           "anyOf": [
             {
               "$ref": "#/$defs/PadTarget"

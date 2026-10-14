@@ -63,8 +63,7 @@ pub(crate) fn spectrum_off_anywhere(definition: Option<&Definition>) -> bool {
 
 /// What the keyboard is in `state`: typing when the definition's `[text_entry]` or
 /// `[name_entry]` asks for text there; the Spectrum's keyboard where it's on
-/// ([`spectrum_on`]); a pad otherwise, the loading screen included, where Enter is Start and
-/// goes on, as every key that plays as a button does.
+/// ([`spectrum_on`]); a pad otherwise, the loading screen included, where Enter is Start.
 pub(crate) fn mode(
     definition: Option<&Definition>,
     state: Option<&str>,
@@ -99,8 +98,8 @@ pub(crate) fn pressed(scancode: Scancode, mode: &KeyboardMode) -> Option<KeyDoes
 }
 
 /// What a key pressed does in `mode`, as [`pressed`] says; and where `any` (the state's
-/// `[pad]` has `any`, and no shortcut is under way), a key that does nothing else while the
-/// keyboard is a pad plays as [`any_key`]'s part.
+/// `[pad]` has `any`, or a loader waits for a key, and no shortcut is under way), a key that
+/// does nothing else while the keyboard is a pad plays as [`any_key`]'s part.
 pub(crate) fn pressed_or_any(
     scancode: Scancode,
     mode: &KeyboardMode,
@@ -124,9 +123,15 @@ pub(crate) fn let_go(scancode: Scancode) -> (Option<Spectrum>, Vec<Part>) {
     (spectrum_key(scancode), parts)
 }
 
-/// The part a key the pad doesn't have plays as where a state's `[pad]` has `any`, the
-/// keyboard a pad: letters, digits and the rest, but not Esc (the guidance menu), the F keys
-/// (the program's own) or a modifier, which may begin a shortcut.
+/// Whether a key goes on from a loading screen, with Cmd or the Windows key held (`shortcut`)
+/// or not: a key that plays as a button, or any other ([`any_key`]); not a direction's.
+pub(crate) fn key_goes_on(scancode: Scancode, shortcut: bool) -> bool {
+    !shortcut && pad_key(scancode).map_or_else(|| any_key(scancode).is_some(), Part::goes_on)
+}
+
+/// The part a key the pad doesn't have plays as where a state's `[pad]` has `any`, or on a
+/// loading screen, the keyboard a pad: letters, digits and the rest, but not Esc (the guidance
+/// menu), the F keys (the program's own) or a modifier, which may begin a shortcut.
 pub(crate) fn any_key(scancode: Scancode) -> Option<Part> {
     use Scancode as S;
     if pad_key(scancode).is_some()
@@ -656,7 +661,8 @@ mod tests {
             }
             self.enter();
             let mode = mode(self.s.definition(), self.known(), false);
-            match pressed_or_any(scancode, &mode, self.play.takes_any_key()) {
+            let any = self.play.takes_any_key() || self.s.machine().waits_on_loading_screen();
+            match pressed_or_any(scancode, &mode, any) {
                 Some(KeyDoes::Spectrum(Spectrum::Key(key))) => self.s.machine_mut().key(key, true),
                 Some(KeyDoes::Pad(part)) => self.button(0, part, true),
                 _ => {}
@@ -769,7 +775,7 @@ mod tests {
     }
 
     #[test]
-    fn each_key_that_plays_as_a_button_goes_on_from_a_loader_s_wait() {
+    fn any_key_goes_on_from_a_loader_s_wait_letters_and_digits_too() {
         let waiting = at_a_loader_s_wait();
         assert_eq!(
             mode(waiting.s.definition(), waiting.known(), false),
@@ -786,6 +792,11 @@ mod tests {
             Scancode::RCtrl,
             Scancode::RAlt,
             Scancode::Slash,
+            Scancode::Q,
+            Scancode::M,
+            Scancode::_1,
+            Scancode::Tab,
+            Scancode::Backspace,
         ] {
             let mut k = waiting.fork();
             k.tap(key, 4);
@@ -798,16 +809,18 @@ mod tests {
     }
 
     #[test]
-    fn a_letter_a_digit_or_a_direction_doesn_t_go_on_from_a_loader_s_wait() {
+    fn a_direction_esc_an_f_key_or_a_modifier_doesn_t_go_on_from_a_loader_s_wait() {
         let waiting = at_a_loader_s_wait();
         for key in [
-            Scancode::Q,
-            Scancode::M,
-            Scancode::_1,
-            Scancode::Tab,
             Scancode::Left,
+            Scancode::Up,
             Scancode::W,
+            Scancode::A,
             Scancode::S,
+            Scancode::D,
+            Scancode::Escape,
+            Scancode::F1,
+            Scancode::LShift,
         ] {
             let mut k = waiting.fork();
             k.tap(key, 4);
@@ -837,7 +850,7 @@ mod tests {
         assert_eq!(
             part(Scancode::Left, &pad),
             Some(Part::DPad(Way::Left)),
-            "the pad's own keys stay its parts, which `any` maps"
+            "the pad's own keys stay its parts"
         );
         for key in [
             Scancode::Escape,
@@ -871,7 +884,7 @@ mod tests {
     }
 
     #[test]
-    fn starquake_s_title_starts_a_game_on_any_key_or_button() {
+    fn starquake_s_title_starts_a_game_on_any_key_or_button_but_a_direction() {
         let Some(mut k) = starquake() else {
             return;
         };
@@ -887,43 +900,57 @@ mod tests {
         );
         k.enter();
         assert!(k.play.takes_any_key());
-        let mut esc = k.fork();
-        esc.tap(Scancode::Escape, 4);
-        esc.tap(Scancode::F1, 4);
-        assert!(
-            !esc.until(200, "play") && esc.known() == Some("title"),
-            "Esc and the F keys don't start one"
-        );
-
-        for (how, press) in [
-            ("a letter", How::Key(Scancode::Q)),
-            ("a digit", How::Key(Scancode::_5)),
+        let press = |g: &mut Played, how: &How| match *how {
+            How::Key(key) => g.tap(key, 4),
+            How::Button(part) => {
+                g.button(1, part, true);
+                g.frames(4);
+                g.button(1, part, false);
+            }
+        };
+        let after = |g: &mut Played| -> Vec<Option<String>> {
+            (0..300)
+                .map(|_| {
+                    g.frames(1);
+                    g.s.state().map(str::to_owned)
+                })
+                .collect()
+        };
+        for (what, how) in [
+            ("Esc", How::Key(Scancode::Escape)),
+            ("an F key", How::Key(Scancode::F1)),
             ("an arrow", How::Key(Scancode::Left)),
-            ("a face button", How::Button(Part::West)),
+            ("W", How::Key(Scancode::W)),
             ("the D-pad", How::Button(Part::DPad(Way::Down))),
+            ("the stick", How::Button(Part::Stick(Way::Right))),
         ] {
             let mut g = k.fork();
-            match press {
-                How::Key(key) => g.tap(key, 4),
-                How::Button(part) => {
-                    g.button(1, part, true);
-                    g.frames(4);
-                    g.button(1, part, false);
-                }
-            }
-            let mut seen = Vec::new();
-            for _ in 0..300 {
-                g.frames(1);
-                seen.push(g.s.state().map(str::to_owned));
-            }
+            press(&mut g, &how);
+            let seen = after(&mut g);
+            assert!(
+                seen[100..].iter().any(|s| s.as_deref() == Some("title")),
+                "{what} does nothing: still the title"
+            );
+        }
+
+        for (what, how) in [
+            ("a letter", How::Key(Scancode::Q)),
+            ("a digit", How::Key(Scancode::_5)),
+            ("Space", How::Key(Scancode::Space)),
+            ("a face button", How::Button(Part::West)),
+            ("Start", How::Button(Part::Start)),
+        ] {
+            let mut g = k.fork();
+            press(&mut g, &how);
+            let seen = after(&mut g);
             assert!(
                 seen[100..].iter().all(Option::is_none),
-                "{how} starts a game: its story shows"
+                "{what} starts a game: its story shows"
             );
             g.tap(Scancode::M, 4);
             assert!(
                 g.until(100, "play"),
-                "after {how}, a key goes on from the story"
+                "after {what}, a key goes on from the story"
             );
         }
     }
@@ -935,16 +962,13 @@ mod tests {
         };
         k.frames(400);
         assert!(k.s.on_loading_screen(), "the loader waits for a key");
-        k.tap(Scancode::Q, 4);
+        k.tap(Scancode::Left, 4);
         k.frames(50);
-        assert!(
-            k.s.on_loading_screen(),
-            "Q does nothing: the keyboard is a pad"
-        );
-        k.tap(Scancode::Return, 4);
+        assert!(k.s.on_loading_screen(), "a direction does nothing");
+        k.tap(Scancode::Q, 4);
         assert!(
             k.until(1500, "title"),
-            "Enter goes on from the loading screen"
+            "a letter goes on from the loading screen"
         );
         // The title is passed only every few frames: Enter starts a game in a frame between.
         let between = (0..200).any(|_| {

@@ -612,9 +612,9 @@ pub struct Pad {
     /// Select (always the guidance menu).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub select: Option<PadTarget>,
-    /// In a state's own table: what every other part does there (Select apart), and every
-    /// other key of the keyboard while it plays as a pad (Esc, the F keys and the modifiers
-    /// apart).
+    /// In a state's own table: what every other button does there (not the directions or
+    /// Select), and every other key of the keyboard while it plays as a pad (not the
+    /// directions' keys, Esc, the F keys or the modifiers).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub any: Option<PadTarget>,
 }

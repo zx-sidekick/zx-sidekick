@@ -51,8 +51,8 @@ pub(crate) enum Part {
 }
 
 impl Part {
-    /// Whether it's a button that goes on from a loading screen waiting for a key: the face
-    /// buttons, the shoulders, the triggers and Start. Not a direction, and not Select, which
+    /// Whether it goes on from a loading screen waiting for a key: a button (the face buttons,
+    /// the shoulders, the triggers, Start) or a key. Not a direction, and not Select, which
     /// opens the guidance menu.
     pub(crate) const fn goes_on(self) -> bool {
         matches!(
@@ -66,6 +66,8 @@ impl Part {
                 | Self::L2
                 | Self::R2
                 | Self::Start
+                | Self::HostKey(_)
+                | Self::Key(_)
         )
     }
 }
@@ -541,9 +543,10 @@ impl Mapping {
     }
 }
 
-/// The parts a state's `any` stands for, unless its table names them: all but Select.
-const ANY_PARTS: [&str; 11] = [
-    "dpad", "stick", "west", "south", "east", "north", "l1", "r1", "l2", "r2", "start",
+/// The parts a state's `any` stands for, unless its table names them: the buttons, not the
+/// directions or Select.
+const ANY_PARTS: [&str; 9] = [
+    "west", "south", "east", "north", "l1", "r1", "l2", "r2", "start",
 ];
 
 /// The parts a `[pad]` entry names, with the way each points for a direction.
@@ -744,9 +747,9 @@ impl Play {
     }
 
     /// A part was pressed, `loading` when a loader waits for a key (the ROM's `PAUSE 0`, its
-    /// loading screen up): there a button ([`Part::goes_on`]) taps ENTER, which the ROM's
-    /// `PAUSE` takes, rather than what it does in play (a Kempston joystick's fire, which no
-    /// `PAUSE` reads), so any button goes on from every loading screen, as its card says.
+    /// loading screen up): there a button or a key ([`Part::goes_on`]) taps ENTER, which the
+    /// ROM's `PAUSE` takes, rather than what it does in play (a Kempston joystick's fire, which
+    /// no `PAUSE` reads), so any of them goes on from every loading screen, as its card says.
     /// Elsewhere, [`Self::pressed`].
     pub(crate) fn press(&mut self, part: Part, loading: bool) -> Option<String> {
         if loading && part.goes_on() {
@@ -1292,7 +1295,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn every_button_goes_on_from_a_loader_s_wait_with_nothing_mapped_to_start() {
+    fn every_button_and_key_goes_on_from_a_loader_s_wait_with_nothing_mapped_to_start() {
         let s = at_a_loader_s_wait();
         for part in [
             Part::West,
@@ -1304,6 +1307,8 @@ pub(crate) mod tests {
             Part::L2,
             Part::R2,
             Part::Start,
+            Part::Key(20),
+            Part::HostKey(0),
         ] {
             assert!(part.goes_on(), "{part:?}");
             assert!(
@@ -1315,6 +1320,44 @@ pub(crate) mod tests {
             assert!(!part.goes_on(), "{part:?}");
             assert!(!goes_on_loading(s.clone(), part), "{part:?} doesn't go on");
         }
+    }
+
+    #[test]
+    fn a_state_s_any_is_every_button_and_key_it_doesn_t_name_but_not_the_directions() {
+        let mut play = Play::new(Mapping::new(Some(&def(r#"
+            [[states]]
+            name = "title"
+            pc = 0x8000
+            [pad.title]
+            any = { tap = ["0"] }
+            north = { tap = ["1"] }
+            "#))));
+        assert!(!play.takes_any_key(), "not before the title");
+        assert!(!play.maps(Part::Key(20)));
+        play.enter(Some("title"));
+        assert!(play.takes_any_key());
+        for part in [
+            Part::West,
+            Part::South,
+            Part::L2,
+            Part::Start,
+            Part::Key(20),
+        ] {
+            play.pressed(part);
+            assert_eq!(holds(&mut play, &[]), [key(Key::N0)], "{part:?}");
+            play.frame_ran();
+            play.frame_ran();
+        }
+        play.pressed(Part::North);
+        assert_eq!(holds(&mut play, &[]), [key(Key::N1)], "a part it names");
+        play.frame_ran();
+        play.frame_ran();
+        assert_eq!(
+            holds(&mut play, &[Part::DPad(Way::Left)]),
+            [Input::Kempston(Direction::Left)],
+            "the directions do what they did"
+        );
+        assert!(!play.maps(Part::Select), "Select is the menu's");
     }
 
     #[test]
