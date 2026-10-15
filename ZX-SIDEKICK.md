@@ -229,7 +229,7 @@ Esc, or Select on a pad, opens the menu and pauses the game. It's built from the
 - **Training mode:** one **On/Off** switch per `[[cheats]]` entry, with its label. Each is a write between frames, a value held from going down, or a patch applied while it's on.
 - **Use these settings / Back to the game:** applies and returns. If applying would raise what the game's score will show (a higher level than this game has had, or a training switch it hasn't used), a question asks first: "Your score will show this."
 - **Save, Load, Open a save…:** three buttons in one row (§13). Left and right move between them.
-- **Forget the kept lists:** shown while a `[persist]` list holds something, with the definition's wording (Starquake: "Forget the teleport codes"); asks for a second press.
+- **Forget the kept lists:** shown while a `[persist]` list holds something, with the definition's wording: its list's label, or "Forget the kept lists" for more than one (Starquake's); asks for a second press.
 - **End this game:** shown in play when the definition says how (`[[actions]]` entry `end_game`, such as Starquake's A S D F G); asks for a second press.
 - **Exit:** asks for a second press. "Exit Starquake" names the game.
 
@@ -336,7 +336,8 @@ The games' logic is the originals', so there's no rewrite to prove. What needs p
 Releases are built for **macOS** (one universal binary, Apple silicon and Intel, macOS 11 and later), **Windows** (x64, with no console window and the C runtime linked in) and **Linux** (x64, built on Ubuntu 22.04 so it runs from glibc 2.35), unsigned: the player's guide says how to open the program the first time on macOS and past SmartScreen on Windows.
 
 - **Each platform's archive** (`scripts/package.sh`): the program, `games/` without any definition's `tests/`, `PLAYER-GUIDE.md` (`docs/player-guide.md`), `AUTHORS-GUIDE.md` (`docs/definition-format.md`), the README, the licence, `THIRD-PARTY.md`, and `licenses/` with Inter's and RustZX's licences and `THIRD-PARTY-NOTICES.txt`, the notices of every crate built into the program and of SDL3 (`scripts/notices.sh`, with cargo-about). It refuses a tape, snapshot or ROM file. **Each definition** in `games/` also goes on the release alone, as `<id>.zip` without its `tests/`, for a program already installed.
-- **Making one:** the workspace version in `Cargo.toml` is the release's number. Push the tag `v<version>` on a commit of `main`, and `.github/workflows/release.yml` checks the tag matches the version, tests and builds on each platform, packs the archives and the definitions, writes the notes (`scripts/release-notes.sh`: the titles merged since the previous tag, the downloads and the notice), and creates a **draft** release. The maintainer reads the draft, edits the notes if need be, and publishes it. Nothing is published by the workflow. `scripts/release-notes.sh v<version>` previews the notes before the tag is made.
+- **Making one:** the workspace version in `Cargo.toml` is the release's number. Push the tag `v<version>` on a commit of `main`, and `.github/workflows/release.yml` checks the tag matches the version (`scripts/release-tag.sh`), tests and builds on each platform, packs the archives and the definitions, writes the notes (`scripts/release-notes.sh`: the titles merged since the previous tag, the downloads and the notice; the first release has a summary for players instead, `docs/release-notes/<version>.md`), and creates a **draft** release. The maintainer reads the draft, edits the notes if need be, and publishes it. Nothing is published by the workflow. `scripts/release-notes.sh v<version>` previews the notes before the tag is made.
+- **A trial run:** the tag `v<version>-rc.N` (N a number) runs the same workflow for the same version, its archives named by the whole tag (`zx-sidekick-0.1.0-rc.1-macos-universal.tar.gz`), into a draft marked as a pre-release, with the notes its release would have. A draft is seen only by the repository's collaborators; delete it, and its tag, once it's been checked. A trial run's tag is never the previous tag of a later release's notes.
 
 ## 19. Build order
 
@@ -356,7 +357,7 @@ Each step ends green, committed, and on a reviewed pull request.
 12. **Saves:** quick slot, Open, saved on quitting, the offer, the loaded mark, crafted situations and `--load`.
 13. **Split pad meanings**, if they hold up.
 14. **The 128K and the AY** in definitions, and a second, simpler reference definition.
-15. **Releases:** archives for each platform, with the player's guide, the authors' guide, `THIRD-PARTY.md` and the licences; each definition zipped without its `tests/`. `scripts/package.sh` packs a platform's archive and refuses a tape, snapshot or ROM file; CI's build jobs keep its archive as their artifact. A `v*` tag builds all three, macOS as one universal binary, into a draft release with notes from the merged titles (§18, "Releases").
+15. **Releases:** archives for each platform, with the player's guide, the authors' guide, `THIRD-PARTY.md` and the licences; each definition zipped without its `tests/`. `scripts/package.sh` packs a platform's archive and refuses a tape, snapshot or ROM file; CI's build jobs keep its archive as their artifact. A `v*` tag builds all three, macOS as one universal binary, into a draft release with notes from the merged titles, or the first release's summary (§18, "Releases").
 
 ## Mockups
 

@@ -3,7 +3,8 @@ name: Release
 # A pushed v* tag builds the program for each platform from that commit, packs it with
 # scripts/package.sh, zips each definition in games/ alone, and creates a DRAFT release with
 # notes from scripts/release-notes.sh. The maintainer reads the draft and publishes it by hand
-# (ZX-SIDEKICK.md, "Releases"). Not a required check: it never runs on a pull request.
+# (ZX-SIDEKICK.md, "Releases"). A trial run's tag, v<version>-rc.N, makes a draft pre-release,
+# its archives named by the whole tag. Not a required check: it never runs on a pull request.
 on:
   push:
     tags: ['v*']
@@ -18,8 +19,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # The tag names the version the program reports (`sidekick --version`), so a release can't
-  # go out under one number and report another.
+  # The tag names the version the program reports (`sidekick --version`), or a trial run of it.
   version:
     runs-on: ubuntu-24.04
     permissions:
@@ -29,12 +29,7 @@ jobs:
         with:
           persist-credentials: false
       - name: The tag matches the workspace version
-        run: |
-          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::The tag is $GITHUB_REF_NAME, but Cargo.toml's version is $version: tag v$version, or move the version first."
-            exit 1
-          fi
+        run: scripts/release-tag.sh "$GITHUB_REF_NAME"
 
   # CI's build jobs' setup (SDL3 built from source into the program), with Linux on an older
   # Ubuntu and Windows on the static C runtime, and no cache, so a release is built from nothing
@@ -141,6 +136,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          kind=$(scripts/release-tag.sh "$GITHUB_REF_NAME")
+          flags=()
+          if [ "$kind" = prerelease ]; then
+            flags+=(--prerelease)
+          fi
           ls -l dist
-          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag "${flags[@]}" \
             --title "ZX Sidekick ${GITHUB_REF_NAME#v}" --notes-file notes.md dist/*
