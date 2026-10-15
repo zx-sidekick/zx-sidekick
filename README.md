@@ -12,11 +12,13 @@ Forty seconds of ZX Sidekick running Starquake from the player's own tape: the c
 
 ## Building
 
-Archives ready to run on macOS, Windows and Linux go on the [releases page](https://github.com/zx-sidekick/zx-sidekick/releases); the [player's guide](docs/player-guide.md) says how to install and play. To build it yourself:
+Archives ready to run on macOS, Windows and Linux go on the [releases page](https://github.com/zx-sidekick/zx-sidekick/releases); the [player's guide](docs/player-guide.md) says how to install and play. To build it yourself you need Rust 1.87 or later and CMake, since SDL3 is built from source (on Debian or Ubuntu, `scripts/linux-deps.sh` installs CMake and the libraries SDL3 needs):
 
 ```
-scripts/check.sh
+cargo build --release -p sidekick
 ```
+
+The program is then `target/release/sidekick`. `scripts/check.sh` runs the checks every change passes.
 
 The emulated machine comes from the [zx-sidekick fork of RustZX](https://github.com/zx-sidekick/rustzx), fetched by Cargo. To work on it alongside this repository, see "Working on the engine" in `ZX-SIDEKICK.md`.
 

@@ -1,6 +1,6 @@
 # ZX Sidekick: the player's guide
 
-ZX Sidekick plays original ZX Spectrum games from your own copy, in an emulated Spectrum, with a gamepad, optional training switches, a guidance panel and save games. What it adds for a game comes from that game's definition, in `games/` beside the program. This release has one: Starquake.
+ZX Sidekick plays original ZX Spectrum games from your own copy, in an emulated Spectrum, with a gamepad, optional training switches, a guidance panel, save games and kept high scores. What it adds for a game comes from that game's definition, in `games/` beside the program. This release has one: Starquake.
 
 **No game is included; you need your own copy.** ZX Sidekick is not affiliated with or endorsed by any game's rights holders. The Spectrum ROMs are included with Amstrad's permission (`THIRD-PARTY.md`).
 
@@ -50,11 +50,11 @@ With one game installed, the program starts it. Without its tape, it asks for it
 
 The tape is kept in the data folder, so it's found the next time.
 
-The game starts fullscreen. **F11** switches between fullscreen and a window; on a Mac, **Control-Command-F** does. The tape loads quickly; on the loading screen a card says to press any key or button to go on.
+The game starts fullscreen. **F11** switches between fullscreen and a window; on a Mac, **Control-Command-F** does. The tape loads quickly; on the loading screen a card, *Loading screen*, says to press any key or button to go on.
 
-On Starquake's title the program has already chosen the joystick for you, so ignore the game's list of controls: press any key or button to begin (not the arrows or the D-pad), and play with the arrow keys or a gamepad.
+On Starquake's title the program has already chosen the joystick for you, so a card, *Ignore the list*, says to press any key or button to start (not the arrows or the D-pad), and you play with the arrow keys or a gamepad. Any key or button goes on from the story that follows, too.
 
-When a game starts, a **How to play** card shows the main moves being made, in small copies of your game, and says what the game is about and how its main moves are made, with the keys (and a pad's buttons, while one is plugged in) for each. Enter, Esc or A plays on. Turn **Show next time** off (left or right, or a click) to skip it at the start of later games; the menu's *How to play* row shows it any time.
+When a game starts, a **How to play** card opens over it, the game paused behind. It says what the game is about and how its main moves are made, with the keys (and a pad's buttons, while one is plugged in) for each, and shows two of them being made in small copies of your own game, playing in a loop (in Starquake: picking up an item, and building platforms). Enter, Esc or A plays on. Turn **Show next time** off (left or right, or a click) to skip it at the start of later games; the menu's *How to play* row shows it any time.
 
 ## Keys and pad
 
@@ -90,7 +90,7 @@ A button still held when a menu closes is held back from the game until you let 
 
 ## Guidance
 
-Beside the picture, the panel offers optional help, drawn by ZX Sidekick, never by the game. Nothing in it changes what the game does. Choose a level in the guidance menu; each level adds to the ones below it. Starquake's:
+Beside the picture, the panel offers optional help, drawn by ZX Sidekick, never by the game. Nothing in it changes what the game does. At level 0 it says only how to open the menu (*Guidance or training*, with the key). Choose a level in the guidance menu; each level adds to the ones below it. Starquake's:
 
 | Level | Name | Adds |
 |:-:|---|---|
@@ -104,25 +104,35 @@ Beside the picture, the panel offers optional help, drawn by ZX Sidekick, never 
 
 Levels 0 to 3 show only what you could have written down yourself; 4 and up tell you things you couldn't have known.
 
+From level 1, a **hint** shows under the level's name while it applies: energy or platforms running low, a door wanting its cards (from level 4, that they're among the violet items on the map), a post that opens only for the key, how a teleport booth is used, hands full, and, up to level 3, that the core shows what it wants only in its own room. The training switches that are on are listed at the panel's top, under TRAINING, at every level.
+
 At a teleport booth, a pad opens a card to choose one of the codes you've seen, or spell one letter by letter. On the keyboard, type the code as on the original.
 
-The codes you discover are kept between games. The menu's **Forget the teleport codes** clears them.
+The codes you discover are kept between games, and so are the doors you've met (for a game continued from a save) and the names entered for high scores. The menu's **Forget the kept lists** clears them.
 
 ## The guidance menu and training switches
 
-**Esc**, or **Select** on a pad, opens the menu and pauses the game. Up and down move between rows; left and right change a row; Enter or A chooses.
+**Esc**, or **Select** on a pad, opens the menu and pauses the game. Up and down move between rows; left and right change a row; Enter or A chooses. Its rows, in order:
 
 - **Guidance level:** left and right, or Enter to step up.
 - **Training mode:** a switch for each of the game's trainers. Starquake's are Full energy, Full bridging platforms, Full laser, Endless lives and No harm from enemies.
-- **Back to the game** applies the changes. **Esc** or **B** leaves without them.
+- **Use the Spectrum keyboard**, under CONTROLS: off by default (Keys and pad, above).
+- **Back to the game** applies the changes. **Esc**, or the back button on a pad, leaves without them.
 - **Save, Load, Open a save…** (below).
-- **End this game** and **Exit** ask for a second press.
+- **How to play** shows the card from the start of a game.
+- **Forget the kept lists**, once something is kept: the teleport codes, the doors met and the high-score names.
+- **End this game**, in play.
+- **Exit Starquake** quits the program.
 
-A game remembers the highest guidance level it used and the training switches it had on, and shows them beside its score at the end. Raising either asks first: "Your score will show this".
+Forget, End and Exit ask for a second press.
+
+A game remembers the highest guidance level it used and whether a training switch was on. Raising either asks first: "Your score will show this".
 
 ## High scores
 
 Starquake's high-score table is kept between runs. Only games played here are kept, so it starts with the game's own entries, which are never kept. Each entry carries the highest guidance level its game had; a training game is shown, then left out; a game a save was loaded into is marked "loaded".
+
+After a game, the panel shows THIS GAME: what it was played with (*No guidance*, or *Guidance up to level 3* and the level's name, and "training, so not kept" when a switch was on), and the table, each entry with its mark and the game just played picked out.
 
 When the game asks for your name, a pad opens a card offering the names entered before, the most recent first. The west button switches to spelling one: up and down change a letter, and A takes it and moves to the next. On the keyboard, type the name as on the original.
 

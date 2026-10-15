@@ -6,7 +6,7 @@ Not affiliated with or endorsed by the rights holders; you need your own copy.
 
 ## The supported dump
 
-One dump: the original Bubble Bus release, as World of Spectrum distributes it (`Starquake.tap.zip`, worldofspectrum.net/item/0004873). Its SHA-1 goes in `[[media]]` once it's taken from the downloaded file. Anything else is refused, with a message naming this dump. The game loads with the ROM's standard loader.
+One dump: the original Bubble Bus release, as World of Spectrum distributes it (`Starquake.tap.zip`, worldofspectrum.net/item/0004873). Its SHA-1 is in `[[media]]`. Anything else is refused, with a message naming this dump. The game loads with the ROM's standard loader.
 
 ## Keys and pad
 
@@ -33,9 +33,9 @@ One dump: the original Bubble Bus release, as World of Spectrum distributes it (
 
 **The pause notice:** in the original, any move or fire continues once the pause key is let go: the arrows or Space, or the pad's D-pad or west button.
 
-**The loading screen:** the game's loader shows its screen until a key is pressed, and the rest of the tape loads after it; a card at the screen's foot says "Press any key or button to go on." Any button on the pad goes on (it taps ENTER, since the west button's Kempston fire is no key to the loader), and so does any key, letters and digits too; the directions don't.
+**The loading screen:** the game's loader shows its screen until a key is pressed, and the rest of the tape loads after it; a card at the screen's foot, headed "Loading screen", says "Press any key or button to go on." Any button on the pad goes on (it taps ENTER, since the west button's Kempston fire is no key to the loader), and so does any key, letters and digits too; the directions don't.
 
-**The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), and any key or button starts a game (`[pad.title] any`), so a card over the foot of the title says "Ignore the list: press any key or button to start". The arrows, the D-pad and the stick do nothing there. Which keys play the game, the How to play screen says when a game starts: move, pick up, build, the teleport booths, fire and pause (`[about]`).
+**The title:** the game lists its control options, but the program chooses the Kempston joystick for the player on the title (the arrows and a pad drive it), and any key or button starts a game (`[pad.title] any`), so a card over the foot of the title, headed "Ignore the list", says "Press any key or button to start." (the title state's `notice`). The arrows, the D-pad and the stick do nothing there. Which keys play the game, the How to play screen says when a game starts: move, pick up, build, the teleport booths, fire and pause (`[about]`).
 
 ## How to play
 
@@ -102,7 +102,7 @@ What players have written, read for this: Wikipedia's article on the game; the r
 
 ## What the definition reads
 
-Each of these is a fact to find (below) and then a `[values]` entry:
+Each of these is a `[values]` entry, its fact written up in `docs/re/starquake.md`:
 
 - the current room, and BLOB's position;
 - the set of rooms visited (the game keeps one for its first-visit bonus): a `bitset`;
@@ -118,7 +118,7 @@ Each of these is a fact to find (below) and then a `[values]` entry:
 
 ## Training switches
 
-Five `[[cheats]]`. Those on are listed at the panel's top, under TRAINING, at every guidance level:
+Five `[[cheats]]`, in the guidance menu's TRAINING MODE in this order. Those on are listed at the panel's top, under TRAINING, at every guidance level, and a game played with any of them on is a training game: its score is shown after it, then left out of the kept table:
 
 | Switch | How |
 |---|---|
@@ -126,7 +126,7 @@ Five `[[cheats]]`. Those on are listed at the panel's top, under TRAINING, at ev
 | Full bridging platforms | `set` platforms to `max`, and `patch` out the call that takes 2 for each platform built |
 | Full laser | `set` laser to `max`, and `patch` out the two calls that take 1 for each shot |
 | Endless lives | `hold` lives |
-| No harm from enemies | a `patch` where the game decides an enemy has hurt BLOB, or a write that undoes the hit before it counts; find which by tracing |
+| No harm from enemies | `patch`es that skip each of the three ways a touch takes a life (a zapper's, a creature's and deadly scenery's), and stop the creatures whose touch drains energy faster adding to it |
 
 ## Teleport booths
 
@@ -134,7 +134,7 @@ A booth asks for its five-letter code on the keyboard. `[text_entry]` describes 
 
 The card opens on the codes seen from guidance level 1 (`choices_from_level = 1`), and the panel's list and map outline the chosen teleport.
 
-**Codes kept between games:** every code discovered (a booth showing its own code, or a code typed correctly) is kept in `teleporter-codes.txt` (`[persist.teleport-codes]`). Level 1 lists them from the start of every later game. The menu's *Forget the teleport codes* clears them.
+**Codes kept between games:** every code discovered (a booth showing its own code, or a code typed correctly) is kept in `teleporter-codes.txt` (`[persist.teleport-codes]`). Level 1 lists them from the start of every later game. The menu's *Forget the kept lists* clears them, with the doors met and the high-score names.
 
 ## The high-score table
 
