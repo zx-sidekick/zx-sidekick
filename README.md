@@ -4,9 +4,9 @@ Play original ZX Spectrum games from your own copy, with a gamepad, optional tra
 
 Early days: the plan is [`ZX-SIDEKICK.md`](ZX-SIDEKICK.md), the definition format is [`docs/definition-format.md`](docs/definition-format.md), and the reference game is [Starquake](docs/games/starquake.md).
 
-[![ZX Sidekick running Starquake: the loading screen and title cards, play with the arrow keys, the guidance levels from 1 to 6, training switches, the pause notice, saving and loading](docs/media/showcase.gif)](docs/media/showcase.mp4)
+[![ZX Sidekick running Starquake: the loading screen and title cards, How to play with its clips, play with the cursor keys, the guidance menu, the map filling in, a route at level 5 and a hint in the panel](docs/media/showcase.gif)](docs/media/showcase.mp4)
 
-Eighty seconds of ZX Sidekick running Starquake from the player's own tape: the cards on the loading screen and the title, play with the arrow keys, the guidance levels one by one (the map filling in as BLOB walks, the items in each room, the core, a route to the nearest missing piece, the whole planet with every door's cards), the Full energy and No harm switches, the pause notice, saving and loading, and the menu's saves row. It isn't a screen recording. The emulator ran the real tape, the program's own code drew every frame off-screen as the window does, and the input was scripted. The captions were added for the video. [Full-size video (MP4)](docs/media/showcase.mp4).
+Forty seconds of ZX Sidekick running Starquake from the player's own tape: the cards on the loading screen and the title, How to play with its clips running, play with the cursor keys, the guidance menu raising the level, the map filling in as BLOB walks, a route to the nearest missing piece at level 5 with Tab picking the next, and a hint in the panel when energy runs low. It isn't a screen recording. The emulator ran the real tape, the program's own code drew every frame off-screen as the window does, and the input was scripted. The captions were added for the video, and it cuts once, to energy set low for the hint. [Full-size video (MP4)](docs/media/showcase.mp4).
 
 **No game is included; you need your own copy.** ZX Sidekick is not affiliated with or endorsed by any game's rights holders. The Spectrum ROMs are included with Amstrad's permission ([`THIRD-PARTY.md`](THIRD-PARTY.md)).
 
