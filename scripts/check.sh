@@ -5,7 +5,8 @@
 #   scripts/check.sh guard fmt ...    only the named steps (CI runs them in two jobs)
 #
 # Steps: guard (no tape, snapshot or ROM file committed; CLAUDE.md), package (the packing
-# script leaves out tests/ and refuses game files), notes (the release notes), fmt, clippy, test.
+# script leaves out tests/ and refuses game files), notes (the release notes and the tag check),
+# fmt, clippy, test.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -102,20 +103,40 @@ package() {
   fi
 }
 
-# The release notes on a stand-in history: a release lists the titles since the previous tag,
-# counts Dependabot's, names each definition's zip, and carries the notice.
+# The release notes on a stand-in history: the first release, and a trial run of it, have the
+# summary for players; a later release lists the titles since the previous tag, a trial run's
+# tag never that, counts Dependabot's, names each definition's zip, and carries the notice. Then
+# the tag check, against the workspace version: v<version> is a release, v<version>-rc.N a
+# trial run, a pre-release, and nothing else passes.
 notes() {
-  local scratch notes
+  local scratch notes version tag
   scratch=$(mktemp -d)
   trap 'rm -rf -- "$scratch"' RETURN
   stand_in() { git -C "$scratch" -c user.name="${AUTHOR:-Maintainer}" -c user.email=m@example.com \
     -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
   git init -q "$scratch"
-  mkdir -p "$scratch/games/stand-in"
+  mkdir -p "$scratch/games/stand-in" "$scratch/docs/release-notes"
   echo 'title = "Stand-in"' >"$scratch/games/stand-in/game.toml"
   stand_in commit -q --allow-empty -m 'First (#1)'
+  stand_in tag v0.1.0-rc.1
   stand_in tag v0.1.0
+  if RELEASE_NOTES_REPO="$scratch" scripts/release-notes.sh v0.1.0 >/dev/null 2>&1; then
+    echo "notes: the first release should want its summary, docs/release-notes/0.1.0.md" >&2
+    return 1
+  fi
+  printf '## In short\n\nThe first stand-in.\n' >"$scratch/docs/release-notes/0.1.0.md"
+  for tag in v0.1.0 v0.1.0-rc.1; do
+    notes=$(RELEASE_NOTES_REPO="$scratch" scripts/release-notes.sh "$tag")
+    if ! grep -qx 'The first stand-in.' <<<"$notes" || grep -q '^## Changes\|^- ' <<<"$notes" \
+      || ! grep -q "zx-sidekick-${tag#v}-windows-x64.zip" <<<"$notes" \
+      || ! grep -q 'you need your own copy' <<<"$notes"; then
+      echo "notes: $tag's notes should have the summary, not the titles, and its own downloads:" >&2
+      echo "$notes" >&2
+      return 1
+    fi
+  done
   stand_in commit -q --allow-empty -m 'Second (#2)'
+  stand_in tag v0.2.0-rc.1
   AUTHOR='dependabot[bot]' stand_in commit -q --allow-empty -m 'Bump a crate (#3)'
   stand_in tag v0.2.0
   notes=$(RELEASE_NOTES_REPO="$scratch" scripts/release-notes.sh v0.2.0)
@@ -134,6 +155,20 @@ notes() {
     echo "$notes" >&2
     return 1
   fi
+  version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+  if [ "$(scripts/release-tag.sh "v$version")" != release ] \
+    || [ "$(scripts/release-tag.sh "v$version-rc.1")" != prerelease ] \
+    || [ "$(scripts/release-tag.sh "v$version-rc.12")" != prerelease ]; then
+    echo "notes: v$version should be a release, and v$version-rc.N a trial run" >&2
+    return 1
+  fi
+  for tag in "$version" "v$version.1" "v${version}x" "v$version-rc." "v$version-rc.1x" "v$version-beta" \
+    "v$version-rc.1-rc.2" v999.0.0 v999.0.0-rc.1; do
+    if scripts/release-tag.sh "$tag" >/dev/null 2>&1; then
+      echo "notes: the tag $tag should fail the check against $version" >&2
+      return 1
+    fi
+  done
 }
 
 fmt() { cargo fmt --check; }
